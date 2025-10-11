@@ -1182,12 +1182,56 @@ ensure_llvm_toolchain() {
 }
 
 # Download and compile PHP
-install_php_version() {
-    local version="$1"
+resolve_latest_version() {
+    local input_version="$1"
     
-    if [[ -z "$version" ]]; then
+    if [[ -z "$input_version" ]]; then
+        return 1
+    fi
+    
+    # If it's already a full version (x.y.z), return as-is
+    if [[ "$input_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "$input_version"
+        return 0
+    fi
+    
+    # Build filter pattern
+    local filter_pattern="$input_version"
+    if [[ "$filter_pattern" != *"." ]]; then
+        filter_pattern="$filter_pattern."
+    fi
+    
+    # Get matching versions and find the latest one
+    local latest_version
+    latest_version=$(get_available_versions | grep "^$filter_pattern" | sort -V | tail -n1)
+    
+    if [[ -z "$latest_version" ]]; then
+        return 1
+    fi
+    
+    echo "$latest_version"
+}
+
+install_php_version() {
+    local input_version="$1"
+    
+    if [[ -z "$input_version" ]]; then
         log_error "Please specify a version to install"
         return 1
+    fi
+    
+    # Resolve the actual version to install
+    local version
+    version=$(resolve_latest_version "$input_version")
+    
+    if [[ -z "$version" ]]; then
+        log_error "No available version found matching '$input_version'"
+        return 1
+    fi
+    
+    # If we resolved to a different version, inform the user
+    if [[ "$version" != "$input_version" ]]; then
+        log_info "Installing latest version $version (matched from '$input_version')"
     fi
     
     local install_dir="$PHPV_VERSIONS_DIR/$version"
@@ -1531,7 +1575,7 @@ USAGE:
     phpv <command> [arguments]
 
 COMMANDS:
-    install <version>    Install a specific PHP version
+    install <version>    Install a specific PHP version (supports partial versions: e.g., 8, 8.3)
     uninstall <version>  Uninstall a specific PHP version
     use <version>        Switch to a specific PHP version
     current             Show the current PHP version
@@ -1543,6 +1587,8 @@ COMMANDS:
 
 EXAMPLES:
     phpv install 8.3.12         # Install PHP 8.3.12
+    phpv install 8.3            # Install latest 8.3.x version (8.3.12)
+    phpv install 8              # Install latest 8.x.x version
     phpv use 8.3.12             # Switch to PHP 8.3.12
     phpv use system             # Switch to system PHP
     phpv current                # Show current version

@@ -757,7 +757,16 @@ install_libxml2_from_source() {
 
 # Install oniguruma from source
 install_oniguruma_from_source() {
-    local version="5.9.6"
+    local php_version="$1"
+    local version
+    
+    # Use oniguruma 6.9.9 for PHP 7.x and above, 5.9.6 for PHP 5.x and below
+    if [[ -n "$php_version" && "$php_version" =~ ^[7-9] ]]; then
+        version="6.9.9"
+    else
+        version="5.9.6"
+    fi
+    
     local url="https://github.com/kkos/oniguruma/releases/download/v$version/onig-$version.tar.gz"
     local cache_file="$PHPV_CACHE_DIR/onig-$version.tar.gz"
     local build_dir="$PHPV_CACHE_DIR/onig-$version"
@@ -1308,7 +1317,7 @@ install_php_version() {
     fi
     if [[ ! -f "$PHPV_DEPS_DIR/lib/libonig.so" ]]; then
         log_info "Installing oniguruma from source..."
-        install_oniguruma_from_source || return 1
+        install_oniguruma_from_source "$version" || return 1
     fi
     if [[ ! -f "$PHPV_DEPS_DIR/lib/libpng.so" ]]; then
         log_info "Installing libpng from source..."

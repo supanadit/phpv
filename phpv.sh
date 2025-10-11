@@ -11,6 +11,7 @@ PHPV_ROOT="${PHPV_ROOT:-$HOME/.phpv}"
 PHPV_VERSIONS_DIR="$PHPV_ROOT/versions"
 PHPV_CACHE_DIR="$PHPV_ROOT/cache"
 PHPV_CURRENT_FILE="$PHPV_ROOT/version"
+PHPV_DEPS_DIR="$PHPV_ROOT/deps"
 PHPV_DEFAULT_VERSION="system"
 
 # Colors for output
@@ -41,6 +42,7 @@ log_error() {
 init_phpv() {
     mkdir -p "$PHPV_VERSIONS_DIR"
     mkdir -p "$PHPV_CACHE_DIR"
+    mkdir -p "$PHPV_DEPS_DIR"
     
     if [[ ! -f "$PHPV_CURRENT_FILE" ]]; then
         echo "$PHPV_DEFAULT_VERSION" > "$PHPV_CURRENT_FILE"
@@ -205,6 +207,217 @@ get_available_versions() {
 EOF
 }
 
+# Install zlib from source
+install_zlib_from_source() {
+    local version="1.3.1"
+    local url="https://zlib.net/zlib-$version.tar.gz"
+    local build_dir="$PHPV_CACHE_DIR/zlib-$version"
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+    if command -v curl &> /dev/null; then
+        curl -fsSL "$url" | tar -xz --strip-components=1
+    elif command -v wget &> /dev/null; then
+        wget -q "$url" -O - | tar -xz --strip-components=1
+    else
+        log_error "curl or wget required to download dependencies"
+        return 1
+    fi
+    ./configure --prefix="$PHPV_DEPS_DIR"
+    make -j$(nproc)
+    make install
+}
+
+# Install OpenSSL from source
+install_openssl_from_source() {
+    local version="3.0.13"
+    local url="https://www.openssl.org/source/openssl-$version.tar.gz"
+    local build_dir="$PHPV_CACHE_DIR/openssl-$version"
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+    if command -v curl &> /dev/null; then
+        curl -fsSL "$url" | tar -xz --strip-components=1
+    elif command -v wget &> /dev/null; then
+        wget -q "$url" -O - | tar -xz --strip-components=1
+    else
+        log_error "curl or wget required to download dependencies"
+        return 1
+    fi
+    ./config --prefix="$PHPV_DEPS_DIR" --openssldir="$PHPV_DEPS_DIR/ssl"
+    make -j$(nproc)
+    make install
+}
+
+# Install libxml2 from source
+install_libxml2_from_source() {
+    local version="2.11.5"
+    local url="https://download.gnome.org/sources/libxml2/2.11/libxml2-$version.tar.xz"
+    local build_dir="$PHPV_CACHE_DIR/libxml2-$version"
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+    if command -v curl &> /dev/null; then
+        curl -fsSL "$url" | tar -xJ --strip-components=1
+    elif command -v wget &> /dev/null; then
+        wget -q "$url" -O - | tar -xJ --strip-components=1
+    else
+        log_error "curl or wget required to download dependencies"
+        return 1
+    fi
+    ./configure --prefix="$PHPV_DEPS_DIR" --without-python
+    make -j$(nproc)
+    make install
+}
+
+# Install oniguruma from source
+install_oniguruma_from_source() {
+    local version="6.9.8"
+    local url="https://github.com/kkos/oniguruma/releases/download/v$version/onig-$version.tar.gz"
+    local build_dir="$PHPV_CACHE_DIR/onig-$version"
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+    if command -v curl &> /dev/null; then
+        curl -fsSL "$url" | tar -xz --strip-components=1
+    elif command -v wget &> /dev/null; then
+        wget -q "$url" -O - | tar -xz --strip-components=1
+    else
+        log_error "curl or wget required to download dependencies"
+        return 1
+    fi
+    ./configure --prefix="$PHPV_DEPS_DIR"
+    make -j$(nproc)
+    make install
+}
+
+# Install libpng from source
+install_libpng_from_source() {
+    local version="1.6.40"
+    local url="https://download.sourceforge.net/libpng/libpng-$version.tar.gz"
+    local build_dir="$PHPV_CACHE_DIR/libpng-$version"
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+    if command -v curl &> /dev/null; then
+        curl -fsSL "$url" | tar -xz --strip-components=1
+    elif command -v wget &> /dev/null; then
+        wget -q "$url" -O - | tar -xz --strip-components=1
+    else
+        log_error "curl or wget required to download dependencies"
+        return 1
+    fi
+    ./configure --prefix="$PHPV_DEPS_DIR"
+    make -j$(nproc)
+    make install
+}
+
+# Install libjpeg from source
+install_libjpeg_from_source() {
+    local version="9e"
+    local url="https://www.ijg.org/files/jpegsrc.v$version.tar.gz"
+    local build_dir="$PHPV_CACHE_DIR/jpeg-$version"
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+    if command -v curl &> /dev/null; then
+        curl -fsSL "$url" | tar -xz --strip-components=1
+    elif command -v wget &> /dev/null; then
+        wget -q "$url" -O - | tar -xz --strip-components=1
+    else
+        log_error "curl or wget required to download dependencies"
+        return 1
+    fi
+    ./configure --prefix="$PHPV_DEPS_DIR"
+    make -j$(nproc)
+    make install
+}
+
+# Install freetype from source
+install_freetype_from_source() {
+    local version="2.13.2"
+    local url="https://download.savannah.gnu.org/releases/freetype/freetype-$version.tar.gz"
+    local build_dir="$PHPV_CACHE_DIR/freetype-$version"
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+    if command -v curl &> /dev/null; then
+        curl -fsSL "$url" | tar -xz --strip-components=1
+    elif command -v wget &> /dev/null; then
+        wget -q "$url" -O - | tar -xz --strip-components=1
+    else
+        log_error "curl or wget required to download dependencies"
+        return 1
+    fi
+    ./configure --prefix="$PHPV_DEPS_DIR"
+    make -j$(nproc)
+    make install
+}
+
+# Install ICU from source
+install_icu_from_source() {
+    local version="73.2"
+    local url="https://github.com/unicode-org/icu/releases/download/release-$(echo $version | tr . -)/icu4c-$(echo $version | tr . _)_src.tgz"
+    local build_dir="$PHPV_CACHE_DIR/icu-$version"
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+    if command -v curl &> /dev/null; then
+        curl -fsSL "$url" | tar -xz --strip-components=1
+    elif command -v wget &> /dev/null; then
+        wget -q "$url" -O - | tar -xz --strip-components=1
+    else
+        log_error "curl or wget required to download dependencies"
+        return 1
+    fi
+    cd source
+    ./configure --prefix="$PHPV_DEPS_DIR"
+    make -j$(nproc)
+    make install
+}
+
+# Install curl from source
+install_curl_from_source() {
+    local version="8.5.0"
+    local url="https://curl.se/download/curl-$version.tar.gz"
+    local build_dir="$PHPV_CACHE_DIR/curl-$version"
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+    if command -v curl &> /dev/null; then
+        curl -fsSL "$url" | tar -xz --strip-components=1
+    elif command -v wget &> /dev/null; then
+        wget -q "$url" -O - | tar -xz --strip-components=1
+    else
+        log_error "curl or wget required to download dependencies"
+        return 1
+    fi
+    ./configure --prefix="$PHPV_DEPS_DIR" --with-openssl="$PHPV_DEPS_DIR"
+    make -j$(nproc)
+    make install
+}
+
+# Install libzip from source
+install_libzip_from_source() {
+    local version="1.10.1"
+    local url="https://libzip.org/download/libzip-$version.tar.gz"
+    local build_dir="$PHPV_CACHE_DIR/libzip-$version"
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+    if command -v curl &> /dev/null; then
+        curl -fsSL "$url" | tar -xz --strip-components=1
+    elif command -v wget &> /dev/null; then
+        wget -q "$url" -O - | tar -xz --strip-components=1
+    else
+        log_error "curl or wget required to download dependencies"
+        return 1
+    fi
+    ./configure --prefix="$PHPV_DEPS_DIR"
+    make -j$(nproc)
+    make install
+}
+
 # Get installed versions
 get_installed_versions() {
     echo "system"
@@ -238,6 +451,54 @@ install_php_version() {
         log_info "On Ubuntu/Debian: sudo apt-get install build-essential"
         log_info "On CentOS/RHEL: sudo yum groupinstall 'Development Tools'"
         return 1
+    fi
+    
+    # Set environment for custom dependencies
+    export PKG_CONFIG_PATH="$PHPV_DEPS_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
+    export LDFLAGS="-L$PHPV_DEPS_DIR/lib $LDFLAGS"
+    export CPPFLAGS="-I$PHPV_DEPS_DIR/include $CPPFLAGS"
+    export LD_LIBRARY_PATH="$PHPV_DEPS_DIR/lib:$LD_LIBRARY_PATH"
+    
+    # Install required dependencies from source if not present
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libz.so" ]]; then
+        log_info "Installing zlib from source..."
+        install_zlib_from_source || return 1
+    fi
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libssl.so" ]]; then
+        log_info "Installing OpenSSL from source..."
+        install_openssl_from_source || return 1
+    fi
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libxml2.so" ]]; then
+        log_info "Installing libxml2 from source..."
+        install_libxml2_from_source || return 1
+    fi
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libonig.so" ]]; then
+        log_info "Installing oniguruma from source..."
+        install_oniguruma_from_source || return 1
+    fi
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libpng.so" ]]; then
+        log_info "Installing libpng from source..."
+        install_libpng_from_source || return 1
+    fi
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libjpeg.so" ]]; then
+        log_info "Installing libjpeg from source..."
+        install_libjpeg_from_source || return 1
+    fi
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libfreetype.so" ]]; then
+        log_info "Installing freetype from source..."
+        install_freetype_from_source || return 1
+    fi
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libicuuc.so" ]]; then
+        log_info "Installing ICU from source..."
+        install_icu_from_source || return 1
+    fi
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libcurl.so" ]]; then
+        log_info "Installing curl from source..."
+        install_curl_from_source || return 1
+    fi
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libzip.so" ]]; then
+        log_info "Installing libzip from source..."
+        install_libzip_from_source || return 1
     fi
     
     # Download PHP source if not cached
@@ -276,15 +537,22 @@ install_php_version() {
         --with-config-file-scan-dir="$install_dir/etc/conf.d" \
         --enable-mbstring \
         --enable-opcache \
-        --with-curl \
-        --with-openssl \
-        --with-zlib \
+        --with-curl="$PHPV_DEPS_DIR" \
+        --with-openssl="$PHPV_DEPS_DIR" \
+        --with-zlib="$PHPV_DEPS_DIR" \
+        --with-libxml-dir="$PHPV_DEPS_DIR" \
+        --with-onig="$PHPV_DEPS_DIR" \
+        --with-libzip="$PHPV_DEPS_DIR" \
         --enable-bcmath \
         --enable-calendar \
         --enable-exif \
         --enable-ftp \
         --enable-gd \
+        --with-png-dir="$PHPV_DEPS_DIR" \
+        --with-jpeg-dir="$PHPV_DEPS_DIR" \
+        --with-freetype-dir="$PHPV_DEPS_DIR" \
         --enable-intl \
+        --with-icu-dir="$PHPV_DEPS_DIR" \
         --enable-soap \
         --enable-sockets \
         --with-mysqli \

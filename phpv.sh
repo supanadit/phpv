@@ -449,66 +449,135 @@ install_llvm_toolchain() {
         return 1
     fi
 
-    local target_suffix="$PHPV_LLVM_TARGET_SUFFIX"
-    if [[ -z "$target_suffix" ]]; then
+    local install_dir="$PHPV_DEPS_DIR/llvm-$version"
+
+    if [[ -x "$install_dir/bin/clang" ]]; then
+        PHPV_ACTIVE_LLVM_VERSION="$version"
+        return 0
+    fi
+
+    log_info "Installing LLVM/Clang $version..."
+    local asset_url="${PHPV_LLVM_ARCHIVE_URL:-}" 
+    local archive
+    local cache_file
+
+    if [[ -z "$asset_url" ]]; then
+        local api_url="https://api.github.com/repos/llvm/llvm-project/releases/tags/llvmorg-${version}"
+        local release_json
+        if command -v curl &> /dev/null; then
+            if ! release_json=$(curl -fsSL "$api_url"); then
+                log_error "Failed to fetch LLVM release metadata. Set PHPV_LLVM_ARCHIVE_URL manually."
+                return 1
+            fi
+        elif command -v wget &> /dev/null; then
+            if ! release_json=$(wget -qO- "$api_url"); then
+                log_error "Failed to fetch LLVM release metadata. Set PHPV_LLVM_ARCHIVE_URL manually."
+                return 1
+            fi
+        else
+            log_error "Either curl or wget is required to download LLVM"
+            return 1
+        fi
+
+        local arch_key
         case "$machine" in
             x86_64)
-                target_suffix="x86_64-linux-gnu-ubuntu-22.04"
+                arch_key="x86_64-linux-gnu"
                 ;;
             aarch64|arm64)
-                target_suffix="aarch64-linux-gnu"
+                arch_key="aarch64-linux-gnu"
                 ;;
             *)
                 log_error "Unsupported architecture: $machine"
                 return 1
                 ;;
         esac
+
+        local urls
+        urls=$(echo "$release_json" | grep -o '"browser_download_url": *"[^"]*"' | sed -E 's/.*"browser_download_url": *"([^"]*)"/\1/')
+
+        if [[ -z "$urls" ]]; then
+            log_error "No downloadable assets found for LLVM $version"
+            return 1
+        fi
+
+        while read -r url; do
+            if [[ -n "$PHPV_LLVM_TARGET_SUFFIX" ]]; then
+                if [[ "$url" == *"clang+llvm-${version}-${PHPV_LLVM_TARGET_SUFFIX}.tar.xz" ]]; then
+                    asset_url="$url"
+                    break
+                fi
+            else
+                if [[ "$url" == *"clang+llvm-${version}-${arch_key}"* && "$url" == *.tar.xz ]]; then
+                    asset_url="$url"
+                    break
+                fi
+            fi
+        done <<< "$urls"
+
+        if [[ -z "$asset_url" ]]; then
+            while read -r url; do
+                if [[ "$url" == *"clang+llvm-${version}"* && "$url" == *"linux"* && "$url" == *.tar.xz ]]; then
+                    asset_url="$url"
+                    break
+                fi
+            done <<< "$urls"
+        fi
+
+        if [[ -z "$asset_url" ]]; then
+            log_error "Could not locate a suitable LLVM archive in release $version. Set PHPV_LLVM_ARCHIVE_URL manually."
+            return 1
+        fi
     fi
 
-    local archive="clang+llvm-${version}-${target_suffix}.tar.xz"
-    local cache_file="$PHPV_CACHE_DIR/$archive"
-    local install_dir="$PHPV_DEPS_DIR/llvm-$version"
-
-    if [[ -x "$install_dir/bin/clang" ]]; then
-        return 0
-    fi
-
-    log_info "Installing LLVM/Clang $version..."
+    archive="${asset_url##*/}"
+    cache_file="$PHPV_CACHE_DIR/$archive"
 
     if [[ ! -f "$cache_file" ]]; then
-        local url="https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/${archive}"
-        log_info "Downloading LLVM/Clang $version toolchain..."
+        log_info "Downloading $archive"
         if command -v curl &> /dev/null; then
-            curl -fsSL "$url" -o "$cache_file"
-        elif command -v wget &> /dev/null; then
-            wget -q "$url" -O "$cache_file"
+            if ! curl -fsSL "$asset_url" -o "$cache_file"; then
+                rm -f "$cache_file"
+                log_error "Failed to download LLVM from $asset_url"
+                return 1
+            fi
         else
-            log_error "Either curl or wget is required to download LLVM"
-            return 1
+            if ! wget -q "$asset_url" -O "$cache_file"; then
+                rm -f "$cache_file"
+                log_error "Failed to download LLVM from $asset_url"
+                return 1
+            fi
         fi
     fi
 
     local extract_dir="$PHPV_CACHE_DIR/llvm-$version-extract"
     rm -rf "$extract_dir"
     mkdir -p "$extract_dir"
-    tar -xJf "$cache_file" -C "$extract_dir"
+    if ! tar -xJf "$cache_file" -C "$extract_dir"; then
+        rm -rf "$extract_dir"
+        rm -f "$cache_file"
+        log_error "Failed to unpack LLVM archive"
+        return 1
+    fi
 
     local unpacked
     unpacked=$(find "$extract_dir" -maxdepth 1 -mindepth 1 -type d -name "clang+llvm-${version}*" | head -n1)
     if [[ -z "$unpacked" ]]; then
-        log_error "Failed to unpack LLVM archive"
+        log_error "Failed to locate LLVM directory after extraction"
         return 1
     fi
 
     rm -rf "$install_dir"
     mv "$unpacked" "$install_dir"
     rm -rf "$extract_dir"
+    PHPV_ACTIVE_LLVM_VERSION="$version"
 }
 
 ensure_llvm_toolchain() {
     install_llvm_toolchain || return 1
 
-    local llvm_dir="$PHPV_DEPS_DIR/llvm-$PHPV_LLVM_VERSION"
+    local active_version="${PHPV_ACTIVE_LLVM_VERSION:-$PHPV_LLVM_VERSION}"
+    local llvm_dir="$PHPV_DEPS_DIR/llvm-$active_version"
     local clang_path="$llvm_dir/bin/clang"
     local clangxx_path="$llvm_dir/bin/clang++"
 

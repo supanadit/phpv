@@ -1446,8 +1446,18 @@ list_versions() {
 
 # List available versions for download
 list_available() {
+    local filter="${1:-}"
     echo "Available versions for download:"
-    get_available_versions | sed 's/^/  /'
+    if [[ -z "$filter" ]]; then
+        get_available_versions | sed 's/^/  /'
+    else
+        # Add dot to filter if it doesn't end with one
+        local filter_pattern="$filter"
+        if [[ "$filter_pattern" != *"." ]]; then
+            filter_pattern="$filter_pattern."
+        fi
+        get_available_versions | grep "^$filter_pattern" | sed 's/^/  /'
+    fi
 }
 
 # Uninstall a PHP version
@@ -1526,7 +1536,7 @@ COMMANDS:
     use <version>        Switch to a specific PHP version
     current             Show the current PHP version
     list                List installed PHP versions
-    list-available      List available PHP versions for download
+    list-available [filter]  List available PHP versions for download (optional filter: e.g., 8, 8.3)
     exec <command>      Execute command with current PHP version
     which               Show path to current PHP binary
     help                Show this help message
@@ -1537,6 +1547,9 @@ EXAMPLES:
     phpv use system             # Switch to system PHP
     phpv current                # Show current version
     phpv list                   # List installed versions
+    phpv list-available         # List all available versions
+    phpv list-available 8       # List only 8.x versions
+    phpv list-available 8.3     # List only 8.3.x versions
     phpv exec -v                # Run 'php -v' with current version
     phpv which                  # Show current PHP binary path
 
@@ -1569,7 +1582,7 @@ main() {
             list_versions
             ;;
         "list-available")
-            list_available
+            list_available "$@"
             ;;
         "exec")
             exec_php "$@"

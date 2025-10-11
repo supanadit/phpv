@@ -716,18 +716,18 @@ install_php_version() {
         return 1
     fi
     
-    # Set environment for custom dependencies
-    export PKG_CONFIG_PATH="$PHPV_DEPS_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
-    export LDFLAGS="-L$PHPV_DEPS_DIR/lib $LDFLAGS"
+    # Set environment for custom dependencies (support both lib and lib64)
+    export PKG_CONFIG_PATH="$PHPV_DEPS_DIR/lib/pkgconfig:$PHPV_DEPS_DIR/lib64/pkgconfig:$PKG_CONFIG_PATH"
+    export LDFLAGS="-L$PHPV_DEPS_DIR/lib -L$PHPV_DEPS_DIR/lib64 $LDFLAGS"
     export CPPFLAGS="-I$PHPV_DEPS_DIR/include $CPPFLAGS"
-    export LD_LIBRARY_PATH="$PHPV_DEPS_DIR/lib:$LD_LIBRARY_PATH"
+    export LD_LIBRARY_PATH="$PHPV_DEPS_DIR/lib:$PHPV_DEPS_DIR/lib64:$LD_LIBRARY_PATH"
     
     # Install required dependencies from source if not present
     if [[ ! -f "$PHPV_DEPS_DIR/lib/libz.so" ]]; then
         log_info "Installing zlib from source..."
         install_zlib_from_source || return 1
     fi
-    if [[ ! -f "$PHPV_DEPS_DIR/lib/libssl.so" ]]; then
+    if [[ ! -f "$PHPV_DEPS_DIR/lib64/libssl.so" ]] && [[ ! -f "$PHPV_DEPS_DIR/lib/libssl.so" ]]; then
         log_info "Installing OpenSSL from source..."
         install_openssl_from_source || return 1
     fi

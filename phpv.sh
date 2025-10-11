@@ -367,20 +367,25 @@ install_freetype_from_source() {
 # Install ICU from source
 install_icu_from_source() {
     local version="73.2"
-    local url="https://github.com/unicode-org/icu/releases/download/release-$(echo $version | tr . -)/icu4c-$(echo $version | tr . _)_src.tgz"
+    local url="https://github.com/unicode-org/icu/releases/download/release-$(echo $version | tr . -)/icu4c-$(echo $version | tr . _)-src.tgz"
     local build_dir="$PHPV_CACHE_DIR/icu-$version"
     rm -rf "$build_dir"
     mkdir -p "$build_dir"
-    cd "$build_dir"
-    if command -v curl &> /dev/null; then
-        curl -fsSL "$url" | tar -xz --strip-components=1
-    elif command -v wget &> /dev/null; then
-        wget -q "$url" -O - | tar -xz --strip-components=1
-    else
-        log_error "curl or wget required to download dependencies"
-        return 1
+    
+    local cache_file="$PHPV_CACHE_DIR/icu4c-$(echo $version | tr . _)-src.tgz"
+    if [[ ! -f "$cache_file" ]]; then
+        if command -v curl &> /dev/null; then
+            curl -fsSL "$url" -o "$cache_file"
+        elif command -v wget &> /dev/null; then
+            wget -q "$url" -O "$cache_file"
+        else
+            log_error "curl or wget required to download dependencies"
+            return 1
+        fi
     fi
-    cd source
+    
+    tar -xzf "$cache_file" -C "$build_dir"
+    cd "$build_dir/icu/source"
     ./configure --prefix="$PHPV_DEPS_DIR"
     make -j$(nproc)
     make install

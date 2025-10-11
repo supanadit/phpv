@@ -817,7 +817,7 @@ install_php_version() {
         log_info "Installing ICU from source..."
         install_icu_from_source || return 1
     fi
-    if [[ ! -f "$PHPV_DEPS_DIR/lib/libcurl.so" ]] && [[ ! -f "/usr/lib/libcurl.so" ]] && [[ ! -f "/usr/lib64/libcurl.so" ]]; then
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libcurl.so" ]]; then
         log_info "Installing curl from source..."
         install_curl_from_source || return 1
     fi
@@ -863,6 +863,7 @@ install_php_version() {
         --enable-calendar \
         --enable-exif \
         --enable-ftp \
+        --with-curl="$PHPV_DEPS_DIR" \
         --enable-gd \
         --with-png-dir="$PHPV_DEPS_DIR" \
         --with-jpeg-dir="$PHPV_DEPS_DIR" \

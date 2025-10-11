@@ -1347,7 +1347,14 @@ install_php_version() {
     # Download PHP source if not cached
     if [[ ! -f "$cache_file" ]]; then
         log_info "Downloading PHP $version source..."
-        local download_url="https://www.php.net/distributions/php-$version.tar.gz"
+        local download_url
+        if [[ "$version" =~ ^4\. ]]; then
+            download_url="https://museum.php.net/php4/php-$version.tar.gz"
+        elif [[ "$version" =~ ^5\.[0-2]\. ]]; then
+            download_url="https://museum.php.net/php5/php-$version.tar.gz"
+        else
+            download_url="https://www.php.net/distributions/php-$version.tar.gz"
+        fi
         safe_download "$download_url" "$cache_file" || return 1
     fi
     

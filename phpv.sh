@@ -12,6 +12,7 @@ PHPV_VERSIONS_DIR="$PHPV_ROOT/versions"
 PHPV_CACHE_DIR="$PHPV_ROOT/cache"
 PHPV_CURRENT_FILE="$PHPV_ROOT/version"
 PHPV_DEPS_DIR="$PHPV_ROOT/deps"
+PHPV_LLVM_VERSION="${PHPV_LLVM_VERSION:-18.1.3}"
 PHPV_DEFAULT_VERSION="system"
 
 # Colors for output
@@ -36,6 +37,14 @@ log_warning() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+prepend_path() {
+    local dir="$1"
+    case ":$PATH:" in
+        *":$dir:"*) ;;
+        *) PATH="$dir:$PATH" ;;
+    esac
 }
 
 # Initialize phpv directory structure
@@ -272,7 +281,7 @@ install_libxml2_from_source() {
 
 # Install oniguruma from source
 install_oniguruma_from_source() {
-    local version="6.9.8"
+    local version="6.9.9"
     local url="https://github.com/kkos/oniguruma/releases/download/v$version/onig-$version.tar.gz"
     local build_dir="$PHPV_CACHE_DIR/onig-$version"
     rm -rf "$build_dir"
@@ -286,8 +295,8 @@ install_oniguruma_from_source() {
         log_error "curl or wget required to download dependencies"
         return 1
     fi
-    export CFLAGS="-Wno-incompatible-pointer-types $CFLAGS"
-    ./configure --prefix="$PHPV_DEPS_DIR" --disable-callout
+    ensure_llvm_toolchain || return 1
+    ./configure --prefix="$PHPV_DEPS_DIR"
     make -j$(nproc)
     make install
 }
@@ -427,6 +436,96 @@ get_installed_versions() {
     fi
 }
 
+# Install LLVM/Clang toolchain without relying on system packages
+install_llvm_toolchain() {
+    local version="$PHPV_LLVM_VERSION"
+    local machine
+    machine=$(uname -m)
+    local os
+    os=$(uname -s)
+
+    if [[ "$os" != "Linux" ]]; then
+        log_error "Automatic LLVM installation currently supports Linux only"
+        return 1
+    fi
+
+    local target_suffix="$PHPV_LLVM_TARGET_SUFFIX"
+    if [[ -z "$target_suffix" ]]; then
+        case "$machine" in
+            x86_64)
+                target_suffix="x86_64-linux-gnu-ubuntu-22.04"
+                ;;
+            aarch64|arm64)
+                target_suffix="aarch64-linux-gnu"
+                ;;
+            *)
+                log_error "Unsupported architecture: $machine"
+                return 1
+                ;;
+        esac
+    fi
+
+    local archive="clang+llvm-${version}-${target_suffix}.tar.xz"
+    local cache_file="$PHPV_CACHE_DIR/$archive"
+    local install_dir="$PHPV_DEPS_DIR/llvm-$version"
+
+    if [[ -x "$install_dir/bin/clang" ]]; then
+        return 0
+    fi
+
+    log_info "Installing LLVM/Clang $version..."
+
+    if [[ ! -f "$cache_file" ]]; then
+        local url="https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/${archive}"
+        log_info "Downloading LLVM/Clang $version toolchain..."
+        if command -v curl &> /dev/null; then
+            curl -fsSL "$url" -o "$cache_file"
+        elif command -v wget &> /dev/null; then
+            wget -q "$url" -O "$cache_file"
+        else
+            log_error "Either curl or wget is required to download LLVM"
+            return 1
+        fi
+    fi
+
+    local extract_dir="$PHPV_CACHE_DIR/llvm-$version-extract"
+    rm -rf "$extract_dir"
+    mkdir -p "$extract_dir"
+    tar -xJf "$cache_file" -C "$extract_dir"
+
+    local unpacked
+    unpacked=$(find "$extract_dir" -maxdepth 1 -mindepth 1 -type d -name "clang+llvm-${version}*" | head -n1)
+    if [[ -z "$unpacked" ]]; then
+        log_error "Failed to unpack LLVM archive"
+        return 1
+    fi
+
+    rm -rf "$install_dir"
+    mv "$unpacked" "$install_dir"
+    rm -rf "$extract_dir"
+}
+
+ensure_llvm_toolchain() {
+    install_llvm_toolchain || return 1
+
+    local llvm_dir="$PHPV_DEPS_DIR/llvm-$PHPV_LLVM_VERSION"
+    local clang_path="$llvm_dir/bin/clang"
+    local clangxx_path="$llvm_dir/bin/clang++"
+
+    if [[ ! -x "$clang_path" || ! -x "$clangxx_path" ]]; then
+        log_error "LLVM toolchain installation failed"
+        return 1
+    fi
+
+    prepend_path "$llvm_dir/bin"
+    export CC="$clang_path"
+    export CXX="$clangxx_path"
+    export AR="$llvm_dir/bin/llvm-ar"
+    export NM="$llvm_dir/bin/llvm-nm"
+    export RANLIB="$llvm_dir/bin/llvm-ranlib"
+    export LLVM_HOME="$llvm_dir"
+}
+
 # Download and compile PHP
 install_php_version() {
     local version="$1"
@@ -445,12 +544,12 @@ install_php_version() {
     fi
     
     log_info "Installing PHP $version..."
-    
-    # Check for required build dependencies
-    if ! command -v gcc &> /dev/null || ! command -v make &> /dev/null; then
-        log_error "Build tools (gcc, make) are required but not installed"
-        log_info "On Ubuntu/Debian: sudo apt-get install build-essential"
-        log_info "On CentOS/RHEL: sudo yum groupinstall 'Development Tools'"
+
+    ensure_llvm_toolchain || return 1
+
+    if ! command -v make &> /dev/null; then
+        log_error "GNU make is required but not installed"
+        log_info "Install make from source: https://ftp.gnu.org/gnu/make/"
         return 1
     fi
     

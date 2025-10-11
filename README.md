@@ -95,51 +95,6 @@ phpv use 8.3.12
 phpv use system  # Use system PHP
 ```
 
-## Requirements
-
-### Build Dependencies
-
-PHPV compiles PHP from source, so you'll need build tools and development packages:
-
-#### Ubuntu/Debian
-```bash
-sudo apt-get update
-sudo apt-get install -y \
-    build-essential \
-    libxml2-dev \
-    libssl-dev \
-    libcurl4-openssl-dev \
-    libonig-dev \
-    libzip-dev \
-    pkg-config \
-    autoconf \
-    bison \
-    re2c \
-    libsqlite3-dev
-```
-
-#### CentOS/RHEL/Fedora
-```bash
-sudo yum groupinstall -y "Development Tools"
-sudo yum install -y \
-    libxml2-devel \
-    openssl-devel \
-    curl-devel \
-    oniguruma-devel \
-    libzip-devel \
-    pkg-config \
-    autoconf \
-    bison \
-    re2c \
-    sqlite-devel
-```
-
-#### macOS (with Homebrew)
-```bash
-brew install autoconf bison re2c pkg-config openssl libzip oniguruma
-export PKG_CONFIG_PATH="/usr/local/opt/openssl/lib/pkgconfig:$PKG_CONFIG_PATH"
-```
-
 ## Configuration
 
 ### Environment Variables
@@ -201,13 +156,7 @@ The following extensions are compiled by default:
 # Check for missing dependencies
 phpv install 8.3.12
 
-# If it fails, install the missing development packages
-# Ubuntu/Debian:
-sudo apt-get install build-essential libxml2-dev libssl-dev libcurl4-openssl-dev
-
-# CentOS/RHEL:
-sudo yum groupinstall "Development Tools"
-sudo yum install libxml2-devel openssl-devel curl-devel
+# If it fails, create Github Issue with the error message for help
 ```
 
 #### 2. PHP Not Found After Switch
@@ -222,10 +171,15 @@ source ~/.zshrc  # or ~/.bashrc
 PHPV installs everything in user space (`~/.phpv`), so no root permissions should be needed for version management. If you get permission errors, check that `~/.phpv` is writable by your user.
 
 #### 4. Missing Extensions
+
 If you need additional extensions, you can:
 1. Modify the configure options in the `install_php_version()` function
 2. Compile extensions separately after installation
 3. Use package managers like PECL with the specific PHP version
+
+Or you can request support for additional extensions via a GitHub issue.
+
+I'm happy to help add more extensions with flexibility. 😇
 
 ### Debug Mode
 
@@ -263,7 +217,9 @@ MIT License - see LICENSE file for details.
 
 - [ ] Automatic detection of available PHP versions from php.net
 - [ ] Support for PHP extensions management
+- [ ] Integration with Apache
+- [ ] Integration with Nginx
+- [ ] Integration with Caddy
 - [ ] Integration with composer for project-specific PHP versions
-- [ ] Windows support
 - [ ] Pre-compiled binary downloads for common distributions
 - [ ] Plugin system for custom PHP configurations

@@ -896,6 +896,20 @@ install_php_version() {
     
     # Create basic php.ini
     mkdir -p "$install_dir/etc/conf.d"
+    
+    # Find the actual extension directory (future-proof approach)
+    local ext_dir
+    if [[ -d "$install_dir/lib/php/extensions" ]]; then
+        ext_dir=$(find "$install_dir/lib/php/extensions" -maxdepth 1 -type d -name "no-debug-non-zts-*" | head -n1)
+        if [[ -z "$ext_dir" ]]; then
+            # Fallback to default if no directory found
+            ext_dir="$install_dir/lib/php/extensions"
+        fi
+    else
+        # Fallback if extensions directory doesn't exist
+        ext_dir="$install_dir/lib/php/extensions"
+    fi
+    
     cat > "$install_dir/etc/php.ini" << EOF
 ; Basic PHP configuration
 memory_limit = 256M
@@ -905,7 +919,7 @@ post_max_size = 64M
 date.timezone = UTC
 
 ; Extensions
-extension_dir = "$install_dir/lib/php/extensions"
+extension_dir = "$ext_dir"
 
 ; OPcache
 zend_extension=opcache

@@ -207,6 +207,16 @@ bash -x ~/.phpv/bin/phpv install 8.3.12
 | Shell integration | ✅ | ✅ | ✅ |
 | Automatic PATH | ✅ | ✅ | ❌ |
 | No external deps | ✅ | ❌ | ❌ |
+| Clean uninstall | ✅ | ❌ | ✅ |
+| Backward support | ✅ | ❌ | ❌ |
+| Latest PHP support | ✅ | ❌ | ❌ |
+| Docker/CI friendly | ✅ | ❌ | ❌ |
+| Works on Linux/macOS | ✅ | ✅ | ✅ |
+| Extensible | ✅ | ❌ | ❌ |
+| Automatic dependency management | ✅ | ❌ | ❌ |
+| Open source (MIT) | ✅ | ✅ | ✅ |
+| Clean builds | ✅ | ❌ | ❌ |
+
 
 ## Contributing
 

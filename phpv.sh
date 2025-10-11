@@ -345,7 +345,14 @@ install_zlib_from_source() {
 
 # Install OpenSSL from source
 install_openssl_from_source() {
+    local php_version="${1:-}"
     local version="3.0.13"
+    
+    # Use OpenSSL 1.1.x for PHP 7.x versions for compatibility
+    if [[ -n "$php_version" && "$php_version" == 7.* ]]; then
+        version="1.1.1w"
+    fi
+    
     local url="https://www.openssl.org/source/openssl-$version.tar.gz"
     local cache_file="$PHPV_CACHE_DIR/openssl-$version.tar.gz"
     local build_dir="$PHPV_CACHE_DIR/openssl-$version"
@@ -867,7 +874,7 @@ install_php_version() {
     fi
     if [[ ! -f "$PHPV_DEPS_DIR/lib64/libssl.so" ]] && [[ ! -f "$PHPV_DEPS_DIR/lib/libssl.so" ]]; then
         log_info "Installing OpenSSL from source..."
-        install_openssl_from_source || return 1
+        install_openssl_from_source "$version" || return 1
     fi
     if [[ ! -f "$PHPV_DEPS_DIR/lib/libxml2.so" ]]; then
         log_info "Installing libxml2 from source..."

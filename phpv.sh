@@ -286,6 +286,7 @@ install_oniguruma_from_source() {
         log_error "curl or wget required to download dependencies"
         return 1
     fi
+    export CFLAGS="-Wno-incompatible-pointer-types $CFLAGS"
     ./configure --prefix="$PHPV_DEPS_DIR"
     make -j$(nproc)
     make install

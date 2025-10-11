@@ -47,6 +47,22 @@ prepend_path() {
     esac
 }
 
+append_unique() {
+    local -n __phpv_target_array="$1"
+    local __phpv_value="$2"
+    local __phpv_existing
+
+    [[ -z "$__phpv_value" ]] && return
+
+    for __phpv_existing in "${__phpv_target_array[@]}"; do
+        if [[ "$__phpv_existing" == "$__phpv_value" ]]; then
+            return
+        fi
+    done
+
+    __phpv_target_array+=("$__phpv_value")
+}
+
 # Download helper that uses system libraries (not custom built ones)
 safe_download() {
     local url="$1"
@@ -250,6 +266,60 @@ get_available_versions() {
 7.4.1
 7.4.0
 EOF
+}
+
+# Determine which LLVM toolchain version should be used for a given PHP version.
+# Users can override the defaults by exporting PHPV_LLVM_VERSION_MAP with entries
+# like "7.4.*=16.0.6,8.0.*=17.0.6". The first matching pattern wins.
+resolve_llvm_version_for_php() {
+    local php_version="$1"
+    local default_version="${PHPV_LLVM_VERSION:-17.0.6}"
+
+    if [[ -z "$php_version" ]]; then
+        echo "$default_version"
+        return
+    fi
+
+    if [[ -n "$PHPV_LLVM_VERSION_MAP" ]]; then
+        local -a __phpv_llvm_entries=()
+        IFS=',' read -ra __phpv_llvm_entries <<< "$PHPV_LLVM_VERSION_MAP"
+        for entry in "${__phpv_llvm_entries[@]}"; do
+            entry="${entry//[[:space:]]/}"
+            [[ -z "$entry" || "$entry" != *"="* ]] && continue
+
+            local pattern="${entry%%=*}"
+            local llvm_version="${entry#*=}"
+
+            [[ -z "$pattern" || -z "$llvm_version" ]] && continue
+
+            local glob="$pattern"
+            case "$glob" in
+                *\**)
+                    :
+                    ;;
+                *.*)
+                    glob="${glob}*"
+                    ;;
+                *)
+                    glob="${glob}.*"
+                    ;;
+            esac
+
+            case "$php_version" in
+                $glob)
+                    echo "$llvm_version"
+                    return
+                    ;;
+            esac
+        done
+    fi
+
+    if [[ "$php_version" == 7.* ]]; then
+        echo "${PHPV_LLVM_VERSION_PHP7:-16.0.4}"
+        return
+    fi
+
+    echo "$default_version"
 }
 
 # Install zlib from source
@@ -579,28 +649,6 @@ resolve_llvm_asset_url() {
     done <<< "$urls"
 
     if [[ -z "$chosen" ]]; then
-        while IFS= read -r url; do
-            [[ -z "$url" ]] && continue
-            [[ "$url" != *"clang+llvm-${version}"* ]] && continue
-            [[ "$url" != *.tar.xz ]] && continue
-            if [[ "$url" == *linux* ]]; then
-                chosen="$url"
-                break
-            fi
-        done <<< "$urls"
-    fi
-
-    if [[ -z "$chosen" ]]; then
-        while IFS= read -r url; do
-            [[ -z "$url" ]] && continue
-            [[ "$url" != *"clang+llvm-${version}"* ]] && continue
-            [[ "$url" != *.tar.xz ]] && continue
-            chosen="$url"
-            break
-        done <<< "$urls"
-    fi
-
-    if [[ -z "$chosen" ]]; then
         return 1
     fi
 
@@ -609,7 +657,7 @@ resolve_llvm_asset_url() {
 
 # Install LLVM/Clang toolchain without relying on system packages
 install_llvm_toolchain() {
-    local requested_version="$PHPV_LLVM_VERSION"
+    local requested_version="${1:-$PHPV_LLVM_VERSION}"
     local machine
     machine=$(uname -m)
     local os
@@ -625,14 +673,24 @@ install_llvm_toolchain() {
     local asset_url="${PHPV_LLVM_ARCHIVE_URL:-}"
 
     local candidates=()
-    candidates+=("$requested_version")
+    append_unique candidates "$requested_version"
 
     if [[ -z "$PHPV_LLVM_ARCHIVE_URL" ]]; then
-        local fallback_versions=("17.0.6" "17.0.5" "16.0.6" "15.0.7")
+        if [[ "$requested_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            local requested_major="${BASH_REMATCH[1]}"
+            local requested_minor="${BASH_REMATCH[2]}"
+            local requested_patch="${BASH_REMATCH[3]}"
+
+            local patch_candidate=$((requested_patch - 1))
+            while (( patch_candidate >= 0 )); do
+                append_unique candidates "${requested_major}.${requested_minor}.${patch_candidate}"
+                ((patch_candidate--))
+            done
+        fi
+
+        local fallback_versions=("17.0.6" "17.0.5" "16.0.6" "16.0.0" "15.0.7")
         for v in "${fallback_versions[@]}"; do
-            if [[ "$v" != "$requested_version" ]]; then
-                candidates+=("$v")
-            fi
+            append_unique candidates "$v"
         done
     fi
 
@@ -652,7 +710,10 @@ install_llvm_toolchain() {
         if [[ -n "$PHPV_LLVM_ARCHIVE_URL" ]]; then
             resolved_url="$PHPV_LLVM_ARCHIVE_URL"
         else
-            resolved_url=$(resolve_llvm_asset_url "$candidate_version" "$machine" "$PHPV_LLVM_TARGET_SUFFIX") || continue
+            if ! resolved_url=$(resolve_llvm_asset_url "$candidate_version" "$machine" "$PHPV_LLVM_TARGET_SUFFIX"); then
+                log_warning "No compatible LLVM archive found for $candidate_version ($machine)"
+                continue
+            fi
         fi
 
         selected_version="$candidate_version"
@@ -730,9 +791,11 @@ install_llvm_toolchain() {
 }
 
 ensure_llvm_toolchain() {
-    install_llvm_toolchain || return 1
+    local requested_version="${1:-$PHPV_LLVM_VERSION}"
 
-    local active_version="${PHPV_ACTIVE_LLVM_VERSION:-$PHPV_LLVM_VERSION}"
+    install_llvm_toolchain "$requested_version" || return 1
+
+    local active_version="${PHPV_ACTIVE_LLVM_VERSION:-$requested_version}"
     local llvm_dir="$PHPV_DEPS_DIR/llvm-$active_version"
     local clang_path="$llvm_dir/bin/clang"
     local clangxx_path="$llvm_dir/bin/clang++"
@@ -770,7 +833,20 @@ install_php_version() {
     
     log_info "Installing PHP $version..."
 
-    ensure_llvm_toolchain || return 1
+    local resolved_llvm
+    resolved_llvm=$(resolve_llvm_version_for_php "$version")
+    [[ -z "$resolved_llvm" ]] && resolved_llvm="$PHPV_LLVM_VERSION"
+
+    if [[ -n "$resolved_llvm" && "$resolved_llvm" != "$PHPV_LLVM_VERSION" ]]; then
+        log_info "Using LLVM $resolved_llvm for PHP $version"
+    fi
+
+    ensure_llvm_toolchain "$resolved_llvm" || return 1
+
+    local active_llvm="${PHPV_ACTIVE_LLVM_VERSION:-$resolved_llvm}"
+    if [[ "$active_llvm" != "$resolved_llvm" ]]; then
+        log_warning "LLVM $resolved_llvm was requested but using $active_llvm due to availability"
+    fi
 
     if ! command -v make &> /dev/null; then
         log_error "GNU make is required but not installed"

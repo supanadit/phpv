@@ -145,6 +145,8 @@ export PKG_CONFIG_PATH="/usr/local/opt/openssl/lib/pkgconfig:$PKG_CONFIG_PATH"
 ### Environment Variables
 
 - `PHPV_ROOT`: Root directory for phpv installations (default: `~/.phpv`)
+- `PHPV_LLVM_VERSION_MAP`: Comma-separated overrides that map PHP versions (supports glob patterns) to specific LLVM releases, e.g. `7.4.*=16.0.6,8.0.*=17.0.6`
+- `PHPV_LLVM_VERSION_PHP7`: Fallback LLVM version used for PHP 7.x installs when no explicit map entry matches (default: `16.0.6`)
 
 ### Directory Structure
 

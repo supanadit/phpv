@@ -221,5 +221,5 @@ MIT License - see LICENSE file for details.
 - [ ] Integration with Nginx
 - [ ] Integration with Caddy
 - [ ] Integration with composer for project-specific PHP versions
+- [ ] PECL extension management per PHP version
 - [ ] Pre-compiled binary downloads for common distributions
-- [ ] Plugin system for custom PHP configurations

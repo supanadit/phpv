@@ -708,8 +708,11 @@ install_openssl_from_source() {
     local php_version="${1:-}"
     local version="3.0.13"
     
+    # Use OpenSSL 1.0.x for PHP 5.x versions for compatibility
+    if [[ -n "$php_version" && "$php_version" == 5.* ]]; then
+        version="1.0.1u"
     # Use OpenSSL 1.1.x for PHP 7.x versions for compatibility
-    if [[ -n "$php_version" && "$php_version" == 7.* ]]; then
+    elif [[ -n "$php_version" && "$php_version" == 7.* ]]; then
         version="1.1.1w"
     fi
     
@@ -726,7 +729,7 @@ install_openssl_from_source() {
     mkdir -p "$build_dir"
     cd "$build_dir"
     tar -xzf "$cache_file" --strip-components=1
-    ./config --prefix="$PHPV_DEPS_DIR" --openssldir="$PHPV_DEPS_DIR/ssl"
+    ./config --prefix="$PHPV_DEPS_DIR" --openssldir="$PHPV_DEPS_DIR/ssl" shared
     make -j$(nproc)
     make install
 }
@@ -839,8 +842,19 @@ install_freetype_from_source() {
 
 # Install ICU from source
 install_icu_from_source() {
-    local version="73.2"
-    local url="https://github.com/unicode-org/icu/releases/download/release-$(echo $version | tr . -)/icu4c-$(echo $version | tr . _)-src.tgz"
+    local php_version="$1"
+    local version
+    local url
+    
+    # Use older ICU version for PHP 5.x compatibility
+    if [[ "$php_version" == 5.* ]]; then
+        version="4.8.1"
+        url="https://github.com/unicode-org/icu/releases/download/icu4c-4_8_1-src.tgz/icu4c-4_8_1-src.tgz"
+    else
+        version="73.2"
+        url="https://github.com/unicode-org/icu/releases/download/release-$(echo $version | tr . -)/icu4c-$(echo $version | tr . _)-src.tgz"
+    fi
+    
     local cache_file="$PHPV_CACHE_DIR/icu4c-$(echo $version | tr . _)-src.tgz"
     local build_dir="$PHPV_CACHE_DIR/icu-$version"
     
@@ -1271,6 +1285,14 @@ install_php_version() {
     export CPPFLAGS="-I$PHPV_DEPS_DIR/include $CPPFLAGS"
     export LD_LIBRARY_PATH="$PHPV_DEPS_DIR/lib:$PHPV_DEPS_DIR/lib64:$LD_LIBRARY_PATH"
     
+    # For PHP 5.x, DSA_get_default_method is in libcrypto, not libssl
+    # Add libcrypto to LDFLAGS to make the function available during configure checks
+    if [[ "$version" == 5.* ]]; then
+        export LDFLAGS="-lssl -lcrypto $LDFLAGS"
+        export CFLAGS="-Wno-implicit-int -Wno-implicit-function-declaration $CFLAGS"
+        export CXXFLAGS="-Wno-register $CXXFLAGS"
+    fi
+    
     # Install required dependencies from source if not present
     if [[ ! -f "$PHPV_DEPS_DIR/lib/libz.so" ]]; then
         log_info "Installing zlib from source..."
@@ -1300,9 +1322,9 @@ install_php_version() {
         log_info "Installing freetype from source..."
         install_freetype_from_source || return 1
     fi
-    if [[ ! -f "$PHPV_DEPS_DIR/lib/libicuuc.so" ]]; then
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libicuuc.so" ]] && [[ "$version" != 5.* ]]; then
         log_info "Installing ICU from source..."
-        install_icu_from_source || return 1
+        install_icu_from_source "$version" || return 1
     fi
     if [[ ! -f "$PHPV_DEPS_DIR/lib/libcurl.so" ]]; then
         log_info "Installing curl from source..."
@@ -1331,41 +1353,54 @@ install_php_version() {
     cd "$build_dir"
     
     log_info "Configuring PHP $version..."
+    
+    # Build configure flags based on PHP version
+    local configure_flags=(
+        --prefix="$install_dir"
+        --enable-cli
+        --enable-cgi
+        --enable-fpm
+        --with-config-file-path="$install_dir/etc"
+        --with-config-file-scan-dir="$install_dir/etc/conf.d"
+        --enable-mbstring
+        --enable-opcache
+        --with-libxml-dir="$PHPV_DEPS_DIR"
+        --with-onig="$PHPV_DEPS_DIR"
+        --with-libzip="$PHPV_DEPS_DIR"
+        --enable-bcmath
+        --enable-calendar
+        --enable-exif
+        --enable-ftp
+        --with-curl="$PHPV_DEPS_DIR"
+        --enable-gd
+        --with-png-dir="$PHPV_DEPS_DIR"
+        --with-jpeg-dir="$PHPV_DEPS_DIR"
+        --with-freetype-dir="$PHPV_DEPS_DIR"
+        --enable-soap
+        --enable-sockets
+        --with-mysqli
+        --with-pdo-mysql
+        --enable-pcntl
+        --enable-shmop
+        --enable-sysvmsg
+        --enable-sysvsem
+        --enable-sysvshm
+    )
+    
+    # Add version-specific flags
+    if [[ "$version" >= 7.* ]]; then
+        configure_flags+=(--with-openssl="$PHPV_DEPS_DIR")
+        configure_flags+=(--with-zlib="$PHPV_DEPS_DIR")
+    fi
+    
+    if [[ "$version" == 5.* ]]; then
+        # For PHP 5.x: disable DOM extension and intl extension
+        configure_flags+=(--disable-dom)
+        configure_flags+=(--disable-intl)
+    fi
+    
     # Basic configuration - can be customized
-    ./configure \
-        --prefix="$install_dir" \
-        --enable-cli \
-        --enable-cgi \
-        --enable-fpm \
-        --with-config-file-path="$install_dir/etc" \
-        --with-config-file-scan-dir="$install_dir/etc/conf.d" \
-        --enable-mbstring \
-        --enable-opcache \
-        --with-openssl="$PHPV_DEPS_DIR" \
-        --with-zlib="$PHPV_DEPS_DIR" \
-        --with-libxml-dir="$PHPV_DEPS_DIR" \
-        --with-onig="$PHPV_DEPS_DIR" \
-        --with-libzip="$PHPV_DEPS_DIR" \
-        --enable-bcmath \
-        --enable-calendar \
-        --enable-exif \
-        --enable-ftp \
-        --with-curl="$PHPV_DEPS_DIR" \
-        --enable-gd \
-        --with-png-dir="$PHPV_DEPS_DIR" \
-        --with-jpeg-dir="$PHPV_DEPS_DIR" \
-        --with-freetype-dir="$PHPV_DEPS_DIR" \
-        --enable-intl \
-        --with-icu-dir="$PHPV_DEPS_DIR" \
-        --enable-soap \
-        --enable-sockets \
-        --with-mysqli \
-        --with-pdo-mysql \
-        --enable-pcntl \
-        --enable-shmop \
-        --enable-sysvmsg \
-        --enable-sysvsem \
-        --enable-sysvshm \
+    ./configure "${configure_flags[@]}" \
         2>/dev/null || {
         log_error "Configuration failed. You may need to install development packages:"
         log_info "Ubuntu/Debian: sudo apt-get install libxml2-dev libssl-dev libcurl4-openssl-dev libonig-dev libzip-dev"

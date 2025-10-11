@@ -43,6 +43,8 @@ phpv_update_path() {
         local current_version=$(cat "$current_version_file")
         if [[ "$current_version" != "system" && -d "$PHPV_ROOT/versions/$current_version" ]]; then
             export PATH="$PHPV_ROOT/versions/$current_version/bin:$PHPV_ROOT/versions/$current_version/sbin:$PATH"
+            # Add custom library paths for PHP versions that need them
+            export LD_LIBRARY_PATH="$PHPV_ROOT/deps/lib:$PHPV_ROOT/deps/lib64:$LD_LIBRARY_PATH"
         fi
     fi
 }

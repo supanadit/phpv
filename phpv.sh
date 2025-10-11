@@ -757,7 +757,7 @@ install_libxml2_from_source() {
 
 # Install oniguruma from source
 install_oniguruma_from_source() {
-    local version="6.9.9"
+    local version="5.9.6"
     local url="https://github.com/kkos/oniguruma/releases/download/v$version/onig-$version.tar.gz"
     local cache_file="$PHPV_CACHE_DIR/onig-$version.tar.gz"
     local build_dir="$PHPV_CACHE_DIR/onig-$version"
@@ -1388,7 +1388,7 @@ install_php_version() {
     )
     
     # Add version-specific flags
-    if [[ "$version" >= 7.* ]]; then
+    if [[ "$version" =~ ^(8\.|9\.) ]]; then
         configure_flags+=(--with-openssl="$PHPV_DEPS_DIR")
         configure_flags+=(--with-zlib="$PHPV_DEPS_DIR")
     fi

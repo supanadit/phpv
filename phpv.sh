@@ -47,6 +47,32 @@ prepend_path() {
     esac
 }
 
+# Download helper that uses system libraries (not custom built ones)
+safe_download() {
+    local url="$1"
+    local output="$2"
+    
+    # Temporarily clear LD_LIBRARY_PATH to use system libraries
+    local old_ld_library_path="$LD_LIBRARY_PATH"
+    unset LD_LIBRARY_PATH
+    
+    if command -v curl &> /dev/null; then
+        curl -fsSL "$url" -o "$output"
+        local result=$?
+    elif command -v wget &> /dev/null; then
+        wget -q "$url" -O "$output"
+        local result=$?
+    else
+        log_error "curl or wget required to download dependencies"
+        export LD_LIBRARY_PATH="$old_ld_library_path"
+        return 1
+    fi
+    
+    # Restore LD_LIBRARY_PATH
+    export LD_LIBRARY_PATH="$old_ld_library_path"
+    return $result
+}
+
 # Initialize phpv directory structure
 init_phpv() {
     mkdir -p "$PHPV_VERSIONS_DIR"
@@ -220,18 +246,18 @@ EOF
 install_zlib_from_source() {
     local version="1.3.1"
     local url="https://zlib.net/zlib-$version.tar.gz"
+    local cache_file="$PHPV_CACHE_DIR/zlib-$version.tar.gz"
     local build_dir="$PHPV_CACHE_DIR/zlib-$version"
+    
+    # Download if not cached
+    if [[ ! -f "$cache_file" ]]; then
+        safe_download "$url" "$cache_file" || return 1
+    fi
+    
     rm -rf "$build_dir"
     mkdir -p "$build_dir"
     cd "$build_dir"
-    if command -v curl &> /dev/null; then
-        curl -fsSL "$url" | tar -xz --strip-components=1
-    elif command -v wget &> /dev/null; then
-        wget -q "$url" -O - | tar -xz --strip-components=1
-    else
-        log_error "curl or wget required to download dependencies"
-        return 1
-    fi
+    tar -xzf "$cache_file" --strip-components=1
     ./configure --prefix="$PHPV_DEPS_DIR"
     make -j$(nproc)
     make install
@@ -241,18 +267,18 @@ install_zlib_from_source() {
 install_openssl_from_source() {
     local version="3.0.13"
     local url="https://www.openssl.org/source/openssl-$version.tar.gz"
+    local cache_file="$PHPV_CACHE_DIR/openssl-$version.tar.gz"
     local build_dir="$PHPV_CACHE_DIR/openssl-$version"
+    
+    # Download if not cached
+    if [[ ! -f "$cache_file" ]]; then
+        safe_download "$url" "$cache_file" || return 1
+    fi
+    
     rm -rf "$build_dir"
     mkdir -p "$build_dir"
     cd "$build_dir"
-    if command -v curl &> /dev/null; then
-        curl -fsSL "$url" | tar -xz --strip-components=1
-    elif command -v wget &> /dev/null; then
-        wget -q "$url" -O - | tar -xz --strip-components=1
-    else
-        log_error "curl or wget required to download dependencies"
-        return 1
-    fi
+    tar -xzf "$cache_file" --strip-components=1
     ./config --prefix="$PHPV_DEPS_DIR" --openssldir="$PHPV_DEPS_DIR/ssl"
     make -j$(nproc)
     make install
@@ -262,18 +288,18 @@ install_openssl_from_source() {
 install_libxml2_from_source() {
     local version="2.11.5"
     local url="https://download.gnome.org/sources/libxml2/2.11/libxml2-$version.tar.xz"
+    local cache_file="$PHPV_CACHE_DIR/libxml2-$version.tar.xz"
     local build_dir="$PHPV_CACHE_DIR/libxml2-$version"
+    
+    # Download if not cached
+    if [[ ! -f "$cache_file" ]]; then
+        safe_download "$url" "$cache_file" || return 1
+    fi
+    
     rm -rf "$build_dir"
     mkdir -p "$build_dir"
     cd "$build_dir"
-    if command -v curl &> /dev/null; then
-        curl -fsSL "$url" | tar -xJ --strip-components=1
-    elif command -v wget &> /dev/null; then
-        wget -q "$url" -O - | tar -xJ --strip-components=1
-    else
-        log_error "curl or wget required to download dependencies"
-        return 1
-    fi
+    tar -xf "$cache_file" --strip-components=1
     ./configure --prefix="$PHPV_DEPS_DIR" --without-python
     make -j$(nproc)
     make install
@@ -283,18 +309,18 @@ install_libxml2_from_source() {
 install_oniguruma_from_source() {
     local version="6.9.9"
     local url="https://github.com/kkos/oniguruma/releases/download/v$version/onig-$version.tar.gz"
+    local cache_file="$PHPV_CACHE_DIR/onig-$version.tar.gz"
     local build_dir="$PHPV_CACHE_DIR/onig-$version"
+    
+    # Download if not cached
+    if [[ ! -f "$cache_file" ]]; then
+        safe_download "$url" "$cache_file" || return 1
+    fi
+    
     rm -rf "$build_dir"
     mkdir -p "$build_dir"
     cd "$build_dir"
-    if command -v curl &> /dev/null; then
-        curl -fsSL "$url" | tar -xz --strip-components=1
-    elif command -v wget &> /dev/null; then
-        wget -q "$url" -O - | tar -xz --strip-components=1
-    else
-        log_error "curl or wget required to download dependencies"
-        return 1
-    fi
+    tar -xzf "$cache_file" --strip-components=1
     ensure_llvm_toolchain || return 1
     ./configure --prefix="$PHPV_DEPS_DIR"
     make -j$(nproc)
@@ -305,18 +331,18 @@ install_oniguruma_from_source() {
 install_libpng_from_source() {
     local version="1.6.40"
     local url="https://download.sourceforge.net/libpng/libpng-$version.tar.gz"
+    local cache_file="$PHPV_CACHE_DIR/libpng-$version.tar.gz"
     local build_dir="$PHPV_CACHE_DIR/libpng-$version"
+    
+    # Download if not cached
+    if [[ ! -f "$cache_file" ]]; then
+        safe_download "$url" "$cache_file" || return 1
+    fi
+    
     rm -rf "$build_dir"
     mkdir -p "$build_dir"
     cd "$build_dir"
-    if command -v curl &> /dev/null; then
-        curl -fsSL "$url" | tar -xz --strip-components=1
-    elif command -v wget &> /dev/null; then
-        wget -q "$url" -O - | tar -xz --strip-components=1
-    else
-        log_error "curl or wget required to download dependencies"
-        return 1
-    fi
+    tar -xzf "$cache_file" --strip-components=1
     ./configure --prefix="$PHPV_DEPS_DIR"
     make -j$(nproc)
     make install
@@ -326,18 +352,18 @@ install_libpng_from_source() {
 install_libjpeg_from_source() {
     local version="9e"
     local url="https://www.ijg.org/files/jpegsrc.v$version.tar.gz"
+    local cache_file="$PHPV_CACHE_DIR/jpegsrc.v$version.tar.gz"
     local build_dir="$PHPV_CACHE_DIR/jpeg-$version"
+    
+    # Download if not cached
+    if [[ ! -f "$cache_file" ]]; then
+        safe_download "$url" "$cache_file" || return 1
+    fi
+    
     rm -rf "$build_dir"
     mkdir -p "$build_dir"
     cd "$build_dir"
-    if command -v curl &> /dev/null; then
-        curl -fsSL "$url" | tar -xz --strip-components=1
-    elif command -v wget &> /dev/null; then
-        wget -q "$url" -O - | tar -xz --strip-components=1
-    else
-        log_error "curl or wget required to download dependencies"
-        return 1
-    fi
+    tar -xzf "$cache_file" --strip-components=1
     ./configure --prefix="$PHPV_DEPS_DIR"
     make -j$(nproc)
     make install
@@ -347,18 +373,18 @@ install_libjpeg_from_source() {
 install_freetype_from_source() {
     local version="2.13.2"
     local url="https://download.savannah.gnu.org/releases/freetype/freetype-$version.tar.gz"
+    local cache_file="$PHPV_CACHE_DIR/freetype-$version.tar.gz"
     local build_dir="$PHPV_CACHE_DIR/freetype-$version"
+    
+    # Download if not cached
+    if [[ ! -f "$cache_file" ]]; then
+        safe_download "$url" "$cache_file" || return 1
+    fi
+    
     rm -rf "$build_dir"
     mkdir -p "$build_dir"
     cd "$build_dir"
-    if command -v curl &> /dev/null; then
-        curl -fsSL "$url" | tar -xz --strip-components=1
-    elif command -v wget &> /dev/null; then
-        wget -q "$url" -O - | tar -xz --strip-components=1
-    else
-        log_error "curl or wget required to download dependencies"
-        return 1
-    fi
+    tar -xzf "$cache_file" --strip-components=1
     ./configure --prefix="$PHPV_DEPS_DIR"
     make -j$(nproc)
     make install
@@ -368,22 +394,16 @@ install_freetype_from_source() {
 install_icu_from_source() {
     local version="73.2"
     local url="https://github.com/unicode-org/icu/releases/download/release-$(echo $version | tr . -)/icu4c-$(echo $version | tr . _)-src.tgz"
-    local build_dir="$PHPV_CACHE_DIR/icu-$version"
-    rm -rf "$build_dir"
-    mkdir -p "$build_dir"
-    
     local cache_file="$PHPV_CACHE_DIR/icu4c-$(echo $version | tr . _)-src.tgz"
+    local build_dir="$PHPV_CACHE_DIR/icu-$version"
+    
+    # Download if not cached
     if [[ ! -f "$cache_file" ]]; then
-        if command -v curl &> /dev/null; then
-            curl -fsSL "$url" -o "$cache_file"
-        elif command -v wget &> /dev/null; then
-            wget -q "$url" -O "$cache_file"
-        else
-            log_error "curl or wget required to download dependencies"
-            return 1
-        fi
+        safe_download "$url" "$cache_file" || return 1
     fi
     
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
     tar -xzf "$cache_file" -C "$build_dir"
     cd "$build_dir/icu/source"
     ./configure --prefix="$PHPV_DEPS_DIR"
@@ -395,18 +415,18 @@ install_icu_from_source() {
 install_curl_from_source() {
     local version="8.5.0"
     local url="https://curl.se/download/curl-$version.tar.gz"
+    local cache_file="$PHPV_CACHE_DIR/curl-$version.tar.gz"
     local build_dir="$PHPV_CACHE_DIR/curl-$version"
+    
+    # Download if not cached
+    if [[ ! -f "$cache_file" ]]; then
+        safe_download "$url" "$cache_file" || return 1
+    fi
+    
     rm -rf "$build_dir"
     mkdir -p "$build_dir"
     cd "$build_dir"
-    if command -v curl &> /dev/null; then
-        curl -fsSL "$url" | tar -xz --strip-components=1
-    elif command -v wget &> /dev/null; then
-        wget -q "$url" -O - | tar -xz --strip-components=1
-    else
-        log_error "curl or wget required to download dependencies"
-        return 1
-    fi
+    tar -xzf "$cache_file" --strip-components=1
     ./configure --prefix="$PHPV_DEPS_DIR" --with-openssl="$PHPV_DEPS_DIR"
     make -j$(nproc)
     make install
@@ -416,18 +436,18 @@ install_curl_from_source() {
 install_libzip_from_source() {
     local version="1.10.1"
     local url="https://libzip.org/download/libzip-$version.tar.gz"
+    local cache_file="$PHPV_CACHE_DIR/libzip-$version.tar.gz"
     local build_dir="$PHPV_CACHE_DIR/libzip-$version"
+    
+    # Download if not cached
+    if [[ ! -f "$cache_file" ]]; then
+        safe_download "$url" "$cache_file" || return 1
+    fi
+    
     rm -rf "$build_dir"
     mkdir -p "$build_dir"
     cd "$build_dir"
-    if command -v curl &> /dev/null; then
-        curl -fsSL "$url" | tar -xz --strip-components=1
-    elif command -v wget &> /dev/null; then
-        wget -q "$url" -O - | tar -xz --strip-components=1
-    else
-        log_error "curl or wget required to download dependencies"
-        return 1
-    fi
+    tar -xzf "$cache_file" --strip-components=1
     ./configure --prefix="$PHPV_DEPS_DIR"
     make -j$(nproc)
     make install

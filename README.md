@@ -11,7 +11,13 @@ A simple PHP version manager for Linux/Unix systems, similar to `pyenv` and `nvm
 - 🧹 Clean uninstallation of versions
 - 📦 Automatic dependency detection and guidance
 - 🎨 Colored output for better readability
-- ⚡ Fast version switching
+- 🔙 Backward version support up to PHP 4.0
+- 🛠️ Shell integration for bash, zsh, and fish
+- 📅 Day one latest PHP support
+- 🆓 Open source (MIT License)
+- 🐳 Compatible with Docker and CI environments
+- 🐧 Works on Linux (All Distros) and macOS
+- 🧩 Easily extensible for custom configurations
 
 ## Installation
 
@@ -168,6 +174,7 @@ source ~/.zshrc  # or ~/.bashrc
 ```
 
 #### 3. Permission Errors
+
 PHPV installs everything in user space (`~/.phpv`), so no root permissions should be needed for version management. If you get permission errors, check that `~/.phpv` is writable by your user.
 
 #### 4. Missing Extensions
@@ -215,6 +222,7 @@ MIT License - see LICENSE file for details.
 
 ## Roadmap
 
+- [ ] CI/CD for automated testing
 - [ ] Automatic detection of available PHP versions from php.net
 - [ ] Support for PHP extensions management
 - [ ] Integration with Apache

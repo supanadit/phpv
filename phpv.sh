@@ -52,24 +52,34 @@ safe_download() {
     local url="$1"
     local output="$2"
     
-    # Temporarily clear LD_LIBRARY_PATH to use system libraries
+    # Completely isolate from custom environment
     local old_ld_library_path="$LD_LIBRARY_PATH"
-    unset LD_LIBRARY_PATH
+    local old_path="$PATH"
     
-    if command -v curl &> /dev/null; then
-        curl -fsSL "$url" -o "$output"
-        local result=$?
-    elif command -v wget &> /dev/null; then
+    unset LD_LIBRARY_PATH
+    export PATH="/usr/local/bin:/usr/bin:/bin"
+    
+    local result=1
+    
+    # Try wget first (more reliable)
+    if command -v wget &> /dev/null; then
         wget -q "$url" -O "$output"
-        local result=$?
-    else
-        log_error "curl or wget required to download dependencies"
-        export LD_LIBRARY_PATH="$old_ld_library_path"
-        return 1
+        result=$?
     fi
     
-    # Restore LD_LIBRARY_PATH
+    # If wget failed or not available, try curl
+    if [[ $result -ne 0 ]] && command -v curl &> /dev/null; then
+        curl -fsSL "$url" -o "$output" 2>/dev/null
+        result=$?
+    fi
+    
+    if [[ $result -ne 0 ]]; then
+        log_error "Failed to download $url"
+    fi
+    
+    # Restore environment
     export LD_LIBRARY_PATH="$old_ld_library_path"
+    export PATH="$old_path"
     return $result
 }
 
@@ -448,7 +458,39 @@ install_libzip_from_source() {
     mkdir -p "$build_dir"
     cd "$build_dir"
     tar -xzf "$cache_file" --strip-components=1
-    ./configure --prefix="$PHPV_DEPS_DIR"
+    
+    # libzip uses CMake, not autotools
+    mkdir -p build
+    cd build
+    
+    # Completely isolate cmake from custom environment
+    local old_path="$PATH"
+    local old_ld_library_path="$LD_LIBRARY_PATH"
+    local old_pkg_config_path="$PKG_CONFIG_PATH"
+    local old_ldflags="$LDFLAGS"
+    local old_cppflags="$CPPFLAGS"
+    
+    # Use only system paths for cmake
+    export PATH="/usr/local/bin:/usr/bin:/bin"
+    unset LD_LIBRARY_PATH
+    unset PKG_CONFIG_PATH
+    unset LDFLAGS
+    unset CPPFLAGS
+    
+    cmake -DCMAKE_INSTALL_PREFIX="$PHPV_DEPS_DIR" ..
+    local cmake_result=$?
+    
+    # Restore environment
+    export PATH="$old_path"
+    export LD_LIBRARY_PATH="$old_ld_library_path"
+    export PKG_CONFIG_PATH="$old_pkg_config_path"
+    export LDFLAGS="$old_ldflags"
+    export CPPFLAGS="$old_cppflags"
+    
+    if [[ $cmake_result -ne 0 ]]; then
+        return 1
+    fi
+    
     make -j$(nproc)
     make install
 }
@@ -775,7 +817,7 @@ install_php_version() {
         log_info "Installing ICU from source..."
         install_icu_from_source || return 1
     fi
-    if [[ ! -f "$PHPV_DEPS_DIR/lib/libcurl.so" ]]; then
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libcurl.so" ]] && [[ ! -f "/usr/lib/libcurl.so" ]] && [[ ! -f "/usr/lib64/libcurl.so" ]]; then
         log_info "Installing curl from source..."
         install_curl_from_source || return 1
     fi
@@ -788,15 +830,7 @@ install_php_version() {
     if [[ ! -f "$cache_file" ]]; then
         log_info "Downloading PHP $version source..."
         local download_url="https://www.php.net/distributions/php-$version.tar.gz"
-        
-        if command -v curl &> /dev/null; then
-            curl -fsSL "$download_url" -o "$cache_file"
-        elif command -v wget &> /dev/null; then
-            wget -q "$download_url" -O "$cache_file"
-        else
-            log_error "Either curl or wget is required to download PHP"
-            return 1
-        fi
+        safe_download "$download_url" "$cache_file" || return 1
     fi
     
     # Extract and build
@@ -820,7 +854,6 @@ install_php_version() {
         --with-config-file-scan-dir="$install_dir/etc/conf.d" \
         --enable-mbstring \
         --enable-opcache \
-        --with-curl="$PHPV_DEPS_DIR" \
         --with-openssl="$PHPV_DEPS_DIR" \
         --with-zlib="$PHPV_DEPS_DIR" \
         --with-libxml-dir="$PHPV_DEPS_DIR" \

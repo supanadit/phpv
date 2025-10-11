@@ -287,7 +287,7 @@ install_oniguruma_from_source() {
         return 1
     fi
     export CFLAGS="-Wno-incompatible-pointer-types $CFLAGS"
-    ./configure --prefix="$PHPV_DEPS_DIR"
+    ./configure --prefix="$PHPV_DEPS_DIR" --disable-callout
     make -j$(nproc)
     make install
 }

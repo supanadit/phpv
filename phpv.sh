@@ -2022,7 +2022,7 @@ install_php_version() {
     fi
     
     if [[ "$version" == 5.* ]]; then
-               # For PHP 5.x: disable SOAP extension due to libxml2 compatibility issues
+        # For PHP 5.x: disable SOAP extension due to libxml2 compatibility issues
         configure_flags+=(--disable-soap)
         configure_flags+=(--disable-dom)
         configure_flags+=(--disable-simplexml)

@@ -693,6 +693,27 @@ resolve_llvm_version_for_php() {
     echo "$default_version"
 }
 
+# Install libxml2 from source
+install_libxml2_from_source() {
+    local version="2.11.5"
+    local url="https://download.gnome.org/sources/libxml2/2.11/libxml2-$version.tar.xz"
+    local cache_file="$PHPV_CACHE_DIR/libxml2-$version.tar.xz"
+    local build_dir="$PHPV_CACHE_DIR/libxml2-$version"
+    
+    # Download if not cached
+    if [[ ! -f "$cache_file" ]]; then
+        safe_download "$url" "$cache_file" || return 1
+    fi
+    
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+    tar -xf "$cache_file" --strip-components=1
+    ./configure --prefix="$PHPV_DEPS_DIR" --without-python
+    make -j$(nproc)
+    make install
+}
+
 # Install zlib from source
 install_zlib_from_source() {
     local version="1.3.1"
@@ -741,27 +762,6 @@ install_openssl_from_source() {
     cd "$build_dir"
     tar -xzf "$cache_file" --strip-components=1
     ./config --prefix="$PHPV_DEPS_DIR" --openssldir="$PHPV_DEPS_DIR/ssl" shared
-    make -j$(nproc)
-    make install
-}
-
-# Install libxml2 from source
-install_libxml2_from_source() {
-    local version="2.11.5"
-    local url="https://download.gnome.org/sources/libxml2/2.11/libxml2-$version.tar.xz"
-    local cache_file="$PHPV_CACHE_DIR/libxml2-$version.tar.xz"
-    local build_dir="$PHPV_CACHE_DIR/libxml2-$version"
-    
-    # Download if not cached
-    if [[ ! -f "$cache_file" ]]; then
-        safe_download "$url" "$cache_file" || return 1
-    fi
-    
-    rm -rf "$build_dir"
-    mkdir -p "$build_dir"
-    cd "$build_dir"
-    tar -xf "$cache_file" --strip-components=1
-    ./configure --prefix="$PHPV_DEPS_DIR" --without-python
     make -j$(nproc)
     make install
 }
@@ -894,21 +894,47 @@ install_icu_from_source() {
 
 # Install curl from source
 install_curl_from_source() {
-    local version="8.5.0"
-    local url="https://curl.se/download/curl-$version.tar.gz"
+    local php_version="$1"
+    local version
+    local -a urls
+
+    if [[ "$php_version" == 5.* ]]; then
+        version="7.16.2"
+    else
+        version="8.5.0"
+    fi
+    if [[ "$version" == "7.16.2" ]]; then
+        urls+=("https://curl.se/download/old/$version/curl-$version.tar.gz")
+        urls+=("https://curl.se/download/archeology/curl-$version.tar.gz")
+    fi
+    urls+=("https://curl.se/download/curl-$version.tar.gz")
     local cache_file="$PHPV_CACHE_DIR/curl-$version.tar.gz"
     local build_dir="$PHPV_CACHE_DIR/curl-$version"
     
     # Download if not cached
     if [[ ! -f "$cache_file" ]]; then
-        safe_download "$url" "$cache_file" || return 1
+        local downloaded=false
+        for url in "${urls[@]}"; do
+            if safe_download "$url" "$cache_file"; then
+                downloaded=true
+                break
+            fi
+            rm -f "$cache_file"
+        done
+        if [[ "$downloaded" != true ]]; then
+            return 1
+        fi
     fi
     
     rm -rf "$build_dir"
     mkdir -p "$build_dir"
     cd "$build_dir"
     tar -xzf "$cache_file" --strip-components=1
-    ./configure --prefix="$PHPV_DEPS_DIR" --with-openssl="$PHPV_DEPS_DIR"
+    local configure_args=("--prefix=$PHPV_DEPS_DIR" "--with-openssl=$PHPV_DEPS_DIR")
+    if [[ "$php_version" == 5.* ]]; then
+        configure_args+=("--without-libssh2") # Avoid modern libssh2 API mismatches with legacy curl
+    fi
+    ./configure "${configure_args[@]}"
     make -j$(nproc)
     make install
 }
@@ -1057,6 +1083,11 @@ install_mariadb_connector_from_source() {
     mkdir -p "$build_dir"
     cd "$build_dir"
 
+    rm -rf "$PHPV_DEPS_DIR/lib/mariadb"
+    rm -f "$PHPV_DEPS_DIR/lib/libmysqlclient.so" \
+        "$PHPV_DEPS_DIR/lib/libmysqlclient.so.18" \
+        "$PHPV_DEPS_DIR/lib/libmysqlclient.a"
+
     if ! install_cmake_from_source; then
         cd "$old_cwd"
         return 1
@@ -1148,6 +1179,191 @@ EOF
     fi
 
     cd "$old_cwd"
+}
+
+install_mysql_legacy_connector_from_source() {
+    local version="6.1.11"
+    local binary_basename="mysql-connector-c-${version}-linux-glibc2.12-x86_64"
+    local -a binary_urls=(
+        "https://cdn.mysql.com/Downloads/Connector-C/${binary_basename}.tar.gz"
+        "https://downloads.mysql.com/archives/get/p/19/file/${binary_basename}.tar.gz"
+    )
+    local binary_cache_file="$PHPV_CACHE_DIR/${binary_basename}.tar.gz"
+    local binary_extract_dir="$PHPV_CACHE_DIR/${binary_basename}-extract"
+
+    if [[ ! -f "$binary_cache_file" ]]; then
+        local downloaded=false
+        for url in "${binary_urls[@]}"; do
+            if safe_download "$url" "$binary_cache_file"; then
+                downloaded=true
+                break
+            fi
+            rm -f "$binary_cache_file"
+        done
+        if [[ "$downloaded" != true ]]; then
+            rm -f "$binary_cache_file"
+        fi
+    fi
+
+    if [[ -f "$binary_cache_file" ]]; then
+        rm -rf "$binary_extract_dir"
+        mkdir -p "$binary_extract_dir"
+        if tar -xzf "$binary_cache_file" -C "$binary_extract_dir"; then
+            local staging_dir="$binary_extract_dir/$binary_basename"
+            [[ -d "$staging_dir" ]] || staging_dir="$binary_extract_dir"
+
+            rm -rf "$PHPV_DEPS_DIR/lib/mariadb"
+            mkdir -p "$PHPV_DEPS_DIR/bin" "$PHPV_DEPS_DIR/include" "$PHPV_DEPS_DIR/lib" "$PHPV_DEPS_DIR/share" "$PHPV_DEPS_DIR/lib64"
+
+            if [[ -d "$staging_dir/bin" ]]; then
+                cp -a "$staging_dir/bin/." "$PHPV_DEPS_DIR/bin/"
+            fi
+            if [[ -d "$staging_dir/include" ]]; then
+                cp -a "$staging_dir/include/." "$PHPV_DEPS_DIR/include/"
+            fi
+            if [[ -d "$staging_dir/lib" ]]; then
+                cp -a "$staging_dir/lib/." "$PHPV_DEPS_DIR/lib/"
+            fi
+            if [[ -d "$staging_dir/lib64" ]]; then
+                cp -a "$staging_dir/lib64/." "$PHPV_DEPS_DIR/lib64/"
+            fi
+            if [[ -d "$staging_dir/share" ]]; then
+                cp -a "$staging_dir/share/." "$PHPV_DEPS_DIR/share/"
+            fi
+
+            if [[ -f "$PHPV_DEPS_DIR/lib/libmysqlclient.so" && ! -e "$PHPV_DEPS_DIR/lib64/libmysqlclient.so" ]]; then
+                ln -sf "$PHPV_DEPS_DIR/lib/libmysqlclient.so" "$PHPV_DEPS_DIR/lib64/libmysqlclient.so"
+            fi
+
+            rm -rf "$binary_extract_dir"
+
+            if [[ -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
+                return 0
+            fi
+        fi
+        rm -rf "$binary_extract_dir"
+    fi
+
+    local url="https://dev.mysql.com/get/Downloads/Connector-C/mysql-connector-c-$version-src.tar.gz"
+    local cache_file="$PHPV_CACHE_DIR/mysql-connector-c-$version.tar.gz"
+    local source_dir="$PHPV_CACHE_DIR/mysql-connector-c-$version-src"
+    local build_dir="$source_dir/build"
+    local old_cwd
+    old_cwd=$(pwd)
+
+    if [[ ! -f "$cache_file" ]]; then
+        safe_download "$url" "$cache_file" || return 1
+    fi
+
+    rm -rf "$source_dir"
+    mkdir -p "$source_dir"
+    tar -xzf "$cache_file" -C "$source_dir" --strip-components=1
+
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+
+    if ! install_cmake_from_source; then
+        cd "$old_cwd"
+        return 1
+    fi
+
+    local cmake_cmd="$PHPV_DEPS_DIR/bin/cmake"
+    if [[ ! -x "$cmake_cmd" ]]; then
+        cmake_cmd="cmake"
+    fi
+
+    local old_path="$PATH"
+    local old_ld_library_path="${LD_LIBRARY_PATH:-}"
+    local old_pkg_config="${PKG_CONFIG_PATH:-}"
+    local old_ldflags="${LDFLAGS:-}"
+    local old_cppflags="${CPPFLAGS:-}"
+
+    export PATH="$PHPV_DEPS_DIR/bin:/usr/local/bin:/usr/bin:/bin"
+    export LD_LIBRARY_PATH="$PHPV_DEPS_DIR/lib:$PHPV_DEPS_DIR/lib64${old_ld_library_path:+:$old_ld_library_path}"
+    export PKG_CONFIG_PATH="$PHPV_DEPS_DIR/lib/pkgconfig:$PHPV_DEPS_DIR/lib64/pkgconfig"
+    export LDFLAGS="-L$PHPV_DEPS_DIR/lib -L$PHPV_DEPS_DIR/lib64"
+    export CPPFLAGS="-I$PHPV_DEPS_DIR/include"
+
+    "$cmake_cmd" .. \
+        -DCMAKE_INSTALL_PREFIX="$PHPV_DEPS_DIR" \
+        -DCMAKE_PREFIX_PATH="$PHPV_DEPS_DIR" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DWITH_SSL=OPENSSL \
+        -DOPENSSL_ROOT_DIR="$PHPV_DEPS_DIR" \
+        -DZLIB_ROOT="$PHPV_DEPS_DIR" \
+        -DWITH_ZLIB=ON \
+        -DWITH_EMBEDDED_SERVER=OFF \
+        -DWITH_UNIT_TESTS=OFF \
+        -DENABLE_TESTING=OFF \
+        -DCMAKE_C_FLAGS="-Wno-deprecated-declarations" || {
+        export PATH="$old_path"
+        export LD_LIBRARY_PATH="$old_ld_library_path"
+        export PKG_CONFIG_PATH="$old_pkg_config"
+        export LDFLAGS="$old_ldflags"
+        export CPPFLAGS="$old_cppflags"
+        cd "$old_cwd"
+        return 1
+    }
+
+    make -j$(nproc) || {
+        export PATH="$old_path"
+        export LD_LIBRARY_PATH="$old_ld_library_path"
+        export PKG_CONFIG_PATH="$old_pkg_config"
+        export LDFLAGS="$old_ldflags"
+        export CPPFLAGS="$old_cppflags"
+        cd "$old_cwd"
+        return 1
+    }
+
+    make install || {
+        export PATH="$old_path"
+        export LD_LIBRARY_PATH="$old_ld_library_path"
+        export PKG_CONFIG_PATH="$old_pkg_config"
+        export LDFLAGS="$old_ldflags"
+        export CPPFLAGS="$old_cppflags"
+        cd "$old_cwd"
+        return 1
+    }
+
+    export PATH="$old_path"
+    export LD_LIBRARY_PATH="$old_ld_library_path"
+    export PKG_CONFIG_PATH="$old_pkg_config"
+    export LDFLAGS="$old_ldflags"
+    export CPPFLAGS="$old_cppflags"
+
+    cd "$old_cwd"
+
+    if [[ ! -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
+        log_error "mysql_config not found after installing MySQL Connector/C $version"
+        return 1
+    fi
+}
+
+ensure_mysql_client_for_php() {
+    local php_version="$1"
+
+    if [[ "$php_version" == 5.* ]]; then
+        local required_version="6.1.11"
+        local current_version=""
+        if [[ -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
+            current_version="$($PHPV_DEPS_DIR/bin/mysql_config --version 2>/dev/null || true)"
+        fi
+        if [[ "$current_version" != ${required_version}* ]]; then
+            log_info "Installing MySQL Connector/C $required_version for PHP $php_version compatibility..."
+            install_mysql_legacy_connector_from_source || return 1
+        fi
+    else
+        local required_version="3.3.7"
+        local current_version=""
+        if [[ -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
+            current_version="$($PHPV_DEPS_DIR/bin/mysql_config --version 2>/dev/null || true)"
+        fi
+        if [[ "$current_version" != ${required_version}* ]]; then
+            log_info "Installing MariaDB Connector/C $required_version..."
+            install_mariadb_connector_from_source || return 1
+        fi
+    fi
 }
 
 # Get installed versions
@@ -1510,6 +1726,7 @@ install_php_version() {
         export LDFLAGS="-lssl -lcrypto $LDFLAGS"
         export CFLAGS="-Wno-implicit-int -Wno-implicit-function-declaration $CFLAGS"
         export CXXFLAGS="-Wno-register $CXXFLAGS"
+        export CPPFLAGS="-DHAVE_STDARG_PROTOTYPES=1 $CPPFLAGS"
     fi
     
     # Install required dependencies from source if not present
@@ -1545,9 +1762,19 @@ install_php_version() {
         log_info "Installing ICU from source..."
         install_icu_from_source "$version" || return 1
     fi
-    if [[ ! -f "$PHPV_DEPS_DIR/lib/libcurl.so" ]]; then
-        log_info "Installing curl from source..."
-        install_curl_from_source || return 1
+    local curl_required
+    if [[ "$version" == 5.* ]]; then
+        curl_required="7.16.2"
+    else
+        curl_required="8.5.0"
+    fi
+    local curl_current=""
+    if [[ -x "$PHPV_DEPS_DIR/bin/curl-config" ]]; then
+        curl_current="$($PHPV_DEPS_DIR/bin/curl-config --version 2>/dev/null | awk '{print $2}' || true)"
+    fi
+    if [[ "$curl_current" != "$curl_required" ]]; then
+        log_info "Installing curl $curl_required from source..."
+        install_curl_from_source "$version" || return 1
     fi
 
     install_cmake_from_source || return 1
@@ -1556,10 +1783,7 @@ install_php_version() {
         log_info "Installing libzip from source..."
         install_libzip_from_source || return 1
     fi
-    if [[ ! -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
-        log_info "Installing MariaDB Connector/C from source..."
-        install_mariadb_connector_from_source || return 1
-    fi
+    ensure_mysql_client_for_php "$version" || return 1
 
     prepend_path "$PHPV_DEPS_DIR/bin"
     
@@ -1621,7 +1845,6 @@ install_php_version() {
         --enable-sysvsem
         --enable-sysvshm
     )
-    
     # Add version-specific flags
     if [[ "$version" =~ ^(8\.|9\.) ]]; then
         configure_flags+=(--with-openssl="$PHPV_DEPS_DIR")

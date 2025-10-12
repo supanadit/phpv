@@ -935,11 +935,13 @@ install_curl_from_source() {
     else
         version="8.5.0"
     fi
-    if [[ "$version" == "7.12.0" || "$version" == "7.16.2" ]]; then
+    if [[ "$version" =~ ^7\. ]]; then
         urls+=("https://curl.se/download/old/curl-$version.tar.gz")
         urls+=("https://curl.se/download/archeology/curl-$version.tar.gz")
+        urls+=("https://curl.haxx.se/download/curl-$version.tar.gz")
         urls+=("http://curl.se/download/old/curl-$version.tar.gz")
         urls+=("http://curl.se/download/archeology/curl-$version.tar.gz")
+        urls+=("http://curl.haxx.se/download/curl-$version.tar.gz")
     fi
     urls+=("https://curl.se/download/curl-$version.tar.gz")
     local cache_file="$PHPV_CACHE_DIR/curl-$version.tar.gz"

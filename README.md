@@ -41,26 +41,6 @@ I understand that some users may still need these versions for specific use case
 - PHP 2.x.x below ( EOL, not recommended )
 - PHP 1.x.x below ( EOL, not recommended )
 
-## Installation
-
-### Quick Install
-
-```bash
-# Clone or download the repository
-git clone <your-repo-url> ~/.phpv-installer
-cd ~/.phpv-installer
-
-# Run the setup script
-./setup.sh
-```
-
-### Manual Install
-
-1. Copy `phpv.sh` to a directory in your PATH or to `~/.phpv/bin/phpv`
-2. Make it executable: `chmod +x ~/.phpv/bin/phpv`
-3. Add `~/.phpv/bin` to your PATH
-4. Source the shell integration script
-
 ## Usage
 
 ### Basic Commands
@@ -123,28 +103,6 @@ phpv use 8.3.12
 phpv use system  # Use system PHP
 ```
 
-## Configuration
-
-### Environment Variables
-
-- `PHPV_ROOT`: Root directory for phpv installations (default: `~/.phpv`)
-- `PHPV_LLVM_VERSION_MAP`: Comma-separated overrides that map PHP versions (supports glob patterns) to specific LLVM releases, e.g. `7.4.*=16.0.6,8.0.*=17.0.6`
-- `PHPV_LLVM_VERSION_PHP7`: Fallback LLVM version used for PHP 7.x installs when no explicit map entry matches (default: `16.0.6`)
-
-### Directory Structure
-
-```
-~/.phpv/
-├── bin/           # phpv executable
-├── versions/      # Installed PHP versions
-│   ├── 8.3.12/
-│   ├── 8.2.24/
-│   └── ...
-├── cache/         # Downloaded source tarballs and build artifacts
-├── version        # Current active version
-└── phpv.sh       # Shell integration script
-```
-
 ## PHP Configuration
 
 Each installed PHP version includes:
@@ -153,27 +111,6 @@ Each installed PHP version includes:
 - **Binaries**: `bin/php`, `bin/php-cgi`, `bin/php-fpm`
 - **Config**: `etc/php.ini` with sensible defaults
 - **Extensions**: Common extensions pre-enabled
-
-### Default Extensions
-
-The following extensions are compiled by default:
-
-- mbstring (multi-byte string support)
-- opcache (opcode caching)
-- curl (HTTP client)
-- openssl (cryptography)
-- zlib (compression)
-- bcmath (arbitrary precision math)
-- calendar
-- exif (image metadata)
-- ftp
-- gd (image processing) - if available
-- intl (internationalization) - if available
-- soap
-- sockets
-- mysqli & pdo_mysql (MySQL support)
-- pcntl (process control)
-- shared memory extensions
 
 ## Troubleshooting
 

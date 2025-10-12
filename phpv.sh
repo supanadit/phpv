@@ -1208,6 +1208,15 @@ install_mysql_legacy_connector_from_source() {
     local binary_cache_file="$PHPV_CACHE_DIR/${binary_basename}.tar.gz"
     local binary_extract_dir="$PHPV_CACHE_DIR/${binary_basename}-extract"
 
+    # Validate cache directory early to prevent null directory errors
+    if [[ -z "$PHPV_CACHE_DIR" || ! -d "$PHPV_CACHE_DIR" ]]; then
+        log_error "PHPV_CACHE_DIR is not set or does not exist: $PHPV_CACHE_DIR"
+        return 1
+    fi
+
+    local old_cwd
+    old_cwd=$(pwd)
+
     if [[ ! -f "$binary_cache_file" ]]; then
         local downloaded=false
         for url in "${binary_urls[@]}"; do
@@ -1224,7 +1233,10 @@ install_mysql_legacy_connector_from_source() {
 
     if [[ -f "$binary_cache_file" ]]; then
         rm -rf "$binary_extract_dir"
-        mkdir -p "$binary_extract_dir"
+        mkdir -p "$binary_extract_dir" || {
+            log_error "Failed to create binary extract directory: $binary_extract_dir"
+            return 1
+        }
         if tar -xzf "$binary_cache_file" -C "$binary_extract_dir"; then
             local staging_dir="$binary_extract_dir/$binary_basename"
             [[ -d "$staging_dir" ]] || staging_dir="$binary_extract_dir"
@@ -1262,57 +1274,38 @@ install_mysql_legacy_connector_from_source() {
         rm -rf "$binary_extract_dir"
     fi
 
-    # Try Red Hat SRPM as fallback
-    local srpm_url="http://ftp.redhat.com/pub/redhat/linux/enterprise/5Server/en/os/SRPMS/mysql-5.0.77-3.el5.src.rpm"
-    local srpm_cache_file="$PHPV_CACHE_DIR/mysql-5.0.77-3.el5.src.rpm"
-    local srpm_extract_dir="$PHPV_CACHE_DIR/mysql-srpm-extract"
-    
-    if [[ ! -f "$srpm_cache_file" ]]; then
-        safe_download "$srpm_url" "$srpm_cache_file" || {
-            # Try alternative SRPM URL
-            srpm_url="ftp://ftp.redhat.com/pub/redhat/linux/enterprise/5Server/en/os/SRPMS/mysql-5.0.77-3.el5.src.rpm"
-            safe_download "$srpm_url" "$srpm_cache_file" || return 1
+    # Fallback: Download and build MySQL source directly (no RPM tools needed)
+    local mysql_version="5.0.77"
+    local mysql_url="https://downloads.mysql.com/archives/mysql-5.0/mysql-${mysql_version}.tar.gz"
+    local mysql_cache_file="$PHPV_CACHE_DIR/mysql-${mysql_version}.tar.gz"
+    local mysql_extract_dir="$PHPV_CACHE_DIR/mysql-${mysql_version}-extract"
+
+    if [[ ! -f "$mysql_cache_file" ]]; then
+        safe_download "$mysql_url" "$mysql_cache_file" || {
+            log_error "Failed to download MySQL source from $mysql_url"
+            return 1
         }
     fi
-    
-    rm -rf "$srpm_extract_dir"
-    mkdir -p "$srpm_extract_dir"
-    cd "$srpm_extract_dir"
-    
-    # Extract SRPM
-    rpm2cpio "$srpm_cache_file" | cpio -idmv 2>/dev/null || {
-        cd "$old_cwd"
-        rm -rf "$srpm_extract_dir"
+
+    rm -rf "$mysql_extract_dir"
+    mkdir -p "$mysql_extract_dir" || {
+        log_error "Failed to create MySQL extract directory: $mysql_extract_dir"
         return 1
     }
-    
-    # Find the source tarball
-    local source_tarball
-    source_tarball=$(find . -name "mysql-*.tar.gz" | head -1)
-    if [[ -z "$source_tarball" ]]; then
-        cd "$old_cwd"
-        rm -rf "$srpm_extract_dir"
-        return 1
-    fi
-    
-    # Extract MySQL source
-    tar -xzf "$source_tarball" || {
-        cd "$old_cwd"
-        rm -rf "$srpm_extract_dir"
+    cd "$mysql_extract_dir" || {
+        log_error "Failed to cd to MySQL extract directory: $mysql_extract_dir"
         return 1
     }
-    
-    local mysql_source_dir
-    mysql_source_dir=$(find . -maxdepth 1 -type d -name "mysql-*" | head -1)
-    if [[ -z "$mysql_source_dir" ]]; then
-        cd "$old_cwd"
-        rm -rf "$srpm_extract_dir"
+
+    # Extract MySQL source directly
+    tar -xzf "$mysql_cache_file" --strip-components=1 || {
+        log_error "Failed to extract MySQL source tarball"
+        cd "$old_cwd" 2>/dev/null || true
+        rm -rf "$mysql_extract_dir"
         return 1
-    fi
-    
-    cd "$mysql_source_dir"
-    
-    # Configure and build MySQL client only
+    }
+
+    # Configure and build MySQL client only (same as before, but in the direct extract dir)
     ./configure \
         --prefix="$PHPV_DEPS_DIR" \
         --without-server \
@@ -1328,31 +1321,35 @@ install_mysql_legacy_connector_from_source() {
         CFLAGS="-I$PHPV_DEPS_DIR/include -Wno-implicit-int -Wno-implicit-function-declaration" \
         CXXFLAGS="-I$PHPV_DEPS_DIR/include" \
         LDFLAGS="-L$PHPV_DEPS_DIR/lib -L$PHPV_DEPS_DIR/lib64" || {
-        cd "$old_cwd"
-        rm -rf "$srpm_extract_dir"
+        log_error "MySQL configure failed"
+        cd "$old_cwd" 2>/dev/null || true
+        rm -rf "$mysql_extract_dir"
         return 1
     }
-    
+
     make -j$(nproc) || {
-        cd "$old_cwd"
-        rm -rf "$srpm_extract_dir"
+        log_error "MySQL build failed"
+        cd "$old_cwd" 2>/dev/null || true
+        rm -rf "$mysql_extract_dir"
         return 1
     }
-    
+
     make install || {
-        cd "$old_cwd"
-        rm -rf "$srpm_extract_dir"
+        log_error "MySQL install failed"
+        cd "$old_cwd" 2>/dev/null || true
+        rm -rf "$mysql_extract_dir"
         return 1
     }
-    
-    cd "$old_cwd"
-    rm -rf "$srpm_extract_dir"
-    
+
+    cd "$old_cwd" 2>/dev/null || true
+    rm -rf "$mysql_extract_dir"
+
     if [[ -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
         normalize_mysql_config "$PHPV_DEPS_DIR/bin/mysql_config"
         return 0
     fi
 
+    log_error "mysql_config not found after installation"
     return 1
 }
 

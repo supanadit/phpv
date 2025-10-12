@@ -11,14 +11,35 @@ A simple PHP version manager for Linux/Unix systems, similar to `pyenv` and `nvm
 - 🧹 Clean uninstallation of versions
 - 📦 Automatic dependency detection and guidance
 - 🎨 Colored output for better readability
-- 🔙 Backward version support up to PHP 4.0
 - 🛠️ Shell integration for bash, zsh, and fish
 - 📅 Day one latest PHP support
 - 🆓 Open source (MIT License)
 - 🐳 Compatible with Docker and CI environments
-- 🐧 Works on Linux (All Distros) and macOS
+- 🐧 Support all linux distros (Distro agnostic)
 - 🧩 Easily extensible for custom configurations
 - 🧱 Isolated dependency management for each PHP version
+
+## PHP Versions Supported
+
+- PHP 8.5.x ( Dev Preview, Coming Soon )
+- PHP 8.4.x ( Coming Soon )
+- PHP 8.3.x
+- PHP 8.2.x
+- PHP 8.1.x
+- PHP 8.0.x
+- PHP 7.x.x
+
+### Deprecated PHP Versions Supported ( Not Recommended )
+
+These versions are deprecated and not recommended for use in production environments. They are provided for legacy support and testing purposes only. Most of dependencies for these versions are no longer maintained and even not available to be downloaded. 
+
+I understand that some users may still need these versions for specific use cases, such as maintaining legacy applications or testing compatibility. So I will try my best to make it work. If you need any of these versions, please create a Github Issue.
+
+- PHP 5.0.x below ( EOL, not recommended )
+- PHP 4.x.x below ( EOL, not recommended )
+- PHP 3.x.x below ( EOL, not recommended )
+- PHP 2.x.x below ( EOL, not recommended )
+- PHP 1.x.x below ( EOL, not recommended )
 
 ## Installation
 
@@ -198,27 +219,6 @@ For troubleshooting installation issues, you can enable debug output:
 bash -x ~/.phpv/bin/phpv install 8.3.12
 ```
 
-## Comparison with Other Tools
-
-| Feature | PHPV | phpenv | phpbrew |
-|---------|------|--------|---------|
-| User space | ✅ | ✅ | ✅ |
-| Source compilation | ✅ | ✅ | ✅ |
-| Easy setup | ✅ | ❌ | ❌ |
-| Shell integration | ✅ | ✅ | ✅ |
-| Automatic PATH | ✅ | ✅ | ❌ |
-| No external deps | ✅ | ❌ | ❌ |
-| Clean uninstall | ✅ | ❌ | ✅ |
-| Backward support | ✅ | ❌ | ❌ |
-| Latest PHP support | ✅ | ❌ | ❌ |
-| Docker/CI friendly | ✅ | ❌ | ❌ |
-| Works on Linux/macOS | ✅ | ✅ | ✅ |
-| Extensible | ✅ | ❌ | ❌ |
-| Automatic dependency management | ✅ | ❌ | ❌ |
-| Open source (MIT) | ✅ | ✅ | ✅ |
-| Clean builds | ✅ | ❌ | ❌ |
-| Isolated dependencies | ✅ | ❌ | ❌ |
-
 
 ## Contributing
 
@@ -250,3 +250,4 @@ MIT License - see LICENSE file for details.
 - [ ] Integration with composer for project-specific PHP versions
 - [ ] PECL extension management per PHP version
 - [ ] Pre-compiled binary downloads for common distributions
+- [ ] Support MacOS (Apple Silicon and Intel, I don't have Mac to test it, so PR is welcome. Sorry 😅)

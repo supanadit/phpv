@@ -67,28 +67,22 @@ get_shell_config() {
 
 # Download PHPV
 download_phpv() {
-    log_info "Setting up PHPV..."
+    log_info "Downloading PHPV..."
 
     mkdir -p "$PHPV_DIR/bin"
 
-    # For development/testing, copy local files instead of downloading
-    if [[ -f "./phpv.sh" ]]; then
-        cp "./phpv.sh" "$PHPV_SCRIPT"
-        log_success "Copied local PHPV script to $PHPV_SCRIPT"
+    # Download phpv.sh from GitHub
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$PHPV_REPO_URL/phpv.sh" -o "$PHPV_SCRIPT"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q "$PHPV_REPO_URL/phpv.sh" -O "$PHPV_SCRIPT"
     else
-        # Production: download from GitHub
-        if command -v curl >/dev/null 2>&1; then
-            curl -fsSL "$PHPV_REPO_URL/phpv.sh" -o "$PHPV_SCRIPT"
-        elif command -v wget >/dev/null 2>&1; then
-            wget -q "$PHPV_REPO_URL/phpv.sh" -O "$PHPV_SCRIPT"
-        else
-            log_error "Neither curl nor wget found. Please install one of them."
-            exit 1
-        fi
-        log_success "Downloaded PHPV to $PHPV_SCRIPT"
+        log_error "Neither curl nor wget found. Please install one of them."
+        exit 1
     fi
 
     chmod +x "$PHPV_SCRIPT"
+    log_success "Downloaded PHPV to $PHPV_SCRIPT"
 }
 
 # Create phpv init script
@@ -197,14 +191,22 @@ main() {
     # Check if already installed
     if [[ -f "$PHPV_SCRIPT" ]]; then
         log_warning "PHPV is already installed at $PHPV_DIR"
-        read -p "Do you want to reinstall? (y/N): " -n 1 -r
+        log_info "This will update PHPV scripts while preserving your cache, dependencies, and installed versions."
+        read -p "Do you want to update? (y/N): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log_info "Installation cancelled"
+            log_info "Update cancelled"
             exit 0
         fi
+        update_phpv
+    else
+        install_phpv
     fi
+}
 
+# Fresh installation
+install_phpv() {
+    log_info "Performing fresh installation..."
     download_phpv
     create_init_script
     create_phpv_binary
@@ -219,6 +221,40 @@ main() {
     echo "  phpv install 8.3.12    # Install PHP 8.3.12"
     echo "  phpv use 8.3.12        # Switch to PHP 8.3.12"
     echo "  phpv current           # Show current version"
+    echo "  phpv list              # List installed versions"
+}
+
+# Update existing installation
+update_phpv() {
+    log_info "Updating PHPV scripts (preserving cache, deps, and versions)..."
+
+    # Backup current scripts
+    local backup_dir="$PHPV_DIR/backup.$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$backup_dir"
+
+    # Backup existing scripts
+    [[ -f "$PHPV_SCRIPT" ]] && cp "$PHPV_SCRIPT" "$backup_dir/"
+    [[ -f "$PHPV_DIR/init.sh" ]] && cp "$PHPV_DIR/init.sh" "$backup_dir/"
+    [[ -f "$PHPV_DIR/bin/phpv" ]] && cp "$PHPV_DIR/bin/phpv" "$backup_dir/"
+
+    log_info "Backed up current scripts to $backup_dir"
+
+    # Update scripts
+    download_phpv
+    create_init_script
+    create_phpv_binary
+
+    # Update shell config if needed
+    update_shell_config
+
+    echo
+    log_success "PHPV update completed!"
+    echo
+    log_info "Your cache, dependencies, and installed PHP versions have been preserved."
+    log_info "Please restart your terminal or run: source $(get_shell_config "$shell_type")"
+    echo
+    log_info "You can now use the updated PHPV:"
+    echo "  phpv current           # Check current version"
     echo "  phpv list              # List installed versions"
 }
 

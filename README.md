@@ -26,6 +26,21 @@ After installation, **restart your terminal** or run:
 - `source ~/.bashrc` (for Bash)
 - `source ~/.zshrc` (for ZSH)
 
+### Updating PHPV
+
+To update PHPV while preserving your installed versions, cache, and dependencies:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bash
+```
+
+When prompted, choose "y" to update. This will:
+- ✅ Keep all your installed PHP versions
+- ✅ Preserve download cache (faster future installs)  
+- ✅ Maintain compiled dependencies
+- ✅ Only update the PHPV scripts
+- ✅ Create backups of current scripts
+
 ### Manual Installation
 
 If you prefer to install manually or are testing from source:

@@ -789,9 +789,6 @@ install_oniguruma_from_source() {
     # Use oniguruma 6.9.9 for PHP 7.x and above, 5.9.6 for PHP 5.x and below
     if [[ -n "$php_version" && "$php_version" =~ ^[7-9] ]]; then
         version="6.9.9"
-    elif [[ "$php_version" =~ ^5\.[0-2]\. ]]; then
-        # PHP 5.0.x - 5.2.x might need older oniguruma
-        version="2.2.10"
     else
         version="5.9.6"
     fi
@@ -1425,14 +1422,14 @@ ensure_mysql_client_for_php() {
     local php_version="$1"
 
     if [[ "$php_version" == 5.* ]]; then
-        local required_version="3.3.7"
+        local required_version="6.1.11"
         local current_version=""
         if [[ -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
             current_version="$($PHPV_DEPS_DIR/bin/mysql_config --version 2>/dev/null || true)"
         fi
         if [[ "$current_version" != ${required_version}* ]]; then
-            log_info "Installing MariaDB Connector/C $required_version for PHP $php_version compatibility..."
-            install_mariadb_connector_from_source || return 1
+            log_info "Installing MySQL Connector/C $required_version for PHP $php_version compatibility..."
+            install_mysql_legacy_connector_from_source || return 1
         fi
         normalize_mysql_config "$PHPV_DEPS_DIR/bin/mysql_config"
     else

@@ -64,6 +64,21 @@ append_unique() {
     __phpv_target_array+=("$__phpv_value")
 }
 
+normalize_mysql_config() {
+    local config_path="$1"
+
+    [[ -f "$config_path" ]] || return 0
+
+    if grep -q 'libs="$libs -l "' "$config_path"; then
+        sed -i \
+            -e 's/libs="\$libs -l "/libs="$libs -lmysqlclient -lpthread -lz -lm -lssl -lcrypto"/' \
+            -e 's/embedded_libs="\$embedded_libs -l "/embedded_libs="$embedded_libs -lmysqlclient"/' \
+            "$config_path"
+    fi
+
+    chmod +x "$config_path"
+}
+
 # Download helper that uses system libraries (not custom built ones)
 safe_download() {
     local url="$1"
@@ -1238,6 +1253,7 @@ install_mysql_legacy_connector_from_source() {
             rm -rf "$binary_extract_dir"
 
             if [[ -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
+                normalize_mysql_config "$PHPV_DEPS_DIR/bin/mysql_config"
                 return 0
             fi
         fi
@@ -1334,7 +1350,9 @@ install_mysql_legacy_connector_from_source() {
 
     cd "$old_cwd"
 
-    if [[ ! -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
+    if [[ -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
+        normalize_mysql_config "$PHPV_DEPS_DIR/bin/mysql_config"
+    else
         log_error "mysql_config not found after installing MySQL Connector/C $version"
         return 1
     fi
@@ -1353,6 +1371,7 @@ ensure_mysql_client_for_php() {
             log_info "Installing MySQL Connector/C $required_version for PHP $php_version compatibility..."
             install_mysql_legacy_connector_from_source || return 1
         fi
+        normalize_mysql_config "$PHPV_DEPS_DIR/bin/mysql_config"
     else
         local required_version="3.3.7"
         local current_version=""

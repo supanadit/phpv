@@ -113,11 +113,12 @@ init_phpv() {
 
 get_deps_dir_for_version() {
     local version="$1"
-    if [[ -z "$version" || "$version" == "system" ]]; then
+    local llvm_version="$2"
+    if [[ -z "$version" || "$version" == "system" || -z "$llvm_version" ]]; then
         return 1
     fi
 
-    printf '%s\n' "$PHPV_DEPS_BASE_DIR/$version"
+    printf '%s\n' "$PHPV_DEPS_BASE_DIR/$llvm_version/$version"
 }
 
 # Get current PHP version
@@ -1269,15 +1270,19 @@ install_php_version() {
     
     local install_dir="$PHPV_VERSIONS_DIR/$version"
     local cache_file="$PHPV_CACHE_DIR/php-$version.tar.gz"
-    
+
     if is_version_installed "$version"; then
         log_warning "PHP $version is already installed"
         return 0
     fi
 
+    local resolved_llvm
+    resolved_llvm=$(resolve_llvm_version_for_php "$version")
+    [[ -z "$resolved_llvm" ]] && resolved_llvm="$PHPV_LLVM_VERSION"
+
     local version_deps_dir
-    version_deps_dir=$(get_deps_dir_for_version "$version") || {
-        log_error "Failed to resolve dependency directory for $version"
+    version_deps_dir=$(get_deps_dir_for_version "$version" "$resolved_llvm") || {
+        log_error "Failed to resolve dependency directory for $version with LLVM $resolved_llvm"
         return 1
     }
 
@@ -1285,12 +1290,12 @@ install_php_version() {
     mkdir -p "$PHPV_DEPS_DIR"
     mkdir -p "$PHPV_DEPS_DIR/lib" "$PHPV_DEPS_DIR/lib64" "$PHPV_DEPS_DIR/include"
     log_info "Using isolated dependency prefix at $PHPV_DEPS_DIR"
-    
-    log_info "Installing PHP $version..."
 
-    local resolved_llvm
-    resolved_llvm=$(resolve_llvm_version_for_php "$version")
-    [[ -z "$resolved_llvm" ]] && resolved_llvm="$PHPV_LLVM_VERSION"
+    # Save LLVM version for this PHP installation
+    mkdir -p "$install_dir"
+    echo "$resolved_llvm" > "$install_dir/.llvm_version"
+
+    log_info "Installing PHP $version..."
 
     if [[ -n "$resolved_llvm" && "$resolved_llvm" != "$PHPV_LLVM_VERSION" ]]; then
         log_info "Using LLVM $resolved_llvm for PHP $version"
@@ -1606,10 +1611,15 @@ uninstall_php_version() {
     log_info "Uninstalling PHP $version..."
     rm -rf "$PHPV_VERSIONS_DIR/$version"
     local version_deps_dir
-    if version_deps_dir=$(get_deps_dir_for_version "$version"); then
-        if [[ -d "$version_deps_dir" ]]; then
-            log_info "Removing isolated dependencies for PHP $version..."
-            rm -rf "$version_deps_dir"
+    local llvm_version_file="$PHPV_VERSIONS_DIR/$version/.llvm_version"
+    if [[ -f "$llvm_version_file" ]]; then
+        local llvm_version
+        llvm_version=$(cat "$llvm_version_file")
+        if version_deps_dir=$(get_deps_dir_for_version "$version" "$llvm_version"); then
+            if [[ -d "$version_deps_dir" ]]; then
+                log_info "Removing isolated dependencies for PHP $version..."
+                rm -rf "$version_deps_dir"
+            fi
         fi
     fi
     log_success "PHP $version uninstalled"
@@ -1645,21 +1655,26 @@ exec_php() {
     local current_version
     current_version=$(get_current_version)
     if [[ -n "$current_version" && "$current_version" != "system" ]]; then
-        local deps_dir
-        if deps_dir=$(get_deps_dir_for_version "$current_version"); then
-            local -a lib_paths=()
-            [[ -d "$deps_dir/lib" ]] && lib_paths+=("$deps_dir/lib")
-            [[ -d "$deps_dir/lib64" ]] && lib_paths+=("$deps_dir/lib64")
+        local llvm_version_file="$PHPV_VERSIONS_DIR/$current_version/.llvm_version"
+        if [[ -f "$llvm_version_file" ]]; then
+            local llvm_version
+            llvm_version=$(cat "$llvm_version_file")
+            local deps_dir
+            if deps_dir=$(get_deps_dir_for_version "$current_version" "$llvm_version"); then
+                local -a lib_paths=()
+                [[ -d "$deps_dir/lib" ]] && lib_paths+=("$deps_dir/lib")
+                [[ -d "$deps_dir/lib64" ]] && lib_paths+=("$deps_dir/lib64")
 
-            if (( ${#lib_paths[@]} > 0 )); then
-                local joined
-                local IFS=':'
-                joined="${lib_paths[*]}"
+                if (( ${#lib_paths[@]} > 0 )); then
+                    local joined
+                    local IFS=':'
+                    joined="${lib_paths[*]}"
 
-                if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
-                    export LD_LIBRARY_PATH="$joined:$LD_LIBRARY_PATH"
-                else
-                    export LD_LIBRARY_PATH="$joined"
+                    if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
+                        export LD_LIBRARY_PATH="$joined:$LD_LIBRARY_PATH"
+                    else
+                        export LD_LIBRARY_PATH="$joined"
+                    fi
                 fi
             fi
         fi

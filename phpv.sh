@@ -1203,7 +1203,23 @@ EOF
 install_mysql_legacy_connector_from_source() {
     local version="${1:-6.1.11}"
     echo "Installing MySQL Connector/C $version from source..."
-    local binary_basename="mysql-connector-c-${version}-linux-glibc2.12-x86_64"
+    
+    local binary_basename="mysql-connector-c-${version}-linux-glibc2.12-x86_64"  # Default (will be overridden)
+    
+    # Determine glibc suffix based on version
+    local glibc_suffix="glibc2.5"  # Default for older versions
+    if [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+        local major=${BASH_REMATCH[1]}
+        local minor=${BASH_REMATCH[2]}
+        local patch=${BASH_REMATCH[3]}
+        if (( major > 6 )) || (( major == 6 && minor > 1 )) || (( major == 6 && minor == 1 && patch >= 10 )); then
+            glibc_suffix="glibc2.12"
+        fi
+    fi
+    
+    # Update binary_basename with the correct suffix
+    binary_basename="mysql-connector-c-${version}-linux-${glibc_suffix}-x86_64"
+
     local -a binary_urls=(
         "https://cdn.mysql.com/Downloads/Connector-C/${binary_basename}.tar.gz"
         "https://downloads.mysql.com/archives/get/p/19/file/${binary_basename}.tar.gz"

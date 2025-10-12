@@ -156,7 +156,6 @@ For troubleshooting installation issues, you can enable debug output:
 bash -x ~/.phpv/bin/phpv install 8.3.12
 ```
 
-
 ## Contributing
 
 1. Fork the repository

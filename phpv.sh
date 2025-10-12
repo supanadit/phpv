@@ -1206,21 +1206,24 @@ install_mysql_legacy_connector_from_source() {
 
     local binary_basename="mysql-connector-c-${version}-linux-glibc2.12-x86_64"  # Default (will be overridden)
     
-    # Determine glibc suffix based on version
+    # Determine glibc and architecture suffixes based on version
     local glibc_suffix="glibc2.3"  # Default for very old versions (< 6.1.0)
+    local arch_suffix="x86-x64bit"  # Default for very old versions (< 6.1.0)
     if [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
         local major=${BASH_REMATCH[1]}
         local minor=${BASH_REMATCH[2]}
         local patch=${BASH_REMATCH[3]}
         if (( major > 6 )) || (( major == 6 && minor > 1 )) || (( major == 6 && minor == 1 && patch >= 10 )); then
             glibc_suffix="glibc2.12"
+            arch_suffix="x86_64"
         elif (( major == 6 && minor == 1 && patch >= 0 )); then
             glibc_suffix="glibc2.5"
+            arch_suffix="x86_64"
         fi
     fi
     
-    # Update binary_basename with the correct suffix
-    binary_basename="mysql-connector-c-${version}-linux-${glibc_suffix}-x86_64"
+    # Update binary_basename with the correct suffixes
+    binary_basename="mysql-connector-c-${version}-linux-${glibc_suffix}-${arch_suffix}"
 
     local -a binary_urls=(
         "https://cdn.mysql.com/Downloads/Connector-C/${binary_basename}.tar.gz"
@@ -1436,7 +1439,7 @@ ensure_mysql_client_for_php() {
     local php_version="$1"
 
     if [[ "$php_version" == 5.* ]]; then
-        local required_version="5.0.0"
+        local required_version="6.0.2"
         local current_version=""
         if [[ -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
             current_version="$($PHPV_DEPS_DIR/bin/mysql_config --version 2>/dev/null || true)"

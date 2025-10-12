@@ -99,7 +99,9 @@ export PATH="$PHPV_ROOT/bin:$PATH"
 # PHPV function for shell integration
 phpv() {
     local command="$1"
-    shift
+    if [[ $# -gt 0 ]]; then
+        shift
+    fi
 
     case "$command" in
         use)

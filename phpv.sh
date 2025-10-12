@@ -969,7 +969,7 @@ install_curl_from_source() {
     local configure_cmd="./configure --prefix=$PHPV_DEPS_DIR --with-openssl=$PHPV_DEPS_DIR"
     local restore_select_cache=false
     if [[ "$php_version" == 5.* ]]; then
-        configure_cmd="$configure_cmd --without-libssh2" # Avoid modern libssh2 API mismatches with legacy curl
+        configure_cmd="$configure_cmd --without-libssh2 --disable-ldap --disable-ldaps" # Avoid modern libssh2 and LDAP API mismatches with legacy curl
         if [[ -z "${ac_cv_func_select:-}" ]]; then
             export ac_cv_func_select=yes
             restore_select_cache=true

@@ -68,7 +68,7 @@ cd phpv
 - 🎨 Colored output for better readability
 - 🛠️ Shell integration for bash, and zsh
 - 📅 Day one latest PHP support
-- 🆓 Open source (MIT License)
+- 🆓 Open source ([MIT License](LICENSE))
 - 🐳 Compatible with Docker and CI environments
 - 🐧 Support all linux distros (Distro agnostic)
 - 🧩 Easily extensible for custom configurations
@@ -258,7 +258,7 @@ bash -x ~/.phpv/bin/phpv install 8.3.12
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Roadmap
 

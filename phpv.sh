@@ -743,9 +743,11 @@ install_zlib_from_source() {
     
     rm -rf "$build_dir"
     mkdir -p "$build_dir"
+    
     cd "$build_dir"
     tar -xzf "$cache_file" --strip-components=1
-    ./configure --prefix="$PHPV_DEPS_DIR"
+
+    ./configure --prefix="$PHPV_DEPS_DIR" --shared
     make -j$(nproc)
     make install
 }

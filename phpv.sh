@@ -1201,7 +1201,8 @@ EOF
 }
 
 install_mysql_legacy_connector_from_source() {
-    local version="6.1.11"
+    local version="${1:-6.1.11}"
+    echo "Installing MySQL Connector/C $version from source..."
     local binary_basename="mysql-connector-c-${version}-linux-glibc2.12-x86_64"
     local -a binary_urls=(
         "https://cdn.mysql.com/Downloads/Connector-C/${binary_basename}.tar.gz"
@@ -1417,14 +1418,14 @@ ensure_mysql_client_for_php() {
     local php_version="$1"
 
     if [[ "$php_version" == 5.* ]]; then
-        local required_version="6.0.2"
+        local required_version="5.0.0"
         local current_version=""
         if [[ -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
             current_version="$($PHPV_DEPS_DIR/bin/mysql_config --version 2>/dev/null || true)"
         fi
         if [[ "$current_version" != ${required_version}* ]]; then
             log_info "Installing MySQL Connector/C $required_version for PHP $php_version compatibility..."
-            install_mysql_legacy_connector_from_source || return 1
+            install_mysql_legacy_connector_from_source "$required_version" || return 1
         fi
         normalize_mysql_config "$PHPV_DEPS_DIR/bin/mysql_config"
     else

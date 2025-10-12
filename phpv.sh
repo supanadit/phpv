@@ -705,13 +705,26 @@ resolve_llvm_version_for_php() {
         return
     fi
 
+    if [[ "$php_version" == 5.* ]]; then
+        echo "${PHPV_LLVM_VERSION_PHP5:-15.0.6}"
+        return
+    fi
+
     echo "$default_version"
 }
 
 # Install libxml2 from source
 install_libxml2_from_source() {
+    local php_version="${1:-}"
     local version="2.11.5"
-    local url="https://download.gnome.org/sources/libxml2/2.11/libxml2-$version.tar.xz"
+
+    # Use older libxml2 for PHP 5.x compatibility
+    if [[ -n "$php_version" && "$php_version" == 5.* ]]; then
+        version="2.9.14"
+    fi
+
+    local series="${version%.*}"
+    local url="https://download.gnome.org/sources/libxml2/$series/libxml2-$version.tar.xz"
     local cache_file="$PHPV_CACHE_DIR/libxml2-$version.tar.xz"
     local build_dir="$PHPV_CACHE_DIR/libxml2-$version"
     
@@ -918,13 +931,15 @@ install_curl_from_source() {
     if [[ "$php_version" =~ ^5\.[0-2]\. ]]; then
         version="7.12.0"
     elif [[ "$php_version" == 5.* ]]; then
-        version="7.16.2"
+        version="7.29.0"
     else
         version="8.5.0"
     fi
     if [[ "$version" == "7.12.0" || "$version" == "7.16.2" ]]; then
-        urls+=("https://curl.se/download/old/$version/curl-$version.tar.gz")
+        urls+=("https://curl.se/download/old/curl-$version.tar.gz")
         urls+=("https://curl.se/download/archeology/curl-$version.tar.gz")
+        urls+=("http://curl.se/download/old/curl-$version.tar.gz")
+        urls+=("http://curl.se/download/archeology/curl-$version.tar.gz")
     fi
     urls+=("https://curl.se/download/curl-$version.tar.gz")
     local cache_file="$PHPV_CACHE_DIR/curl-$version.tar.gz"
@@ -950,10 +965,22 @@ install_curl_from_source() {
     cd "$build_dir"
     tar -xzf "$cache_file" --strip-components=1
     local configure_cmd="./configure --prefix=$PHPV_DEPS_DIR --with-openssl=$PHPV_DEPS_DIR"
+    local restore_select_cache=false
     if [[ "$php_version" == 5.* ]]; then
         configure_cmd="$configure_cmd --without-libssh2" # Avoid modern libssh2 API mismatches with legacy curl
+        if [[ -z "${ac_cv_func_select:-}" ]]; then
+            export ac_cv_func_select=yes
+            restore_select_cache=true
+        fi
+        if [[ -z "${ac_cv_func_socket:-}" ]]; then
+            export ac_cv_func_socket=yes
+            restore_select_cache=true
+        fi
     fi
     eval "$configure_cmd"
+    if [[ "$restore_select_cache" == true ]]; then
+        unset ac_cv_func_select ac_cv_func_socket
+    fi
     make -j$(nproc)
     make install
 }
@@ -1844,6 +1871,12 @@ install_php_version() {
     }
 
     local PHPV_DEPS_DIR="$version_deps_dir"
+    local php_old_cflags="$CFLAGS"
+    local php_old_cxxflags="$CXXFLAGS"
+    local php_old_cppflags="$CPPFLAGS"
+    local php_old_ldflags="$LDFLAGS"
+    local php_restore_env=false
+    local php_extra_ldflags=""
     mkdir -p "$PHPV_DEPS_DIR"
     mkdir -p "$PHPV_DEPS_DIR/lib" "$PHPV_DEPS_DIR/lib64" "$PHPV_DEPS_DIR/include"
     log_info "Using isolated dependency prefix at $PHPV_DEPS_DIR"
@@ -1880,10 +1913,18 @@ install_php_version() {
     # For PHP 5.x, DSA_get_default_method is in libcrypto, not libssl
     # Add libcrypto to LDFLAGS to make the function available during configure checks
     if [[ "$version" == 5.* ]]; then
-        export LDFLAGS="-lssl -lcrypto $LDFLAGS"
-        export CFLAGS="-Wno-implicit-int -Wno-implicit-function-declaration $CFLAGS"
+        php_restore_env=true
+        php_extra_ldflags="-lssl -lcrypto"
+        export CFLAGS="-Wno-implicit-int -Wno-implicit-function-declaration -Wno-deprecated-declarations -Wno-deprecated-non-prototype -Wno-visibility -Wno-pointer-sign -fcommon $CFLAGS"
         export CXXFLAGS="-Wno-register $CXXFLAGS"
-        export CPPFLAGS="-DHAVE_STDARG_PROTOTYPES=1 $CPPFLAGS"
+        export CPPFLAGS="-DHAVE_STDARG_PROTOTYPES=1 -D_BSD_SOURCE -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200112L -D_XOPEN_SOURCE=600 $CPPFLAGS"
+    fi
+
+    if [[ "$php_restore_env" == true ]]; then
+        local __php_restore_cmd
+        printf -v __php_restore_cmd 'export CFLAGS=%q; export CXXFLAGS=%q; export CPPFLAGS=%q; export LDFLAGS=%q; trap - RETURN;' \
+            "$php_old_cflags" "$php_old_cxxflags" "$php_old_cppflags" "$php_old_ldflags"
+        trap "$__php_restore_cmd" RETURN
     fi
     
     # Install required dependencies from source if not present
@@ -1897,7 +1938,7 @@ install_php_version() {
     fi
     if [[ ! -f "$PHPV_DEPS_DIR/lib/libxml2.so" ]]; then
         log_info "Installing libxml2 from source..."
-        install_libxml2_from_source || return 1
+        install_libxml2_from_source "$version" || return 1
     fi
     if [[ ! -f "$PHPV_DEPS_DIR/lib/libonig.so" ]]; then
         log_info "Installing oniguruma from source..."
@@ -1920,8 +1961,10 @@ install_php_version() {
         install_icu_from_source "$version" || return 1
     fi
     local curl_required
-    if [[ "$version" == 5.* ]]; then
-        curl_required="7.14.0"
+    if [[ "$version" =~ ^5\.[0-2]\. ]]; then
+        curl_required="7.12.0"
+    elif [[ "$version" == 5.* ]]; then
+        curl_required="7.29.0"
     else
         curl_required="8.5.0"
     fi
@@ -2002,12 +2045,17 @@ install_php_version() {
     )
     
     # Add MySQL/ODBC support based on PHP version
+    local php_restore_cache=false
     if [[ "$version" == 5.* ]]; then
         # For PHP 5.x, use ODBC instead of MySQL Connector/C
         configure_flags+=(--with-unixODBC="$PHPV_DEPS_DIR")
         if [[ "$version" =~ ^5\.[1-9] ]]; then
             # PDO_ODBC available from PHP 5.1+
             configure_flags+=(--with-pdo-odbc="unixODBC,$PHPV_DEPS_DIR")
+        fi
+        if [[ -z "${ac_cv_func_shutdown:-}" ]]; then
+            export ac_cv_func_shutdown=yes
+            php_restore_cache=true
         fi
     else
         # For PHP 7+, use MySQL client library
@@ -2029,12 +2077,20 @@ install_php_version() {
         configure_flags+=(--disable-intl)
     fi
     
+    if [[ -n "$php_extra_ldflags" ]]; then
+        export LDFLAGS="$php_extra_ldflags $LDFLAGS"
+    fi
+
     # Basic configuration - can be customized
     if ! ./configure "${configure_flags[@]}"; then
         log_error "Configuration failed. You may need to install development packages:"
         log_info "Ubuntu/Debian: sudo apt-get install libxml2-dev libssl-dev libcurl4-openssl-dev libonig-dev libzip-dev"
         log_info "CentOS/RHEL: sudo yum install libxml2-devel openssl-devel curl-devel oniguruma-devel libzip-devel"
         return 1
+    fi
+
+    if [[ "$php_restore_cache" == true ]]; then
+        unset ac_cv_func_shutdown
     fi
     
     log_info "Building PHP $version (this may take a while)..."

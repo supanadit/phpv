@@ -19,12 +19,14 @@ wget -qO- https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bas
 ```
 
 This will:
+
 - Download PHPV to `~/.phpv/`
 - Set up shell integration automatically
 - Add the `phpv` command to your PATH
 - Configure your shell profile (`.bashrc`, `.zshrc`, etc.)
 
 After installation, **restart your terminal** or run:
+
 - `source ~/.bashrc` (for Bash)
 - `source ~/.zshrc` (for ZSH)
 
@@ -37,8 +39,9 @@ curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | ba
 ```
 
 When prompted, choose "y" to update. This will:
+
 - ✅ Keep all your installed PHP versions
-- ✅ Preserve download cache (faster future installs)  
+- ✅ Preserve download cache (faster future installs)
 - ✅ Maintain compiled dependencies
 - ✅ Only update the PHPV scripts
 - ✅ Create backups of current scripts
@@ -50,6 +53,7 @@ If you prefer to install manually or are testing from source:
 ```bash
 git clone https://github.com/supanadit/phpv.git
 cd phpv
+
 ./install.sh
 ```
 
@@ -72,6 +76,8 @@ cd phpv
 
 ## PHP Versions Supported
 
+After this project released in stable state, each new PHP version will be supported as soon as possible. So you don't need to wait the operating system package manager to provide the latest PHP version.
+
 - PHP 8.5.x ( Dev Preview, Coming Soon )
 - PHP 8.4.x ( Coming Soon )
 - PHP 8.3.x
@@ -82,7 +88,7 @@ cd phpv
 
 ### Deprecated PHP Versions Supported ( Not Recommended )
 
-These versions are deprecated and not recommended for use in production environments. They are provided for legacy support and testing purposes only. Most of dependencies for these versions are no longer maintained and even not available to be downloaded. 
+These versions are deprecated and not recommended for use in production environments. They are provided for legacy support and testing purposes only. Most of dependencies for these versions are no longer maintained and even not available to be downloaded.
 
 I understand that some users may still need these versions for specific use cases, such as maintaining legacy applications or testing compatibility. So I will try my best to make it work. If you need any of these versions, please create a Github Issue.
 
@@ -200,6 +206,7 @@ Each installed PHP version includes:
 ### Common Issues
 
 #### 1. Build Failures
+
 ```bash
 # Check for missing dependencies
 phpv install 8.3.12
@@ -208,6 +215,7 @@ phpv install 8.3.12
 ```
 
 #### 2. PHP Not Found After Switch
+
 ```bash
 # Reload shell configuration
 source ~/.zshrc  # or ~/.bashrc
@@ -222,6 +230,7 @@ PHPV installs everything in user space (`~/.phpv`), so no root permissions shoul
 #### 4. Missing Extensions
 
 If you need additional extensions, you can:
+
 1. Modify the configure options in the `install_php_version()` function
 2. Compile extensions separately after installation
 3. Use package managers like PECL with the specific PHP version

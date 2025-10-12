@@ -1425,14 +1425,14 @@ ensure_mysql_client_for_php() {
     local php_version="$1"
 
     if [[ "$php_version" == 5.* ]]; then
-        local required_version="4.1.19"
+        local required_version="3.3.7"
         local current_version=""
         if [[ -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
             current_version="$($PHPV_DEPS_DIR/bin/mysql_config --version 2>/dev/null || true)"
         fi
         if [[ "$current_version" != ${required_version}* ]]; then
-            log_info "Installing MySQL $required_version for PHP $php_version compatibility..."
-            install_mysql_legacy_from_source "$required_version" || return 1
+            log_info "Installing MariaDB Connector/C $required_version for PHP $php_version compatibility..."
+            install_mariadb_connector_from_source || return 1
         fi
         normalize_mysql_config "$PHPV_DEPS_DIR/bin/mysql_config"
     else

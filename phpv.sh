@@ -1202,8 +1202,6 @@ EOF
 
 install_mysql_legacy_connector_from_source() {
     local version="${1:-6.1.11}"
-    echo "Installing MySQL Connector/C $version from source..."
-
     local binary_basename="mysql-connector-c-${version}-linux-glibc2.12-x86_64"  # Default (will be overridden)
     
     # Determine glibc and architecture suffixes based on version
@@ -1224,9 +1222,24 @@ install_mysql_legacy_connector_from_source() {
     
     # Update binary_basename with the correct suffixes
     binary_basename="mysql-connector-c-${version}-linux-${glibc_suffix}-${arch_suffix}"
-
+    
+    # Determine primary download URL based on version
+    local primary_url
+    if [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+        local major=${BASH_REMATCH[1]}
+        local minor=${BASH_REMATCH[2]}
+        local patch=${BASH_REMATCH[3]}
+        if (( major < 6 )) || (( major == 6 && minor < 1 )) || (( major == 6 && minor == 1 && patch <= 11 )); then
+            primary_url="https://cdn.mysql.com/archives/mysql-connector-c/${binary_basename}.tar.gz"
+        else
+            primary_url="https://cdn.mysql.com/Downloads/Connector-C/${binary_basename}.tar.gz"
+        fi
+    else
+        primary_url="https://cdn.mysql.com/Downloads/Connector-C/${binary_basename}.tar.gz"
+    fi
+    
     local -a binary_urls=(
-        "https://cdn.mysql.com/Downloads/Connector-C/${binary_basename}.tar.gz"
+        "$primary_url"
         "https://downloads.mysql.com/archives/get/p/19/file/${binary_basename}.tar.gz"
     )
     local binary_cache_file="$PHPV_CACHE_DIR/${binary_basename}.tar.gz"

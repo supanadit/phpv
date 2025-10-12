@@ -43,7 +43,7 @@ cd phpv
 - 🧹 Clean uninstallation of versions
 - 📦 Automatic dependency detection and guidance
 - 🎨 Colored output for better readability
-- 🛠️ Shell integration for bash, zsh, and fish
+- 🛠️ Shell integration for bash, and zsh
 - 📅 Day one latest PHP support
 - 🆓 Open source (MIT License)
 - 🐳 Compatible with Docker and CI environments

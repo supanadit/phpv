@@ -18,6 +18,7 @@ A simple PHP version manager for Linux/Unix systems, similar to `pyenv` and `nvm
 - 🐳 Compatible with Docker and CI environments
 - 🐧 Works on Linux (All Distros) and macOS
 - 🧩 Easily extensible for custom configurations
+- 🧱 Isolated dependency management for each PHP version
 
 ## Installation
 
@@ -216,6 +217,7 @@ bash -x ~/.phpv/bin/phpv install 8.3.12
 | Automatic dependency management | ✅ | ❌ | ❌ |
 | Open source (MIT) | ✅ | ✅ | ✅ |
 | Clean builds | ✅ | ❌ | ❌ |
+| Isolated dependencies | ✅ | ❌ | ❌ |
 
 
 ## Contributing
@@ -232,6 +234,13 @@ MIT License - see LICENSE file for details.
 
 ## Roadmap
 
+- [ ] Support install custom extension with `phpv install-ext <extension-name>`
+- [ ] Support uninstall custom extension with `phpv uninstall-ext <extension-name>`
+- [ ] Support list installed extensions with `phpv list-ext`
+- [ ] Support list available extensions with `phpv list-available-ext`
+- [ ] Support enable/disable extension with `phpv enable-ext <extension-name>` and `phpv disable-ext <extension-name>`
+- [ ] Support isolated build system to be used by user. For example user might download certain extension source code and automatically build it for specific PHP version using command `phpv build-ext <extension-name> <path-to-extension-source>`
+- [ ] Support custom configuration file per version
 - [ ] CI/CD for automated testing
 - [ ] Automatic detection of available PHP versions from php.net
 - [ ] Support for PHP extensions management

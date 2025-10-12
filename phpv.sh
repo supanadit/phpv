@@ -2358,4 +2358,8 @@ main() {
 # Run main function if script is executed directly
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"
+else
+    # Script is being sourced - set up shell integration
+    # Instead of exporting functions, we'll define them in the calling scope
+    :
 fi

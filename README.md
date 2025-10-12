@@ -2,6 +2,38 @@
 
 A simple PHP version manager for Linux/Unix systems, similar to `pyenv` and `nvm`. PHPV allows you to install, manage, and switch between multiple PHP versions in user space without requiring root privileges for version management.
 
+## Installation
+
+PHPV is designed to be as easy to install as NVM. Just run this command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bash
+```
+
+Or if you prefer wget:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bash
+```
+
+This will:
+- Download PHPV to `~/.phpv/`
+- Set up shell integration automatically
+- Add the `phpv` command to your PATH
+- Configure your shell profile (`.bashrc`, `.zshrc`, etc.)
+
+After installation, restart your terminal or run `source ~/.bashrc` (or `source ~/.zshrc` for ZSH).
+
+### Manual Installation
+
+If you prefer to install manually or are testing from source:
+
+```bash
+git clone https://github.com/supanadit/phpv.git
+cd phpv
+./install.sh
+```
+
 ## Features
 
 - 🚀 Install multiple PHP versions from source
@@ -40,6 +72,38 @@ I understand that some users may still need these versions for specific use case
 - PHP 3.x.x below ( EOL, not recommended )
 - PHP 2.x.x below ( EOL, not recommended )
 - PHP 1.x.x below ( EOL, not recommended )
+
+## How It Works
+
+PHPV works similarly to NVM (Node Version Manager). After installation:
+
+1. **Automatic PATH Management**: When you run `phpv use <version>`, PHPV automatically updates your PATH to use the specified PHP version
+2. **Shell Integration**: The `phpv` command is available in all your shell sessions
+3. **No Manual Configuration**: Unlike some version managers, you don't need to manually source scripts or modify your PATH
+
+### Example Session
+
+```bash
+# Install a PHP version
+phpv install 8.3.12
+
+# Switch to it (PATH is automatically updated)
+phpv use 8.3.12
+
+# Check current version
+phpv current
+# Output: Current: 8.3.12 (PHP 8.3.12)
+
+# Verify PHP binary
+which php
+# Output: /home/user/.phpv/versions/8.3.12/bin/php
+
+php -v
+# Output: PHP 8.3.12 (cli) ...
+
+# Switch back to system PHP
+phpv use system
+```
 
 ## Usage
 

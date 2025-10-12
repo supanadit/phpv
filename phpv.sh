@@ -1203,17 +1203,19 @@ EOF
 install_mysql_legacy_connector_from_source() {
     local version="${1:-6.1.11}"
     echo "Installing MySQL Connector/C $version from source..."
-    
+
     local binary_basename="mysql-connector-c-${version}-linux-glibc2.12-x86_64"  # Default (will be overridden)
     
     # Determine glibc suffix based on version
-    local glibc_suffix="glibc2.5"  # Default for older versions
+    local glibc_suffix="glibc2.3"  # Default for very old versions (< 6.1.0)
     if [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
         local major=${BASH_REMATCH[1]}
         local minor=${BASH_REMATCH[2]}
         local patch=${BASH_REMATCH[3]}
         if (( major > 6 )) || (( major == 6 && minor > 1 )) || (( major == 6 && minor == 1 && patch >= 10 )); then
             glibc_suffix="glibc2.12"
+        elif (( major == 6 && minor == 1 && patch >= 0 )); then
+            glibc_suffix="glibc2.5"
         fi
     fi
     

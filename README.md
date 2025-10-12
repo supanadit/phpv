@@ -1,5 +1,7 @@
 # PHPV - PHP Version Manager
 
+**IMPORTANT: This project is still in early development. Use at your own risk.**
+
 A simple PHP version manager for Linux/Unix systems, similar to `pyenv` and `nvm`. PHPV allows you to install, manage, and switch between multiple PHP versions in user space without requiring root privileges for version management.
 
 ## Installation

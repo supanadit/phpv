@@ -2192,15 +2192,15 @@ USAGE:
     phpv <command> [arguments]
 
 COMMANDS:
-    install <version>    Install a specific PHP version (supports partial versions: e.g., 8, 8.3)
-    uninstall <version>  Uninstall a specific PHP version
-    use <version>        Switch to a specific PHP version
-    current             Show the current PHP version
-    list                List installed PHP versions
-    list-available [filter]  List available PHP versions for download (optional filter: e.g., 8, 8.3)
-    exec <command>      Execute command with current PHP version
-    which               Show path to current PHP binary
-    help                Show this help message
+    install <version>           Install a specific PHP version (supports partial versions: e.g., 8, 8.3)
+    uninstall <version>         Uninstall a specific PHP version
+    use <version>               Switch to a specific PHP version
+    current                     Show the current PHP version
+    list                        List installed PHP versions
+    list-available [filter]     List available PHP versions for download (optional filter: e.g., 8, 8.3)
+    exec <command>              Execute command with current PHP version
+    which                       Show path to current PHP binary
+    help                        Show this help message
 
 EXAMPLES:
     phpv install 8.3.12         # Install PHP 8.3.12

@@ -913,6 +913,69 @@ install_curl_from_source() {
     make install
 }
 
+install_cmake_from_source() {
+    local version="3.27.9"
+    local cmake_bin="$PHPV_DEPS_DIR/bin/cmake"
+    local cache_file="$PHPV_CACHE_DIR/cmake-$version.tar.gz"
+    local source_dir="$PHPV_CACHE_DIR/cmake-$version-src"
+    local jobs
+    jobs=$(nproc)
+    local old_cwd
+    old_cwd=$(pwd)
+
+    local install_needed=1
+    if [[ -x "$cmake_bin" ]]; then
+        local existing_version
+        existing_version=$("$cmake_bin" --version 2>/dev/null | head -n1 | awk '{print $3}')
+        if [[ "$existing_version" == "$version" ]]; then
+            install_needed=0
+        else
+            log_info "Updating bundled CMake from ${existing_version:-unknown} to $version..."
+        fi
+    fi
+
+    if [[ $install_needed -eq 0 ]]; then
+        return 0
+    fi
+
+    log_info "Installing CMake $version from source..."
+
+    if [[ ! -f "$cache_file" ]]; then
+        local url="https://github.com/Kitware/CMake/releases/download/v$version/cmake-$version.tar.gz"
+        safe_download "$url" "$cache_file" || return 1
+    fi
+
+    rm -rf "$source_dir"
+    mkdir -p "$source_dir"
+    if ! tar -xzf "$cache_file" -C "$source_dir" --strip-components=1; then
+        cd "$old_cwd"
+        return 1
+    fi
+
+    cd "$source_dir" || {
+        cd "$old_cwd"
+        return 1
+    }
+
+    if ! ./bootstrap --prefix="$PHPV_DEPS_DIR" --parallel="$jobs" -- -DCMake_ENABLE_DEBUGGER=OFF -DBUILD_TESTING=OFF; then
+        cd "$old_cwd"
+        return 1
+    fi
+
+    if ! make -j"$jobs"; then
+        cd "$old_cwd"
+        return 1
+    fi
+
+    if ! make install; then
+        cd "$old_cwd"
+        return 1
+    fi
+
+    cd "$old_cwd"
+    rm -rf "$source_dir"
+}
+
 # Install libzip from source
 install_libzip_from_source() {
     local version="1.10.1"
@@ -936,19 +999,26 @@ install_libzip_from_source() {
     
     # Completely isolate cmake from custom environment
     local old_path="$PATH"
-    local old_ld_library_path="$LD_LIBRARY_PATH"
-    local old_pkg_config_path="$PKG_CONFIG_PATH"
-    local old_ldflags="$LDFLAGS"
-    local old_cppflags="$CPPFLAGS"
+    local old_ld_library_path="${LD_LIBRARY_PATH:-}"
+    local old_pkg_config_path="${PKG_CONFIG_PATH:-}"
+    local old_ldflags="${LDFLAGS:-}"
+    local old_cppflags="${CPPFLAGS:-}"
+
+    # Keep environment narrow but include freshly built toolchain
+    export PATH="$PHPV_DEPS_DIR/bin:/usr/local/bin:/usr/bin:/bin"
+    export LD_LIBRARY_PATH="$PHPV_DEPS_DIR/lib:$PHPV_DEPS_DIR/lib64${old_ld_library_path:+:$old_ld_library_path}"
+    export PKG_CONFIG_PATH="$PHPV_DEPS_DIR/lib/pkgconfig:$PHPV_DEPS_DIR/lib64/pkgconfig"
+    export LDFLAGS="-L$PHPV_DEPS_DIR/lib -L$PHPV_DEPS_DIR/lib64"
+    export CPPFLAGS="-I$PHPV_DEPS_DIR/include"
     
-    # Use only system paths for cmake
-    export PATH="/usr/local/bin:/usr/bin:/bin"
-    unset LD_LIBRARY_PATH
-    unset PKG_CONFIG_PATH
-    unset LDFLAGS
-    unset CPPFLAGS
-    
-    cmake -DCMAKE_INSTALL_PREFIX="$PHPV_DEPS_DIR" ..
+    local cmake_cmd="$PHPV_DEPS_DIR/bin/cmake"
+    if [[ ! -x "$cmake_cmd" ]]; then
+        cmake_cmd="cmake"
+    fi
+
+    "$cmake_cmd" \
+        -DCMAKE_INSTALL_PREFIX="$PHPV_DEPS_DIR" \
+        -DCMAKE_PREFIX_PATH="$PHPV_DEPS_DIR" ..
     local cmake_result=$?
     
     # Restore environment
@@ -964,6 +1034,120 @@ install_libzip_from_source() {
     
     make -j$(nproc)
     make install
+}
+
+install_mariadb_connector_from_source() {
+    local version="3.3.7"
+    local url="https://archive.mariadb.org/connector-c-$version/mariadb-connector-c-$version-src.tar.gz"
+    local cache_file="$PHPV_CACHE_DIR/mariadb-connector-c-$version.tar.gz"
+    local source_dir="$PHPV_CACHE_DIR/mariadb-connector-c-$version-src"
+    local build_dir="$source_dir/build"
+    local old_cwd
+    old_cwd=$(pwd)
+
+    if [[ ! -f "$cache_file" ]]; then
+        safe_download "$url" "$cache_file" || return 1
+    fi
+
+    rm -rf "$source_dir"
+    mkdir -p "$source_dir"
+    tar -xzf "$cache_file" -C "$source_dir" --strip-components=1
+
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+
+    if ! install_cmake_from_source; then
+        cd "$old_cwd"
+        return 1
+    fi
+
+    local cmake_cmd="$PHPV_DEPS_DIR/bin/cmake"
+    if [[ ! -x "$cmake_cmd" ]]; then
+        cmake_cmd="cmake"
+    fi
+
+    local old_path="$PATH"
+    local old_ld_library_path="${LD_LIBRARY_PATH:-}"
+    local old_pkg_config="${PKG_CONFIG_PATH:-}"
+    local old_ldflags="${LDFLAGS:-}"
+    local old_cppflags="${CPPFLAGS:-}"
+
+    export PATH="$PHPV_DEPS_DIR/bin:/usr/local/bin:/usr/bin:/bin"
+    export LD_LIBRARY_PATH="$PHPV_DEPS_DIR/lib:$PHPV_DEPS_DIR/lib64${old_ld_library_path:+:$old_ld_library_path}"
+    export PKG_CONFIG_PATH="$PHPV_DEPS_DIR/lib/pkgconfig:$PHPV_DEPS_DIR/lib64/pkgconfig"
+    export LDFLAGS="-L$PHPV_DEPS_DIR/lib -L$PHPV_DEPS_DIR/lib64"
+    export CPPFLAGS="-I$PHPV_DEPS_DIR/include"
+
+    "$cmake_cmd" .. \
+    -DCMAKE_INSTALL_PREFIX="$PHPV_DEPS_DIR" \
+    -DCMAKE_PREFIX_PATH="$PHPV_DEPS_DIR" \
+        -DWITH_UNIT_TESTS=OFF \
+        -DWITH_SSL=ON \
+        -DOPENSSL_ROOT_DIR="$PHPV_DEPS_DIR" \
+        -DZLIB_ROOT="$PHPV_DEPS_DIR" \
+        -DWITH_EXTERNAL_ZLIB=ON \
+        -DWITH_CURL=OFF \
+        -DCMAKE_POLICY_VERSION=3.5 \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        -DCMAKE_BUILD_TYPE=Release || {
+        export PATH="$old_path"
+        export LD_LIBRARY_PATH="$old_ld_library_path"
+        export PKG_CONFIG_PATH="$old_pkg_config"
+        export LDFLAGS="$old_ldflags"
+        export CPPFLAGS="$old_cppflags"
+        cd "$old_cwd"
+        return 1
+    }
+
+    make -j$(nproc) || {
+        export PATH="$old_path"
+        export LD_LIBRARY_PATH="$old_ld_library_path"
+        export PKG_CONFIG_PATH="$old_pkg_config"
+        export LDFLAGS="$old_ldflags"
+        export CPPFLAGS="$old_cppflags"
+        cd "$old_cwd"
+        return 1
+    }
+
+    make install || {
+        export PATH="$old_path"
+        export LD_LIBRARY_PATH="$old_ld_library_path"
+        export PKG_CONFIG_PATH="$old_pkg_config"
+        export LDFLAGS="$old_ldflags"
+        export CPPFLAGS="$old_cppflags"
+        cd "$old_cwd"
+        return 1
+    }
+
+    export PATH="$old_path"
+    export LD_LIBRARY_PATH="$old_ld_library_path"
+    export PKG_CONFIG_PATH="$old_pkg_config"
+    export LDFLAGS="$old_ldflags"
+    export CPPFLAGS="$old_cppflags"
+
+    if [[ -x "$PHPV_DEPS_DIR/bin/mariadb_config" && ! -e "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
+        cat > "$PHPV_DEPS_DIR/bin/mysql_config" << 'EOF'
+#!/usr/bin/env bash
+exec "$(dirname "$0")/mariadb_config" "$@"
+EOF
+        chmod +x "$PHPV_DEPS_DIR/bin/mysql_config"
+    fi
+
+    local mariadb_lib_dir="$PHPV_DEPS_DIR/lib/mariadb"
+    if [[ -d "$mariadb_lib_dir" ]]; then
+        if [[ -f "$mariadb_lib_dir/libmariadb.so" ]]; then
+            ln -sf "$mariadb_lib_dir/libmariadb.so" "$PHPV_DEPS_DIR/lib/libmysqlclient.so"
+        fi
+        if [[ -f "$mariadb_lib_dir/libmariadb.so.3" ]]; then
+            ln -sf "$mariadb_lib_dir/libmariadb.so.3" "$PHPV_DEPS_DIR/lib/libmysqlclient.so.18"
+        fi
+        if [[ -f "$mariadb_lib_dir/libmariadb.a" ]]; then
+            ln -sf "$mariadb_lib_dir/libmariadb.a" "$PHPV_DEPS_DIR/lib/libmysqlclient.a"
+        fi
+    fi
+
+    cd "$old_cwd"
 }
 
 # Get installed versions
@@ -1365,10 +1549,19 @@ install_php_version() {
         log_info "Installing curl from source..."
         install_curl_from_source || return 1
     fi
+
+    install_cmake_from_source || return 1
+
     if [[ ! -f "$PHPV_DEPS_DIR/lib/libzip.so" ]]; then
         log_info "Installing libzip from source..."
         install_libzip_from_source || return 1
     fi
+    if [[ ! -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
+        log_info "Installing MariaDB Connector/C from source..."
+        install_mariadb_connector_from_source || return 1
+    fi
+
+    prepend_path "$PHPV_DEPS_DIR/bin"
     
     # Download PHP source if not cached
     if [[ ! -f "$cache_file" ]]; then
@@ -1609,12 +1802,16 @@ uninstall_php_version() {
     fi
     
     log_info "Uninstalling PHP $version..."
-    rm -rf "$PHPV_VERSIONS_DIR/$version"
-    local version_deps_dir
     local llvm_version_file="$PHPV_VERSIONS_DIR/$version/.llvm_version"
+    local llvm_version=""
     if [[ -f "$llvm_version_file" ]]; then
-        local llvm_version
-        llvm_version=$(cat "$llvm_version_file")
+        llvm_version=$(cat "$llvm_version_file" 2>/dev/null || true)
+    fi
+
+    rm -rf "$PHPV_VERSIONS_DIR/$version"
+
+    if [[ -n "$llvm_version" ]]; then
+        local version_deps_dir
         if version_deps_dir=$(get_deps_dir_for_version "$version" "$llvm_version"); then
             if [[ -d "$version_deps_dir" ]]; then
                 log_info "Removing isolated dependencies for PHP $version..."

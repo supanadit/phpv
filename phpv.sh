@@ -12,6 +12,7 @@ PHPV_VERSIONS_DIR="$PHPV_ROOT/versions"
 PHPV_CACHE_DIR="$PHPV_ROOT/cache"
 PHPV_CURRENT_FILE="$PHPV_ROOT/version"
 PHPV_DEPS_DIR="$PHPV_ROOT/deps"
+PHPV_DEPS_BASE_DIR="$PHPV_DEPS_DIR"
 PHPV_LLVM_VERSION="${PHPV_LLVM_VERSION:-17.0.6}"
 PHPV_DEFAULT_VERSION="system"
 
@@ -108,6 +109,15 @@ init_phpv() {
     if [[ ! -f "$PHPV_CURRENT_FILE" ]]; then
         echo "$PHPV_DEFAULT_VERSION" > "$PHPV_CURRENT_FILE"
     fi
+}
+
+get_deps_dir_for_version() {
+    local version="$1"
+    if [[ -z "$version" || "$version" == "system" ]]; then
+        return 1
+    fi
+
+    printf '%s\n' "$PHPV_DEPS_BASE_DIR/$version"
 }
 
 # Get current PHP version
@@ -1264,6 +1274,17 @@ install_php_version() {
         log_warning "PHP $version is already installed"
         return 0
     fi
+
+    local version_deps_dir
+    version_deps_dir=$(get_deps_dir_for_version "$version") || {
+        log_error "Failed to resolve dependency directory for $version"
+        return 1
+    }
+
+    local PHPV_DEPS_DIR="$version_deps_dir"
+    mkdir -p "$PHPV_DEPS_DIR"
+    mkdir -p "$PHPV_DEPS_DIR/lib" "$PHPV_DEPS_DIR/lib64" "$PHPV_DEPS_DIR/include"
+    log_info "Using isolated dependency prefix at $PHPV_DEPS_DIR"
     
     log_info "Installing PHP $version..."
 
@@ -1584,6 +1605,13 @@ uninstall_php_version() {
     
     log_info "Uninstalling PHP $version..."
     rm -rf "$PHPV_VERSIONS_DIR/$version"
+    local version_deps_dir
+    if version_deps_dir=$(get_deps_dir_for_version "$version"); then
+        if [[ -d "$version_deps_dir" ]]; then
+            log_info "Removing isolated dependencies for PHP $version..."
+            rm -rf "$version_deps_dir"
+        fi
+    fi
     log_success "PHP $version uninstalled"
 }
 
@@ -1612,6 +1640,29 @@ exec_php() {
     if [[ -z "$php_path" ]]; then
         log_error "PHP is not available"
         return 1
+    fi
+
+    local current_version
+    current_version=$(get_current_version)
+    if [[ -n "$current_version" && "$current_version" != "system" ]]; then
+        local deps_dir
+        if deps_dir=$(get_deps_dir_for_version "$current_version"); then
+            local -a lib_paths=()
+            [[ -d "$deps_dir/lib" ]] && lib_paths+=("$deps_dir/lib")
+            [[ -d "$deps_dir/lib64" ]] && lib_paths+=("$deps_dir/lib64")
+
+            if (( ${#lib_paths[@]} > 0 )); then
+                local joined
+                local IFS=':'
+                joined="${lib_paths[*]}"
+
+                if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
+                    export LD_LIBRARY_PATH="$joined:$LD_LIBRARY_PATH"
+                else
+                    export LD_LIBRARY_PATH="$joined"
+                fi
+            fi
+        fi
     fi
     
     exec "$php_path" "$@"

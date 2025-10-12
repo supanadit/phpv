@@ -1355,3 +1355,910 @@ install_mysql_legacy_connector_from_source() {
 
     return 1
 }
+
+install_mysql_legacy_from_source() {
+    local version="$1"
+    local url="https://downloads.mysql.com/archives/mysql-${version}.tar.gz"
+    local cache_file="$PHPV_CACHE_DIR/mysql-${version}.tar.gz"
+    local source_dir="$PHPV_CACHE_DIR/mysql-${version}-src"
+    local build_dir="$source_dir/build"
+    local old_cwd
+    old_cwd=$(pwd)
+
+    if [[ ! -f "$cache_file" ]]; then
+        safe_download "$url" "$cache_file" || return 1
+    fi
+
+    rm -rf "$source_dir"
+    mkdir -p "$source_dir"
+    tar -xzf "$cache_file" -C "$source_dir" --strip-components=1
+
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+
+    # Configure with minimal options for client library only
+    ../configure \
+        --prefix="$PHPV_DEPS_DIR" \
+        --without-server \
+        --without-docs \
+        --without-man \
+        --without-bench \
+        --enable-thread-safe-client \
+        --with-openssl="$PHPV_DEPS_DIR" \
+        --with-zlib-dir="$PHPV_DEPS_DIR" \
+        --enable-shared \
+        --disable-static \
+        CFLAGS="-Wno-implicit-int -Wno-implicit-function-declaration" || {
+        cd "$old_cwd"
+        return 1
+    }
+
+    make -j$(nproc) || {
+        cd "$old_cwd"
+        return 1
+    }
+
+    make install || {
+        cd "$old_cwd"
+        return 1
+    }
+
+    cd "$old_cwd"
+
+    if [[ -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
+        normalize_mysql_config "$PHPV_DEPS_DIR/bin/mysql_config"
+    else
+        log_error "mysql_config not found after installing MySQL $version"
+        return 1
+    fi
+}
+
+ensure_mysql_client_for_php() {
+    local php_version="$1"
+
+    if [[ "$php_version" == 5.* ]]; then
+        local required_version="6.1.11"
+        local current_version=""
+        if [[ -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
+            current_version="$($PHPV_DEPS_DIR/bin/mysql_config --version 2>/dev/null || true)"
+        fi
+        if [[ "$current_version" != ${required_version}* ]]; then
+            log_info "Installing MySQL Connector/C $required_version for PHP $php_version compatibility..."
+            install_mysql_legacy_connector_from_source || return 1
+        fi
+        normalize_mysql_config "$PHPV_DEPS_DIR/bin/mysql_config"
+    else
+        local required_version="3.3.7"
+        local current_version=""
+        if [[ -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
+            current_version="$($PHPV_DEPS_DIR/bin/mysql_config --version 2>/dev/null || true)"
+        fi
+        if [[ "$current_version" != ${required_version}* ]]; then
+            log_info "Installing MariaDB Connector/C $required_version..."
+            install_mariadb_connector_from_source || return 1
+        fi
+    fi
+}
+
+# Get installed versions
+get_installed_versions() {
+    echo "system"
+    if [[ -d "$PHPV_VERSIONS_DIR" ]]; then
+        find "$PHPV_VERSIONS_DIR" -maxdepth 1 -type d -exec basename {} \; | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V
+    fi
+}
+
+resolve_llvm_asset_url() {
+    local version="$1"
+    local machine="$2"
+    local target_suffix="$3"
+
+    local api_url="https://api.github.com/repos/llvm/llvm-project/releases/tags/llvmorg-${version}"
+    local release_json
+
+    if command -v curl &> /dev/null; then
+        if ! release_json=$(curl -fsSL "$api_url"); then
+            return 1
+        fi
+    elif command -v wget &> /dev/null; then
+        if ! release_json=$(wget -qO- "$api_url"); then
+            return 1
+        fi
+    else
+        return 1
+    fi
+
+    if [[ "$release_json" == *"API rate limit exceeded"* ]]; then
+        log_warning "GitHub API rate limit exceeded while fetching LLVM $version metadata"
+        return 1
+    fi
+
+    local urls
+    urls=$(echo "$release_json" | grep -o '"browser_download_url": *"[^\"]*"' | sed -E 's/.*"browser_download_url": *"([^\"]*)"/\1/' | sed 's/%2B/+/g')
+
+    if [[ -z "$urls" ]]; then
+        return 1
+    fi
+
+    local arch_patterns=()
+    case "$machine" in
+        x86_64)
+            arch_patterns=("x86_64" "x86-64" "amd64")
+            ;;
+        aarch64|arm64)
+            arch_patterns=("aarch64" "arm64")
+            ;;
+        ppc64le)
+            arch_patterns=("ppc64le")
+            ;;
+        *)
+            arch_patterns=("$machine")
+            ;;
+    esac
+
+    local chosen=""
+    while IFS= read -r url; do
+        [[ -z "$url" ]] && continue
+        [[ "$url" != *"clang+llvm-${version}"* ]] && continue
+        [[ "$url" != *.tar.xz ]] && continue
+
+        if [[ -n "$target_suffix" ]]; then
+            if [[ "$url" == *"clang+llvm-${version}-${target_suffix}.tar.xz" ]]; then
+                chosen="$url"
+                break
+            fi
+            continue
+        fi
+
+        local matched=0
+        for pattern in "${arch_patterns[@]}"; do
+            if [[ "$url" == *"$pattern"* ]]; then
+                matched=1
+                break
+            fi
+        done
+        [[ $matched -eq 0 ]] && continue
+        [[ "$url" != *linux* ]] && continue
+        chosen="$url"
+        break
+    done <<< "$urls"
+
+    if [[ -z "$chosen" ]]; then
+        return 1
+    fi
+
+    printf '%s\n' "$chosen"
+}
+
+# Install LLVM/Clang toolchain without relying on system packages
+install_llvm_toolchain() {
+    local requested_version="${1:-$PHPV_LLVM_VERSION}"
+    local machine
+    machine=$(uname -m)
+    local os
+    os=$(uname -s)
+
+    if [[ "$os" != "Linux" ]]; then
+        log_error "Automatic LLVM installation currently supports Linux only"
+        return 1
+    fi
+
+    local install_dir
+    local selected_version=""
+    local asset_url="${PHPV_LLVM_ARCHIVE_URL:-}"
+
+    local candidates=()
+    append_unique candidates "$requested_version"
+
+    if [[ -z "$PHPV_LLVM_ARCHIVE_URL" ]]; then
+        if [[ "$requested_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            local requested_major="${BASH_REMATCH[1]}"
+            local requested_minor="${BASH_REMATCH[2]}"
+            local requested_patch="${BASH_REMATCH[3]}"
+
+            local patch_candidate=$((requested_patch - 1))
+            while (( patch_candidate >= 0 )); do
+                append_unique candidates "${requested_major}.${requested_minor}.${patch_candidate}"
+                ((patch_candidate--))
+            done
+        fi
+
+        local fallback_versions=("17.0.6" "17.0.5" "16.0.6" "16.0.0" "15.0.7")
+        for v in "${fallback_versions[@]}"; do
+            append_unique candidates "$v"
+        done
+    fi
+
+    for candidate_version in "${candidates[@]}"; do
+        install_dir="$PHPV_DEPS_DIR/llvm-$candidate_version"
+        if [[ -x "$install_dir/bin/clang" ]]; then
+            selected_version="$candidate_version"
+            asset_url=""
+            break
+        fi
+
+        if [[ -n "$PHPV_LLVM_ARCHIVE_URL" && "$candidate_version" != "$requested_version" ]]; then
+            continue
+        fi
+
+        local resolved_url
+        if [[ -n "$PHPV_LLVM_ARCHIVE_URL" ]]; then
+            resolved_url="$PHPV_LLVM_ARCHIVE_URL"
+        else
+            if ! resolved_url=$(resolve_llvm_asset_url "$candidate_version" "$machine" "$PHPV_LLVM_TARGET_SUFFIX"); then
+                log_warning "No compatible LLVM archive found for $candidate_version ($machine)"
+                continue
+            fi
+        fi
+
+        selected_version="$candidate_version"
+        asset_url="$resolved_url"
+        break
+    done
+
+    if [[ -z "$selected_version" ]]; then
+        log_error "Could not locate a suitable LLVM archive. Set PHPV_LLVM_ARCHIVE_URL to a downloadable asset."
+        return 1
+    fi
+
+    install_dir="$PHPV_DEPS_DIR/llvm-$selected_version"
+
+    if [[ -z "$asset_url" ]]; then
+        if [[ "$selected_version" != "$requested_version" ]]; then
+            log_warning "Using LLVM $selected_version because binaries for $requested_version were not found."
+        fi
+        PHPV_ACTIVE_LLVM_VERSION="$selected_version"
+        if [[ "$selected_version" != "$requested_version" ]]; then
+            log_info "Using existing LLVM $selected_version installation"
+        fi
+        return 0
+    fi
+
+    if [[ "$selected_version" != "$requested_version" ]]; then
+        log_warning "Falling back to LLVM $selected_version because binaries for $requested_version were not found."
+    fi
+
+    log_info "Installing LLVM/Clang $selected_version..."
+
+    local archive
+    archive="${asset_url##*/}"
+    local cache_file="$PHPV_CACHE_DIR/$archive"
+    log_info "Selected LLVM asset: $archive"
+
+    if [[ ! -f "$cache_file" ]]; then
+        log_info "Downloading $archive"
+        if command -v curl &> /dev/null; then
+            if ! curl -fsSL "$asset_url" -o "$cache_file"; then
+                rm -f "$cache_file"
+                log_error "Failed to download LLVM from $asset_url"
+                return 1
+            fi
+        else
+            if ! wget -q "$asset_url" -O "$cache_file"; then
+                rm -f "$cache_file"
+                log_error "Failed to download LLVM from $asset_url"
+                return 1
+            fi
+        fi
+    fi
+
+    local extract_dir="$PHPV_CACHE_DIR/llvm-$selected_version-extract"
+    rm -rf "$extract_dir"
+    mkdir -p "$extract_dir"
+    if ! tar -xJf "$cache_file" -C "$extract_dir"; then
+        rm -rf "$extract_dir"
+        rm -f "$cache_file"
+        log_error "Failed to unpack LLVM archive"
+        return 1
+    fi
+
+    local unpacked
+    unpacked=$(find "$extract_dir" -maxdepth 1 -mindepth 1 -type d -name "clang+llvm-${selected_version}*" | head -n1)
+    if [[ -z "$unpacked" ]]; then
+        log_error "Failed to locate LLVM directory after extraction"
+        return 1
+    fi
+
+    rm -rf "$install_dir"
+    mv "$unpacked" "$install_dir"
+    rm -rf "$extract_dir"
+    PHPV_ACTIVE_LLVM_VERSION="$selected_version"
+}
+
+ensure_llvm_toolchain() {
+    local requested_version="${1:-$PHPV_LLVM_VERSION}"
+
+    install_llvm_toolchain "$requested_version" || return 1
+
+    local active_version="${PHPV_ACTIVE_LLVM_VERSION:-$requested_version}"
+    local llvm_dir="$PHPV_DEPS_DIR/llvm-$active_version"
+    local clang_path="$llvm_dir/bin/clang"
+    local clangxx_path="$llvm_dir/bin/clang++"
+
+    if [[ ! -x "$clang_path" || ! -x "$clangxx_path" ]]; then
+        log_error "LLVM toolchain installation failed"
+        return 1
+    fi
+
+    prepend_path "$llvm_dir/bin"
+    export CC="$clang_path"
+    export CXX="$clangxx_path"
+    export AR="$llvm_dir/bin/llvm-ar"
+    export NM="$llvm_dir/bin/llvm-nm"
+    export RANLIB="$llvm_dir/bin/llvm-ranlib"
+    export LLVM_HOME="$llvm_dir"
+}
+
+# Download and compile PHP
+resolve_latest_version() {
+    local input_version="$1"
+    
+    if [[ -z "$input_version" ]]; then
+        return 1
+    fi
+    
+    # If it's already a full version (x.y.z), return as-is
+    if [[ "$input_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "$input_version"
+        return 0
+    fi
+    
+    # Build filter pattern
+    local filter_pattern="$input_version"
+    if [[ "$filter_pattern" != *"." ]]; then
+        filter_pattern="$filter_pattern."
+    fi
+    
+    # Get matching versions and find the latest one
+    local latest_version
+    latest_version=$(get_available_versions | grep "^$filter_pattern" | sort -V | tail -n1)
+    
+    if [[ -z "$latest_version" ]]; then
+        return 1
+    fi
+    
+    echo "$latest_version"
+}
+
+install_php_version() {
+    local input_version="$1"
+    
+    if [[ -z "$input_version" ]]; then
+        log_error "Please specify a version to install"
+        return 1
+    fi
+    
+    # Resolve the actual version to install
+    local version
+    version=$(resolve_latest_version "$input_version")
+    
+    if [[ -z "$version" ]]; then
+        log_error "No available version found matching '$input_version'"
+        return 1
+    fi
+    
+    # If we resolved to a different version, inform the user
+    if [[ "$version" != "$input_version" ]]; then
+        log_info "Installing latest version $version (matched from '$input_version')"
+    fi
+    
+    local install_dir="$PHPV_VERSIONS_DIR/$version"
+    local cache_file="$PHPV_CACHE_DIR/php-$version.tar.gz"
+
+    if is_version_installed "$version"; then
+        log_warning "PHP $version is already installed"
+        return 0
+    fi
+
+    local resolved_llvm
+    resolved_llvm=$(resolve_llvm_version_for_php "$version")
+    [[ -z "$resolved_llvm" ]] && resolved_llvm="$PHPV_LLVM_VERSION"
+
+    local version_deps_dir
+    version_deps_dir=$(get_deps_dir_for_version "$version" "$resolved_llvm") || {
+        log_error "Failed to resolve dependency directory for $version with LLVM $resolved_llvm"
+        return 1
+    }
+
+    local PHPV_DEPS_DIR="$version_deps_dir"
+    mkdir -p "$PHPV_DEPS_DIR"
+    mkdir -p "$PHPV_DEPS_DIR/lib" "$PHPV_DEPS_DIR/lib64" "$PHPV_DEPS_DIR/include"
+    log_info "Using isolated dependency prefix at $PHPV_DEPS_DIR"
+
+    # Save LLVM version for this PHP installation
+    mkdir -p "$install_dir"
+    echo "$resolved_llvm" > "$install_dir/.llvm_version"
+
+    log_info "Installing PHP $version..."
+
+    if [[ -n "$resolved_llvm" && "$resolved_llvm" != "$PHPV_LLVM_VERSION" ]]; then
+        log_info "Using LLVM $resolved_llvm for PHP $version"
+    fi
+
+    ensure_llvm_toolchain "$resolved_llvm" || return 1
+
+    local active_llvm="${PHPV_ACTIVE_LLVM_VERSION:-$resolved_llvm}"
+    if [[ "$active_llvm" != "$resolved_llvm" ]]; then
+        log_warning "LLVM $resolved_llvm was requested but using $active_llvm due to availability"
+    fi
+
+    if ! command -v make &> /dev/null; then
+        log_error "GNU make is required but not installed"
+        log_info "Install make from source: https://ftp.gnu.org/gnu/make/"
+        return 1
+    fi
+    
+    # Set environment for custom dependencies (support both lib and lib64)
+    export PKG_CONFIG_PATH="$PHPV_DEPS_DIR/lib/pkgconfig:$PHPV_DEPS_DIR/lib64/pkgconfig:$PKG_CONFIG_PATH"
+    export LDFLAGS="-L$PHPV_DEPS_DIR/lib -L$PHPV_DEPS_DIR/lib64 $LDFLAGS"
+    export CPPFLAGS="-I$PHPV_DEPS_DIR/include $CPPFLAGS"
+    export LD_LIBRARY_PATH="$PHPV_DEPS_DIR/lib:$PHPV_DEPS_DIR/lib64:$LD_LIBRARY_PATH"
+    
+    # For PHP 5.x, DSA_get_default_method is in libcrypto, not libssl
+    # Add libcrypto to LDFLAGS to make the function available during configure checks
+    if [[ "$version" == 5.* ]]; then
+        export LDFLAGS="-lssl -lcrypto $LDFLAGS"
+        export CFLAGS="-Wno-implicit-int -Wno-implicit-function-declaration $CFLAGS"
+        export CXXFLAGS="-Wno-register $CXXFLAGS"
+        export CPPFLAGS="-DHAVE_STDARG_PROTOTYPES=1 $CPPFLAGS"
+    fi
+    
+    # Install required dependencies from source if not present
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libz.so" ]]; then
+        log_info "Installing zlib from source..."
+        install_zlib_from_source || return 1
+    fi
+    if [[ ! -f "$PHPV_DEPS_DIR/lib64/libssl.so" ]] && [[ ! -f "$PHPV_DEPS_DIR/lib/libssl.so" ]]; then
+        log_info "Installing OpenSSL from source..."
+        install_openssl_from_source "$version" || return 1
+    fi
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libxml2.so" ]]; then
+        log_info "Installing libxml2 from source..."
+        install_libxml2_from_source || return 1
+    fi
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libonig.so" ]]; then
+        log_info "Installing oniguruma from source..."
+        install_oniguruma_from_source "$version" || return 1
+    fi
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libpng.so" ]]; then
+        log_info "Installing libpng from source..."
+        install_libpng_from_source || return 1
+    fi
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libjpeg.so" ]]; then
+        log_info "Installing libjpeg from source..."
+        install_libjpeg_from_source || return 1
+    fi
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libfreetype.so" ]]; then
+        log_info "Installing freetype from source..."
+        install_freetype_from_source || return 1
+    fi
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libicuuc.so" ]] && [[ "$version" != 5.* ]]; then
+        log_info "Installing ICU from source..."
+        install_icu_from_source "$version" || return 1
+    fi
+    local curl_required
+    if [[ "$version" == 5.* ]]; then
+        curl_required="7.14.0"
+    else
+        curl_required="8.5.0"
+    fi
+    local curl_current=""
+    if [[ -x "$PHPV_DEPS_DIR/bin/curl-config" ]]; then
+        curl_current="$($PHPV_DEPS_DIR/bin/curl-config --version 2>/dev/null | awk '{print $2}' || true)"
+    fi
+    if [[ "$curl_current" != "$curl_required" ]]; then
+        log_info "Installing curl $curl_required from source..."
+        install_curl_from_source "$version" || return 1
+    fi
+
+    install_cmake_from_source || return 1
+
+    if [[ ! -f "$PHPV_DEPS_DIR/lib/libzip.so" ]]; then
+        log_info "Installing libzip from source..."
+        install_libzip_from_source || return 1
+    fi
+    ensure_mysql_client_for_php "$version" || return 1
+
+    prepend_path "$PHPV_DEPS_DIR/bin"
+    
+    # Download PHP source if not cached
+    if [[ ! -f "$cache_file" ]]; then
+        log_info "Downloading PHP $version source..."
+        local download_url
+        if [[ "$version" =~ ^4\. ]]; then
+            download_url="https://museum.php.net/php4/php-$version.tar.gz"
+        elif [[ "$version" =~ ^5\.[0-2]\. ]]; then
+            download_url="https://museum.php.net/php5/php-$version.tar.gz"
+        else
+            download_url="https://www.php.net/distributions/php-$version.tar.gz"
+        fi
+        safe_download "$download_url" "$cache_file" || return 1
+    fi
+    
+    # Extract and build
+    local build_dir="$PHPV_CACHE_DIR/php-$version-build"
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    
+    log_info "Extracting PHP $version..."
+    tar -xzf "$cache_file" -C "$build_dir" --strip-components=1
+    
+    cd "$build_dir"
+    
+    log_info "Configuring PHP $version..."
+    
+    # Build configure flags based on PHP version
+    local configure_flags=(
+        --prefix="$install_dir"
+        --enable-cli
+        --enable-cgi
+        --enable-fpm
+        --with-config-file-path="$install_dir/etc"
+        --with-config-file-scan-dir="$install_dir/etc/conf.d"
+        --enable-mbstring
+        --enable-opcache
+        --with-libxml-dir="$PHPV_DEPS_DIR"
+        --with-onig="$PHPV_DEPS_DIR"
+        --with-libzip="$PHPV_DEPS_DIR"
+        --enable-bcmath
+        --enable-calendar
+        --enable-exif
+        --enable-ftp
+        --with-curl="$PHPV_DEPS_DIR"
+        --enable-gd
+        --with-png-dir="$PHPV_DEPS_DIR"
+        --with-jpeg-dir="$PHPV_DEPS_DIR"
+        --with-freetype-dir="$PHPV_DEPS_DIR"
+        --enable-soap
+        --enable-sockets
+        --with-mysqli
+        --with-pdo-mysql
+        --enable-pcntl
+        --enable-shmop
+        --enable-sysvmsg
+        --enable-sysvsem
+        --enable-sysvshm
+    )
+    # Add version-specific flags
+    if [[ "$version" =~ ^(8\.|9\.) ]]; then
+        configure_flags+=(--with-openssl="$PHPV_DEPS_DIR")
+        configure_flags+=(--with-zlib="$PHPV_DEPS_DIR")
+    fi
+    
+    if [[ "$version" == 5.* ]]; then
+        # For PHP 5.x: disable DOM extension and intl extension
+        configure_flags+=(--disable-dom)
+        configure_flags+=(--disable-intl)
+    fi
+    
+    # Basic configuration - can be customized
+    if ! ./configure "${configure_flags[@]}"; then
+        log_error "Configuration failed. You may need to install development packages:"
+        log_info "Ubuntu/Debian: sudo apt-get install libxml2-dev libssl-dev libcurl4-openssl-dev libonig-dev libzip-dev"
+        log_info "CentOS/RHEL: sudo yum install libxml2-devel openssl-devel curl-devel oniguruma-devel libzip-devel"
+        return 1
+    fi
+    
+    log_info "Building PHP $version (this may take a while)..."
+    if ! make -j"$(nproc)"; then
+        log_error "Build failed"
+        return 1
+    fi
+    
+    log_info "Installing PHP $version..."
+    make install
+    
+    # Create basic php.ini
+    mkdir -p "$install_dir/etc/conf.d"
+    
+    # Find the actual extension directory (future-proof approach)
+    local ext_dir
+    if [[ -d "$install_dir/lib/php/extensions" ]]; then
+        ext_dir=$(find "$install_dir/lib/php/extensions" -maxdepth 1 -type d -name "no-debug-non-zts-*" | head -n1)
+        if [[ -z "$ext_dir" ]]; then
+            # Fallback to default if no directory found
+            ext_dir="$install_dir/lib/php/extensions"
+        fi
+    else
+        # Fallback if extensions directory doesn't exist
+        ext_dir="$install_dir/lib/php/extensions"
+    fi
+    
+    cat > "$install_dir/etc/php.ini" << EOF
+; Basic PHP configuration
+memory_limit = 256M
+max_execution_time = 30
+upload_max_filesize = 64M
+post_max_size = 64M
+date.timezone = UTC
+
+; Extensions
+extension_dir = "$ext_dir"
+
+; OPcache
+zend_extension=opcache
+opcache.enable=1
+opcache.memory_consumption=128
+opcache.interned_strings_buffer=8
+opcache.max_accelerated_files=4000
+opcache.revalidate_freq=2
+opcache.fast_shutdown=1
+EOF
+    
+    # Clean up build directory
+    rm -rf "$build_dir"
+    
+    log_success "PHP $version installed successfully"
+}
+
+# Switch to a specific PHP version
+use_php_version() {
+    local version="$1"
+    
+    if [[ -z "$version" ]]; then
+        log_error "Please specify a version"
+        return 1
+    fi
+    
+    if ! is_version_installed "$version"; then
+        log_error "PHP $version is not installed"
+        log_info "Available versions:"
+        get_installed_versions | sed 's/^/  /'
+        return 1
+    fi
+    
+    set_current_version "$version"
+    log_success "Now using PHP $version"
+    
+    # Show current PHP version
+    show_current_version
+}
+
+# Show current PHP version
+show_current_version() {
+    local current_version
+    current_version=$(get_current_version)
+    
+    if [[ "$current_version" == "system" ]]; then
+        if command -v php &> /dev/null; then
+            local system_version
+            system_version=$(php -v | head -n1 | cut -d' ' -f2)
+            echo "Current: system (PHP $system_version)"
+        else
+            echo "Current: system (PHP not found in PATH)"
+        fi
+    else
+        local php_path="$PHPV_VERSIONS_DIR/$current_version/bin/php"
+        if [[ -x "$php_path" ]]; then
+            local version_info
+            version_info=$("$php_path" -v | head -n1)
+            echo "Current: $current_version ($version_info)"
+        else
+            echo "Current: $current_version (invalid installation)"
+        fi
+    fi
+}
+
+# List all versions
+list_versions() {
+    local current_version
+    current_version=$(get_current_version)
+    
+    echo "Installed versions:"
+    while IFS= read -r version; do
+        if [[ "$version" == "$current_version" ]]; then
+            echo -e "  ${GREEN}* $version${NC}"
+        else
+            echo "    $version"
+        fi
+    done < <(get_installed_versions)
+}
+
+# List available versions for download
+list_available() {
+    local filter="${1:-}"
+    echo "Available versions for download:"
+    if [[ -z "$filter" ]]; then
+        get_available_versions | sed 's/^/  /'
+    else
+        # Add dot to filter if it doesn't end with one
+        local filter_pattern="$filter"
+        if [[ "$filter_pattern" != *"." ]]; then
+            filter_pattern="$filter_pattern."
+        fi
+        get_available_versions | grep "^$filter_pattern" | sed 's/^/  /'
+    fi
+}
+
+# Uninstall a PHP version
+uninstall_php_version() {
+    local version="$1"
+    
+    if [[ -z "$version" ]]; then
+        log_error "Please specify a version to uninstall"
+        return 1
+    fi
+    
+    if [[ "$version" == "system" ]]; then
+        log_error "Cannot uninstall system PHP"
+        return 1
+    fi
+    
+    if ! is_version_installed "$version"; then
+        log_error "PHP $version is not installed"
+        return 1
+    fi
+    
+    local current_version
+    current_version=$(get_current_version)
+    
+    if [[ "$version" == "$current_version" ]]; then
+        log_warning "Currently using PHP $version, switching to system"
+        use_php_version "system"
+    fi
+    
+    log_info "Uninstalling PHP $version..."
+    local llvm_version_file="$PHPV_VERSIONS_DIR/$version/.llvm_version"
+    local llvm_version=""
+    if [[ -f "$llvm_version_file" ]]; then
+        llvm_version=$(cat "$llvm_version_file" 2>/dev/null || true)
+    fi
+
+    rm -rf "$PHPV_VERSIONS_DIR/$version"
+
+    if [[ -n "$llvm_version" ]]; then
+        local version_deps_dir
+        if version_deps_dir=$(get_deps_dir_for_version "$version" "$llvm_version"); then
+            if [[ -d "$version_deps_dir" ]]; then
+                log_info "Removing isolated dependencies for PHP $version..."
+                rm -rf "$version_deps_dir"
+            fi
+        fi
+    fi
+    log_success "PHP $version uninstalled"
+}
+# Get PHP binary path
+get_php_path() {
+    local current_version
+    current_version=$(get_current_version)
+    
+    if [[ "$current_version" == "system" ]]; then
+        command -v php 2>/dev/null || echo ""
+    else
+        local php_path="$PHPV_VERSIONS_DIR/$current_version/bin/php"
+        if [[ -x "$php_path" ]]; then
+            echo "$php_path"
+        else
+            echo ""
+        fi
+    fi
+}
+
+# Execute PHP with current version
+exec_php() {
+    local php_path
+    php_path=$(get_php_path)
+    
+    if [[ -z "$php_path" ]]; then
+        log_error "PHP is not available"
+        return 1
+    fi
+
+    local current_version
+    current_version=$(get_current_version)
+    if [[ -n "$current_version" && "$current_version" != "system" ]]; then
+        local llvm_version_file="$PHPV_VERSIONS_DIR/$current_version/.llvm_version"
+        if [[ -f "$llvm_version_file" ]]; then
+            local llvm_version
+            llvm_version=$(cat "$llvm_version_file")
+            local deps_dir
+            if deps_dir=$(get_deps_dir_for_version "$current_version" "$llvm_version"); then
+                local -a lib_paths=()
+                [[ -d "$deps_dir/lib" ]] && lib_paths+=("$deps_dir/lib")
+                [[ -d "$deps_dir/lib64" ]] && lib_paths+=("$deps_dir/lib64")
+
+                if (( ${#lib_paths[@]} > 0 )); then
+                    local joined
+                    local IFS=':'
+                    joined="${lib_paths[*]}"
+
+                    if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
+                        export LD_LIBRARY_PATH="$joined:$LD_LIBRARY_PATH"
+                    else
+                        export LD_LIBRARY_PATH="$joined"
+                    fi
+                fi
+            fi
+        fi
+    fi
+    
+    exec "$php_path" "$@"
+}
+
+# Show help
+show_help() {
+    cat << 'EOF'
+PHPV - PHP Version Manager
+
+USAGE:
+    phpv <command> [arguments]
+
+COMMANDS:
+    install <version>           Install a specific PHP version (supports partial versions: e.g., 8, 8.3)
+    uninstall <version>         Uninstall a specific PHP version
+    use <version>               Switch to a specific PHP version
+    current                     Show the current PHP version
+    list                        List installed PHP versions
+    list-available [filter]     List available PHP versions for download (optional filter: e.g., 8, 8.3)
+    exec <command>              Execute command with current PHP version
+    which                       Show path to current PHP binary
+    help                        Show this help message
+
+EXAMPLES:
+    phpv install 8.3.12         # Install PHP 8.3.12
+    phpv install 8.3            # Install latest 8.3.x version (8.3.12)
+    phpv install 8              # Install latest 8.x.x version
+    phpv use 8.3.12             # Switch to PHP 8.3.12
+    phpv use system             # Switch to system PHP
+    phpv current                # Show current version
+    phpv list                   # List installed versions
+    phpv list-available         # List all available versions
+    phpv list-available 8       # List only 8.x versions
+    phpv list-available 8.3     # List only 8.3.x versions
+    phpv exec -v                # Run 'php -v' with current version
+    phpv which                  # Show current PHP binary path
+
+ENVIRONMENT VARIABLES:
+    PHPV_ROOT    Root directory for phpv (default: ~/.phpv)
+EOF
+}
+
+# Main command dispatcher
+main() {
+    init_phpv
+    
+    local command="${1:-help}"
+    shift || true
+    
+    case "$command" in
+        "install")
+            install_php_version "$1"
+            ;;
+        "uninstall")
+            uninstall_php_version "$1"
+            ;;
+        "use")
+            use_php_version "$1"
+            ;;
+        "current")
+            show_current_version
+            ;;
+        "list")
+            list_versions
+            ;;
+        "list-available")
+            list_available "$@"
+            ;;
+        "exec")
+            exec_php "$@"
+            ;;
+        "which")
+            get_php_path
+            ;;
+        "help"|"--help"|"-h")
+            show_help
+            ;;
+        *)
+            log_error "Unknown command: $command"
+            echo
+            show_help
+            exit 1
+            ;;
+    esac
+}
+
+# Run main function if script is executed directly
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

@@ -67,57 +67,55 @@ get_shell_config() {
 
 # Download PHPV
 download_phpv() {
-    log_info "Downloading PHPV..."
+    log_info "Setting up PHPV..."
 
     mkdir -p "$PHPV_DIR/bin"
 
-    # Download phpv.sh from GitHub
-    if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$PHPV_REPO_URL/phpv.sh" -o "$PHPV_SCRIPT"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -q "$PHPV_REPO_URL/phpv.sh" -O "$PHPV_SCRIPT"
+    # For development/testing, copy local files instead of downloading
+    if [[ -f "./phpv.sh" ]]; then
+        cp "./phpv.sh" "$PHPV_SCRIPT"
+        log_success "Copied local PHPV script to $PHPV_SCRIPT"
     else
-        log_error "Neither curl nor wget found. Please install one of them."
-        exit 1
+        # Production: download from GitHub
+        if command -v curl >/dev/null 2>&1; then
+            curl -fsSL "$PHPV_REPO_URL/phpv.sh" -o "$PHPV_SCRIPT"
+        elif command -v wget >/dev/null 2>&1; then
+            wget -q "$PHPV_REPO_URL/phpv.sh" -O "$PHPV_SCRIPT"
+        else
+            log_error "Neither curl nor wget found. Please install one of them."
+            exit 1
+        fi
+        log_success "Downloaded PHPV to $PHPV_SCRIPT"
     fi
 
     chmod +x "$PHPV_SCRIPT"
-    log_success "Downloaded PHPV to $PHPV_SCRIPT"
 }
 
 # Create phpv init script
 create_init_script() {
     local init_script="$PHPV_DIR/init.sh"
 
-    cat > "$init_script" << EOF
-#!/usr/bin/env bash
-
+    cat > "$init_script" << 'EOF'
 # PHPV Initialization Script
 # This script is sourced to set up PHPV in your shell
 
-export PHPV_ROOT="\${PHPV_ROOT:-\$HOME/.phpv}"
-export PATH="\$PHPV_ROOT/bin:\$PATH"
-
-# Source the main PHPV script to get functions
-if [[ -s "\$PHPV_ROOT/phpv.sh" ]]; then
-    # Source phpv.sh but don't let it run main()
-    source "\$PHPV_ROOT/phpv.sh" >/dev/null 2>&1 || true
-fi
+export PHPV_ROOT="${PHPV_ROOT:-$HOME/.phpv}"
+export PATH="$PHPV_ROOT/bin:$PATH"
 
 # PHPV function for shell integration
 phpv() {
-    local command="\$1"
+    local command="$1"
     shift
 
-    case "\$command" in
+    case "$command" in
         use)
             # Call the original phpv use command
-            "\$PHPV_ROOT/phpv.sh" use "\$@"
+            "$PHPV_ROOT/phpv.sh" use "$@"
             # Update PATH for current session
             phpv_update_path
             ;;
         *)
-            "\$PHPV_ROOT/phpv.sh" "\$command" "\$@"
+            "$PHPV_ROOT/phpv.sh" "$command" "$@"
             ;;
     esac
 }
@@ -125,13 +123,13 @@ phpv() {
 # Update PATH based on current PHP version
 phpv_update_path() {
     local current_version
-    current_version=\$(cat "\$PHPV_ROOT/version" 2>/dev/null || echo "system")
+    current_version=$(cat "$PHPV_ROOT/version" 2>/dev/null || echo "system")
 
     # Remove any existing PHPV version from PATH
-    PATH=\$(echo "\$PATH" | sed 's|:\$PHPV_ROOT/versions/[^:]*||g' | sed 's|^\$PHPV_ROOT/versions/[^:]*:||g' | sed 's|:\$PHPV_ROOT/versions/[^:]*:||g')
+    PATH=$(echo "$PATH" | sed 's|:$PHPV_ROOT/versions/[^:]*||g' | sed 's|^$PHPV_ROOT/versions/[^:]*:||g' | sed 's|:$PHPV_ROOT/versions/[^:]*:||g')
 
-    if [[ "\$current_version" != "system" && -d "\$PHPV_ROOT/versions/\$current_version/bin" ]]; then
-        export PATH="\$PHPV_ROOT/versions/\$current_version/bin:\$PATH"
+    if [[ "$current_version" != "system" && -d "$PHPV_ROOT/versions/$current_version/bin" ]]; then
+        export PATH="$PHPV_ROOT/versions/$current_version/bin:$PATH"
     fi
 }
 
@@ -215,7 +213,7 @@ main() {
     echo
     log_success "PHPV installation completed!"
     echo
-    log_info "Please restart your terminal or run: source $(get_shell_config "$(detect_shell)")"
+    log_info "Please restart your terminal or run: source $(get_shell_config "$shell_type")"
     echo
     log_info "Then you can use PHPV:"
     echo "  phpv install 8.3.12    # Install PHP 8.3.12"

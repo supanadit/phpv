@@ -22,7 +22,9 @@ This will:
 - Add the `phpv` command to your PATH
 - Configure your shell profile (`.bashrc`, `.zshrc`, etc.)
 
-After installation, restart your terminal or run `source ~/.bashrc` (or `source ~/.zshrc` for ZSH).
+After installation, **restart your terminal** or run:
+- `source ~/.bashrc` (for Bash)
+- `source ~/.zshrc` (for ZSH)
 
 ### Manual Installation
 

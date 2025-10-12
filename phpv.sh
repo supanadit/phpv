@@ -154,7 +154,7 @@ set_current_version() {
 # Check if version is installed
 is_version_installed() {
     local version="$1"
-    [[ "$version" == "system" ]] || [[ -d "$PHPV_VERSIONS_DIR/$version" ]]
+    [[ "$version" == "system" ]] || [[ -x "$PHPV_VERSIONS_DIR/$version/bin/php" ]]
 }
 
 # Get available PHP versions for download
@@ -789,6 +789,9 @@ install_oniguruma_from_source() {
     # Use oniguruma 6.9.9 for PHP 7.x and above, 5.9.6 for PHP 5.x and below
     if [[ -n "$php_version" && "$php_version" =~ ^[7-9] ]]; then
         version="6.9.9"
+    elif [[ "$php_version" =~ ^5\.[0-2]\. ]]; then
+        # PHP 5.0.x - 5.2.x might need older oniguruma
+        version="2.2.10"
     else
         version="5.9.6"
     fi
@@ -913,12 +916,14 @@ install_curl_from_source() {
     local version
     local -a urls
 
-    if [[ "$php_version" == 5.* ]]; then
+    if [[ "$php_version" =~ ^5\.[0-2]\. ]]; then
+        version="7.12.0"
+    elif [[ "$php_version" == 5.* ]]; then
         version="7.16.2"
     else
         version="8.5.0"
     fi
-    if [[ "$version" == "7.16.2" ]]; then
+    if [[ "$version" == "7.12.0" || "$version" == "7.16.2" ]]; then
         urls+=("https://curl.se/download/old/$version/curl-$version.tar.gz")
         urls+=("https://curl.se/download/archeology/curl-$version.tar.gz")
     fi
@@ -1358,18 +1363,76 @@ install_mysql_legacy_connector_from_source() {
     fi
 }
 
+install_mysql_legacy_from_source() {
+    local version="$1"
+    local url="https://downloads.mysql.com/archives/mysql-${version}.tar.gz"
+    local cache_file="$PHPV_CACHE_DIR/mysql-${version}.tar.gz"
+    local source_dir="$PHPV_CACHE_DIR/mysql-${version}-src"
+    local build_dir="$source_dir/build"
+    local old_cwd
+    old_cwd=$(pwd)
+
+    if [[ ! -f "$cache_file" ]]; then
+        safe_download "$url" "$cache_file" || return 1
+    fi
+
+    rm -rf "$source_dir"
+    mkdir -p "$source_dir"
+    tar -xzf "$cache_file" -C "$source_dir" --strip-components=1
+
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+
+    # Configure with minimal options for client library only
+    ../configure \
+        --prefix="$PHPV_DEPS_DIR" \
+        --without-server \
+        --without-docs \
+        --without-man \
+        --without-bench \
+        --enable-thread-safe-client \
+        --with-openssl="$PHPV_DEPS_DIR" \
+        --with-zlib-dir="$PHPV_DEPS_DIR" \
+        --enable-shared \
+        --disable-static \
+        CFLAGS="-Wno-implicit-int -Wno-implicit-function-declaration" || {
+        cd "$old_cwd"
+        return 1
+    }
+
+    make -j$(nproc) || {
+        cd "$old_cwd"
+        return 1
+    }
+
+    make install || {
+        cd "$old_cwd"
+        return 1
+    }
+
+    cd "$old_cwd"
+
+    if [[ -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
+        normalize_mysql_config "$PHPV_DEPS_DIR/bin/mysql_config"
+    else
+        log_error "mysql_config not found after installing MySQL $version"
+        return 1
+    fi
+}
+
 ensure_mysql_client_for_php() {
     local php_version="$1"
 
     if [[ "$php_version" == 5.* ]]; then
-        local required_version="6.1.11"
+        local required_version="4.1.19"
         local current_version=""
         if [[ -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
             current_version="$($PHPV_DEPS_DIR/bin/mysql_config --version 2>/dev/null || true)"
         fi
         if [[ "$current_version" != ${required_version}* ]]; then
-            log_info "Installing MySQL Connector/C $required_version for PHP $php_version compatibility..."
-            install_mysql_legacy_connector_from_source || return 1
+            log_info "Installing MySQL $required_version for PHP $php_version compatibility..."
+            install_mysql_legacy_from_source "$required_version" || return 1
         fi
         normalize_mysql_config "$PHPV_DEPS_DIR/bin/mysql_config"
     else
@@ -1783,7 +1846,7 @@ install_php_version() {
     fi
     local curl_required
     if [[ "$version" == 5.* ]]; then
-        curl_required="7.16.2"
+        curl_required="7.14.0"
     else
         curl_required="8.5.0"
     fi
@@ -1877,22 +1940,21 @@ install_php_version() {
     fi
     
     # Basic configuration - can be customized
-    ./configure "${configure_flags[@]}" \
-        2>/dev/null || {
+    if ! ./configure "${configure_flags[@]}"; then
         log_error "Configuration failed. You may need to install development packages:"
         log_info "Ubuntu/Debian: sudo apt-get install libxml2-dev libssl-dev libcurl4-openssl-dev libonig-dev libzip-dev"
         log_info "CentOS/RHEL: sudo yum install libxml2-devel openssl-devel curl-devel oniguruma-devel libzip-devel"
         return 1
-    }
+    fi
     
     log_info "Building PHP $version (this may take a while)..."
-    make -j$(nproc) 2>/dev/null || {
+    if ! make -j"$(nproc)"; then
         log_error "Build failed"
         return 1
-    }
+    fi
     
     log_info "Installing PHP $version..."
-    make install 2>/dev/null
+    make install
     
     # Create basic php.ini
     mkdir -p "$install_dir/etc/conf.d"
@@ -2063,7 +2125,6 @@ uninstall_php_version() {
     fi
     log_success "PHP $version uninstalled"
 }
-
 # Get PHP binary path
 get_php_path() {
     local current_version

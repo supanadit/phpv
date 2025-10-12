@@ -949,11 +949,11 @@ install_curl_from_source() {
     mkdir -p "$build_dir"
     cd "$build_dir"
     tar -xzf "$cache_file" --strip-components=1
-    local configure_args=("--prefix=$PHPV_DEPS_DIR" "--with-openssl=$PHPV_DEPS_DIR")
+    local configure_cmd="./configure --prefix=$PHPV_DEPS_DIR --with-openssl=$PHPV_DEPS_DIR"
     if [[ "$php_version" == 5.* ]]; then
-        configure_args+=("--without-libssh2") # Avoid modern libssh2 API mismatches with legacy curl
+        configure_cmd="$configure_cmd --without-libssh2" # Avoid modern libssh2 API mismatches with legacy curl
     fi
-    ./configure "${configure_args[@]}"
+    eval "$configure_cmd"
     make -j$(nproc)
     make install
 }
@@ -1077,6 +1077,50 @@ install_libzip_from_source() {
         return 1
     fi
     
+    make -j$(nproc)
+    make install
+}
+
+# Install unixODBC from source
+install_unixodbc_from_source() {
+    local version="2.3.12"
+    local url="https://www.unixodbc.org/unixODBC-$version.tar.gz"
+    local cache_file="$PHPV_CACHE_DIR/unixODBC-$version.tar.gz"
+    local build_dir="$PHPV_CACHE_DIR/unixODBC-$version"
+    
+    if [[ ! -f "$cache_file" ]]; then
+        safe_download "$url" "$cache_file" || return 1
+    fi
+    
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+    tar -xzf "$cache_file" --strip-components=1
+    ./configure --prefix="$PHPV_DEPS_DIR"
+    make -j$(nproc)
+    make install
+}
+
+# Install MySQL ODBC driver from source
+install_mysql_odbc_from_source() {
+    local version="1.4.17"
+    local url="https://www.freetds.org/files/stable/freetds-${version}.tar.gz"
+    local cache_file="$PHPV_CACHE_DIR/freetds-${version}.tar.gz"
+    local build_dir="$PHPV_CACHE_DIR/freetds-${version}"
+    
+    if [[ ! -f "$cache_file" ]]; then
+        safe_download "$url" "$cache_file" || return 1
+    fi
+    
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+    tar -xzf "$cache_file" --strip-components=1
+    ./configure --prefix="$PHPV_DEPS_DIR" \
+                --with-unixodbc="$PHPV_DEPS_DIR" \
+                --with-openssl="$PHPV_DEPS_DIR" \
+                --enable-sybase-compat \
+                --disable-dependency-tracking
     make -j$(nproc)
     make install
 }
@@ -1278,7 +1322,7 @@ install_mysql_legacy_connector_from_source() {
             local staging_dir="$binary_extract_dir/$binary_basename"
             [[ -d "$staging_dir" ]] || staging_dir="$binary_extract_dir"
 
-            rm -rf "$PHPV_DEPS_DIR/lib/mariadb"
+            rm -rf "$PHPV_DEPS_DIR/bin" "$PHPV_DEPS_DIR/include" "$PHPV_DEPS_DIR/lib" "$PHPV_DEPS_DIR/share" "$PHPV_DEPS_DIR/lib64"
             mkdir -p "$PHPV_DEPS_DIR/bin" "$PHPV_DEPS_DIR/include" "$PHPV_DEPS_DIR/lib" "$PHPV_DEPS_DIR/share" "$PHPV_DEPS_DIR/lib64"
 
             if [[ -d "$staging_dir/bin" ]]; then
@@ -1452,16 +1496,20 @@ ensure_mysql_client_for_php() {
     local php_version="$1"
 
     if [[ "$php_version" == 5.* ]]; then
-        local required_version="6.0.2"
-        local current_version=""
-        if [[ -x "$PHPV_DEPS_DIR/bin/mysql_config" ]]; then
-            current_version="$($PHPV_DEPS_DIR/bin/mysql_config --version 2>/dev/null || true)"
+        # For PHP 5.x, use ODBC instead of MySQL Connector/C
+        log_info "Installing unixODBC and MySQL ODBC driver for PHP $php_version compatibility..."
+        
+        if [[ ! -f "$PHPV_DEPS_DIR/lib/libodbc.so" ]]; then
+            install_unixodbc_from_source || return 1
         fi
-        if [[ "$current_version" != ${required_version}* ]]; then
-            log_info "Installing MySQL Connector/C $required_version for PHP $php_version compatibility..."
-            install_mysql_legacy_connector_from_source "$required_version" || return 1
+        
+        if [[ ! -f "$PHPV_DEPS_DIR/lib/libmyodbc.so" ]]; then
+            install_mysql_odbc_from_source || return 1
         fi
-        normalize_mysql_config "$PHPV_DEPS_DIR/bin/mysql_config"
+        
+        # Note: Native MySQL extensions (--with-mysqli, --with-pdo-mysql) won't be available.
+        # Users can connect via odbc extension with DSN like 'odbc:DSN=my_mysql_dsn'
+        return 0
     else
         local required_version="3.3.7"
         local current_version=""
@@ -1946,14 +1994,27 @@ install_php_version() {
         --with-freetype-dir="$PHPV_DEPS_DIR"
         --enable-soap
         --enable-sockets
-        --with-mysqli
-        --with-pdo-mysql
         --enable-pcntl
         --enable-shmop
         --enable-sysvmsg
         --enable-sysvsem
         --enable-sysvshm
     )
+    
+    # Add MySQL/ODBC support based on PHP version
+    if [[ "$version" == 5.* ]]; then
+        # For PHP 5.x, use ODBC instead of MySQL Connector/C
+        configure_flags+=(--with-unixODBC="$PHPV_DEPS_DIR")
+        if [[ "$version" =~ ^5\.[1-9] ]]; then
+            # PDO_ODBC available from PHP 5.1+
+            configure_flags+=(--with-pdo-odbc="unixODBC,$PHPV_DEPS_DIR")
+        fi
+    else
+        # For PHP 7+, use MySQL client library
+        configure_flags+=(--with-mysqli)
+        configure_flags+=(--with-pdo-mysql)
+    fi
+    
     # Add version-specific flags
     if [[ "$version" =~ ^(8\.|9\.) ]]; then
         configure_flags+=(--with-openssl="$PHPV_DEPS_DIR")
@@ -1961,8 +2022,10 @@ install_php_version() {
     fi
     
     if [[ "$version" == 5.* ]]; then
-        # For PHP 5.x: disable DOM extension and intl extension
+               # For PHP 5.x: disable SOAP extension due to libxml2 compatibility issues
+        configure_flags+=(--disable-soap)
         configure_flags+=(--disable-dom)
+        configure_flags+=(--disable-simplexml)
         configure_flags+=(--disable-intl)
     fi
     

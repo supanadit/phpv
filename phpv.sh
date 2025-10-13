@@ -736,12 +736,7 @@ resolve_llvm_version_for_php() {
         done
     fi
 
-    if [[ "$php_version" == 7.* ]]; then
-        echo "${PHPV_LLVM_VERSION_PHP7:-16.0.4}"
-        return
-    fi
-
-    if [[ "$php_version" == 5.* ]]; then
+    if [[ "$php_version" == 7.* || "$php_version" == 5.* ]]; then
         echo "${PHPV_LLVM_VERSION_PHP5:-15.0.6}"
         return
     fi
@@ -857,7 +852,6 @@ install_oniguruma_from_source() {
     mkdir -p "$build_dir"
     cd "$build_dir"
     tar -xzf "$cache_file" --strip-components=1
-    ensure_llvm_toolchain || return 1
     ./configure --prefix="$PHPV_DEPS_DIR"
     make -j$(nproc)
     make install
@@ -1457,18 +1451,7 @@ install_mysql_legacy_connector_from_source() {
     }
 
     # Configure and build MySQL client only (same as before, but in the direct extract dir)
-
-    local requested_llvm="${PHPV_ACTIVE_LLVM_VERSION:-${PHPV_LLVM_VERSION:-}}"
-    if [[ -n "$requested_llvm" ]]; then
-        ensure_llvm_toolchain "$requested_llvm" || {
-            log_error "Failed to ensure LLVM toolchain $requested_llvm"
-            cd "$old_cwd" 2>/dev/null || true
-            rm -rf "$mysql_extract_dir"
-            return 1
-        }
-    fi
-
-    local effective_llvm="${PHPV_ACTIVE_LLVM_VERSION:-$requested_llvm}"
+    # Use the already-configured LLVM toolchain from the parent context
 
     local cc_binary="${CC:-}"
     local cxx_binary="${CXX:-}"
@@ -2151,31 +2134,15 @@ install_php_version() {
 
     log_info "Installing PHP $version..."
 
-    # PHP 7.4 and earlier have compatibility issues with strict modern compilers
-    # Use system GCC which is more lenient with older code
-    local use_system_compiler=false
-    if [[ "$version" =~ ^7\. ]]; then
-        if command -v gcc &> /dev/null; then
-            log_info "Using system GCC compiler for PHP $version (better compatibility)"
-            export CC="$(command -v gcc)"
-            export CXX="$(command -v g++)"
-            use_system_compiler=true
-        else
-            log_warning "GCC not found, falling back to LLVM toolchain"
-        fi
+    if [[ -n "$resolved_llvm" && "$resolved_llvm" != "$PHPV_LLVM_VERSION" ]]; then
+        log_info "Using LLVM $resolved_llvm for PHP $version"
     fi
 
-    if [[ "$use_system_compiler" != true ]]; then
-        if [[ -n "$resolved_llvm" && "$resolved_llvm" != "$PHPV_LLVM_VERSION" ]]; then
-            log_info "Using LLVM $resolved_llvm for PHP $version"
-        fi
+    ensure_llvm_toolchain "$resolved_llvm" || return 1
 
-        ensure_llvm_toolchain "$resolved_llvm" || return 1
-
-        local active_llvm="${PHPV_ACTIVE_LLVM_VERSION:-$resolved_llvm}"
-        if [[ "$active_llvm" != "$resolved_llvm" ]]; then
-            log_warning "LLVM $resolved_llvm was requested but using $active_llvm due to availability"
-        fi
+    local active_llvm="${PHPV_ACTIVE_LLVM_VERSION:-$resolved_llvm}"
+    if [[ "$active_llvm" != "$resolved_llvm" ]]; then
+        log_warning "LLVM $resolved_llvm was requested but using $active_llvm due to availability"
     fi
 
     if ! command -v make &> /dev/null; then
@@ -2192,12 +2159,6 @@ install_php_version() {
         export CPPFLAGS="-D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L $CPPFLAGS"
         export CFLAGS="-D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L $CFLAGS"
     fi
-    
-    # For PHP 7.x with GCC, use C99 standard which is more lenient with old K&R-style code
-    if [[ "$version" =~ ^7\. ]] && [[ "$use_system_compiler" == true ]]; then
-        export CFLAGS="-std=gnu99 -Wno-error -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-implicit-function-declaration $CFLAGS"
-    fi
-    
     export LD_LIBRARY_PATH="$PHPV_DEPS_DIR/lib:$PHPV_DEPS_DIR/lib64:$LD_LIBRARY_PATH"
     
     # For PHP 5.x, DSA_get_default_method is in libcrypto, not libssl

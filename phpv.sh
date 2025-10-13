@@ -64,6 +64,27 @@ append_unique() {
     __phpv_target_array+=("$__phpv_value")
 }
 
+version_supports_opcache() {
+    local version="$1"
+    local major="" minor=""
+
+    IFS='.' read -r major minor _ <<< "$version"
+
+    if [[ -z "$major" || -z "$minor" ]]; then
+        return 1
+    fi
+
+    if (( major > 5 )); then
+        return 0
+    fi
+
+    if (( major == 5 && minor >= 5 )); then
+        return 0
+    fi
+
+    return 1
+}
+
 normalize_mysql_config() {
     local config_path="$1"
 
@@ -2092,7 +2113,6 @@ install_php_version() {
         --with-config-file-path="$install_dir/etc"
         --with-config-file-scan-dir="$install_dir/etc/conf.d"
         --enable-mbstring
-        --enable-opcache
         --with-libxml-dir="$PHPV_DEPS_DIR"
         --with-onig="$PHPV_DEPS_DIR"
         --with-libzip="$PHPV_DEPS_DIR"
@@ -2113,6 +2133,10 @@ install_php_version() {
         --enable-sysvsem
         --enable-sysvshm
     )
+
+    if version_supports_opcache "$version"; then
+        configure_flags+=(--enable-opcache)
+    fi
     
     # Add MySQL/ODBC support based on PHP version
     local php_restore_cache=false
@@ -2209,6 +2233,10 @@ date.timezone = UTC
 
 ; Extensions
 extension_dir = "$ext_dir"
+EOF
+
+    if version_supports_opcache "$version"; then
+        cat >> "$install_dir/etc/php.ini" << 'EOF'
 
 ; OPcache
 zend_extension=opcache
@@ -2219,6 +2247,7 @@ opcache.max_accelerated_files=4000
 opcache.revalidate_freq=2
 opcache.fast_shutdown=1
 EOF
+    fi
     
     # Clean up build directory
     rm -rf "$build_dir"

@@ -1556,7 +1556,15 @@ ensure_mysql_client_for_php() {
 get_installed_versions() {
     echo "system"
     if [[ -d "$PHPV_VERSIONS_DIR" ]]; then
-        find "$PHPV_VERSIONS_DIR" -maxdepth 1 -type d -exec basename {} \; | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V
+        for dir in "$PHPV_VERSIONS_DIR"/*/; do
+            if [[ -d "$dir" ]]; then
+                local version
+                version=$(basename "$dir")
+                if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ -x "$dir/bin/php" ]]; then
+                    echo "$version"
+                fi
+            fi
+        done | sort -V
     fi
 }
 
@@ -2007,6 +2015,8 @@ install_php_version() {
     local build_dir="$PHPV_CACHE_DIR/php-$version-build"
     rm -rf "$build_dir"
     mkdir -p "$build_dir"
+    
+   
     
     log_info "Extracting PHP $version..."
     tar -xzf "$cache_file" -C "$build_dir" --strip-components=1

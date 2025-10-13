@@ -126,16 +126,79 @@ phpv() {
     esac
 }
 
+phpv_strip_from_path() {
+    local data="$1"
+    local prefix="$2"
+
+    if [[ -z "$data" ]]; then
+        echo ""
+        return
+    fi
+
+    if [[ -z "$prefix" ]]; then
+        echo "$data"
+        return
+    fi
+
+    local cleaned
+    cleaned=$(printf '%s\n' "$data" | awk -v RS=: -v ORS=: -v prefix="$prefix" 'length($0) && index($0, prefix) != 1 {print}')
+    cleaned=${cleaned%:}
+    echo "$cleaned"
+}
+
 # Update PATH based on current PHP version
 phpv_update_path() {
-    local current_version
-    current_version=$(cat "$PHPV_ROOT/version" 2>/dev/null || echo "system")
+    local env_output
+    env_output=$("$PHPV_ROOT/phpv.sh" env 2>/dev/null)
 
-    # Remove any existing PHPV version from PATH
-    PATH=$(echo "$PATH" | sed 's|:$PHPV_ROOT/versions/[^:]*||g' | sed 's|^$PHPV_ROOT/versions/[^:]*:||g' | sed 's|:$PHPV_ROOT/versions/[^:]*:||g')
+    local path_prefix=""
+    local ld_prefix=""
+    local ld_root=""
 
-    if [[ "$current_version" != "system" && -d "$PHPV_ROOT/versions/$current_version/bin" ]]; then
-        export PATH="$PHPV_ROOT/versions/$current_version/bin:$PATH"
+    if [[ -n "$env_output" ]]; then
+        while IFS='=' read -r key value; do
+            case "$key" in
+                PATH_PREFIX)
+                    path_prefix="$value"
+                    ;;
+                LD_LIBRARY_PATH_PREFIX)
+                    ld_prefix="$value"
+                    ;;
+                LD_LIBRARY_PATH_ROOT)
+                    ld_root="$value"
+                    ;;
+            esac
+        done <<< "$env_output"
+    fi
+
+    local path_root="$PHPV_ROOT/versions/"
+    PATH="$(phpv_strip_from_path "$PATH" "$path_root")"
+    if [[ -n "$path_prefix" ]]; then
+        PATH="$path_prefix${PATH:+:$PATH}"
+    fi
+    export PATH
+
+    if [[ -z "$ld_root" ]]; then
+        ld_root="$PHPV_ROOT/deps"
+    fi
+
+    local existing_ld=""
+    if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
+        existing_ld="$(phpv_strip_from_path "$LD_LIBRARY_PATH" "$ld_root/")"
+    fi
+
+    if [[ -n "$ld_prefix" ]]; then
+        if [[ -n "$existing_ld" ]]; then
+            export LD_LIBRARY_PATH="$ld_prefix:$existing_ld"
+        else
+            export LD_LIBRARY_PATH="$ld_prefix"
+        fi
+    else
+        if [[ -n "$existing_ld" ]]; then
+            export LD_LIBRARY_PATH="$existing_ld"
+        else
+            unset LD_LIBRARY_PATH
+        fi
     fi
 }
 

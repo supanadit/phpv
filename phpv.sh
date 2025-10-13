@@ -2265,9 +2265,30 @@ show_current_version() {
     else
         local php_path="$PHPV_VERSIONS_DIR/$current_version/bin/php"
         if [[ -x "$php_path" ]]; then
+            local previous_ld="${LD_LIBRARY_PATH:-}"
+            local lib_joined
+            lib_joined=$(get_lib_paths_for_version "$current_version")
+
+            if [[ -n "$lib_joined" ]]; then
+                if [[ -n "$previous_ld" ]]; then
+                    export LD_LIBRARY_PATH="$lib_joined:$previous_ld"
+                else
+                    export LD_LIBRARY_PATH="$lib_joined"
+                fi
+            fi
+
             local version_info
-            version_info=$("$php_path" -v | head -n1)
-            echo "Current: $current_version ($version_info)"
+            if version_info=$("$php_path" -v | head -n1 2>/dev/null); then
+                echo "Current: $current_version ($version_info)"
+            else
+                echo "Current: $current_version (failed to query version)"
+            fi
+
+            if [[ -n "$previous_ld" ]]; then
+                export LD_LIBRARY_PATH="$previous_ld"
+            else
+                unset LD_LIBRARY_PATH
+            fi
         else
             echo "Current: $current_version (invalid installation)"
         fi
@@ -2369,6 +2390,67 @@ get_php_path() {
     fi
 }
 
+get_lib_paths_for_version() {
+    local version="$1"
+    local -a lib_paths=()
+
+    if [[ -z "$version" || "$version" == "system" ]]; then
+        return 0
+    fi
+
+    local version_dir="$PHPV_VERSIONS_DIR/$version"
+    local llvm_version_file="$version_dir/.llvm_version"
+    local deps_dir=""
+
+    if [[ -f "$llvm_version_file" ]]; then
+        local llvm_version
+        llvm_version=$(cat "$llvm_version_file" 2>/dev/null || true)
+        if [[ -n "$llvm_version" ]]; then
+            deps_dir=$(get_deps_dir_for_version "$version" "$llvm_version" 2>/dev/null || true)
+        fi
+    fi
+
+    if [[ -z "$deps_dir" || ! -d "$deps_dir" ]]; then
+        if [[ -d "$PHPV_DEPS_BASE_DIR/$version" ]]; then
+            deps_dir="$PHPV_DEPS_BASE_DIR/$version"
+        fi
+    fi
+
+    if [[ -z "$deps_dir" || ! -d "$deps_dir" ]]; then
+        return 0
+    fi
+
+    [[ -d "$deps_dir/lib" ]] && lib_paths+=("$deps_dir/lib")
+    [[ -d "$deps_dir/lib64" ]] && lib_paths+=("$deps_dir/lib64")
+
+    if (( ${#lib_paths[@]} == 0 )); then
+        return 0
+    fi
+
+    local IFS=':'
+    printf '%s' "${lib_paths[*]}"
+}
+
+print_environment_overrides() {
+    local current_version
+    current_version=$(get_current_version)
+
+    local path_prefix=""
+    local ld_prefix=""
+
+    if [[ -n "$current_version" && "$current_version" != "system" ]]; then
+        local version_bin_dir="$PHPV_VERSIONS_DIR/$current_version/bin"
+        if [[ -d "$version_bin_dir" ]]; then
+            path_prefix="$version_bin_dir"
+        fi
+        ld_prefix=$(get_lib_paths_for_version "$current_version")
+    fi
+
+    printf 'PATH_PREFIX=%s\n' "$path_prefix"
+    printf 'LD_LIBRARY_PATH_PREFIX=%s\n' "$ld_prefix"
+    printf 'LD_LIBRARY_PATH_ROOT=%s\n' "$PHPV_DEPS_BASE_DIR"
+}
+
 # Execute PHP with current version
 exec_php() {
     local php_path
@@ -2382,27 +2464,13 @@ exec_php() {
     local current_version
     current_version=$(get_current_version)
     if [[ -n "$current_version" && "$current_version" != "system" ]]; then
-        local llvm_version_file="$PHPV_VERSIONS_DIR/$current_version/.llvm_version"
-        if [[ -f "$llvm_version_file" ]]; then
-            local llvm_version
-            llvm_version=$(cat "$llvm_version_file")
-            local deps_dir
-            if deps_dir=$(get_deps_dir_for_version "$current_version" "$llvm_version"); then
-                local -a lib_paths=()
-                [[ -d "$deps_dir/lib" ]] && lib_paths+=("$deps_dir/lib")
-                [[ -d "$deps_dir/lib64" ]] && lib_paths+=("$deps_dir/lib64")
-
-                if (( ${#lib_paths[@]} > 0 )); then
-                    local joined
-                    local IFS=':'
-                    joined="${lib_paths[*]}"
-
-                    if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
-                        export LD_LIBRARY_PATH="$joined:$LD_LIBRARY_PATH"
-                    else
-                        export LD_LIBRARY_PATH="$joined"
-                    fi
-                fi
+        local lib_joined
+        lib_joined=$(get_lib_paths_for_version "$current_version")
+        if [[ -n "$lib_joined" ]]; then
+            if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
+                export LD_LIBRARY_PATH="$lib_joined:$LD_LIBRARY_PATH"
+            else
+                export LD_LIBRARY_PATH="$lib_joined"
             fi
         fi
     fi
@@ -2427,6 +2495,7 @@ COMMANDS:
     list-available [filter]     List available PHP versions for download (optional filter: e.g., 8, 8.3)
     exec <command>              Execute command with current PHP version
     which                       Show path to current PHP binary
+    env                         Print environment overrides for current version
     help                        Show this help message
 
 EXAMPLES:
@@ -2479,6 +2548,9 @@ main() {
             ;;
         "which")
             get_php_path
+            ;;
+        "env")
+            print_environment_overrides
             ;;
         "help"|"--help"|"-h")
             show_help

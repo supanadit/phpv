@@ -1437,6 +1437,53 @@ install_mysql_legacy_connector_from_source() {
     }
 
     # Configure and build MySQL client only (same as before, but in the direct extract dir)
+
+    local requested_llvm="${PHPV_ACTIVE_LLVM_VERSION:-${PHPV_LLVM_VERSION:-}}"
+    if [[ -n "$requested_llvm" ]]; then
+        ensure_llvm_toolchain "$requested_llvm" || {
+            log_error "Failed to ensure LLVM toolchain $requested_llvm"
+            cd "$old_cwd" 2>/dev/null || true
+            rm -rf "$mysql_extract_dir"
+            return 1
+        }
+    fi
+
+    local effective_llvm="${PHPV_ACTIVE_LLVM_VERSION:-$requested_llvm}"
+
+    local cc_binary="${CC:-}"
+    local cxx_binary="${CXX:-}"
+
+    if [[ -z "$cc_binary" || -z "$cxx_binary" ]]; then
+        if [[ -n "$LLVM_HOME" && -x "$LLVM_HOME/bin/clang" && -x "$LLVM_HOME/bin/clang++" ]]; then
+            cc_binary="$LLVM_HOME/bin/clang"
+            cxx_binary="$LLVM_HOME/bin/clang++"
+        elif [[ -n "$effective_llvm" ]]; then
+            local llvm_candidate="$PHPV_DEPS_DIR/llvm-$effective_llvm"
+            if [[ -x "$llvm_candidate/bin/clang" && -x "$llvm_candidate/bin/clang++" ]]; then
+                cc_binary="$llvm_candidate/bin/clang"
+                cxx_binary="$llvm_candidate/bin/clang++"
+            fi
+        fi
+    fi
+
+    if [[ -z "$cc_binary" || -z "$cxx_binary" ]]; then
+        local latest_llvm_dir=""
+        if [[ -d "$PHPV_DEPS_DIR" ]]; then
+            latest_llvm_dir=$(find "$PHPV_DEPS_DIR" -maxdepth 1 -type d -name "llvm-*" | sort -V | tail -n1 2>/dev/null || true)
+        fi
+        if [[ -n "$latest_llvm_dir" && -x "$latest_llvm_dir/bin/clang" && -x "$latest_llvm_dir/bin/clang++" ]]; then
+            cc_binary="$latest_llvm_dir/bin/clang"
+            cxx_binary="$latest_llvm_dir/bin/clang++"
+        fi
+    fi
+
+    if [[ -z "$cc_binary" || -z "$cxx_binary" ]]; then
+        log_error "Failed to locate Clang toolchain for MySQL legacy connector build"
+        cd "$old_cwd" 2>/dev/null || true
+        rm -rf "$mysql_extract_dir"
+        return 1
+    fi
+
     ./configure \
         --prefix="$PHPV_DEPS_DIR" \
         --without-server \
@@ -1447,8 +1494,8 @@ install_mysql_legacy_connector_from_source() {
         --with-zlib-dir="$PHPV_DEPS_DIR" \
         --with-openssl="$PHPV_DEPS_DIR" \
         --with-named-curses-libs="$PHPV_DEPS_DIR/lib/libncurses.so" \
-        CC="$PHPV_DEPS_DIR/llvm-17.0.6/bin/clang" \
-        CXX="$PHPV_DEPS_DIR/llvm-17.0.6/bin/clang++" \
+        CC="$cc_binary" \
+        CXX="$cxx_binary" \
         CFLAGS="-I$PHPV_DEPS_DIR/include -Wno-implicit-int -Wno-implicit-function-declaration" \
         CXXFLAGS="-I$PHPV_DEPS_DIR/include" \
         LDFLAGS="-L$PHPV_DEPS_DIR/lib -L$PHPV_DEPS_DIR/lib64" || {

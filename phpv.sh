@@ -1135,15 +1135,19 @@ install_curl_from_source() {
             restore_select_cache=true
         fi
     fi
-    eval "$configure_cmd"
-    if [[ "$restore_select_cache" == true ]]; then
-        unset ac_cv_func_select ac_cv_func_socket
-    fi
     
     if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        eval "$configure_cmd"
+        if [[ "$restore_select_cache" == true ]]; then
+            unset ac_cv_func_select ac_cv_func_socket
+        fi
         make -j$(nproc)
         make install
     else
+        run_with_progress "Configuring curl" 30 eval "$configure_cmd" || return 1
+        if [[ "$restore_select_cache" == true ]]; then
+            unset ac_cv_func_select ac_cv_func_socket
+        fi
         run_with_progress "Building curl" 50 make -j$(nproc) || return 1
         run_with_progress "Installing curl" 20 make install || return 1
     fi
@@ -1681,26 +1685,49 @@ install_mysql_legacy_connector_from_source() {
         return 1
     fi
 
-    ./configure \
-        --prefix="$PHPV_DEPS_DIR" \
-        --without-server \
-        --without-docs \
-        --without-man \
-        --without-bench \
-        --enable-thread-safe-client \
-        --with-zlib-dir="$PHPV_DEPS_DIR" \
-        --with-openssl="$PHPV_DEPS_DIR" \
-        --with-named-curses-libs="$PHPV_DEPS_DIR/lib/libncurses.so" \
-        CC="$cc_binary" \
-        CXX="$cxx_binary" \
-        CFLAGS="-I$PHPV_DEPS_DIR/include -Wno-implicit-int -Wno-implicit-function-declaration" \
-        CXXFLAGS="-I$PHPV_DEPS_DIR/include" \
-        LDFLAGS="-L$PHPV_DEPS_DIR/lib -L$PHPV_DEPS_DIR/lib64" || {
-        log_error "MySQL configure failed"
-        cd "$old_cwd" 2>/dev/null || true
-        rm -rf "$mysql_extract_dir"
-        return 1
-    }
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        ./configure \
+            --prefix="$PHPV_DEPS_DIR" \
+            --without-server \
+            --without-docs \
+            --without-man \
+            --without-bench \
+            --enable-thread-safe-client \
+            --with-zlib-dir="$PHPV_DEPS_DIR" \
+            --with-openssl="$PHPV_DEPS_DIR" \
+            --with-named-curses-libs="$PHPV_DEPS_DIR/lib/libncurses.so" \
+            CC="$cc_binary" \
+            CXX="$cxx_binary" \
+            CFLAGS="-I$PHPV_DEPS_DIR/include -Wno-implicit-int -Wno-implicit-function-declaration" \
+            CXXFLAGS="-I$PHPV_DEPS_DIR/include" \
+            LDFLAGS="-L$PHPV_DEPS_DIR/lib -L$PHPV_DEPS_DIR/lib64" || {
+            log_error "MySQL configure failed"
+            cd "$old_cwd" 2>/dev/null || true
+            rm -rf "$mysql_extract_dir"
+            return 1
+        }
+    else
+        if ! run_with_progress "Configuring MySQL Connector" 30 ./configure \
+            --prefix="$PHPV_DEPS_DIR" \
+            --without-server \
+            --without-docs \
+            --without-man \
+            --without-bench \
+            --enable-thread-safe-client \
+            --with-zlib-dir="$PHPV_DEPS_DIR" \
+            --with-openssl="$PHPV_DEPS_DIR" \
+            --with-named-curses-libs="$PHPV_DEPS_DIR/lib/libncurses.so" \
+            CC="$cc_binary" \
+            CXX="$cxx_binary" \
+            CFLAGS="-I$PHPV_DEPS_DIR/include -Wno-implicit-int -Wno-implicit-function-declaration" \
+            CXXFLAGS="-I$PHPV_DEPS_DIR/include" \
+            LDFLAGS="-L$PHPV_DEPS_DIR/lib -L$PHPV_DEPS_DIR/lib64"; then
+            log_error "MySQL configure failed"
+            cd "$old_cwd" 2>/dev/null || true
+            rm -rf "$mysql_extract_dir"
+            return 1
+        fi
+    fi
 
     if [[ "$PHPV_VERBOSE" == "1" ]]; then
         make -j$(nproc) || {
@@ -2611,13 +2638,25 @@ install_php_version() {
 
     # Basic configuration - can be customized
     local configure_success=false
-    if [[ ${#configure_env[@]} -gt 0 ]]; then
-        if env "${configure_env[@]}" ./configure "${configure_flags[@]}"; then
-            configure_success=true
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        if [[ ${#configure_env[@]} -gt 0 ]]; then
+            if env "${configure_env[@]}" ./configure "${configure_flags[@]}"; then
+                configure_success=true
+            fi
+        else
+            if ./configure "${configure_flags[@]}"; then
+                configure_success=true
+            fi
         fi
     else
-        if ./configure "${configure_flags[@]}"; then
-            configure_success=true
+        if [[ ${#configure_env[@]} -gt 0 ]]; then
+            if run_with_progress "Configuring PHP $version" 40 env "${configure_env[@]}" ./configure "${configure_flags[@]}"; then
+                configure_success=true
+            fi
+        else
+            if run_with_progress "Configuring PHP $version" 40 ./configure "${configure_flags[@]}"; then
+                configure_success=true
+            fi
         fi
     fi
 

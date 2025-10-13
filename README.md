@@ -79,7 +79,7 @@ cd phpv
 After this project released in stable state, each new PHP version will be supported as soon as possible. So you don't need to wait the operating system package manager to provide the latest PHP version.
 
 - PHP 8.5.x ( Dev Preview, Coming Soon )
-- PHP 8.4.x ( Coming Soon )
+- PHP 8.4.x
 - PHP 8.3.x
 - PHP 8.2.x
 - PHP 8.1.x

@@ -269,6 +269,7 @@ get_available_versions() {
     # This would typically fetch from PHP's release API
     # For now, we'll provide a hardcoded list of common versions
     cat << 'EOF'
+8.4.13
 8.3.12
 8.3.11
 8.3.10

@@ -71,14 +71,24 @@ download_phpv() {
 
     mkdir -p "$PHPV_DIR/bin"
 
-    # Download phpv.sh from GitHub
-    if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$PHPV_REPO_URL/phpv.sh" -o "$PHPV_SCRIPT"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -q "$PHPV_REPO_URL/phpv.sh" -O "$PHPV_SCRIPT"
+    # Check if we're in development mode (local phpv.sh exists)
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local local_phpv="$script_dir/phpv.sh"
+
+    if [[ -f "$local_phpv" ]]; then
+        log_info "Using local phpv.sh from development directory"
+        cp "$local_phpv" "$PHPV_SCRIPT"
     else
-        log_error "Neither curl nor wget found. Please install one of them."
-        exit 1
+        # Download phpv.sh from GitHub
+        if command -v curl >/dev/null 2>&1; then
+            curl -fsSL "$PHPV_REPO_URL/phpv.sh" -o "$PHPV_SCRIPT"
+        elif command -v wget >/dev/null 2>&1; then
+            wget -q "$PHPV_REPO_URL/phpv.sh" -O "$PHPV_SCRIPT"
+        else
+            log_error "Neither curl nor wget found. Please install one of them."
+            exit 1
+        fi
     fi
 
     chmod +x "$PHPV_SCRIPT"

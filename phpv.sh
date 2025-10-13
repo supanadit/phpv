@@ -1644,17 +1644,34 @@ resolve_llvm_asset_url() {
     local api_url="https://api.github.com/repos/llvm/llvm-project/releases/tags/llvmorg-${version}"
     local release_json
 
+    # Completely isolate from custom environment
+    local old_ld_library_path="$LD_LIBRARY_PATH"
+    local old_path="$PATH"
+    
+    unset LD_LIBRARY_PATH
+    export PATH="/usr/local/bin:/usr/bin:/bin"
+
     if command -v curl &> /dev/null; then
         if ! release_json=$(curl -fsSL "$api_url"); then
+            export LD_LIBRARY_PATH="$old_ld_library_path"
+            export PATH="$old_path"
             return 1
         fi
     elif command -v wget &> /dev/null; then
         if ! release_json=$(wget -qO- "$api_url"); then
+            export LD_LIBRARY_PATH="$old_ld_library_path"
+            export PATH="$old_path"
             return 1
         fi
     else
+        export LD_LIBRARY_PATH="$old_ld_library_path"
+        export PATH="$old_path"
         return 1
     fi
+
+    # Restore environment
+    export LD_LIBRARY_PATH="$old_ld_library_path"
+    export PATH="$old_path"
 
     if [[ "$release_json" == *"API rate limit exceeded"* ]]; then
         log_warning "GitHub API rate limit exceeded while fetching LLVM $version metadata"
@@ -1815,18 +1832,35 @@ install_llvm_toolchain() {
 
     if [[ ! -f "$cache_file" ]]; then
         log_info "Downloading $archive"
+        # Completely isolate from custom environment
+        local old_ld_library_path="$LD_LIBRARY_PATH"
+        local old_path="$PATH"
+        
+        unset LD_LIBRARY_PATH
+        export PATH="/usr/local/bin:/usr/bin:/bin"
+        
+        local download_result=1
         if command -v curl &> /dev/null; then
-            if ! curl -fsSL "$asset_url" -o "$cache_file"; then
-                rm -f "$cache_file"
-                log_error "Failed to download LLVM from $asset_url"
-                return 1
+            if curl -fsSL "$asset_url" -o "$cache_file"; then
+                download_result=0
             fi
-        else
-            if ! wget -q "$asset_url" -O "$cache_file"; then
-                rm -f "$cache_file"
-                log_error "Failed to download LLVM from $asset_url"
-                return 1
+        fi
+        
+        # If curl failed or not available, try wget
+        if [[ $download_result -ne 0 ]] && command -v wget &> /dev/null; then
+            if wget -q "$asset_url" -O "$cache_file"; then
+                download_result=0
             fi
+        fi
+        
+        # Restore environment
+        export LD_LIBRARY_PATH="$old_ld_library_path"
+        export PATH="$old_path"
+        
+        if [[ $download_result -ne 0 ]]; then
+            rm -f "$cache_file"
+            log_error "Failed to download LLVM from $asset_url"
+            return 1
         fi
     fi
 
@@ -2125,8 +2159,6 @@ install_php_version() {
     local build_dir="$PHPV_CACHE_DIR/php-$version-build"
     rm -rf "$build_dir"
     mkdir -p "$build_dir"
-    
-   
     
     log_info "Extracting PHP $version..."
     tar -xzf "$cache_file" -C "$build_dir" --strip-components=1

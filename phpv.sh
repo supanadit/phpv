@@ -1238,9 +1238,14 @@ install_mariadb_connector_from_source() {
     export LDFLAGS="-L$PHPV_DEPS_DIR/lib -L$PHPV_DEPS_DIR/lib64"
     export CPPFLAGS="-I$PHPV_DEPS_DIR/include"
 
+    # Use C11 standard to avoid C23's 'bool' keyword conflict with old MariaDB code
+    # Disable specific warnings that GCC treats as errors
+    local cmake_c_flags="-std=gnu11 -Wno-error=stringop-truncation -Wno-stringop-truncation"
+    
     "$cmake_cmd" .. \
     -DCMAKE_INSTALL_PREFIX="$PHPV_DEPS_DIR" \
     -DCMAKE_PREFIX_PATH="$PHPV_DEPS_DIR" \
+        -DCMAKE_C_FLAGS="$cmake_c_flags" \
         -DWITH_UNIT_TESTS=OFF \
         -DWITH_SSL=ON \
         -DOPENSSL_ROOT_DIR="$PHPV_DEPS_DIR" \
@@ -2146,15 +2151,31 @@ install_php_version() {
 
     log_info "Installing PHP $version..."
 
-    if [[ -n "$resolved_llvm" && "$resolved_llvm" != "$PHPV_LLVM_VERSION" ]]; then
-        log_info "Using LLVM $resolved_llvm for PHP $version"
+    # PHP 7.4 and earlier have compatibility issues with strict modern compilers
+    # Use system GCC which is more lenient with older code
+    local use_system_compiler=false
+    if [[ "$version" =~ ^7\. ]]; then
+        if command -v gcc &> /dev/null; then
+            log_info "Using system GCC compiler for PHP $version (better compatibility)"
+            export CC="$(command -v gcc)"
+            export CXX="$(command -v g++)"
+            use_system_compiler=true
+        else
+            log_warning "GCC not found, falling back to LLVM toolchain"
+        fi
     fi
 
-    ensure_llvm_toolchain "$resolved_llvm" || return 1
+    if [[ "$use_system_compiler" != true ]]; then
+        if [[ -n "$resolved_llvm" && "$resolved_llvm" != "$PHPV_LLVM_VERSION" ]]; then
+            log_info "Using LLVM $resolved_llvm for PHP $version"
+        fi
 
-    local active_llvm="${PHPV_ACTIVE_LLVM_VERSION:-$resolved_llvm}"
-    if [[ "$active_llvm" != "$resolved_llvm" ]]; then
-        log_warning "LLVM $resolved_llvm was requested but using $active_llvm due to availability"
+        ensure_llvm_toolchain "$resolved_llvm" || return 1
+
+        local active_llvm="${PHPV_ACTIVE_LLVM_VERSION:-$resolved_llvm}"
+        if [[ "$active_llvm" != "$resolved_llvm" ]]; then
+            log_warning "LLVM $resolved_llvm was requested but using $active_llvm due to availability"
+        fi
     fi
 
     if ! command -v make &> /dev/null; then
@@ -2167,6 +2188,16 @@ install_php_version() {
     export PKG_CONFIG_PATH="$PHPV_DEPS_DIR/lib/pkgconfig:$PHPV_DEPS_DIR/lib64/pkgconfig:$PKG_CONFIG_PATH"
     export LDFLAGS="-L$PHPV_DEPS_DIR/lib -L$PHPV_DEPS_DIR/lib64 $LDFLAGS"
     export CPPFLAGS="-I$PHPV_DEPS_DIR/include $CPPFLAGS"
+    if [[ "$version" != 5.* ]]; then
+        export CPPFLAGS="-D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L $CPPFLAGS"
+        export CFLAGS="-D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L $CFLAGS"
+    fi
+    
+    # For PHP 7.x with GCC, use C99 standard which is more lenient with old K&R-style code
+    if [[ "$version" =~ ^7\. ]] && [[ "$use_system_compiler" == true ]]; then
+        export CFLAGS="-std=gnu99 -Wno-error -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-implicit-function-declaration $CFLAGS"
+    fi
+    
     export LD_LIBRARY_PATH="$PHPV_DEPS_DIR/lib:$PHPV_DEPS_DIR/lib64:$LD_LIBRARY_PATH"
     
     # For PHP 5.x, DSA_get_default_method is in libcrypto, not libssl
@@ -2271,6 +2302,7 @@ install_php_version() {
     cd "$build_dir"
 
     local -a configure_env=()
+    local posix_macros="-D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L"
     local readdir_variant=""
     if readdir_variant=$(detect_readdir_r_variant 2>/dev/null); then
         case "$readdir_variant" in
@@ -2323,6 +2355,7 @@ install_php_version() {
     fi
 
     local pcntl_supported=true
+
     if detect_fork_support; then
         configure_env+=(ac_cv_func_fork=yes ac_cv_func_fork_works=yes)
     else

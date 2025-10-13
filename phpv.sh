@@ -1273,26 +1273,45 @@ install_libzip_from_source() {
         cmake_cmd="cmake"
     fi
 
-    "$cmake_cmd" \
-        -DCMAKE_INSTALL_PREFIX="$PHPV_DEPS_DIR" \
-        -DCMAKE_PREFIX_PATH="$PHPV_DEPS_DIR" ..
-    local cmake_result=$?
-    
-    # Restore environment
-    export PATH="$old_path"
-    export LD_LIBRARY_PATH="$old_ld_library_path"
-    export PKG_CONFIG_PATH="$old_pkg_config_path"
-    export LDFLAGS="$old_ldflags"
-    export CPPFLAGS="$old_cppflags"
-    
-    if [[ $cmake_result -ne 0 ]]; then
-        return 1
-    fi
-    
     if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        "$cmake_cmd" \
+            -DCMAKE_INSTALL_PREFIX="$PHPV_DEPS_DIR" \
+            -DCMAKE_PREFIX_PATH="$PHPV_DEPS_DIR" ..
+        local cmake_result=$?
+        
+        # Restore environment
+        export PATH="$old_path"
+        export LD_LIBRARY_PATH="$old_ld_library_path"
+        export PKG_CONFIG_PATH="$old_pkg_config_path"
+        export LDFLAGS="$old_ldflags"
+        export CPPFLAGS="$old_cppflags"
+        
+        if [[ $cmake_result -ne 0 ]]; then
+            return 1
+        fi
+        
         make -j$(nproc)
         make install
     else
+        if ! run_with_progress "Configuring libzip" 30 "$cmake_cmd" \
+            -DCMAKE_INSTALL_PREFIX="$PHPV_DEPS_DIR" \
+            -DCMAKE_PREFIX_PATH="$PHPV_DEPS_DIR" ..; then
+            # Restore environment
+            export PATH="$old_path"
+            export LD_LIBRARY_PATH="$old_ld_library_path"
+            export PKG_CONFIG_PATH="$old_pkg_config_path"
+            export LDFLAGS="$old_ldflags"
+            export CPPFLAGS="$old_cppflags"
+            return 1
+        fi
+        
+        # Restore environment
+        export PATH="$old_path"
+        export LD_LIBRARY_PATH="$old_ld_library_path"
+        export PKG_CONFIG_PATH="$old_pkg_config_path"
+        export LDFLAGS="$old_ldflags"
+        export CPPFLAGS="$old_cppflags"
+        
         run_with_progress "Building libzip" 50 make -j$(nproc) || return 1
         run_with_progress "Installing libzip" 20 make install || return 1
     fi
@@ -1408,72 +1427,38 @@ install_mariadb_connector_from_source() {
     export LDFLAGS="-L$PHPV_DEPS_DIR/lib -L$PHPV_DEPS_DIR/lib64"
     export CPPFLAGS="-I$PHPV_DEPS_DIR/include"
 
-    # Use C11 standard to avoid C23's 'bool' keyword conflict with old MariaDB code
-    # Disable warnings as errors for compatibility with both GCC and Clang
-    local cmake_c_flags="-std=gnu11 -Wno-error"
-    
-    "$cmake_cmd" .. \
-    -DCMAKE_INSTALL_PREFIX="$PHPV_DEPS_DIR" \
-    -DCMAKE_PREFIX_PATH="$PHPV_DEPS_DIR" \
-        -DCMAKE_C_FLAGS="$cmake_c_flags" \
-        -DWITH_UNIT_TESTS=OFF \
-        -DWITH_SSL=ON \
-        -DOPENSSL_ROOT_DIR="$PHPV_DEPS_DIR" \
-        -DZLIB_ROOT="$PHPV_DEPS_DIR" \
-        -DWITH_EXTERNAL_ZLIB=ON \
-        -DWITH_CURL=OFF \
-        -DCMAKE_POLICY_VERSION=3.5 \
-        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-        -DCMAKE_BUILD_TYPE=Release || {
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        if ! "$cmake_cmd" .. \
+            -DCMAKE_INSTALL_PREFIX="$PHPV_DEPS_DIR" \
+            -DCMAKE_PREFIX_PATH="$PHPV_DEPS_DIR" ; then
+            cd "$old_cwd"
+            return 1
+        fi
+
+        make -j$(nproc)
+        make install
+    else
+        if ! run_with_progress "Configuring MariaDB Connector" 30 "$cmake_cmd" .. \
+            -DCMAKE_INSTALL_PREFIX="$PHPV_DEPS_DIR" \
+            -DCMAKE_PREFIX_PATH="$PHPV_DEPS_DIR" ; then
+            # Restore environment
+            export PATH="$old_path"
+            export LD_LIBRARY_PATH="$old_ld_library_path"
+            export PKG_CONFIG_PATH="$old_pkg_config"
+            export LDFLAGS="$old_ldflags"
+            export CPPFLAGS="$old_cppflags"
+            return 1
+        fi
+        
+        # Restore environment
         export PATH="$old_path"
         export LD_LIBRARY_PATH="$old_ld_library_path"
         export PKG_CONFIG_PATH="$old_pkg_config"
         export LDFLAGS="$old_ldflags"
         export CPPFLAGS="$old_cppflags"
-        cd "$old_cwd"
-        return 1
-    }
-
-    if [[ "$PHPV_VERBOSE" == "1" ]]; then
-        make -j$(nproc) || {
-            export PATH="$old_path"
-            export LD_LIBRARY_PATH="$old_ld_library_path"
-            export PKG_CONFIG_PATH="$old_pkg_config"
-            export LDFLAGS="$old_ldflags"
-            export CPPFLAGS="$old_cppflags"
-            cd "$old_cwd"
-            return 1
-        }
-
-        make install || {
-            export PATH="$old_path"
-            export LD_LIBRARY_PATH="$old_ld_library_path"
-            export PKG_CONFIG_PATH="$old_pkg_config"
-            export LDFLAGS="$old_ldflags"
-            export CPPFLAGS="$old_cppflags"
-            cd "$old_cwd"
-            return 1
-        }
-    else
-        if ! run_with_progress "Building MariaDB Connector" 50 make -j$(nproc); then
-            export PATH="$old_path"
-            export LD_LIBRARY_PATH="$old_ld_library_path"
-            export PKG_CONFIG_PATH="$old_pkg_config"
-            export LDFLAGS="$old_ldflags"
-            export CPPFLAGS="$old_cppflags"
-            cd "$old_cwd"
-            return 1
-        fi
-
-        if ! run_with_progress "Installing MariaDB Connector" 20 make install; then
-            export PATH="$old_path"
-            export LD_LIBRARY_PATH="$old_ld_library_path"
-            export PKG_CONFIG_PATH="$old_pkg_config"
-            export LDFLAGS="$old_ldflags"
-            export CPPFLAGS="$old_cppflags"
-            cd "$old_cwd"
-            return 1
-        fi
+        
+        run_with_progress "Building MariaDB Connector" 50 make -j$(nproc) || return 1
+        run_with_progress "Installing MariaDB Connector" 20 make install || return 1
     fi
 
     export PATH="$old_path"

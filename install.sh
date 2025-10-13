@@ -260,7 +260,7 @@ update_shell_config() {
     fi
 
     # Add PHPV initialization
-    if ! grep -q "source.*phpv.*init" "$config_file" 2>/dev/null; then
+    if ! grep -q "PHPV - PHP Version Manager" "$config_file" 2>/dev/null; then
         echo "" >> "$config_file"
         echo "# PHPV - PHP Version Manager" >> "$config_file"
         echo "export PHPV_ROOT=\"\$HOME/.phpv\"" >> "$config_file"

@@ -1430,7 +1430,10 @@ install_mariadb_connector_from_source() {
     if [[ "$PHPV_VERBOSE" == "1" ]]; then
         if ! "$cmake_cmd" .. \
             -DCMAKE_INSTALL_PREFIX="$PHPV_DEPS_DIR" \
-            -DCMAKE_PREFIX_PATH="$PHPV_DEPS_DIR" ; then
+            -DCMAKE_PREFIX_PATH="$PHPV_DEPS_DIR" \
+            -DWITH_EXTERNAL_ZLIB=ON \
+            -DZLIB_INCLUDE_DIR="$PHPV_DEPS_DIR/include" \
+            -DZLIB_LIBRARY="$PHPV_DEPS_DIR/lib/libz.so" ; then
             cd "$old_cwd"
             return 1
         fi
@@ -1440,7 +1443,10 @@ install_mariadb_connector_from_source() {
     else
         if ! run_with_progress "Configuring MariaDB Connector" 30 "$cmake_cmd" .. \
             -DCMAKE_INSTALL_PREFIX="$PHPV_DEPS_DIR" \
-            -DCMAKE_PREFIX_PATH="$PHPV_DEPS_DIR" ; then
+            -DCMAKE_PREFIX_PATH="$PHPV_DEPS_DIR" \
+            -DWITH_EXTERNAL_ZLIB=ON \
+            -DZLIB_INCLUDE_DIR="$PHPV_DEPS_DIR/include" \
+            -DZLIB_LIBRARY="$PHPV_DEPS_DIR/lib/libz.so" ; then
             # Restore environment
             export PATH="$old_path"
             export LD_LIBRARY_PATH="$old_ld_library_path"

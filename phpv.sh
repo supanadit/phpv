@@ -1233,8 +1233,8 @@ install_mariadb_connector_from_source() {
     export CPPFLAGS="-I$PHPV_DEPS_DIR/include"
 
     # Use C11 standard to avoid C23's 'bool' keyword conflict with old MariaDB code
-    # Disable specific warnings that GCC treats as errors
-    local cmake_c_flags="-std=gnu11 -Wno-error=stringop-truncation -Wno-stringop-truncation"
+    # Disable warnings as errors for compatibility with both GCC and Clang
+    local cmake_c_flags="-std=gnu11 -Wno-error"
     
     "$cmake_cmd" .. \
     -DCMAKE_INSTALL_PREFIX="$PHPV_DEPS_DIR" \

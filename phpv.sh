@@ -1971,6 +1971,79 @@ EOF
     printf '%s\n' "$variant"
 }
 
+detect_fork_support() {
+    local cc="${CC:-cc}"
+    local base_dir="${PHPV_CACHE_DIR:-/tmp}"
+    local tmp_dir
+    tmp_dir=$(mktemp -d "$base_dir/fork_probe.XXXXXX") || return 1
+
+    cat > "$tmp_dir/test_fork.c" <<'EOF'
+#include <unistd.h>
+int main(void) {
+    return fork() == -1;
+}
+EOF
+
+    if "$cc" -o "$tmp_dir/test_fork" "$tmp_dir/test_fork.c" >/dev/null 2>&1; then
+        rm -rf "$tmp_dir"
+        return 0
+    fi
+
+    rm -rf "$tmp_dir"
+    return 1
+}
+
+detect_waitpid_support() {
+    local cc="${CC:-cc}"
+    local base_dir="${PHPV_CACHE_DIR:-/tmp}"
+    local tmp_dir
+    tmp_dir=$(mktemp -d "$base_dir/waitpid_probe.XXXXXX") || return 1
+
+    cat > "$tmp_dir/test_waitpid.c" <<'EOF'
+#include <sys/types.h>
+#include <sys/wait.h>
+int main(void) {
+    int (*fn)(pid_t, int*, int) = waitpid;
+    return fn == 0;
+}
+EOF
+
+    if "$cc" -o "$tmp_dir/test_waitpid" "$tmp_dir/test_waitpid.c" >/dev/null 2>&1; then
+        rm -rf "$tmp_dir"
+        return 0
+    fi
+
+    rm -rf "$tmp_dir"
+    return 1
+}
+
+detect_sigaction_support() {
+    local cc="${CC:-cc}"
+    local base_dir="${PHPV_CACHE_DIR:-/tmp}"
+    local tmp_dir
+    tmp_dir=$(mktemp -d "$base_dir/sigaction_probe.XXXXXX") || return 1
+
+    cat > "$tmp_dir/test_sigaction.c" <<'EOF'
+#include <signal.h>
+static void noop(int sig) {(void)sig;}
+int main(void) {
+    struct sigaction sa;
+    sa.sa_handler = noop;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    return sigaction(SIGINT, &sa, 0) == -1;
+}
+EOF
+
+    if "$cc" -o "$tmp_dir/test_sigaction" "$tmp_dir/test_sigaction.c" >/dev/null 2>&1; then
+        rm -rf "$tmp_dir"
+        return 0
+    fi
+
+    rm -rf "$tmp_dir"
+    return 1
+}
+
 install_php_version() {
     local input_version="$1"
     
@@ -2202,6 +2275,38 @@ install_php_version() {
 
     if version_supports_opcache "$version"; then
         configure_flags+=(--enable-opcache)
+    fi
+
+    local pcntl_supported=true
+    if detect_fork_support; then
+        configure_env+=(ac_cv_func_fork=yes ac_cv_func_fork_works=yes)
+    else
+        log_warning "Failed to compile fork() probe; pcntl will be disabled"
+        pcntl_supported=false
+    fi
+
+    if detect_waitpid_support; then
+        configure_env+=(ac_cv_func_waitpid=yes)
+    else
+        log_warning "Failed to compile waitpid() probe; pcntl will be disabled"
+        pcntl_supported=false
+    fi
+
+    if detect_sigaction_support; then
+        configure_env+=(ac_cv_func_sigaction=yes)
+    else
+        log_warning "Failed to compile sigaction() probe; pcntl will be disabled"
+        pcntl_supported=false
+    fi
+
+    if [[ "$pcntl_supported" != true ]]; then
+        local tmp_flags=()
+        local flag
+        for flag in "${configure_flags[@]}"; do
+            [[ "$flag" == "--enable-pcntl" ]] && continue
+            tmp_flags+=("$flag")
+        done
+        configure_flags=("${tmp_flags[@]}")
     fi
     
     # Add MySQL/ODBC support based on PHP version

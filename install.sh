@@ -154,6 +154,7 @@ phpv_update_path() {
     local path_prefix=""
     local ld_prefix=""
     local ld_root=""
+    local env_mode="system"
 
     if [[ -n "$env_output" ]]; then
         while IFS='=' read -r key value; do
@@ -167,24 +168,37 @@ phpv_update_path() {
                 LD_LIBRARY_PATH_ROOT)
                     ld_root="$value"
                     ;;
+                ENV_MODE)
+                    env_mode="$value"
+                    ;;
             esac
         done <<< "$env_output"
     fi
 
     local path_root="$PHPV_ROOT/versions/"
     PATH="$(phpv_strip_from_path "$PATH" "$path_root")"
-    if [[ -n "$path_prefix" ]]; then
+    if [[ "$env_mode" != "system" && -n "$path_prefix" ]]; then
         PATH="$path_prefix${PATH:+:$PATH}"
     fi
     export PATH
 
-    if [[ -z "$ld_root" ]]; then
-        ld_root="$PHPV_ROOT/deps"
+    local strip_root="$ld_root"
+    if [[ -z "$strip_root" ]]; then
+        strip_root="$PHPV_ROOT/deps"
     fi
 
-    local existing_ld=""
-    if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
-        existing_ld="$(phpv_strip_from_path "$LD_LIBRARY_PATH" "$ld_root/")"
+    local existing_ld="${LD_LIBRARY_PATH:-}"
+    if [[ -n "$strip_root" && -n "$existing_ld" ]]; then
+        existing_ld="$(phpv_strip_from_path "$existing_ld" "$strip_root/")"
+    fi
+
+    if [[ "$env_mode" == "system" ]]; then
+        if [[ -n "$existing_ld" ]]; then
+            export LD_LIBRARY_PATH="$existing_ld"
+        else
+            unset LD_LIBRARY_PATH
+        fi
+        return
     fi
 
     if [[ -n "$ld_prefix" ]]; then

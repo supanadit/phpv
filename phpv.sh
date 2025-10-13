@@ -40,6 +40,57 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+with_system_tool_env() {
+    local old_path="$PATH"
+    local old_ld=""
+    local ld_was_set=0
+
+    if [[ "${LD_LIBRARY_PATH+x}" == "x" ]]; then
+        old_ld="$LD_LIBRARY_PATH"
+        ld_was_set=1
+    fi
+
+    unset LD_LIBRARY_PATH
+    PATH="/usr/local/bin:/usr/bin:/bin"
+
+    "$@"
+    local status=$?
+
+    PATH="$old_path"
+    if (( ld_was_set )); then
+        export LD_LIBRARY_PATH="$old_ld"
+    else
+        unset LD_LIBRARY_PATH
+    fi
+
+    return $status
+}
+
+safe_download() {
+    local url="$1"
+    local output="$2"
+
+    local result=1
+
+    if command -v wget &> /dev/null; then
+        if with_system_tool_env wget -q "$url" -O "$output"; then
+            result=0
+        fi
+    fi
+
+    if [[ $result -ne 0 ]] && command -v curl &> /dev/null; then
+        if with_system_tool_env curl -fsSL "$url" -o "$output" 2>/dev/null; then
+            result=0
+        fi
+    fi
+
+    if [[ $result -ne 0 ]]; then
+        log_error "Failed to download $url"
+    fi
+
+    return $result
+}
+
 prepend_path() {
     local dir="$1"
     case ":$PATH:" in
@@ -98,42 +149,6 @@ normalize_mysql_config() {
     fi
 
     chmod +x "$config_path"
-}
-
-# Download helper that uses system libraries (not custom built ones)
-safe_download() {
-    local url="$1"
-    local output="$2"
-    
-    # Completely isolate from custom environment
-    local old_ld_library_path="$LD_LIBRARY_PATH"
-    local old_path="$PATH"
-    
-    unset LD_LIBRARY_PATH
-    export PATH="/usr/local/bin:/usr/bin:/bin"
-    
-    local result=1
-    
-    # Try wget first (more reliable)
-    if command -v wget &> /dev/null; then
-        wget -q "$url" -O "$output"
-        result=$?
-    fi
-    
-    # If wget failed or not available, try curl
-    if [[ $result -ne 0 ]] && command -v curl &> /dev/null; then
-        curl -fsSL "$url" -o "$output" 2>/dev/null
-        result=$?
-    fi
-    
-    if [[ $result -ne 0 ]]; then
-        log_error "Failed to download $url"
-    fi
-    
-    # Restore environment
-    export LD_LIBRARY_PATH="$old_ld_library_path"
-    export PATH="$old_path"
-    return $result
 }
 
 # Initialize phpv directory structure
@@ -1644,34 +1659,17 @@ resolve_llvm_asset_url() {
     local api_url="https://api.github.com/repos/llvm/llvm-project/releases/tags/llvmorg-${version}"
     local release_json
 
-    # Completely isolate from custom environment
-    local old_ld_library_path="$LD_LIBRARY_PATH"
-    local old_path="$PATH"
-    
-    unset LD_LIBRARY_PATH
-    export PATH="/usr/local/bin:/usr/bin:/bin"
-
     if command -v curl &> /dev/null; then
-        if ! release_json=$(curl -fsSL "$api_url"); then
-            export LD_LIBRARY_PATH="$old_ld_library_path"
-            export PATH="$old_path"
+        if ! release_json=$(with_system_tool_env curl -fsSL "$api_url"); then
             return 1
         fi
     elif command -v wget &> /dev/null; then
-        if ! release_json=$(wget -qO- "$api_url"); then
-            export LD_LIBRARY_PATH="$old_ld_library_path"
-            export PATH="$old_path"
+        if ! release_json=$(with_system_tool_env wget -qO- "$api_url"); then
             return 1
         fi
     else
-        export LD_LIBRARY_PATH="$old_ld_library_path"
-        export PATH="$old_path"
         return 1
     fi
-
-    # Restore environment
-    export LD_LIBRARY_PATH="$old_ld_library_path"
-    export PATH="$old_path"
 
     if [[ "$release_json" == *"API rate limit exceeded"* ]]; then
         log_warning "GitHub API rate limit exceeded while fetching LLVM $version metadata"
@@ -1832,31 +1830,20 @@ install_llvm_toolchain() {
 
     if [[ ! -f "$cache_file" ]]; then
         log_info "Downloading $archive"
-        # Completely isolate from custom environment
-        local old_ld_library_path="$LD_LIBRARY_PATH"
-        local old_path="$PATH"
-        
-        unset LD_LIBRARY_PATH
-        export PATH="/usr/local/bin:/usr/bin:/bin"
-        
         local download_result=1
         if command -v curl &> /dev/null; then
-            if curl -fsSL "$asset_url" -o "$cache_file"; then
+            if with_system_tool_env curl -fsSL "$asset_url" -o "$cache_file"; then
                 download_result=0
             fi
         fi
-        
+
         # If curl failed or not available, try wget
         if [[ $download_result -ne 0 ]] && command -v wget &> /dev/null; then
-            if wget -q "$asset_url" -O "$cache_file"; then
+            if with_system_tool_env wget -q "$asset_url" -O "$cache_file"; then
                 download_result=0
             fi
         fi
-        
-        # Restore environment
-        export LD_LIBRARY_PATH="$old_ld_library_path"
-        export PATH="$old_path"
-        
+
         if [[ $download_result -ne 0 ]]; then
             rm -f "$cache_file"
             log_error "Failed to download LLVM from $asset_url"

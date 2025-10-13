@@ -2044,6 +2044,51 @@ EOF
     return 1
 }
 
+detect_wait_support() {
+    local cc="${CC:-cc}"
+    local base_dir="${PHPV_CACHE_DIR:-/tmp}"
+    local tmp_dir
+    tmp_dir=$(mktemp -d "$base_dir/wait_probe.XXXXXX") || return 1
+
+    cat > "$tmp_dir/test_wait.c" <<'EOF'
+#include <sys/types.h>
+#include <sys/wait.h>
+int main(void) {
+    int status = 0;
+    return wait(&status) == -1;
+}
+EOF
+
+    if "$cc" -o "$tmp_dir/test_wait" "$tmp_dir/test_wait.c" >/dev/null 2>&1; then
+        rm -rf "$tmp_dir"
+        return 0
+    fi
+
+    rm -rf "$tmp_dir"
+    return 1
+}
+
+detect_header_support() {
+    local header="$1"
+    local cc="${CC:-cc}"
+    local base_dir="${PHPV_CACHE_DIR:-/tmp}"
+    local tmp_dir
+    tmp_dir=$(mktemp -d "$base_dir/header_probe.XXXXXX") || return 1
+
+    cat > "$tmp_dir/test_header.c" <<EOF
+#include <$header>
+int main(void) { return 0; }
+EOF
+
+    if "$cc" -c "$tmp_dir/test_header.c" -o "$tmp_dir/test_header.o" >/dev/null 2>&1; then
+        rm -rf "$tmp_dir"
+        return 0
+    fi
+
+    rm -rf "$tmp_dir"
+    return 1
+}
+
 install_php_version() {
     local input_version="$1"
     
@@ -2286,9 +2331,16 @@ install_php_version() {
     fi
 
     if detect_waitpid_support; then
-        configure_env+=(ac_cv_func_waitpid=yes)
+        configure_env+=(ac_cv_func_waitpid=yes ac_cv_func_waitpid_works=yes)
     else
         log_warning "Failed to compile waitpid() probe; pcntl will be disabled"
+        pcntl_supported=false
+    fi
+
+    if detect_wait_support; then
+        configure_env+=(ac_cv_func_wait=yes)
+    else
+        log_warning "Failed to compile wait() probe; pcntl will be disabled"
         pcntl_supported=false
     fi
 
@@ -2296,6 +2348,13 @@ install_php_version() {
         configure_env+=(ac_cv_func_sigaction=yes)
     else
         log_warning "Failed to compile sigaction() probe; pcntl will be disabled"
+        pcntl_supported=false
+    fi
+
+    if detect_header_support "sys/wait.h"; then
+        configure_env+=(ac_cv_header_sys_wait_h=yes)
+    else
+        log_warning "sys/wait.h header not available; pcntl will be disabled"
         pcntl_supported=false
     fi
 

@@ -2761,9 +2761,14 @@ show_current_version() {
     current_version=$(get_current_version)
     
     if [[ "$current_version" == "system" ]]; then
-        if command -v php &> /dev/null; then
+        # When checking for system PHP, exclude phpv-managed versions from PATH
+        local clean_path
+        clean_path=$(echo "$PATH" | tr ':' '\n' | grep -v "$PHPV_VERSIONS_DIR" | tr '\n' ':')
+        clean_path=${clean_path%:}
+        
+        if PATH="$clean_path" command -v php &> /dev/null; then
             local system_version
-            system_version=$(php -v | head -n1 | cut -d' ' -f2)
+            system_version=$(PATH="$clean_path" php -v | head -n1 | cut -d' ' -f2)
             echo "Current: system (PHP $system_version)"
         else
             echo "Current: system (PHP not found in PATH)"

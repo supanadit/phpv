@@ -34,6 +34,21 @@ log_error() {
 
 # Detect shell
 detect_shell() {
+    # First try to get the user's actual shell from SHELL environment variable
+    if [[ -n "$SHELL" ]]; then
+        case "$SHELL" in
+            */zsh)
+                echo "zsh"
+                return
+                ;;
+            */bash)
+                echo "bash"
+                return
+                ;;
+        esac
+    fi
+    
+    # Fallback to checking shell version variables (for when sourced)
     if [[ -n "$ZSH_VERSION" ]]; then
         echo "zsh"
     elif [[ -n "$BASH_VERSION" ]]; then

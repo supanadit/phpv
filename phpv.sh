@@ -15,6 +15,7 @@ PHPV_DEPS_DIR="$PHPV_ROOT/deps"
 PHPV_DEPS_BASE_DIR="$PHPV_DEPS_DIR"
 PHPV_LLVM_VERSION="${PHPV_LLVM_VERSION:-17.0.6}"
 PHPV_DEFAULT_VERSION="system"
+PHPV_VERBOSE="${PHPV_VERBOSE:-0}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -38,6 +39,76 @@ log_warning() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Progress bar functions
+show_progress() {
+    local current=$1
+    local total=$2
+    local label="${3:-Progress}"
+    local width=50
+    
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        return
+    fi
+    
+    local percentage=$((current * 100 / total))
+    local filled=$((width * current / total))
+    local empty=$((width - filled))
+    
+    printf "\r${BLUE}[INFO]${NC} %s: [" "$label"
+    printf "%${filled}s" | tr ' ' '='
+    printf "%${empty}s" | tr ' ' ' '
+    printf "] %d%%" "$percentage"
+}
+
+complete_progress() {
+    local label="${1:-Progress}"
+    
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        return
+    fi
+    
+    printf "\r${GREEN}[SUCCESS]${NC} %s: [" "$label"
+    printf "%50s" | tr ' ' '='
+    printf "] 100%%\n"
+}
+
+run_with_progress() {
+    local label="$1"
+    local total_steps="${2:-100}"
+    shift 2
+    local log_file="$PHPV_CACHE_DIR/build.log"
+    
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        "$@"
+        return $?
+    fi
+    
+    # Run the command in the background and redirect output
+    "$@" > "$log_file" 2>&1 &
+    local pid=$!
+    
+    local step=0
+    while kill -0 $pid 2>/dev/null; do
+        show_progress $step $total_steps "$label"
+        step=$(( (step + 1) % total_steps ))
+        if [[ $step -eq 0 ]]; then
+            step=$((total_steps - 1))
+        fi
+        sleep 0.1
+    done
+    
+    wait $pid
+    local exit_code=$?
+    
+    if [[ $exit_code -eq 0 ]]; then
+        complete_progress "$label"
+    else
+        printf "\r${RED}[ERROR]${NC} %s failed. See %s for details.\n" "$label" "$log_file"
+    fi
+    
+    return $exit_code
 }
 
 with_system_tool_env() {
@@ -768,9 +839,16 @@ install_libxml2_from_source() {
     mkdir -p "$build_dir"
     cd "$build_dir"
     tar -xf "$cache_file" --strip-components=1
-    ./configure --prefix="$PHPV_DEPS_DIR" --without-python
-    make -j$(nproc)
-    make install
+    
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        ./configure --prefix="$PHPV_DEPS_DIR" --without-python
+        make -j$(nproc)
+        make install
+    else
+        run_with_progress "Configuring libxml2" 30 ./configure --prefix="$PHPV_DEPS_DIR" --without-python || return 1
+        run_with_progress "Building libxml2" 50 make -j$(nproc) || return 1
+        run_with_progress "Installing libxml2" 20 make install || return 1
+    fi
 }
 
 # Install zlib from source
@@ -791,9 +869,15 @@ install_zlib_from_source() {
     cd "$build_dir"
     tar -xzf "$cache_file" --strip-components=1
 
-    ./configure --prefix="$PHPV_DEPS_DIR" --shared
-    make -j$(nproc)
-    make install
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        ./configure --prefix="$PHPV_DEPS_DIR" --shared
+        make -j$(nproc)
+        make install
+    else
+        run_with_progress "Configuring zlib" 30 ./configure --prefix="$PHPV_DEPS_DIR" --shared || return 1
+        run_with_progress "Building zlib" 50 make -j$(nproc) || return 1
+        run_with_progress "Installing zlib" 20 make install || return 1
+    fi
 }
 
 # Install OpenSSL from source
@@ -822,9 +906,16 @@ install_openssl_from_source() {
     mkdir -p "$build_dir"
     cd "$build_dir"
     tar -xzf "$cache_file" --strip-components=1
-    ./config --prefix="$PHPV_DEPS_DIR" --openssldir="$PHPV_DEPS_DIR/ssl" shared
-    make -j$(nproc)
-    make install
+    
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        ./config --prefix="$PHPV_DEPS_DIR" --openssldir="$PHPV_DEPS_DIR/ssl" shared
+        make -j$(nproc)
+        make install
+    else
+        run_with_progress "Configuring OpenSSL" 30 ./config --prefix="$PHPV_DEPS_DIR" --openssldir="$PHPV_DEPS_DIR/ssl" shared || return 1
+        run_with_progress "Building OpenSSL" 50 make -j$(nproc) || return 1
+        run_with_progress "Installing OpenSSL" 20 make install || return 1
+    fi
 }
 
 # Install oniguruma from source
@@ -852,9 +943,16 @@ install_oniguruma_from_source() {
     mkdir -p "$build_dir"
     cd "$build_dir"
     tar -xzf "$cache_file" --strip-components=1
-    ./configure --prefix="$PHPV_DEPS_DIR"
-    make -j$(nproc)
-    make install
+    
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        ./configure --prefix="$PHPV_DEPS_DIR"
+        make -j$(nproc)
+        make install
+    else
+        run_with_progress "Configuring oniguruma" 30 ./configure --prefix="$PHPV_DEPS_DIR" || return 1
+        run_with_progress "Building oniguruma" 50 make -j$(nproc) || return 1
+        run_with_progress "Installing oniguruma" 20 make install || return 1
+    fi
 }
 
 # Install libpng from source
@@ -873,9 +971,16 @@ install_libpng_from_source() {
     mkdir -p "$build_dir"
     cd "$build_dir"
     tar -xzf "$cache_file" --strip-components=1
-    ./configure --prefix="$PHPV_DEPS_DIR"
-    make -j$(nproc)
-    make install
+    
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        ./configure --prefix="$PHPV_DEPS_DIR"
+        make -j$(nproc)
+        make install
+    else
+        run_with_progress "Configuring libpng" 30 ./configure --prefix="$PHPV_DEPS_DIR" || return 1
+        run_with_progress "Building libpng" 50 make -j$(nproc) || return 1
+        run_with_progress "Installing libpng" 20 make install || return 1
+    fi
 }
 
 # Install libjpeg from source
@@ -894,9 +999,16 @@ install_libjpeg_from_source() {
     mkdir -p "$build_dir"
     cd "$build_dir"
     tar -xzf "$cache_file" --strip-components=1
-    ./configure --prefix="$PHPV_DEPS_DIR"
-    make -j$(nproc)
-    make install
+    
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        ./configure --prefix="$PHPV_DEPS_DIR"
+        make -j$(nproc)
+        make install
+    else
+        run_with_progress "Configuring libjpeg" 30 ./configure --prefix="$PHPV_DEPS_DIR" || return 1
+        run_with_progress "Building libjpeg" 50 make -j$(nproc) || return 1
+        run_with_progress "Installing libjpeg" 20 make install || return 1
+    fi
 }
 
 # Install freetype from source
@@ -915,9 +1027,16 @@ install_freetype_from_source() {
     mkdir -p "$build_dir"
     cd "$build_dir"
     tar -xzf "$cache_file" --strip-components=1
-    ./configure --prefix="$PHPV_DEPS_DIR"
-    make -j$(nproc)
-    make install
+    
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        ./configure --prefix="$PHPV_DEPS_DIR"
+        make -j$(nproc)
+        make install
+    else
+        run_with_progress "Configuring freetype" 30 ./configure --prefix="$PHPV_DEPS_DIR" || return 1
+        run_with_progress "Building freetype" 50 make -j$(nproc) || return 1
+        run_with_progress "Installing freetype" 20 make install || return 1
+    fi
 }
 
 # Install ICU from source
@@ -947,9 +1066,16 @@ install_icu_from_source() {
     mkdir -p "$build_dir"
     tar -xzf "$cache_file" -C "$build_dir"
     cd "$build_dir/icu/source"
-    ./configure --prefix="$PHPV_DEPS_DIR"
-    make -j$(nproc)
-    make install
+    
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        ./configure --prefix="$PHPV_DEPS_DIR"
+        make -j$(nproc)
+        make install
+    else
+        run_with_progress "Configuring ICU" 30 ./configure --prefix="$PHPV_DEPS_DIR" || return 1
+        run_with_progress "Building ICU" 50 make -j$(nproc) || return 1
+        run_with_progress "Installing ICU" 20 make install || return 1
+    fi
 }
 
 # Install curl from source
@@ -1013,8 +1139,14 @@ install_curl_from_source() {
     if [[ "$restore_select_cache" == true ]]; then
         unset ac_cv_func_select ac_cv_func_socket
     fi
-    make -j$(nproc)
-    make install
+    
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        make -j$(nproc)
+        make install
+    else
+        run_with_progress "Building curl" 50 make -j$(nproc) || return 1
+        run_with_progress "Installing curl" 20 make install || return 1
+    fi
 }
 
 install_cmake_from_source() {
@@ -1061,19 +1193,36 @@ install_cmake_from_source() {
         return 1
     }
 
-    if ! ./bootstrap --prefix="$PHPV_DEPS_DIR" --parallel="$jobs" -- -DCMake_ENABLE_DEBUGGER=OFF -DBUILD_TESTING=OFF; then
-        cd "$old_cwd"
-        return 1
-    fi
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        if ! ./bootstrap --prefix="$PHPV_DEPS_DIR" --parallel="$jobs" -- -DCMake_ENABLE_DEBUGGER=OFF -DBUILD_TESTING=OFF; then
+            cd "$old_cwd"
+            return 1
+        fi
 
-    if ! make -j"$jobs"; then
-        cd "$old_cwd"
-        return 1
-    fi
+        if ! make -j"$jobs"; then
+            cd "$old_cwd"
+            return 1
+        fi
 
-    if ! make install; then
-        cd "$old_cwd"
-        return 1
+        if ! make install; then
+            cd "$old_cwd"
+            return 1
+        fi
+    else
+        if ! run_with_progress "Bootstrapping CMake" 30 ./bootstrap --prefix="$PHPV_DEPS_DIR" --parallel="$jobs" -- -DCMake_ENABLE_DEBUGGER=OFF -DBUILD_TESTING=OFF; then
+            cd "$old_cwd"
+            return 1
+        fi
+
+        if ! run_with_progress "Building CMake" 50 make -j"$jobs"; then
+            cd "$old_cwd"
+            return 1
+        fi
+
+        if ! run_with_progress "Installing CMake" 20 make install; then
+            cd "$old_cwd"
+            return 1
+        fi
     fi
 
     cd "$old_cwd"
@@ -1136,8 +1285,13 @@ install_libzip_from_source() {
         return 1
     fi
     
-    make -j$(nproc)
-    make install
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        make -j$(nproc)
+        make install
+    else
+        run_with_progress "Building libzip" 50 make -j$(nproc) || return 1
+        run_with_progress "Installing libzip" 20 make install || return 1
+    fi
 }
 
 # Install unixODBC from source
@@ -1155,9 +1309,16 @@ install_unixodbc_from_source() {
     mkdir -p "$build_dir"
     cd "$build_dir"
     tar -xzf "$cache_file" --strip-components=1
-    ./configure --prefix="$PHPV_DEPS_DIR"
-    make -j$(nproc)
-    make install
+    
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        ./configure --prefix="$PHPV_DEPS_DIR"
+        make -j$(nproc)
+        make install
+    else
+        run_with_progress "Configuring unixODBC" 30 ./configure --prefix="$PHPV_DEPS_DIR" || return 1
+        run_with_progress "Building unixODBC" 50 make -j$(nproc) || return 1
+        run_with_progress "Installing unixODBC" 20 make install || return 1
+    fi
 }
 
 # Install MySQL ODBC driver from source
@@ -1175,13 +1336,24 @@ install_mysql_odbc_from_source() {
     mkdir -p "$build_dir"
     cd "$build_dir"
     tar -xzf "$cache_file" --strip-components=1
-    ./configure --prefix="$PHPV_DEPS_DIR" \
-                --with-unixodbc="$PHPV_DEPS_DIR" \
-                --with-openssl="$PHPV_DEPS_DIR" \
-                --enable-sybase-compat \
-                --disable-dependency-tracking
-    make -j$(nproc)
-    make install
+    
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        ./configure --prefix="$PHPV_DEPS_DIR" \
+                    --with-unixodbc="$PHPV_DEPS_DIR" \
+                    --with-openssl="$PHPV_DEPS_DIR" \
+                    --enable-sybase-compat \
+                    --disable-dependency-tracking
+        make -j$(nproc)
+        make install
+    else
+        run_with_progress "Configuring FreeTDS" 30 ./configure --prefix="$PHPV_DEPS_DIR" \
+                    --with-unixodbc="$PHPV_DEPS_DIR" \
+                    --with-openssl="$PHPV_DEPS_DIR" \
+                    --enable-sybase-compat \
+                    --disable-dependency-tracking || return 1
+        run_with_progress "Building FreeTDS" 50 make -j$(nproc) || return 1
+        run_with_progress "Installing FreeTDS" 20 make install || return 1
+    fi
 }
 
 install_mariadb_connector_from_source() {
@@ -1258,25 +1430,47 @@ install_mariadb_connector_from_source() {
         return 1
     }
 
-    make -j$(nproc) || {
-        export PATH="$old_path"
-        export LD_LIBRARY_PATH="$old_ld_library_path"
-        export PKG_CONFIG_PATH="$old_pkg_config"
-        export LDFLAGS="$old_ldflags"
-        export CPPFLAGS="$old_cppflags"
-        cd "$old_cwd"
-        return 1
-    }
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        make -j$(nproc) || {
+            export PATH="$old_path"
+            export LD_LIBRARY_PATH="$old_ld_library_path"
+            export PKG_CONFIG_PATH="$old_pkg_config"
+            export LDFLAGS="$old_ldflags"
+            export CPPFLAGS="$old_cppflags"
+            cd "$old_cwd"
+            return 1
+        }
 
-    make install || {
-        export PATH="$old_path"
-        export LD_LIBRARY_PATH="$old_ld_library_path"
-        export PKG_CONFIG_PATH="$old_pkg_config"
-        export LDFLAGS="$old_ldflags"
-        export CPPFLAGS="$old_cppflags"
-        cd "$old_cwd"
-        return 1
-    }
+        make install || {
+            export PATH="$old_path"
+            export LD_LIBRARY_PATH="$old_ld_library_path"
+            export PKG_CONFIG_PATH="$old_pkg_config"
+            export LDFLAGS="$old_ldflags"
+            export CPPFLAGS="$old_cppflags"
+            cd "$old_cwd"
+            return 1
+        }
+    else
+        if ! run_with_progress "Building MariaDB Connector" 50 make -j$(nproc); then
+            export PATH="$old_path"
+            export LD_LIBRARY_PATH="$old_ld_library_path"
+            export PKG_CONFIG_PATH="$old_pkg_config"
+            export LDFLAGS="$old_ldflags"
+            export CPPFLAGS="$old_cppflags"
+            cd "$old_cwd"
+            return 1
+        fi
+
+        if ! run_with_progress "Installing MariaDB Connector" 20 make install; then
+            export PATH="$old_path"
+            export LD_LIBRARY_PATH="$old_ld_library_path"
+            export PKG_CONFIG_PATH="$old_pkg_config"
+            export LDFLAGS="$old_ldflags"
+            export CPPFLAGS="$old_cppflags"
+            cd "$old_cwd"
+            return 1
+        fi
+    fi
 
     export PATH="$old_path"
     export LD_LIBRARY_PATH="$old_ld_library_path"
@@ -1508,19 +1702,35 @@ install_mysql_legacy_connector_from_source() {
         return 1
     }
 
-    make -j$(nproc) || {
-        log_error "MySQL build failed"
-        cd "$old_cwd" 2>/dev/null || true
-        rm -rf "$mysql_extract_dir"
-        return 1
-    }
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        make -j$(nproc) || {
+            log_error "MySQL build failed"
+            cd "$old_cwd" 2>/dev/null || true
+            rm -rf "$mysql_extract_dir"
+            return 1
+        }
 
-    make install || {
-        log_error "MySQL install failed"
-        cd "$old_cwd" 2>/dev/null || true
-        rm -rf "$mysql_extract_dir"
-        return 1
-    }
+        make install || {
+            log_error "MySQL install failed"
+            cd "$old_cwd" 2>/dev/null || true
+            rm -rf "$mysql_extract_dir"
+            return 1
+        }
+    else
+        if ! run_with_progress "Building MySQL Connector" 50 make -j$(nproc); then
+            log_error "MySQL build failed"
+            cd "$old_cwd" 2>/dev/null || true
+            rm -rf "$mysql_extract_dir"
+            return 1
+        fi
+
+        if ! run_with_progress "Installing MySQL Connector" 20 make install; then
+            log_error "MySQL install failed"
+            cd "$old_cwd" 2>/dev/null || true
+            rm -rf "$mysql_extract_dir"
+            return 1
+        fi
+    fi
 
     cd "$old_cwd" 2>/dev/null || true
     rm -rf "$mysql_extract_dir"
@@ -2422,14 +2632,26 @@ install_php_version() {
         unset ac_cv_func_shutdown
     fi
     
-    log_info "Building PHP $version (this may take a while)..."
-    if ! make -j"$(nproc)"; then
-        log_error "Build failed"
-        return 1
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        log_info "Building PHP $version (this may take a while)..."
+        if ! make -j"$(nproc)"; then
+            log_error "Build failed"
+            return 1
+        fi
+        
+        log_info "Installing PHP $version..."
+        make install
+    else
+        if ! run_with_progress "Building PHP $version" 80 make -j"$(nproc)"; then
+            log_error "Build failed. See $PHPV_CACHE_DIR/build.log for details"
+            return 1
+        fi
+        
+        if ! run_with_progress "Installing PHP $version" 20 make install; then
+            log_error "Installation failed. See $PHPV_CACHE_DIR/build.log for details"
+            return 1
+        fi
     fi
-    
-    log_info "Installing PHP $version..."
-    make install
     
     # Create basic php.ini
     mkdir -p "$install_dir/etc/conf.d"
@@ -2742,7 +2964,10 @@ show_help() {
 PHPV - PHP Version Manager
 
 USAGE:
-    phpv <command> [arguments]
+    phpv [--verbose] <command> [arguments]
+
+OPTIONS:
+    --verbose, -v               Show detailed build output (default: show progress bars)
 
 COMMANDS:
     install <version>           Install a specific PHP version (supports partial versions: e.g., 8, 8.3)
@@ -2757,9 +2982,9 @@ COMMANDS:
     help                        Show this help message
 
 EXAMPLES:
-    phpv install 8.3.12         # Install PHP 8.3.12
-    phpv install 8.3            # Install latest 8.3.x version (8.3.12)
-    phpv install 8              # Install latest 8.x.x version
+    phpv install 8.3.12         # Install PHP 8.3.12 with progress bars
+    phpv --verbose install 8.3  # Install latest 8.3.x with verbose output
+    phpv -v install 8           # Install latest 8.x.x with verbose output
     phpv use 8.3.12             # Switch to PHP 8.3.12
     phpv use system             # Switch to system PHP
     phpv current                # Show current version
@@ -2778,6 +3003,19 @@ EOF
 # Main command dispatcher
 main() {
     init_phpv
+    
+    # Parse verbose flag
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --verbose|-v)
+                PHPV_VERBOSE=1
+                shift
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
     
     local command="${1:-help}"
     shift || true

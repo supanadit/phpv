@@ -1840,6 +1840,48 @@ resolve_latest_version() {
     echo "$latest_version"
 }
 
+detect_readdir_r_variant() {
+    local cc="${CC:-cc}"
+    local base_dir="${PHPV_CACHE_DIR:-/tmp}"
+    local tmp_dir
+    tmp_dir=$(mktemp -d "$base_dir/readdir_r.XXXXXX") || return 1
+
+    cat > "$tmp_dir/test_posix.c" <<'EOF'
+#define _REENTRANT
+#include <sys/types.h>
+#include <dirent.h>
+int main(void) {
+    DIR *dir = 0;
+    struct dirent entry;
+    struct dirent *result = 0;
+    return readdir_r(dir, &entry, &result);
+}
+EOF
+
+    local variant="unknown"
+    if "$cc" -o "$tmp_dir/test_posix" "$tmp_dir/test_posix.c" >/dev/null 2>&1; then
+        variant="posix"
+    else
+        cat > "$tmp_dir/test_old.c" <<'EOF'
+#define _REENTRANT
+#include <sys/types.h>
+#include <dirent.h>
+int main(void) {
+    DIR *dir = 0;
+    struct dirent entry;
+    return readdir_r(dir, &entry);
+}
+EOF
+        if "$cc" -o "$tmp_dir/test_old" "$tmp_dir/test_old.c" >/dev/null 2>&1; then
+            variant="old"
+        fi
+    fi
+
+    rm -rf "$tmp_dir"
+    [[ "$variant" == "unknown" ]] && return 1
+    printf '%s\n' "$variant"
+}
+
 install_php_version() {
     local input_version="$1"
     
@@ -2022,8 +2064,24 @@ install_php_version() {
     tar -xzf "$cache_file" -C "$build_dir" --strip-components=1
     
     cd "$build_dir"
-    
+
+    local -a configure_env=()
+    local readdir_variant=""
+    if readdir_variant=$(detect_readdir_r_variant 2>/dev/null); then
+        case "$readdir_variant" in
+            posix)
+                configure_env+=("ac_cv_func_readdir_r=yes" "ac_cv_what_readdir_r=POSIX")
+                ;;
+            old)
+                configure_env+=("ac_cv_func_readdir_r=yes" "ac_cv_what_readdir_r=old-style")
+                ;;
+        esac
+    fi
+
     log_info "Configuring PHP $version..."
+    if [[ "$readdir_variant" == "posix" ]]; then
+        log_info "Ensuring configure treats readdir_r as POSIX (3 arguments)"
+    fi
     
     # Build configure flags based on PHP version
     local configure_flags=(
@@ -2094,7 +2152,18 @@ install_php_version() {
     fi
 
     # Basic configuration - can be customized
-    if ! ./configure "${configure_flags[@]}"; then
+    local configure_success=false
+    if [[ ${#configure_env[@]} -gt 0 ]]; then
+        if env "${configure_env[@]}" ./configure "${configure_flags[@]}"; then
+            configure_success=true
+        fi
+    else
+        if ./configure "${configure_flags[@]}"; then
+            configure_success=true
+        fi
+    fi
+
+    if [[ "$configure_success" != true ]]; then
         log_error "Configuration failed. You may need to install development packages:"
         log_info "Ubuntu/Debian: sudo apt-get install libxml2-dev libssl-dev libcurl4-openssl-dev libonig-dev libzip-dev"
         log_info "CentOS/RHEL: sudo yum install libxml2-devel openssl-devel curl-devel oniguruma-devel libzip-devel"

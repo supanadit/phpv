@@ -809,6 +809,7 @@ resolve_llvm_version_for_php() {
 
     if [[ "$php_version" == 7.* || "$php_version" == 5.* ]]; then
         echo "${PHPV_LLVM_VERSION_PHP5:-15.0.6}"
+        echo "${PHPV_LLVM_VERSION_PHP7:-15.0.6}"
         return
     fi
 

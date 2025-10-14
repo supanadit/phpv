@@ -772,8 +772,12 @@ resolve_llvm_version_for_php() {
         done
     fi
 
-    if [[ "$php_version" == 7.* || "$php_version" == 5.* ]]; then
+    if [[ "$php_version" == 5.* ]]; then
         echo "${PHPV_LLVM_VERSION_PHP5:-15.0.6}"
+        return
+    fi
+
+    if [[ "$php_version" == 7.* ]]; then
         echo "${PHPV_LLVM_VERSION_PHP7:-15.0.6}"
         return
     fi
@@ -1860,7 +1864,7 @@ resolve_llvm_asset_url() {
     fi
 
     local urls
-    urls=$(echo "$release_json" | grep -o '"browser_download_url": *"[^\"]*"' | sed -E 's/.*"browser_download_url": *"([^\"]*)"/\1/' | sed 's/%2B/+/g')
+    urls=$(echo "$release_json" | grep -o '"browser_download_url": *"[^\"]*"' | sed -E 's/.*"browser_download_url": *"([^\"]*)"/\1/' | sed 's/%2B/+/g' | tr -d '\r')
 
     if [[ -z "$urls" ]]; then
         return 1
@@ -1913,7 +1917,7 @@ resolve_llvm_asset_url() {
         return 1
     fi
 
-    printf '%s\n' "$chosen"
+    printf '%s' "$chosen"
 }
 
 # Install LLVM/Clang toolchain without relying on system packages
@@ -1994,6 +1998,7 @@ install_llvm_toolchain() {
             log_warning "Using LLVM $selected_version because binaries for $requested_version were not found."
         fi
         PHPV_ACTIVE_LLVM_VERSION="$selected_version"
+
         if [[ "$selected_version" != "$requested_version" ]]; then
             log_info "Using existing LLVM $selected_version installation"
         fi

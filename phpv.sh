@@ -2117,6 +2117,43 @@ resolve_latest_version() {
     echo "$latest_version"
 }
 
+# Resolve an installed version from partial input (e.g., "7.4" -> "7.4.33")
+resolve_installed_version() {
+    local input_version="$1"
+    
+    if [[ -z "$input_version" ]]; then
+        return 1
+    fi
+    
+    # Special case: system version
+    if [[ "$input_version" == "system" ]]; then
+        echo "system"
+        return 0
+    fi
+    
+    # If it's already a full version (x.y.z) and installed, return as-is
+    if [[ "$input_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && is_version_installed "$input_version"; then
+        echo "$input_version"
+        return 0
+    fi
+    
+    # Build filter pattern for partial version
+    local filter_pattern="$input_version"
+    if [[ "$filter_pattern" != *"." ]]; then
+        filter_pattern="$filter_pattern."
+    fi
+    
+    # Get matching installed versions and find the latest one
+    local latest_version
+    latest_version=$(get_installed_versions | grep -v "^system$" | grep "^$filter_pattern" | sort -V | tail -n1)
+    
+    if [[ -z "$latest_version" ]]; then
+        return 1
+    fi
+    
+    echo "$latest_version"
+}
+
 detect_readdir_r_variant() {
     local cc="${CC:-cc}"
     local base_dir="${PHPV_CACHE_DIR:-/tmp}"
@@ -2705,18 +2742,27 @@ EOF
 
 # Switch to a specific PHP version
 use_php_version() {
-    local version="$1"
+    local input_version="$1"
     
-    if [[ -z "$version" ]]; then
+    if [[ -z "$input_version" ]]; then
         log_error "Please specify a version"
         return 1
     fi
     
-    if ! is_version_installed "$version"; then
-        log_error "PHP $version is not installed"
+    # Resolve the actual version to use (e.g., "7.4" -> "7.4.33")
+    local version
+    version=$(resolve_installed_version "$input_version")
+    
+    if [[ -z "$version" ]]; then
+        log_error "PHP $input_version is not installed"
         log_info "Available versions:"
         get_installed_versions | sed 's/^/  /'
         return 1
+    fi
+    
+    # If we resolved to a different version, inform the user
+    if [[ "$version" != "$input_version" ]]; then
+        log_info "Using $version (matched from '$input_version')"
     fi
     
     set_current_version "$version"
@@ -2810,21 +2856,30 @@ list_available() {
 
 # Uninstall a PHP version
 uninstall_php_version() {
-    local version="$1"
+    local input_version="$1"
     
-    if [[ -z "$version" ]]; then
+    if [[ -z "$input_version" ]]; then
         log_error "Please specify a version to uninstall"
         return 1
     fi
     
-    if [[ "$version" == "system" ]]; then
+    if [[ "$input_version" == "system" ]]; then
         log_error "Cannot uninstall system PHP"
         return 1
     fi
     
-    if ! is_version_installed "$version"; then
-        log_error "PHP $version is not installed"
+    # Resolve the actual version to uninstall (e.g., "7.4" -> "7.4.33")
+    local version
+    version=$(resolve_installed_version "$input_version")
+    
+    if [[ -z "$version" ]]; then
+        log_error "PHP $input_version is not installed"
         return 1
+    fi
+    
+    # If we resolved to a different version, inform the user
+    if [[ "$version" != "$input_version" ]]; then
+        log_info "Uninstalling $version (matched from '$input_version')"
     fi
     
     local current_version
@@ -2978,8 +3033,8 @@ OPTIONS:
 
 COMMANDS:
     install <version>           Install a specific PHP version (supports partial versions: e.g., 8, 8.3)
-    uninstall <version>         Uninstall a specific PHP version
-    use <version>               Switch to a specific PHP version
+    uninstall <version>         Uninstall a specific PHP version (supports partial versions: e.g., 8, 8.3)
+    use <version>               Switch to a specific PHP version (supports partial versions: e.g., 8, 8.3)
     current                     Show the current PHP version
     list                        List installed PHP versions
     list-available [filter]     List available PHP versions for download (optional filter: e.g., 8, 8.3)
@@ -2993,6 +3048,7 @@ EXAMPLES:
     phpv --verbose install 8.3  # Install latest 8.3.x with verbose output
     phpv -v install 8           # Install latest 8.x.x with verbose output
     phpv use 8.3.12             # Switch to PHP 8.3.12
+    phpv use 8.3                # Switch to latest installed 8.3.x
     phpv use system             # Switch to system PHP
     phpv current                # Show current version
     phpv list                   # List installed versions

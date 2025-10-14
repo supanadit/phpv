@@ -39,8 +39,8 @@ jobs:
         with:
           # Cache PHP installations and build artifacts
           path: |
-            ~/.phpv/versions
             ~/.phpv/cache
+            ~/.phpv/deps
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ matrix.php_version }}-${{ hashFiles('phpv.sh') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.cache-name }}-${{ matrix.php_version }}-

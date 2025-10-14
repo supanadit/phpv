@@ -1,0 +1,55 @@
+name: Test PHPV
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test-phpv:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php_version: ['8.3', '8.2', '8.1', '7.4']  # Major versions to test in parallel
+      fail-fast: false  # Continue testing other versions even if one fails
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl git
+
+      - name: Set up PHPV
+        run: |
+          chmod +x install.sh
+          ./install.sh
+          # Source the init script for shell integration
+          source ~/.phpv/init.sh
+
+      - name: Install PHP version ${{ matrix.php_version }}
+        run: |
+          source ~/.phpv/init.sh
+          phpv --verbose install ${{ matrix.php_version }}
+        timeout-minutes: 30  # Building from source can take time
+
+      - name: Switch to installed PHP version
+        run: |
+          source ~/.phpv/init.sh
+          phpv use ${{ matrix.php_version }}
+
+      - name: Verify PHP installation
+        run: |
+          source ~/.phpv/init.sh
+          phpv current
+          php -v
+
+      - name: Run PHPV tests
+        run: |
+          source ~/.phpv/init.sh
+          chmod +x test.sh
+          ./test.sh

@@ -41,9 +41,8 @@ jobs:
           path: |
             ~/.phpv/cache
             ~/.phpv/deps
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ matrix.php_version }}-${{ hashFiles('phpv.sh') }}
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('phpv.sh') }}
           restore-keys: |
-            ${{ runner.os }}-${{ env.cache-name }}-${{ matrix.php_version }}-
             ${{ runner.os }}-${{ env.cache-name }}-
 
       - if: ${{ steps.cache-phpv.outputs.cache-hit != 'true' }}

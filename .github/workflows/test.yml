@@ -32,15 +32,22 @@ jobs:
           source ~/.phpv/init.sh
 
       - name: Cache PHPV builds
+        id: cache-phpv
         uses: actions/cache@v4
+        env:
+          cache-name: cache-phpv-builds
         with:
-          path: ~/.phpv/cache
-          key: phpv-${{ matrix.php_version }}-${{ hashFiles('phpv.sh') }}
+          # Cache PHP installations and build artifacts
+          path: |
+            ~/.phpv/versions
+            ~/.phpv/cache
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ matrix.php_version }}-${{ hashFiles('phpv.sh') }}
           restore-keys: |
-            phpv-${{ matrix.php_version }}-
-            phpv-
+            ${{ runner.os }}-${{ env.cache-name }}-${{ matrix.php_version }}-
+            ${{ runner.os }}-${{ env.cache-name }}-
 
-      - name: Install PHP version ${{ matrix.php_version }}
+      - if: ${{ steps.cache-phpv.outputs.cache-hit != 'true' }}
+        name: Install PHP version ${{ matrix.php_version }}
         run: |
           source ~/.phpv/init.sh
           phpv --verbose install ${{ matrix.php_version }}

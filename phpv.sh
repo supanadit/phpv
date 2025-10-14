@@ -1791,6 +1791,45 @@ install_mysql_legacy_from_source() {
     fi
 }
 
+# Install PostgreSQL client libraries from source (dev libs only, no server)
+install_postgresql_client_from_source() {
+    local version="15.4"  # Stable version compatible with most PHP versions; adjust if needed
+    local url="https://ftp.postgresql.org/pub/source/v${version}/postgresql-${version}.tar.gz"
+    local cache_file="$PHPV_CACHE_DIR/postgresql-${version}.tar.gz"
+    local build_dir="$PHPV_CACHE_DIR/postgresql-${version}"
+    
+    # Download if not cached
+    if [[ ! -f "$cache_file" ]]; then
+        safe_download "$url" "$cache_file" || return 1
+    fi
+    
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+    tar -xzf "$cache_file" --strip-components=1
+    
+    # Set paths for custom dependencies
+    export CPPFLAGS="-I$PHPV_DEPS_DIR/include $CPPFLAGS"
+    export LDFLAGS="-L$PHPV_DEPS_DIR/lib $LDFLAGS"
+    
+    # Configure for client-only build (no server components)
+    if [[ "$PHPV_VERBOSE" == "1" ]]; then
+        ./configure --prefix="$PHPV_DEPS_DIR" --without-server --with-openssl --with-zlib
+        make -j$(nproc) -C src/bin  # Build only client tools and libs
+        make -C src/bin install
+        make -C src/include install
+        make -C src/interfaces/libpq install
+    else
+        ./configure --prefix="$PHPV_DEPS_DIR" --without-server --with-openssl --with-zlib > "$PHPV_CACHE_DIR/build.log" 2>&1 || {
+            echo "Configure failed. See $PHPV_CACHE_DIR/build.log for details." >&2
+            return 1
+        }
+        run_with_progress "Building PostgreSQL client" 50 make -j$(nproc) -C src/bin || return 1
+        run_with_progress "Installing PostgreSQL client includes" 75 make -C src/include install || return 1
+        run_with_progress "Installing PostgreSQL client libpq" 100 make -C src/interfaces/libpq install || return 1
+    fi
+}
+
 ensure_mysql_client_for_php() {
     local php_version="$1"
 
@@ -2473,6 +2512,12 @@ install_php_version() {
     fi
     ensure_mysql_client_for_php "$version" || return 1
 
+    # Install PostgreSQL client libs if not present
+    if [[ "$version" != 5.0.* ]] && [[ ! -f "$PHPV_DEPS_DIR/lib/libpq.so" ]]; then
+        log_info "Installing PostgreSQL client from source..."
+        install_postgresql_client_from_source || return 1
+    fi
+
     prepend_path "$PHPV_DEPS_DIR/bin"
     
     # Download PHP source if not cached
@@ -2616,6 +2661,12 @@ install_php_version() {
         # For PHP 7+, use MySQL client library
         configure_flags+=(--with-mysqli)
         configure_flags+=(--with-pdo-mysql)
+    fi
+
+    # Add PostgreSQL support (client libs only, for PHP 5.1+)
+    if [[ "$version" != 5.0.* ]]; then
+        configure_flags+=(--with-pgsql="$PHPV_DEPS_DIR")
+        configure_flags+=(--with-pdo-pgsql="$PHPV_DEPS_DIR")
     fi
     
     # Add version-specific flags

@@ -31,6 +31,15 @@ jobs:
           # Source the init script for shell integration
           source ~/.phpv/init.sh
 
+      - name: Cache PHPV builds
+        uses: actions/cache@v4
+        with:
+          path: ~/.phpv/cache
+          key: phpv-${{ matrix.php_version }}-${{ hashFiles('phpv.sh') }}
+          restore-keys: |
+            phpv-${{ matrix.php_version }}-
+            phpv-
+
       - name: Install PHP version ${{ matrix.php_version }}
         run: |
           source ~/.phpv/init.sh

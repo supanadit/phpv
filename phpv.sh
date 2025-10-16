@@ -1793,7 +1793,13 @@ install_mysql_legacy_from_source() {
 
 # Install PostgreSQL client libraries from source (dev libs only, no server)
 install_postgresql_client_from_source() {
+    local php_version="$1"
     local version="15.4"  # Stable version compatible with most PHP versions; adjust if needed
+
+    if [[ "$php_version" =~ ^5\. ]]; then
+        version="8.0.26"  # Use older version for PHP 5.x OpenSSL compatibility
+    fi
+
     local url="https://ftp.postgresql.org/pub/source/v${version}/postgresql-${version}.tar.gz"
     local cache_file="$PHPV_CACHE_DIR/postgresql-${version}.tar.gz"
     local build_dir="$PHPV_CACHE_DIR/postgresql-${version}"
@@ -1808,25 +1814,41 @@ install_postgresql_client_from_source() {
     cd "$build_dir"
     tar -xzf "$cache_file" --strip-components=1
     
-    # Set paths for custom dependencies
+    # Set paths for custom dependencies, including system includes for missing headers
     export CPPFLAGS="-I$PHPV_DEPS_DIR/include $CPPFLAGS"
     export LDFLAGS="-L$PHPV_DEPS_DIR/lib $LDFLAGS"
+
+    # For PHP 5.x, suppress clang warnings for legacy code (implicit declarations, etc.)
+    if [[ "$php_version" =~ ^5\. ]]; then
+        export CFLAGS="-Wno-implicit-int -Wno-implicit-function-declaration -Wno-deprecated-declarations -Wno-deprecated-non-prototype -Wno-visibility -Wno-pointer-sign -fcommon $CFLAGS"
+    fi
     
     # Configure for client-only build (no server components)
     if [[ "$PHPV_VERBOSE" == "1" ]]; then
-        ./configure --prefix="$PHPV_DEPS_DIR" --without-server --with-openssl --with-zlib
-        make -j$(nproc) -C src/bin  # Build only client tools and libs
-        make -C src/bin install
-        make -C src/include install
+        # For PostgreSQL versions with major version less than 10, there's no --without-server option, so we skip building server components manually
+        local major="${version%%.*}"
+        if (( major < 10 )); then
+            ./configure --prefix="$PHPV_DEPS_DIR" --with-openssl="$PHPV_DEPS_DIR" --with-zlib="$PHPV_DEPS_DIR"
+        else
+            ./configure --prefix="$PHPV_DEPS_DIR" --without-server --without-openssl --with-zlib
+        fi
+        # Build only libpq and headers (skip src/bin to avoid pg_dump dependency)
+        make -j$(nproc) -C src/interfaces/libpq
+        make -C src/include
         make -C src/interfaces/libpq install
+        make -C src/include install
     else
-        ./configure --prefix="$PHPV_DEPS_DIR" --without-server --with-openssl --with-zlib > "$PHPV_CACHE_DIR/build.log" 2>&1 || {
-            echo "Configure failed. See $PHPV_CACHE_DIR/build.log for details." >&2
-            return 1
-        }
-        run_with_progress "Building PostgreSQL client" 50 make -j$(nproc) -C src/bin || return 1
-        run_with_progress "Installing PostgreSQL client includes" 75 make -C src/include install || return 1
+        # For PostgreSQL versions with major version less than 10, there's no --without-server option, so we skip building server components manually
+        local major="${version%%.*}"
+        if (( major < 10 )); then
+            run_with_progress "Configuring PostgreSQL client" 30 ./configure --prefix="$PHPV_DEPS_DIR" --with-openssl="$PHPV_DEPS_DIR" --with-zlib="$PHPV_DEPS_DIR" || return 1
+        else
+            run_with_progress "Configuring PostgreSQL client" 30 ./configure --prefix="$PHPV_DEPS_DIR" --without-server --without-openssl --with-zlib || return 1
+        fi
+        run_with_progress "Building PostgreSQL client libpq" 50 make -j$(nproc) -C src/interfaces/libpq || return 1
+        run_with_progress "Building PostgreSQL client includes" 75 make -C src/include || return 1
         run_with_progress "Installing PostgreSQL client libpq" 100 make -C src/interfaces/libpq install || return 1
+        run_with_progress "Installing PostgreSQL client includes" 100 make -C src/include install || return 1
     fi
 }
 
@@ -2442,9 +2464,9 @@ install_php_version() {
     if [[ "$version" == 5.* ]]; then
         php_restore_env=true
         php_extra_ldflags="-lssl -lcrypto"
-        export CFLAGS="-Wno-implicit-int -Wno-implicit-function-declaration -Wno-deprecated-declarations -Wno-deprecated-non-prototype -Wno-visibility -Wno-pointer-sign -fcommon $CFLAGS"
+        export CFLAGS="-Wno-error -Wno-error=return-type -Wno-implicit-int -Wno-implicit-function-declaration -Wno-deprecated-declarations -Wno-deprecated-non-prototype -Wno-visibility -Wno-pointer-sign -fcommon $CFLAGS"
         export CXXFLAGS="-Wno-register $CXXFLAGS"
-        export CPPFLAGS="-DHAVE_STDARG_PROTOTYPES=1 -D_BSD_SOURCE -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200112L -D_XOPEN_SOURCE=600 $CPPFLAGS"
+        export CPPFLAGS="-D_GNU_SOURCE -DHAVE_STDARG_PROTOTYPES=1 -D_BSD_SOURCE -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200112L -D_XOPEN_SOURCE=600 $CPPFLAGS"
     fi
 
     if [[ "$php_restore_env" == true ]]; then
@@ -2515,7 +2537,7 @@ install_php_version() {
     # Install PostgreSQL client libs if not present
     if [[ "$version" != 5.0.* ]] && [[ ! -f "$PHPV_DEPS_DIR/lib/libpq.so" ]]; then
         log_info "Installing PostgreSQL client from source..."
-        install_postgresql_client_from_source || return 1
+        install_postgresql_client_from_source "$version" || return 1
     fi
 
     prepend_path "$PHPV_DEPS_DIR/bin"
@@ -2664,7 +2686,9 @@ install_php_version() {
     fi
 
     # Add PostgreSQL support (client libs only, for PHP 5.1+)
-    if [[ "$version" != 5.0.* ]]; then
+    local major minor
+    IFS='.' read -r major minor _ <<< "$version"
+    if (( major > 5 || (major == 5 && minor >= 1) )); then
         configure_flags+=(--with-pgsql="$PHPV_DEPS_DIR")
         configure_flags+=(--with-pdo-pgsql="$PHPV_DEPS_DIR")
     fi

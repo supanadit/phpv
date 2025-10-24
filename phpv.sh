@@ -813,11 +813,11 @@ install_libxml2_from_source() {
     if [[ "$PHPV_VERBOSE" == "1" ]]; then
         ./configure --prefix="$PHPV_DEPS_DIR" --without-python
         make -j$(nproc)
-        make install
+        make -j$(nproc) install
     else
         run_with_progress "Configuring libxml2" 30 ./configure --prefix="$PHPV_DEPS_DIR" --without-python || return 1
         run_with_progress "Building libxml2" 50 make -j$(nproc) || return 1
-        run_with_progress "Installing libxml2" 20 make install || return 1
+        run_with_progress "Installing libxml2" 20 make -j$(nproc) install || return 1
     fi
 }
 
@@ -842,11 +842,11 @@ install_zlib_from_source() {
     if [[ "$PHPV_VERBOSE" == "1" ]]; then
         ./configure --prefix="$PHPV_DEPS_DIR" --shared
         make -j$(nproc)
-        make install
+        make -j$(nproc) install
     else
         run_with_progress "Configuring zlib" 30 ./configure --prefix="$PHPV_DEPS_DIR" --shared || return 1
         run_with_progress "Building zlib" 50 make -j$(nproc) || return 1
-        run_with_progress "Installing zlib" 20 make install || return 1
+        run_with_progress "Installing zlib" 20 make -j$(nproc) install || return 1
     fi
 }
 
@@ -881,11 +881,11 @@ install_openssl_from_source() {
     if [[ "$PHPV_VERBOSE" == "1" ]]; then
         ./config --prefix="$PHPV_DEPS_DIR" --openssldir="$PHPV_DEPS_DIR/ssl" shared
         make -j$(nproc)
-        make install
+        make -j$(nproc) install
     else
         run_with_progress "Configuring OpenSSL" 30 ./config --prefix="$PHPV_DEPS_DIR" --openssldir="$PHPV_DEPS_DIR/ssl" shared || return 1
         run_with_progress "Building OpenSSL" 50 make -j$(nproc) || return 1
-        run_with_progress "Installing OpenSSL" 20 make install || return 1
+        run_with_progress "Installing OpenSSL" 20 make -j$(nproc) install || return 1
     fi
 }
 
@@ -918,11 +918,11 @@ install_oniguruma_from_source() {
     if [[ "$PHPV_VERBOSE" == "1" ]]; then
         ./configure --prefix="$PHPV_DEPS_DIR"
         make -j$(nproc)
-        make install
+        make -j$(nproc) install
     else
         run_with_progress "Configuring oniguruma" 30 ./configure --prefix="$PHPV_DEPS_DIR" || return 1
         run_with_progress "Building oniguruma" 50 make -j$(nproc) || return 1
-        run_with_progress "Installing oniguruma" 20 make install || return 1
+        run_with_progress "Installing oniguruma" 20 make -j$(nproc) install || return 1
     fi
 }
 
@@ -946,11 +946,11 @@ install_libpng_from_source() {
     if [[ "$PHPV_VERBOSE" == "1" ]]; then
         ./configure --prefix="$PHPV_DEPS_DIR"
         make -j$(nproc)
-        make install
+        make -j$(nproc) install
     else
         run_with_progress "Configuring libpng" 30 ./configure --prefix="$PHPV_DEPS_DIR" || return 1
         run_with_progress "Building libpng" 50 make -j$(nproc) || return 1
-        run_with_progress "Installing libpng" 20 make install || return 1
+        run_with_progress "Installing libpng" 20 make -j$(nproc) install || return 1
     fi
 }
 
@@ -974,11 +974,11 @@ install_libjpeg_from_source() {
     if [[ "$PHPV_VERBOSE" == "1" ]]; then
         ./configure --prefix="$PHPV_DEPS_DIR"
         make -j$(nproc)
-        make install
+        make -j$(nproc) install
     else
         run_with_progress "Configuring libjpeg" 30 ./configure --prefix="$PHPV_DEPS_DIR" || return 1
         run_with_progress "Building libjpeg" 50 make -j$(nproc) || return 1
-        run_with_progress "Installing libjpeg" 20 make install || return 1
+        run_with_progress "Installing libjpeg" 20 make -j$(nproc) install || return 1
     fi
 }
 
@@ -1002,11 +1002,11 @@ install_freetype_from_source() {
     if [[ "$PHPV_VERBOSE" == "1" ]]; then
         ./configure --prefix="$PHPV_DEPS_DIR"
         make -j$(nproc)
-        make install
+        make -j$(nproc) install
     else
         run_with_progress "Configuring freetype" 30 ./configure --prefix="$PHPV_DEPS_DIR" || return 1
         run_with_progress "Building freetype" 50 make -j$(nproc) || return 1
-        run_with_progress "Installing freetype" 20 make install || return 1
+        run_with_progress "Installing freetype" 20 make -j$(nproc) install || return 1
     fi
 }
 
@@ -1041,11 +1041,11 @@ install_icu_from_source() {
     if [[ "$PHPV_VERBOSE" == "1" ]]; then
         ./configure --prefix="$PHPV_DEPS_DIR"
         make -j$(nproc)
-        make install
+        make -j$(nproc) install
     else
         run_with_progress "Configuring ICU" 30 ./configure --prefix="$PHPV_DEPS_DIR" || return 1
         run_with_progress "Building ICU" 50 make -j$(nproc) || return 1
-        run_with_progress "Installing ICU" 20 make install || return 1
+        run_with_progress "Installing ICU" 20 make -j$(nproc) install || return 1
     fi
 }
 
@@ -1113,14 +1113,14 @@ install_curl_from_source() {
             unset ac_cv_func_select ac_cv_func_socket
         fi
         make -j$(nproc)
-        make install
+        make -j$(nproc) install
     else
         run_with_progress "Configuring curl" 30 eval "$configure_cmd" || return 1
         if [[ "$restore_select_cache" == true ]]; then
             unset ac_cv_func_select ac_cv_func_socket
         fi
         run_with_progress "Building curl" 50 make -j$(nproc) || return 1
-        run_with_progress "Installing curl" 20 make install || return 1
+        run_with_progress "Installing curl" 20 make -j$(nproc) install || return 1
     fi
 }
 
@@ -1179,7 +1179,7 @@ install_cmake_from_source() {
             return 1
         fi
 
-        if ! make install; then
+        if ! make -j$(nproc) install; then
             cd "$old_cwd"
             return 1
         fi
@@ -1194,7 +1194,7 @@ install_cmake_from_source() {
             return 1
         fi
 
-        if ! run_with_progress "Installing CMake" 20 make install; then
+        if ! run_with_progress "Installing CMake" 20 make -j$(nproc) install; then
             cd "$old_cwd"
             return 1
         fi
@@ -1262,7 +1262,7 @@ install_libzip_from_source() {
         fi
         
         make -j$(nproc)
-        make install
+        make -j$(nproc) install
     else
         if ! run_with_progress "Configuring libzip" 30 "$cmake_cmd" \
             -DCMAKE_INSTALL_PREFIX="$PHPV_DEPS_DIR" \
@@ -1284,7 +1284,7 @@ install_libzip_from_source() {
         export CPPFLAGS="$old_cppflags"
         
         run_with_progress "Building libzip" 50 make -j$(nproc) || return 1
-        run_with_progress "Installing libzip" 20 make install || return 1
+        run_with_progress "Installing libzip" 20 make -j$(nproc) install || return 1
     fi
 }
 
@@ -1307,11 +1307,11 @@ install_unixodbc_from_source() {
     if [[ "$PHPV_VERBOSE" == "1" ]]; then
         ./configure --prefix="$PHPV_DEPS_DIR"
         make -j$(nproc)
-        make install
+        make -j$(nproc) install
     else
         run_with_progress "Configuring unixODBC" 30 ./configure --prefix="$PHPV_DEPS_DIR" || return 1
         run_with_progress "Building unixODBC" 50 make -j$(nproc) || return 1
-        run_with_progress "Installing unixODBC" 20 make install || return 1
+        run_with_progress "Installing unixODBC" 20 make -j$(nproc) install || return 1
     fi
 }
 
@@ -1338,7 +1338,7 @@ install_mysql_odbc_from_source() {
                     --enable-sybase-compat \
                     --disable-dependency-tracking
         make -j$(nproc)
-        make install
+        make -j$(nproc) install
     else
         run_with_progress "Configuring FreeTDS" 30 ./configure --prefix="$PHPV_DEPS_DIR" \
                     --with-unixodbc="$PHPV_DEPS_DIR" \
@@ -1346,7 +1346,7 @@ install_mysql_odbc_from_source() {
                     --enable-sybase-compat \
                     --disable-dependency-tracking || return 1
         run_with_progress "Building FreeTDS" 50 make -j$(nproc) || return 1
-        run_with_progress "Installing FreeTDS" 20 make install || return 1
+        run_with_progress "Installing FreeTDS" 20 make -j$(nproc) install || return 1
     fi
 }
 
@@ -1410,7 +1410,7 @@ install_mariadb_connector_from_source() {
         fi
 
         make -j$(nproc)
-        make install
+        make -j$(nproc) install
     else
         if ! run_with_progress "Configuring MariaDB Connector" 30 "$cmake_cmd" .. \
             -DCMAKE_INSTALL_PREFIX="$PHPV_DEPS_DIR" \
@@ -1435,7 +1435,7 @@ install_mariadb_connector_from_source() {
         export CPPFLAGS="$old_cppflags"
         
         run_with_progress "Building MariaDB Connector" 50 make -j$(nproc) || return 1
-        run_with_progress "Installing MariaDB Connector" 20 make install || return 1
+        run_with_progress "Installing MariaDB Connector" 20 make -j$(nproc) install || return 1
     fi
 
     export PATH="$old_path"
@@ -1699,7 +1699,7 @@ install_mysql_legacy_connector_from_source() {
             return 1
         }
 
-        make install || {
+        make -j$(nproc) install || {
             log_error "MySQL install failed"
             cd "$old_cwd" 2>/dev/null || true
             rm -rf "$mysql_extract_dir"
@@ -1713,7 +1713,7 @@ install_mysql_legacy_connector_from_source() {
             return 1
         fi
 
-        if ! run_with_progress "Installing MySQL Connector" 20 make install; then
+        if ! run_with_progress "Installing MySQL Connector" 20 make -j$(nproc) install; then
             log_error "MySQL install failed"
             cd "$old_cwd" 2>/dev/null || true
             rm -rf "$mysql_extract_dir"
@@ -1776,7 +1776,7 @@ install_mysql_legacy_from_source() {
         return 1
     }
 
-    make install || {
+    make -j$(nproc) install || {
         cd "$old_cwd"
         return 1
     }
@@ -1834,9 +1834,9 @@ install_postgresql_client_from_source() {
         fi
         # Build only libpq and headers (skip src/bin to avoid pg_dump dependency)
         make -j$(nproc) -C src/interfaces/libpq
-        make -C src/include
-        make -C src/interfaces/libpq install
-        make -C src/include install
+        make -j$(nproc) -C src/include
+        make -j$(nproc) -C src/interfaces/libpq install
+        make -j$(nproc) -C src/include install
     else
         # For PostgreSQL versions with major version less than 10, there's no --without-server option, so we skip building server components manually
         local major="${version%%.*}"
@@ -1846,9 +1846,9 @@ install_postgresql_client_from_source() {
             run_with_progress "Configuring PostgreSQL client" 30 ./configure --prefix="$PHPV_DEPS_DIR" --without-server --without-openssl --with-zlib || return 1
         fi
         run_with_progress "Building PostgreSQL client libpq" 50 make -j$(nproc) -C src/interfaces/libpq || return 1
-        run_with_progress "Building PostgreSQL client includes" 75 make -C src/include || return 1
-        run_with_progress "Installing PostgreSQL client libpq" 100 make -C src/interfaces/libpq install || return 1
-        run_with_progress "Installing PostgreSQL client includes" 100 make -C src/include install || return 1
+        run_with_progress "Building PostgreSQL client includes" 75 make -j$(nproc) -C src/include || return 1
+        run_with_progress "Installing PostgreSQL client libpq" 100 make -j$(nproc) -C src/interfaces/libpq install || return 1
+        run_with_progress "Installing PostgreSQL client includes" 100 make -j$(nproc) -C src/include install || return 1
     fi
 }
 
@@ -2436,7 +2436,17 @@ install_php_version() {
         log_info "Using LLVM $resolved_llvm for PHP $version"
     fi
 
-    ensure_llvm_toolchain "$resolved_llvm" || return 1
+    # Add a flag to skip LLVM (e.g., PHPV_SKIP_LLVM=1)
+    PHPV_SKIP_LLVM="${PHPV_SKIP_LLVM:-0}"
+
+    # In install_php_version, before calling ensure_llvm_toolchain:
+    if [[ "$PHPV_SKIP_LLVM" != "1" ]]; then
+        ensure_llvm_toolchain "$resolved_llvm" || return 1
+    else
+        # Use system compiler
+        unset CC CXX AR NM RANLIB LLVM_HOME
+    fi
+
 
     local active_llvm="${PHPV_ACTIVE_LLVM_VERSION:-$resolved_llvm}"
     if [[ "$active_llvm" != "$resolved_llvm" ]]; then
@@ -2754,14 +2764,14 @@ install_php_version() {
         fi
         
         log_info "Installing PHP $version..."
-        make install
+        make -j$(nproc) install
     else
         if ! run_with_progress "Building PHP $version" 80 make -j"$(nproc)"; then
             log_error "Build failed. See $PHPV_CACHE_DIR/build.log for details"
             return 1
         fi
         
-        if ! run_with_progress "Installing PHP $version" 20 make install; then
+        if ! run_with_progress "Installing PHP $version" 20 make -j$(nproc) install; then
             log_error "Installation failed. See $PHPV_CACHE_DIR/build.log for details"
             return 1
         fi

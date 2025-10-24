@@ -2437,7 +2437,7 @@ install_php_version() {
     fi
 
     # Add a flag to skip LLVM (e.g., PHPV_SKIP_LLVM=1)
-    PHPV_SKIP_LLVM="${PHPV_SKIP_LLVM:-0}"
+    PHPV_SKIP_LLVM="${PHPV_SKIP_LLVM:-1}"
 
     # In install_php_version, before calling ensure_llvm_toolchain:
     if [[ "$PHPV_SKIP_LLVM" != "1" ]]; then

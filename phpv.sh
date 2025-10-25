@@ -17,7 +17,8 @@ source "$PHPV_SCRIPT_DRIVER_DIR/toolchain/llvm/install.sh"
 source "$PHPV_SCRIPT_DRIVER_DIR/toolchain/llvm/resolve.sh"
 
 source "$PHPV_SCRIPT_LIB_DIR/common.sh"
-source "$PHPV_SCRIPT_LIB_DIR/build.sh"
+source "$PHPV_SCRIPT_LIB_DIR/build/source.sh"
+source "$PHPV_SCRIPT_LIB_DIR/build/cmake.sh"
 
 # Dependencies
 source "$PHPV_SCRIPT_DEPENDENCY_DIR/cmake.sh"

@@ -49,7 +49,9 @@ source "$PHPV_SCRIPT_LIB_DIR/commands/php/show.sh"
 source "$PHPV_SCRIPT_LIB_DIR/commands/php/uninstall.sh"
 source "$PHPV_SCRIPT_LIB_DIR/commands/php/use.sh"
 
+# Bin Script
 source "$PHPV_SCRIPT_BIN_DIR/main.sh"
+source "$PHPV_SCRIPT_BIN_DIR/help.sh"
 
 # Run main function if script is executed directly
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

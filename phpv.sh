@@ -11,6 +11,11 @@ PHPV_SCRIPT_DEPENDENCY_DIR="$PHPV_SCRIPT_DRIVER_DIR/dependencies"
 PHPV_SCRIPT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" && pwd)"
 PHPV_SCRIPT_BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/bin" && pwd)"
 
+# Toolchain LLVM
+source "$PHPV_SCRIPT_DRIVER_DIR/toolchain/llvm/ensure.sh"
+source "$PHPV_SCRIPT_DRIVER_DIR/toolchain/llvm/install.sh"
+source "$PHPV_SCRIPT_DRIVER_DIR/toolchain/llvm/resolve.sh"
+
 source "$PHPV_SCRIPT_LIB_DIR/common.sh"
 source "$PHPV_SCRIPT_LIB_DIR/build.sh"
 
@@ -32,7 +37,6 @@ source "$PHPV_SCRIPT_DEPENDENCY_DIR/postgresql.sh"
 source "$PHPV_SCRIPT_DEPENDENCY_DIR/zlib.sh"
 
 source "$PHPV_SCRIPT_LIB_DIR/versions.sh"
-source "$PHPV_DRIVER_DIR/llvm.sh"
 source "$PHPV_SCRIPT_LIB_DIR/commands.sh"
 source "$PHPV_SCRIPT_BIN_DIR/main.sh"
 

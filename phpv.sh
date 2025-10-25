@@ -5,14 +5,17 @@
 # Manages multiple PHP versions in user space
 
 # Source all script modules
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/scripts" && pwd)"
-source "$SCRIPT_DIR/common.sh"
-source "$SCRIPT_DIR/build.sh"
-source "$SCRIPT_DIR/deps.sh"
-source "$SCRIPT_DIR/versions.sh"
-source "$SCRIPT_DIR/llvm.sh"
-source "$SCRIPT_DIR/commands.sh"
-source "$SCRIPT_DIR/main.sh"
+PHPV_DRIVER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/drivers" && pwd)"
+PHPV_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" && pwd)"
+PHPV_BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/bin" && pwd)"
+
+source "$PHPV_LIB_DIR/common.sh"
+source "$PHPV_LIB_DIR/build.sh"
+source "$PHPV_DRIVER_DIR/deps.sh"
+source "$PHPV_LIB_DIR/versions.sh"
+source "$PHPV_DRIVER_DIR/llvm.sh"
+source "$PHPV_LIB_DIR/commands.sh"
+source "$PHPV_BIN_DIR/main.sh"
 
 # Run main function if script is executed directly
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

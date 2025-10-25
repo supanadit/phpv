@@ -37,7 +37,18 @@ source "$PHPV_SCRIPT_DEPENDENCY_DIR/postgresql.sh"
 source "$PHPV_SCRIPT_DEPENDENCY_DIR/zlib.sh"
 
 source "$PHPV_SCRIPT_LIB_DIR/versions.sh"
-source "$PHPV_SCRIPT_LIB_DIR/commands.sh"
+
+# Commands PHP
+source "$PHPV_SCRIPT_LIB_DIR/commands/php/environment.sh"
+source "$PHPV_SCRIPT_LIB_DIR/commands/php/exec.sh"
+source "$PHPV_SCRIPT_LIB_DIR/commands/php/install.sh"
+source "$PHPV_SCRIPT_LIB_DIR/commands/php/list.sh"
+source "$PHPV_SCRIPT_LIB_DIR/commands/php/print.sh"
+source "$PHPV_SCRIPT_LIB_DIR/commands/php/resolve.sh"
+source "$PHPV_SCRIPT_LIB_DIR/commands/php/show.sh"
+source "$PHPV_SCRIPT_LIB_DIR/commands/php/uninstall.sh"
+source "$PHPV_SCRIPT_LIB_DIR/commands/php/use.sh"
+
 source "$PHPV_SCRIPT_BIN_DIR/main.sh"
 
 # Run main function if script is executed directly

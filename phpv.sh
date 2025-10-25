@@ -31,7 +31,6 @@ source "$PHPV_SCRIPT_DEPENDENCY_DIR/openssl.sh"
 source "$PHPV_SCRIPT_DEPENDENCY_DIR/postgresql.sh"
 source "$PHPV_SCRIPT_DEPENDENCY_DIR/zlib.sh"
 
-
 source "$PHPV_SCRIPT_LIB_DIR/versions.sh"
 source "$PHPV_DRIVER_DIR/llvm.sh"
 source "$PHPV_SCRIPT_LIB_DIR/commands.sh"

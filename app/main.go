@@ -14,7 +14,7 @@ import (
 
 func main() {
 	// Command line flags
-	simulate := flag.Bool("simulate", true, "Use simulated builds instead of real compilation")
+	simulate := flag.Bool("simulate", false, "Use simulated builds instead of real compilation")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -51,11 +51,11 @@ func main() {
 	)
 
 	// Demo: Install PHP 8.1.0
-	fmt.Println("Installing PHP 8.1.0...")
-	if err := installService.InstallVersion(ctx, "8.1.0"); err != nil {
-		log.Fatalf("Failed to install PHP 8.1.0: %v", err)
-	}
-	fmt.Println("✅ PHP 8.1.0 installed successfully")
+	// fmt.Println("Installing PHP 8.1.0...")
+	// if err := installService.InstallVersion(ctx, "8.1.0"); err != nil {
+	// 	log.Fatalf("Failed to install PHP 8.1.0: %v", err)
+	// }
+	// fmt.Println("✅ PHP 8.1.0 installed successfully")
 
 	// Demo: Install PHP 5.6.0 (should show compatibility warning)
 	fmt.Println("Installing PHP 5.6.0...")
@@ -64,37 +64,37 @@ func main() {
 	}
 	fmt.Println("✅ PHP 5.6.0 installed successfully")
 
-	// Demo: Install PHP 7.0.0 (should show compatibility warning)
-	fmt.Println("Installing PHP 7.0.0...")
-	if err := installService.InstallVersion(ctx, "7.0.0"); err != nil {
-		log.Fatalf("Failed to install PHP 7.0.0: %v", err)
-	}
-	fmt.Println("✅ PHP 7.0.0 installed successfully")
+	// // Demo: Install PHP 7.0.0 (should show compatibility warning)
+	// fmt.Println("Installing PHP 7.0.0...")
+	// if err := installService.InstallVersion(ctx, "7.0.0"); err != nil {
+	// 	log.Fatalf("Failed to install PHP 7.0.0: %v", err)
+	// }
+	// fmt.Println("✅ PHP 7.0.0 installed successfully")
 
-	// Demo: Install PHP 8.2.0
-	fmt.Println("Installing PHP 8.2.0...")
-	if err := installService.InstallVersion(ctx, "8.2.0"); err != nil {
-		log.Fatalf("Failed to install PHP 8.2.0: %v", err)
-	}
-	fmt.Println("✅ PHP 8.2.0 installed successfully")
+	// // Demo: Install PHP 8.2.0
+	// fmt.Println("Installing PHP 8.2.0...")
+	// if err := installService.InstallVersion(ctx, "8.2.0"); err != nil {
+	// 	log.Fatalf("Failed to install PHP 8.2.0: %v", err)
+	// }
+	// fmt.Println("✅ PHP 8.2.0 installed successfully")
 
-	// Demo: List installed versions
-	fmt.Println("Listing installed versions...")
-	installations, err := installService.ListInstalledVersions(ctx)
-	if err != nil {
-		log.Fatalf("Failed to list installations: %v", err)
-	}
-	for _, inst := range installations {
-		fmt.Printf("  - %s (installed at: %s, active: %t)\n",
-			inst.Version.Version, inst.InstalledAt.Format("2006-01-02 15:04:05"), inst.IsActive)
-	}
+	// // Demo: List installed versions
+	// fmt.Println("Listing installed versions...")
+	// installations, err := installService.ListInstalledVersions(ctx)
+	// if err != nil {
+	// 	log.Fatalf("Failed to list installations: %v", err)
+	// }
+	// for _, inst := range installations {
+	// 	fmt.Printf("  - %s (installed at: %s, active: %t)\n",
+	// 		inst.Version.Version, inst.InstalledAt.Format("2006-01-02 15:04:05"), inst.IsActive)
+	// }
 
-	// Demo: Switch to PHP 8.2.0
-	fmt.Println("Switching to PHP 8.2.0...")
-	if err := installService.SwitchVersion(ctx, "8.2.0"); err != nil {
-		log.Fatalf("Failed to switch to PHP 8.2.0: %v", err)
-	}
-	fmt.Println("✅ Switched to PHP 8.2.0")
+	// // Demo: Switch to PHP 8.2.0
+	// fmt.Println("Switching to PHP 8.2.0...")
+	// if err := installService.SwitchVersion(ctx, "8.2.0"); err != nil {
+	// 	log.Fatalf("Failed to switch to PHP 8.2.0: %v", err)
+	// }
+	// fmt.Println("✅ Switched to PHP 8.2.0")
 
 	// Demo: Get active version
 	fmt.Println("Getting active version...")

@@ -94,6 +94,10 @@ func (m *MockBuilder) Build(ctx context.Context, sourcePath string, installPath 
 	return args.Error(0)
 }
 
+func (m *MockBuilder) GetBuildStrategy() domain.BuildStrategy {
+	return domain.BuildStrategyNative
+}
+
 type MockFileSystem struct {
 	mock.Mock
 }

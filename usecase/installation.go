@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/supanadit/phpv/domain"
@@ -14,7 +15,9 @@ type InstallationService struct {
 	versionRepo      PHPVersionRepository
 	installationRepo InstallationRepository
 	downloader       Downloader
-	builder          Builder
+	nativeBuilder    Builder // Native system builder
+	dockerBuilder    *DockerBuilder
+	gccBuilder       *NativeGCCBuilder
 	filesystem       FileSystem
 	baseDir          string
 }
@@ -32,9 +35,31 @@ func NewInstallationService(
 		versionRepo:      versionRepo,
 		installationRepo: installationRepo,
 		downloader:       downloader,
-		builder:          builder,
+		nativeBuilder:    builder,
+		dockerBuilder:    nil, // Will be initialized when needed
+		gccBuilder:       nil, // Will be initialized when needed
 		filesystem:       filesystem,
 		baseDir:          baseDir,
+	}
+}
+
+// getBuilderForVersion returns the appropriate builder for the given PHP version
+func (s *InstallationService) getBuilderForVersion(version domain.PHPVersion) Builder {
+	strategy := version.GetRecommendedBuildStrategy()
+
+	switch strategy {
+	case domain.BuildStrategyDocker:
+		if s.dockerBuilder == nil {
+			dockerImage := version.GetRecommendedDockerImage()
+			s.dockerBuilder = NewDockerBuilder(s.nativeBuilder, dockerImage)
+		}
+		return s.dockerBuilder
+	case domain.BuildStrategySpecificGCC:
+		// Use native GCC builder for direct system builds
+		gccVersion := version.GetRecommendedGCCVersion()
+		return NewNativeGCCBuilder(s.nativeBuilder, gccVersion, version)
+	default:
+		return s.nativeBuilder
 	}
 }
 
@@ -50,7 +75,18 @@ func (s *InstallationService) InstallVersion(ctx context.Context, versionStr str
 	if warning := version.CheckCompatibility(); warning != "" {
 		fmt.Printf("⚠️  Compatibility Warning: %s\n", warning)
 		fmt.Println("Installation will continue, but compilation may fail.")
-		fmt.Println("Consider using an older GCC version or Docker for better compatibility.")
+		fmt.Println()
+
+		// Provide specific build recommendations
+		strategy := version.GetRecommendedBuildStrategy()
+		fmt.Printf("📋 Recommended build approach: %s\n", strategy.String())
+
+		recommendations := version.GetBuildRecommendations()
+		fmt.Println("Build recommendations:")
+		for _, rec := range strings.Split(recommendations, "\n") {
+			fmt.Printf("  • %s\n", rec)
+		}
+		fmt.Println()
 	}
 
 	// Check if version is already installed
@@ -100,7 +136,10 @@ func (s *InstallationService) InstallVersion(ctx context.Context, versionStr str
 		"--with-config-file-path":     filepath.Join(installPath, "etc"),
 		"--with-config-file-scan-dir": filepath.Join(installPath, "etc", "conf.d"),
 	}
-	if err := s.builder.Build(ctx, sourcePath, installPath, config); err != nil {
+
+	// Get the appropriate builder for this PHP version
+	builder := s.getBuilderForVersion(versionDetails)
+	if err := builder.Build(ctx, sourcePath, installPath, config); err != nil {
 		// Cleanup on failure
 		s.filesystem.RemoveDirectory(sourcePath)
 		s.filesystem.RemoveDirectory(installPath)

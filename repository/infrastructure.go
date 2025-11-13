@@ -159,13 +159,15 @@ func (d *HTTPDownloader) extractTarGz(archivePath, destPath string) error {
 
 // SourceBuilder implements Builder for building PHP from source
 type SourceBuilder struct {
-	simulate bool // For testing: if true, create placeholder instead of real build
+	simulate bool     // For testing: if true, create placeholder instead of real build
+	env      []string // Custom environment variables to use during build
 }
 
 // NewSourceBuilder creates a new source builder
 func NewSourceBuilder() *SourceBuilder {
 	return &SourceBuilder{
 		simulate: false, // Default to real builds
+		env:      nil,   // Use default environment
 	}
 }
 
@@ -178,6 +180,12 @@ func NewSimulatedSourceBuilder() *SourceBuilder {
 
 // Build builds PHP from source code
 func (b *SourceBuilder) Build(ctx context.Context, sourcePath string, installPath string, config map[string]string) error {
+	// Extract custom environment if provided in config
+	if envStr, ok := config["_ENV_"]; ok {
+		b.env = strings.Split(envStr, "\n")
+		delete(config, "_ENV_") // Remove it from config after extraction
+	}
+
 	if b.simulate {
 		return b.buildSimulated(ctx, sourcePath, installPath, config)
 	}
@@ -243,10 +251,25 @@ func (b *SourceBuilder) buildReal(ctx context.Context, sourcePath string, instal
 
 	fmt.Printf("Running ./configure with args: %v\n", configureArgs)
 
+	// Print the GCC version being used if custom environment is set
+	if len(b.env) > 0 {
+		fmt.Printf("🔧 Using custom environment with %d variables\n", len(b.env))
+		for _, env := range b.env {
+			if strings.HasPrefix(env, "CC=") || strings.HasPrefix(env, "CXX=") {
+				fmt.Printf("   %s\n", env)
+			}
+		}
+	} else {
+		fmt.Println("⚠️  No custom environment set, using system default")
+	}
+
 	// Run ./configure
 	configureCmd := exec.CommandContext(ctx, "./configure", configureArgs...)
 	configureCmd.Stdout = os.Stdout
 	configureCmd.Stderr = os.Stderr
+	if len(b.env) > 0 {
+		configureCmd.Env = b.env
+	}
 
 	if err := configureCmd.Run(); err != nil {
 		return fmt.Errorf("configure failed: %w", err)
@@ -264,6 +287,9 @@ func (b *SourceBuilder) buildReal(ctx context.Context, sourcePath string, instal
 	makeCmd := exec.CommandContext(ctx, "make", makeJobs)
 	makeCmd.Stdout = os.Stdout
 	makeCmd.Stderr = os.Stderr
+	if len(b.env) > 0 {
+		makeCmd.Env = b.env
+	}
 
 	if err := makeCmd.Run(); err != nil {
 		return fmt.Errorf("make failed: %w", err)
@@ -277,6 +303,9 @@ func (b *SourceBuilder) buildReal(ctx context.Context, sourcePath string, instal
 	installCmd := exec.CommandContext(ctx, "make", "install")
 	installCmd.Stdout = os.Stdout
 	installCmd.Stderr = os.Stderr
+	if len(b.env) > 0 {
+		installCmd.Env = b.env
+	}
 
 	if err := installCmd.Run(); err != nil {
 		return fmt.Errorf("make install failed: %w", err)
@@ -292,6 +321,11 @@ func (b *SourceBuilder) buildReal(ctx context.Context, sourcePath string, instal
 
 	fmt.Printf("PHP binary successfully installed at: %s\n", binPath)
 	return nil
+}
+
+// GetBuildStrategy returns the build strategy for this builder
+func (b *SourceBuilder) GetBuildStrategy() domain.BuildStrategy {
+	return domain.BuildStrategyNative
 }
 
 // OSFileSystem implements FileSystem using OS operations

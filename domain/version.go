@@ -192,3 +192,21 @@ func (i Installation) Validate() error {
 
 	return nil
 }
+
+// CheckCompatibility returns a warning message if the PHP version may have compatibility issues with modern GCC
+func (v PHPVersion) CheckCompatibility() string {
+	switch v.Major {
+	case 4, 5:
+		return fmt.Sprintf("PHP %d.x is very old and may not compile with modern GCC (15.x). Consider using a Docker container or older GCC version for compilation.", v.Major)
+	case 7:
+		if v.Minor < 4 {
+			return fmt.Sprintf("PHP 7.%d may have compatibility issues with GCC 15.x. Consider using GCC 11-14 or a Docker container.", v.Minor)
+		}
+	case 8:
+		if v.Minor == 0 {
+			return "PHP 8.0 may have some compatibility issues with GCC 15.x. Consider using GCC 11-14 if compilation fails."
+		}
+		// PHP 8.1+ should be fine with modern GCC
+	}
+	return ""
+}

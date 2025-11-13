@@ -26,9 +26,18 @@ func NewHTTPDownloader() *HTTPDownloader {
 
 // DownloadSource downloads PHP source code from the official repository
 func (d *HTTPDownloader) DownloadSource(ctx context.Context, version domain.PHPVersion, destPath string) error {
-	// Construct the download URL for PHP source
-	// Format: https://www.php.net/distributions/php-{version}.tar.gz
-	url := fmt.Sprintf("https://www.php.net/distributions/php-%s.tar.gz", version.Version)
+	// Construct the download URL for PHP source based on version
+	var url string
+	if version.Major == 4 {
+		// PHP 4.x from museum
+		url = fmt.Sprintf("https://museum.php.net/php4/php-%s.tar.gz", version.Version)
+	} else if version.Major == 5 {
+		// PHP 5.x from museum
+		url = fmt.Sprintf("https://museum.php.net/php5/php-%s.tar.gz", version.Version)
+	} else {
+		// PHP 7.x, 8.x and newer from main distributions
+		url = fmt.Sprintf("https://www.php.net/distributions/php-%s.tar.gz", version.Version)
+	}
 
 	// Create HTTP client with timeout
 	client := &http.Client{

@@ -28,6 +28,34 @@ go run app/main.go
 go run app/main.go --simulate=false
 ```
 
+### Supported PHP Versions
+
+PHPV supports PHP versions from 4.x through 8.x:
+
+- **PHP 8.1+**: Full support with modern GCC (recommended)
+- **PHP 8.0**: Supported but may have compatibility issues with GCC 15.x
+- **PHP 7.4+**: Supported with modern GCC
+- **PHP 7.0-7.3**: May have compatibility issues with GCC 15.x
+- **PHP 5.x**: Very old versions, may not compile with modern GCC
+- **PHP 4.x**: Legacy versions, likely incompatible with modern GCC
+
+### Compatibility Notes
+
+- **GCC Compatibility**: Older PHP versions (4.x, 5.x, 7.0-7.3) may not compile with GCC 15.x due to deprecated functions and stricter compilation standards.
+- **Download Sources**: 
+  - PHP 4.x downloads from `museum.php.net/php4`
+  - PHP 5.x downloads from `museum.php.net/php5` 
+  - PHP 7.x+ downloads from `php.net/distributions`
+- **Build Time**: Real compilation can take 10-30 minutes depending on your system
+- **System Requirements**: Requires build tools (gcc, make, etc.) and development libraries
+
+### Troubleshooting
+
+If compilation fails for older PHP versions:
+1. Use an older GCC version (11-14 recommended)
+2. Use Docker with an older base image
+3. Check PHP's official documentation for version-specific build requirements
+
 ## Contributing
 
 1. Fork the repository

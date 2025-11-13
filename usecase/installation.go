@@ -46,6 +46,13 @@ func (s *InstallationService) InstallVersion(ctx context.Context, versionStr str
 		return fmt.Errorf("invalid version format: %w", err)
 	}
 
+	// Check compatibility and warn user
+	if warning := version.CheckCompatibility(); warning != "" {
+		fmt.Printf("⚠️  Compatibility Warning: %s\n", warning)
+		fmt.Println("Installation will continue, but compilation may fail.")
+		fmt.Println("Consider using an older GCC version or Docker for better compatibility.")
+	}
+
 	// Check if version is already installed
 	existing, err := s.installationRepo.GetInstallationByVersion(ctx, version)
 	if err == nil && existing.IsInstalled() {

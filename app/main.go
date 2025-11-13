@@ -57,6 +57,20 @@ func main() {
 	}
 	fmt.Println("✅ PHP 8.1.0 installed successfully")
 
+	// Demo: Install PHP 5.6.0 (should show compatibility warning)
+	fmt.Println("Installing PHP 5.6.0...")
+	if err := installService.InstallVersion(ctx, "5.6.0"); err != nil {
+		log.Fatalf("Failed to install PHP 5.6.0: %v", err)
+	}
+	fmt.Println("✅ PHP 5.6.0 installed successfully")
+
+	// Demo: Install PHP 7.0.0 (should show compatibility warning)
+	fmt.Println("Installing PHP 7.0.0...")
+	if err := installService.InstallVersion(ctx, "7.0.0"); err != nil {
+		log.Fatalf("Failed to install PHP 7.0.0: %v", err)
+	}
+	fmt.Println("✅ PHP 7.0.0 installed successfully")
+
 	// Demo: Install PHP 8.2.0
 	fmt.Println("Installing PHP 8.2.0...")
 	if err := installService.InstallVersion(ctx, "8.2.0"); err != nil {

@@ -84,9 +84,14 @@ func (s *InstallationService) InstallVersion(ctx context.Context, versionStr str
 
 	// Build PHP
 	config := map[string]string{
-		"--prefix":        installPath,
-		"--enable-shared": "",
-		"--enable-static": "",
+		"--prefix":                    installPath,
+		"--enable-shared":             "no",
+		"--enable-static":             "yes",
+		"--disable-all":               "",   // Disable most extensions for minimal build
+		"--enable-cli":                "",   // Enable CLI
+		"--enable-zts":                "no", // Disable thread safety
+		"--with-config-file-path":     filepath.Join(installPath, "etc"),
+		"--with-config-file-scan-dir": filepath.Join(installPath, "etc", "conf.d"),
 	}
 	if err := s.builder.Build(ctx, sourcePath, installPath, config); err != nil {
 		// Cleanup on failure

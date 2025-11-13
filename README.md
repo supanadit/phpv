@@ -1,251 +1,31 @@
 # PHPV - PHP Version Manager
 
-**IMPORTANT: This project is still in early development. Use at your own risk.**
+**IMPORTANT: This project is currently being rewritten in Go. The bash version is deprecated.**
 
 A simple PHP version manager for Linux/Unix systems, similar to `pyenv` and `nvm`. PHPV allows you to install, manage, and switch between multiple PHP versions in user space without requiring root privileges for version management.
 
-## Installation
+## Go Implementation (Current Development)
 
-PHPV is designed to be as easy to install as NVM. Just run this command:
+The project is being actively developed in Go for better performance, reliability, and maintainability.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bash
-```
-
-Or if you prefer wget:
-
-```bash
-wget -qO- https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bash
-```
-
-This will:
-
-- Download PHPV to `~/.phpv/`
-- Set up shell integration automatically
-- Add the `phpv` command to your PATH
-- Configure your shell profile (`.bashrc`, `.zshrc`, etc.)
-
-After installation, **restart your terminal** or run:
-
-- `source ~/.bashrc` (for Bash)
-- `source ~/.zshrc` (for ZSH)
-
-### Updating PHPV
-
-To update PHPV while preserving your installed versions, cache, and dependencies:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bash
-```
-
-When prompted, choose "y" to update. This will:
-
-- ✅ Keep all your installed PHP versions
-- ✅ Preserve download cache (faster future installs)
-- ✅ Maintain compiled dependencies
-- ✅ Only update the PHPV scripts
-- ✅ Create backups of current scripts
-
-### Manual Installation
-
-If you prefer to install manually or are testing from source:
+### Building from Source
 
 ```bash
 git clone https://github.com/supanadit/phpv.git
 cd phpv
-
-./install.sh
+go build -o phpv app/main.go
 ```
 
-## Features
+### Demo
 
-- 🚀 Install multiple PHP versions from source
-- 🔄 Switch between installed versions instantly
-- 🏠 User space installation (no root required for version management)
-- 💾 Automatic PATH management
-- 🧹 Clean uninstallation of versions
-- 📦 Automatic dependency detection and guidance
-- 🎨 Colored output for better readability
-- 🛠️ Shell integration for bash, and zsh
-- 📅 Day one latest PHP support
-- 🆓 Open source ([MIT License](LICENSE))
-- 🐳 Compatible with Docker and CI environments
-- 🐧 Support all linux distros (Distro agnostic)
-- 🧩 Easily extensible for custom configurations
-- 🧱 Isolated dependency management for each PHP version
-
-## PHP Versions Supported
-
-After this project released in stable state, each new PHP version will be supported as soon as possible. So you don't need to wait the operating system package manager to provide the latest PHP version.
-
-- PHP 8.5.x ( Dev Preview, Coming Soon )
-- PHP 8.4.x
-- PHP 8.3.x
-- PHP 8.2.x
-- PHP 8.1.x
-- PHP 8.0.x
-- PHP 7.x.x
-
-### Deprecated PHP Versions Supported ( Not Recommended )
-
-These versions are deprecated and not recommended for use in production environments. They are provided for legacy support and testing purposes only. Most of dependencies for these versions are no longer maintained and even not available to be downloaded.
-
-I understand that some users may still need these versions for specific use cases, such as maintaining legacy applications or testing compatibility. So I will try my best to make it work. If you need any of these versions, please create a Github Issue.
-
-- PHP 5.0.x below ( EOL, not recommended )
-- PHP 4.x.x below ( EOL, not recommended )
-- PHP 3.x.x below ( EOL, not recommended )
-- PHP 2.x.x below ( EOL, not recommended )
-- PHP 1.x.x below ( EOL, not recommended )
-
-## How It Works
-
-PHPV works similarly to NVM (Node Version Manager). After installation:
-
-1. **Automatic PATH Management**: When you run `phpv use <version>`, PHPV automatically updates your PATH to use the specified PHP version
-2. **Shell Integration**: The `phpv` command is available in all your shell sessions
-3. **No Manual Configuration**: Unlike some version managers, you don't need to manually source scripts or modify your PATH
-
-### Example Session
+Run the demo application:
 
 ```bash
-# Install a PHP version
-phpv install 8.3.12
+# Fast simulated builds (for testing)
+go run app/main.go
 
-# Switch to it (PATH is automatically updated)
-phpv use 8.3.12
-
-# Check current version
-phpv current
-# Output: Current: 8.3.12 (PHP 8.3.12)
-
-# Verify PHP binary
-which php
-# Output: /home/user/.phpv/versions/8.3.12/bin/php
-
-php -v
-# Output: PHP 8.3.12 (cli) ...
-
-# Switch back to system PHP
-phpv use system
-```
-
-## Usage
-
-### Basic Commands
-
-```bash
-# Install a PHP version
-phpv install 8.3.12
-
-# Switch to a specific version
-phpv use 8.3.12
-
-# Switch back to system PHP
-phpv use system
-
-# Show current version
-phpv current
-
-# List installed versions
-phpv list
-
-# List available versions for download
-phpv list-available
-
-# Execute PHP command with current version
-phpv exec -v
-phpv exec composer install
-
-# Show path to current PHP binary
-phpv which
-
-# Uninstall a version
-phpv uninstall 8.3.12
-
-# Show help
-phpv help
-```
-
-### Example Workflow
-
-```bash
-# Install latest PHP 8.3
-phpv install 8.3.12
-
-# Switch to it
-phpv use 8.3.12
-
-# Verify installation
-phpv current
-php -v
-
-# Install another version
-phpv install 8.2.24
-
-# List all installed versions
-phpv list
-
-# Switch between versions
-phpv use 8.2.24
-phpv use 8.3.12
-phpv use system  # Use system PHP
-```
-
-## PHP Configuration
-
-Each installed PHP version includes:
-
-- **Location**: `~/.phpv/versions/{version}/`
-- **Binaries**: `bin/php`, `bin/php-cgi`, `bin/php-fpm`
-- **Config**: `etc/php.ini` with sensible defaults
-- **Extensions**: Common extensions pre-enabled
-
-## Troubleshooting
-
-### Common Issues
-
-#### 1. Build Failures
-
-```bash
-# Check for missing dependencies
-phpv install 8.3.12
-
-# If it fails, create Github Issue with the error message for help
-```
-
-#### 2. PHP Not Found After Switch
-
-```bash
-# Reload shell configuration
-source ~/.zshrc  # or ~/.bashrc
-
-# Or restart your terminal
-```
-
-#### 3. Permission Errors
-
-PHPV installs everything in user space (`~/.phpv`), so no root permissions should be needed for version management. If you get permission errors, check that `~/.phpv` is writable by your user.
-
-#### 4. Missing Extensions
-
-If you need additional extensions, you can:
-
-1. Modify the configure options in the `install_php_version()` function
-2. Compile extensions separately after installation
-3. Use package managers like PECL with the specific PHP version
-
-Or you can request support for additional extensions via a GitHub issue.
-
-I'm happy to help add more extensions with flexibility. 😇
-
-### Debug Mode
-
-For troubleshooting installation issues, you can enable debug output:
-
-```bash
-# Enable bash debug mode
-bash -x ~/.phpv/bin/phpv install 8.3.12
+# Real PHP compilation (takes 10-30 minutes)
+go run app/main.go --simulate=false
 ```
 
 ## Contributing

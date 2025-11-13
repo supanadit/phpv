@@ -2,21 +2,42 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/supanadit/phpv/repository"
 	"github.com/supanadit/phpv/usecase"
 )
 
 func main() {
+	// Command line flags
+	simulate := flag.Bool("simulate", true, "Use simulated builds instead of real compilation")
+	flag.Parse()
+
 	ctx := context.Background()
+
+	// Use ~/.phpv as the base directory
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatalf("Failed to get home directory: %v", err)
+	}
+	baseDir := filepath.Join(homeDir, ".phpv")
 
 	// Initialize repositories
 	versionRepo := repository.NewInMemoryPHPVersionRepository()
 	installRepo := repository.NewInMemoryInstallationRepository()
 	downloader := repository.NewHTTPDownloader()
-	builder := repository.NewSourceBuilder()
+	var builder usecase.Builder
+	if *simulate {
+		builder = repository.NewSimulatedSourceBuilder()
+		fmt.Println("Using simulated builds (fast for testing)")
+	} else {
+		builder = repository.NewSourceBuilder()
+		fmt.Println("Using real PHP compilation (this will take several minutes)")
+	}
 	filesystem := repository.NewOSFileSystem()
 
 	// Initialize usecase
@@ -26,7 +47,7 @@ func main() {
 		downloader,
 		builder,
 		filesystem,
-		"/tmp/phpv-demo",
+		baseDir,
 	)
 
 	// Demo: Install PHP 8.1.0
@@ -69,5 +90,5 @@ func main() {
 	}
 	fmt.Printf("Active version: %s\n", active.Version.Version)
 
-	fmt.Println("\n🎉 Demo completed successfully!")
+	fmt.Printf("\n🎉 Demo completed successfully! PHP binaries installed to: %s\n", baseDir)
 }

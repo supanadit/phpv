@@ -8,7 +8,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
@@ -147,22 +149,35 @@ func (d *HTTPDownloader) extractTarGz(archivePath, destPath string) error {
 }
 
 // SourceBuilder implements Builder for building PHP from source
-type SourceBuilder struct{}
+type SourceBuilder struct {
+	simulate bool // For testing: if true, create placeholder instead of real build
+}
 
 // NewSourceBuilder creates a new source builder
 func NewSourceBuilder() *SourceBuilder {
-	return &SourceBuilder{}
+	return &SourceBuilder{
+		simulate: false, // Default to real builds
+	}
+}
+
+// NewSimulatedSourceBuilder creates a source builder that simulates builds
+func NewSimulatedSourceBuilder() *SourceBuilder {
+	return &SourceBuilder{
+		simulate: true,
+	}
 }
 
 // Build builds PHP from source code
 func (b *SourceBuilder) Build(ctx context.Context, sourcePath string, installPath string, config map[string]string) error {
-	// For now, simulate build process - in real implementation, this would:
-	// 1. Run ./configure with appropriate flags
-	// 2. Run make
-	// 3. Run make install
+	if b.simulate {
+		return b.buildSimulated(ctx, sourcePath, installPath, config)
+	}
+	return b.buildReal(ctx, sourcePath, installPath, config)
+}
 
+// buildSimulated creates a placeholder binary for testing
+func (b *SourceBuilder) buildSimulated(ctx context.Context, sourcePath string, installPath string, config map[string]string) error {
 	// Extract version from source path (format: .../sources/{version}/)
-	// This is a bit hacky but works for the current implementation
 	version := "unknown"
 	if parts := strings.Split(strings.TrimRight(sourcePath, "/"), "/"); len(parts) > 0 {
 		version = parts[len(parts)-1]
@@ -181,6 +196,92 @@ func (b *SourceBuilder) Build(ctx context.Context, sourcePath string, installPat
 		return fmt.Errorf("failed to create placeholder binary: %w", err)
 	}
 
+	return nil
+}
+
+// buildReal performs actual PHP compilation
+func (b *SourceBuilder) buildReal(ctx context.Context, sourcePath string, installPath string, config map[string]string) error {
+	// Real PHP compilation process:
+	// 1. Run ./configure with appropriate flags
+	// 2. Run make
+	// 3. Run make install
+
+	// Change to source directory
+	if err := os.Chdir(sourcePath); err != nil {
+		return fmt.Errorf("failed to change to source directory: %w", err)
+	}
+
+	// Prepare configure command
+	configureArgs := []string{
+		"--prefix=" + installPath,
+		"--enable-shared=no", // Static build for simplicity
+		"--enable-static=yes",
+		"--disable-all",   // Disable most extensions for minimal build
+		"--enable-cli",    // Enable CLI
+		"--enable-zts=no", // Disable thread safety for simplicity
+		"--with-config-file-path=" + filepath.Join(installPath, "etc"),
+		"--with-config-file-scan-dir=" + filepath.Join(installPath, "etc", "conf.d"),
+	}
+
+	// Add custom config options
+	for key, value := range config {
+		if value == "" {
+			configureArgs = append(configureArgs, key)
+		} else {
+			configureArgs = append(configureArgs, fmt.Sprintf("%s=%s", key, value))
+		}
+	}
+
+	fmt.Printf("Running ./configure with args: %v\n", configureArgs)
+
+	// Run ./configure
+	configureCmd := exec.CommandContext(ctx, "./configure", configureArgs...)
+	configureCmd.Stdout = os.Stdout
+	configureCmd.Stderr = os.Stderr
+
+	if err := configureCmd.Run(); err != nil {
+		return fmt.Errorf("configure failed: %w", err)
+	}
+
+	fmt.Println("Configure completed successfully")
+
+	// Determine make parallelism
+	numCPU := runtime.NumCPU()
+	makeJobs := fmt.Sprintf("-j%d", numCPU)
+
+	fmt.Printf("Running make with %d jobs\n", numCPU)
+
+	// Run make
+	makeCmd := exec.CommandContext(ctx, "make", makeJobs)
+	makeCmd.Stdout = os.Stdout
+	makeCmd.Stderr = os.Stderr
+
+	if err := makeCmd.Run(); err != nil {
+		return fmt.Errorf("make failed: %w", err)
+	}
+
+	fmt.Println("Make completed successfully")
+
+	fmt.Println("Running make install")
+
+	// Run make install
+	installCmd := exec.CommandContext(ctx, "make", "install")
+	installCmd.Stdout = os.Stdout
+	installCmd.Stderr = os.Stderr
+
+	if err := installCmd.Run(); err != nil {
+		return fmt.Errorf("make install failed: %w", err)
+	}
+
+	fmt.Println("Make install completed successfully")
+
+	// Verify the binary was created
+	binPath := filepath.Join(installPath, "bin", "php")
+	if _, err := os.Stat(binPath); os.IsNotExist(err) {
+		return fmt.Errorf("PHP binary not found at %s after installation", binPath)
+	}
+
+	fmt.Printf("PHP binary successfully installed at: %s\n", binPath)
 	return nil
 }
 

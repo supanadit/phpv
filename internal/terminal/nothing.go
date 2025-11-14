@@ -10,6 +10,7 @@ func NewNothingHandler() {
 	fmt.Println()
 	fmt.Println("COMMANDS:")
 	fmt.Println("    list                        List installed PHP versions")
+	fmt.Println("    help                        Show this help message")
 	fmt.Println()
 	fmt.Println("EXAMPLES:")
 	fmt.Println("    phpv list                   # List installed versions")

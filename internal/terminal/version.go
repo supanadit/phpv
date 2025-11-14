@@ -42,9 +42,35 @@ func (h *VersionHandler) ListVersions(ctx context.Context) {
 	versions, err := h.service.GetVersions(ctx)
 	if err != nil {
 		fmt.Println("Error fetching versions:", err)
+		return
+	}
+
+	// Get positional arguments (non-flag arguments)
+	args := pflag.Args()
+	var filterMajor, filterMinor *int
+
+	// args[0] is "list", so check for args[1] (e.g., "8" or "8.3")
+	if len(args) > 1 {
+		var major, minor int
+		n, err := fmt.Sscanf(args[1], "%d.%d", &major, &minor)
+		if err == nil && n == 2 {
+			filterMajor = &major
+			filterMinor = &minor
+		} else {
+			n, err := fmt.Sscanf(args[1], "%d", &major)
+			if err == nil && n == 1 {
+				filterMajor = &major
+			}
+		}
 	}
 
 	for _, v := range versions {
+		if filterMajor != nil && v.Major != *filterMajor {
+			continue
+		}
+		if filterMinor != nil && v.Minor != *filterMinor {
+			continue
+		}
 		println(h.formatVersion(v))
 	}
 }

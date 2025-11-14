@@ -15,6 +15,7 @@ func NewVersionRepository() *VersionRepository {
 }
 
 func (r *VersionRepository) GetVersions(ctx context.Context) ([]domain.Version, error) {
+	// TODO: Add RCx, beta, alpha versions
 	versions := r.generateRangeVersions(8, 4, 0, 14)
 	versions = append(
 		versions,

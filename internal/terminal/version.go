@@ -39,10 +39,10 @@ func (h *VersionHandler) ListVersions(ctx context.Context) {
 	}
 
 	for _, v := range versions {
-		println(formatVersion(v))
+		println(h.formatVersion(v))
 	}
 }
 
-func formatVersion(v domain.Version) string {
+func (h *VersionHandler) formatVersion(v domain.Version) string {
 	return fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
 }

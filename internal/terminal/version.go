@@ -22,12 +22,15 @@ func NewVersionHandler(ctx context.Context, svc VersionService) bool {
 		service: svc,
 	}
 
-	// Define the flag before looking it up
-	pflag.Bool("list-versions", false, "List all available PHP versions")
+	// Parse flags first
 	pflag.Parse()
 	viper.BindPFlags(pflag.CommandLine)
 
-	if viper.GetBool("list-versions") {
+	// Get positional arguments (non-flag arguments)
+	args := pflag.Args()
+
+	// Check if the first argument is "list"
+	if len(args) > 0 && args[0] == "list" {
 		handler.ListVersions(ctx)
 		return true
 	}

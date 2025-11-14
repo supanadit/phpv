@@ -14,5 +14,7 @@ func main() {
 	versionRepo := memory.NewVersionRepository()
 	svc := version.NewService(versionRepo)
 
-	terminal.NewVersionHandler(ctx, svc)
+	if !terminal.NewVersionHandler(ctx, svc) {
+		terminal.NewNothingHandler()
+	}
 }

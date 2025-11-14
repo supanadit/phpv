@@ -17,7 +17,7 @@ type VersionHandler struct {
 	service VersionService
 }
 
-func NewVersionHandler(ctx context.Context, svc VersionService) {
+func NewVersionHandler(ctx context.Context, svc VersionService) bool {
 	handler := &VersionHandler{
 		service: svc,
 	}
@@ -29,7 +29,10 @@ func NewVersionHandler(ctx context.Context, svc VersionService) {
 
 	if viper.GetBool("list-versions") {
 		handler.ListVersions(ctx)
+		return true
 	}
+
+	return false
 }
 
 func (h *VersionHandler) ListVersions(ctx context.Context) {

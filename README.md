@@ -4,6 +4,28 @@
 
 A simple PHP version manager for Linux/Unix systems, similar to `pyenv` and `nvm`. PHPV allows you to install, manage, and switch between multiple PHP versions in user space without requiring root privileges for version management.
 
+## Planned Features
+
+- 🚀 Install multiple PHP versions from source
+- 🔄 Switch between installed versions instantly
+- 🏠 User space installation (no root required for version management)
+- 💾 Automatic PATH management
+- 🧹 Clean uninstallation of versions
+- 📦 Automatic dependency detection and guidance
+- 🛠️ Shell integration for bash, and zsh
+- 📅 Day one latest PHP support
+- 🆓 True open source ([MIT License](LICENSE))
+- 🐳 Compatible with Docker and CI environments
+- 🐧 Support all linux distros (Distro agnostic)
+- 🧩 Easily extensible for custom configurations
+  - Adding and removing PHP extensions per version from PECL or source
+  - Enabling and disabling extensions per version on the fly
+  - Managing `php.ini` from this tool
+  - Integration with web servers (Apache, Nginx, Caddy)
+- 🧱 Isolated dependency management for each PHP version
+- 🪟 Windows support
+- 🍏 MacOS support
+
 ## Go Implementation (Current Development)
 
 The project is being actively developed in Go for better performance, reliability, and maintainability.
@@ -25,16 +47,29 @@ Run the demo application:
 go run app/phpv.go
 ```
 
-### Supported PHP Versions
+## PHP Versions Supported
 
-PHPV supports PHP versions from 4.x through 8.x:
+After this project released in stable state, each new PHP version will be supported as soon as possible. So you don't need to wait the operating system package manager to provide the latest PHP version.
 
-- **PHP 8.1+**: Full support with modern GCC (recommended)
-- **PHP 8.0**: Supported but may have compatibility issues with GCC 15.x
-- **PHP 7.4+**: Supported with modern GCC
-- **PHP 7.0-7.3**: May have compatibility issues with GCC 15.x
-- **PHP 5.x**: Very old versions, may not compile with modern GCC
-- **PHP 4.x**: Legacy versions, likely incompatible with modern GCC
+- PHP 8.5.x ( Dev Preview, Coming Soon )
+- PHP 8.4.x
+- PHP 8.3.x
+- PHP 8.2.x
+- PHP 8.1.x
+- PHP 8.0.x
+- PHP 7.x.x
+
+### Deprecated PHP Versions Supported ( Not Recommended )
+
+These versions are deprecated and not recommended for use in production environments. They are provided for legacy support and testing purposes only. Most of dependencies for these versions are no longer maintained and even not available to be downloaded.
+
+I understand that some users may still need these versions for specific use cases, such as maintaining legacy applications or testing compatibility. So I will try my best to make it work. If you need any of these versions, please create a Github Issue.
+
+- PHP 5.0.x below ( EOL, not recommended )
+- PHP 4.x.x below ( EOL, not recommended )
+- PHP 3.x.x below ( EOL, not recommended )
+- PHP 2.x.x below ( EOL, not recommended )
+- PHP 1.x.x below ( EOL, not recommended )
 
 ## Contributing
 
@@ -47,23 +82,3 @@ PHPV supports PHP versions from 4.x through 8.x:
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
-
-## Roadmap
-
-- [ ] Support install custom extension with `phpv install-ext <extension-name>`
-- [ ] Support uninstall custom extension with `phpv uninstall-ext <extension-name>`
-- [ ] Support list installed extensions with `phpv list-ext`
-- [ ] Support list available extensions with `phpv list-available-ext`
-- [ ] Support enable/disable extension with `phpv enable-ext <extension-name>` and `phpv disable-ext <extension-name>`
-- [ ] Support isolated build system to be used by user. For example user might download certain extension source code and automatically build it for specific PHP version using command `phpv build-ext <extension-name> <path-to-extension-source>`
-- [ ] Support custom configuration file per version
-- [ ] CI/CD for automated testing
-- [ ] Automatic detection of available PHP versions from php.net
-- [ ] Support for PHP extensions management
-- [ ] Integration with Apache
-- [ ] Integration with Nginx
-- [ ] Integration with Caddy
-- [ ] Integration with composer for project-specific PHP versions
-- [ ] PECL extension management per PHP version
-- [ ] Pre-compiled binary downloads for common distributions
-- [ ] Support MacOS (Apple Silicon and Intel, I don't have Mac to test it, so PR is welcome. Sorry 😅)

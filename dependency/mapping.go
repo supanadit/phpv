@@ -25,7 +25,11 @@ func getPHP83Dependencies() []domain.Dependency {
 			Version:     "1.3.1",
 			DownloadURL: "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz",
 			ConfigureFlags: []string{
-				"--static",
+				"-DCMAKE_INSTALL_PREFIX=%s",
+				"-DBUILD_SHARED_LIBS=OFF",
+			},
+			BuildCommands: []string{
+				"cmake",
 			},
 		},
 		{
@@ -92,7 +96,11 @@ func getPHP80Dependencies() []domain.Dependency {
 			Version:     "1.3.1",
 			DownloadURL: "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz",
 			ConfigureFlags: []string{
-				"--static",
+				"-DCMAKE_INSTALL_PREFIX=%s",
+				"-DBUILD_SHARED_LIBS=OFF",
+			},
+			BuildCommands: []string{
+				"cmake",
 			},
 		},
 		{

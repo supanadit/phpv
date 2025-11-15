@@ -191,6 +191,16 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 		configureArgs = append([]string{fmt.Sprintf("--prefix=%s", installDir)}, dep.ConfigureFlags...)
 	}
 
+	// Special handling for CMake-based builds
+	if len(dep.BuildCommands) > 0 && dep.BuildCommands[0] == "cmake" {
+		configureCmd = "cmake"
+		configureArgs = append([]string{"."}, dep.ConfigureFlags...)
+		// Replace %s placeholder with actual installDir
+		for i, arg := range configureArgs {
+			configureArgs[i] = strings.ReplaceAll(arg, "%s", installDir)
+		}
+	}
+
 	fmt.Printf("Configuring %s...\n", dep.Name)
 	if err := util.RunCommand(ctx, sourceDir, env, configureCmd, configureArgs...); err != nil {
 		return fmt.Errorf("configure failed for %s: %w", dep.Name, err)

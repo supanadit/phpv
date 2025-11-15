@@ -168,3 +168,43 @@ func TestGetPHPEnvironment(t *testing.T) {
 		t.Error("CXX environment variable not set")
 	}
 }
+
+func TestGetPHPEnvironmentWithVersionSpecificCFLAGS(t *testing.T) {
+	service := NewService("/tmp/test-phpv")
+
+	// Test PHP 7.2 which should have CFLAGS set
+	version72 := domain.Version{Major: 7, Minor: 2, Patch: 0}
+	env72 := service.GetPHPEnvironment(version72)
+
+	foundCFLAGS := false
+	for _, e := range env72 {
+		if strings.HasPrefix(e, "CFLAGS=") {
+			foundCFLAGS = true
+			if !strings.Contains(e, "-D_GNU_SOURCE") {
+				t.Error("CFLAGS should contain -D_GNU_SOURCE for PHP 7.2")
+			}
+			if !strings.Contains(e, "-Wno-deprecated-declarations") {
+				t.Error("CFLAGS should contain -Wno-deprecated-declarations for PHP 7.2")
+			}
+			break
+		}
+	}
+	if !foundCFLAGS {
+		t.Error("CFLAGS environment variable should be set for PHP 7.2")
+	}
+
+	// Test PHP 8.3 which should not have CFLAGS set
+	version83 := domain.Version{Major: 8, Minor: 3, Patch: 27}
+	env83 := service.GetPHPEnvironment(version83)
+
+	foundCFLAGS = false
+	for _, e := range env83 {
+		if strings.HasPrefix(e, "CFLAGS=") {
+			foundCFLAGS = true
+			break
+		}
+	}
+	if foundCFLAGS {
+		t.Error("CFLAGS environment variable should not be set for PHP 8.3")
+	}
+}

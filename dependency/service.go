@@ -507,6 +507,22 @@ func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
 
 	env = append(env, "CC=clang", "CXX=clang++")
 
+	// Add version-specific CFLAGS
+	var cflags []string
+	if phpVersion.Major == 7 && phpVersion.Minor == 2 {
+		// PHP 7.2 needs _GNU_SOURCE defined and suppress deprecated declarations warnings
+		cflags = append(cflags, "-D_GNU_SOURCE")
+		cflags = append(cflags, "-Wno-deprecated-declarations")
+	}
+	// Add more version-specific flags here as needed
+	// if phpVersion.Major == X && phpVersion.Minor == Y {
+	//     cflags = append(cflags, "additional-flag")
+	// }
+
+	if len(cflags) > 0 {
+		env = append(env, "CFLAGS="+strings.Join(cflags, " "))
+	}
+
 	if len(pkgConfigPath) > 0 {
 		env = append(env, "PKG_CONFIG_PATH="+strings.Join(pkgConfigPath, ":"))
 	}

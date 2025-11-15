@@ -139,7 +139,7 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 
 	if _, err := os.Stat(makefilePath); err == nil {
 		fmt.Printf("Cleaning previous build artifacts...\n")
-		
+
 		// Determine which files to remove based on the dependency
 		filesToRemove := []string{
 			"Makefile",
@@ -147,11 +147,11 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 			"config.log",
 			"config.h",
 		}
-		
+
 		// Only remove autotools-generated files for autotools-based projects
 		// For zlib (uses CMake), don't remove configure-related files
 		if dep.Name != "zlib" {
-			filesToRemove = append(filesToRemove, 
+			filesToRemove = append(filesToRemove,
 				"Makefile.in",
 				"config.h.in",
 				"configure",
@@ -161,7 +161,7 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 				"stamp-h1",
 			)
 		}
-		
+
 		for _, file := range filesToRemove {
 			path := filepath.Join(sourceDir, file)
 			if _, err := os.Stat(path); err == nil {

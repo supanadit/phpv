@@ -9,11 +9,11 @@ import (
 
 func TestGetPHPConfigureFlags_PHP7(t *testing.T) {
 	service := NewService("/tmp/test-phpv")
-	version := domain.Version{Major: 7, Minor: 4, Patch: 33}
+	version := domain.Version{Major: 7, Minor: 3, Patch: 33}
 
 	flags := service.GetPHPConfigureFlags(version)
 
-	// PHP 7.x should use -dir suffixed flags
+	// PHP 7.0-7.3 should use -dir suffixed flags
 	expectedFlags := map[string]bool{
 		"--with-libxml-dir":  false,
 		"--with-openssl-dir": false,
@@ -32,20 +32,20 @@ func TestGetPHPConfigureFlags_PHP7(t *testing.T) {
 
 	for flag, found := range expectedFlags {
 		if !found {
-			t.Errorf("expected flag %s not found in PHP 7.x configure flags", flag)
+			t.Errorf("expected flag %s not found in PHP 7.0-7.3 configure flags", flag)
 		}
 	}
 
 	// Ensure PHP 8.x flags are NOT present
 	for _, flag := range flags {
 		if strings.HasPrefix(flag, "--with-libxml=") {
-			t.Error("PHP 7.x should not have --with-libxml flag (should be --with-libxml-dir)")
+			t.Error("PHP 7.0-7.3 should not have --with-libxml flag (should be --with-libxml-dir)")
 		}
 		if strings.HasPrefix(flag, "--with-openssl=") {
-			t.Error("PHP 7.x should not have --with-openssl flag (should be --with-openssl-dir)")
+			t.Error("PHP 7.0-7.3 should not have --with-openssl flag (should be --with-openssl-dir)")
 		}
 		if strings.HasPrefix(flag, "--with-zlib=") {
-			t.Error("PHP 7.x should not have --with-zlib flag (should be --with-zlib-dir)")
+			t.Error("PHP 7.0-7.3 should not have --with-zlib flag (should be --with-zlib-dir)")
 		}
 	}
 }

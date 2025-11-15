@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+	"github.com/supanadit/phpv/build"
 	"github.com/supanadit/phpv/download"
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/terminal"
@@ -39,10 +40,13 @@ func main() {
 	versionRepo := memory.NewVersionRepository()
 	versionSvc := version.NewService(versionRepo)
 	downloadSvc := download.NewService()
+	buildSvc := build.NewService()
 
 	if !terminal.NewDownloadHandler(ctx, versionSvc, downloadSvc) {
-		if !terminal.NewVersionHandler(ctx, versionSvc) {
-			terminal.NewNothingHandler()
+		if !terminal.NewBuildHandler(ctx, versionSvc, buildSvc) {
+			if !terminal.NewVersionHandler(ctx, versionSvc) {
+				terminal.NewNothingHandler()
+			}
 		}
 	}
 }

@@ -189,12 +189,20 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 				return fmt.Errorf("autogen.sh failed for %s: %w", dep.Name, err)
 			}
 		} else {
-			// Check for buildconf (used by curl and others)
+			// Check for buildconf (used by curl) or configure.ac (used by most autotools projects)
+			// Projects recommend using autoreconf -fi for configure regeneration
 			buildconfPath := filepath.Join(sourceDir, "buildconf")
+			configureAcPath := filepath.Join(sourceDir, "configure.ac")
+
 			if _, err := os.Stat(buildconfPath); err == nil {
-				fmt.Printf("Running buildconf to regenerate configure script...\n")
-				if err := util.RunCommand(ctx, sourceDir, env, "./buildconf"); err != nil {
-					return fmt.Errorf("buildconf failed for %s: %w", dep.Name, err)
+				fmt.Printf("Running autoreconf -fi to regenerate configure script...\n")
+				if err := util.RunCommand(ctx, sourceDir, env, "autoreconf", "-fi"); err != nil {
+					return fmt.Errorf("autoreconf failed for %s: %w", dep.Name, err)
+				}
+			} else if _, err := os.Stat(configureAcPath); err == nil {
+				fmt.Printf("Running autoreconf -fi to regenerate configure script...\n")
+				if err := util.RunCommand(ctx, sourceDir, env, "autoreconf", "-fi"); err != nil {
+					return fmt.Errorf("autoreconf failed for %s: %w", dep.Name, err)
 				}
 			}
 		}

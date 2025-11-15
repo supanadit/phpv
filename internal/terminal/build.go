@@ -94,7 +94,7 @@ func (h *BuildHandler) BuildVersion(ctx context.Context, versionInput string) {
 		fmt.Println("Error:", err)
 		fmt.Println()
 		fmt.Println("To install Clang:")
-		fmt.Println("  Ubuntu/Debian: sudo apt-get install clang autoconf bison")
+		fmt.Println("  Ubuntu/Debian: sudo apt-get install clang autoconf bison libtool")
 		fmt.Println("  Fedora/RHEL:   sudo dnf install clang")
 		fmt.Println("  Arch Linux:    sudo pacman -S clang")
 		return

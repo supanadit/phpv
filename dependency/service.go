@@ -132,6 +132,55 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 	// Prepare environment with dependency paths
 	env := s.buildEnvironment(phpVersion, dep)
 
+	// Clean any previous build artifacts to avoid automake regeneration issues
+	makefilePath := filepath.Join(sourceDir, "Makefile")
+	configurePath := filepath.Join(sourceDir, "configure")
+	autogenPath := filepath.Join(sourceDir, "autogen.sh")
+
+	if _, err := os.Stat(makefilePath); err == nil {
+		fmt.Printf("Cleaning previous build artifacts...\n")
+		// Remove autotools-generated files that cause regeneration issues
+		filesToRemove := []string{
+			"Makefile",
+			"Makefile.in",
+			"config.status",
+			"config.log",
+			"config.h",
+			"config.h.in",
+			"configure",
+			"aclocal.m4",
+			"autom4te.cache",
+			"libtool",
+			"stamp-h1",
+		}
+		for _, file := range filesToRemove {
+			path := filepath.Join(sourceDir, file)
+			if _, err := os.Stat(path); err == nil {
+				os.RemoveAll(path)
+			}
+		}
+		// Also remove any .deps directories
+		filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			if info.IsDir() && info.Name() == ".deps" {
+				os.RemoveAll(path)
+			}
+			return nil
+		})
+	}
+
+	// Regenerate configure script if needed
+	if _, err := os.Stat(configurePath); os.IsNotExist(err) {
+		if _, err := os.Stat(autogenPath); err == nil {
+			fmt.Printf("Running autogen.sh to regenerate configure script...\n")
+			if err := util.RunCommand(ctx, sourceDir, env, "./autogen.sh"); err != nil {
+				return fmt.Errorf("autogen.sh failed for %s: %w", dep.Name, err)
+			}
+		}
+	}
+
 	// Configure
 	configureCmd := "./configure"
 	configureArgs := append([]string{fmt.Sprintf("--prefix=%s", installDir)}, dep.ConfigureFlags...)
@@ -262,6 +311,10 @@ func (s *Service) extractTarXz(r io.Reader, destDir string) error {
 
 // extractTar extracts a tar archive
 func (s *Service) extractTar(tr *tar.Reader, destDir string) error {
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return err
+	}
+
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -277,19 +330,26 @@ func (s *Service) extractTar(tr *tar.Reader, destDir string) error {
 			continue
 		}
 
+		topLevel := parts[0]
 		target := filepath.Join(destDir, parts[1])
+
+		atime := header.AccessTime
+		if atime.IsZero() {
+			atime = header.ModTime
+		}
 
 		switch header.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0755); err != nil {
+			if err := os.MkdirAll(target, os.FileMode(header.Mode)); err != nil {
 				return err
 			}
+			_ = os.Chtimes(target, atime, header.ModTime)
 		case tar.TypeReg:
 			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 				return err
 			}
 
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(header.Mode))
 			if err != nil {
 				return err
 			}
@@ -298,7 +358,42 @@ func (s *Service) extractTar(tr *tar.Reader, destDir string) error {
 				f.Close()
 				return err
 			}
-			f.Close()
+			if err := f.Chmod(os.FileMode(header.Mode)); err != nil {
+				f.Close()
+				return err
+			}
+			if err := f.Close(); err != nil {
+				return err
+			}
+			_ = os.Chtimes(target, atime, header.ModTime)
+		case tar.TypeSymlink:
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			if err := os.Symlink(header.Linkname, target); err != nil {
+				if !os.IsExist(err) {
+					return err
+				}
+			}
+		case tar.TypeLink:
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			linkParts := strings.SplitN(header.Linkname, "/", 2)
+			var linkRel string
+			if len(linkParts) == 1 {
+				linkRel = linkParts[0]
+			} else if linkParts[0] == topLevel {
+				linkRel = linkParts[1]
+			} else {
+				linkRel = header.Linkname
+			}
+			linkTarget := filepath.Join(destDir, linkRel)
+			if err := os.Link(linkTarget, target); err != nil {
+				if !os.IsExist(err) {
+					return err
+				}
+			}
 		}
 	}
 
@@ -310,12 +405,10 @@ func (s *Service) GetPHPConfigureFlags(phpVersion domain.Version) []string {
 	depsDir := s.GetDependenciesDir(phpVersion)
 
 	var flags []string
-	var pkgConfigPath []string
 
 	deps := GetDependenciesForVersion(phpVersion)
 	for _, dep := range deps {
 		depDir := filepath.Join(depsDir, dep.Name)
-		pkgConfigPath = append(pkgConfigPath, filepath.Join(depDir, "lib", "pkgconfig"))
 
 		// Add specific flags for each dependency
 		switch dep.Name {

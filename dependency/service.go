@@ -139,20 +139,29 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 
 	if _, err := os.Stat(makefilePath); err == nil {
 		fmt.Printf("Cleaning previous build artifacts...\n")
-		// Remove autotools-generated files that cause regeneration issues
+		
+		// Determine which files to remove based on the dependency
 		filesToRemove := []string{
 			"Makefile",
-			"Makefile.in",
 			"config.status",
 			"config.log",
 			"config.h",
-			"config.h.in",
-			"configure",
-			"aclocal.m4",
-			"autom4te.cache",
-			"libtool",
-			"stamp-h1",
 		}
+		
+		// Only remove autotools-generated files for autotools-based projects
+		// For zlib (uses CMake), don't remove configure-related files
+		if dep.Name != "zlib" {
+			filesToRemove = append(filesToRemove, 
+				"Makefile.in",
+				"config.h.in",
+				"configure",
+				"aclocal.m4",
+				"autom4te.cache",
+				"libtool",
+				"stamp-h1",
+			)
+		}
+		
 		for _, file := range filesToRemove {
 			path := filepath.Join(sourceDir, file)
 			if _, err := os.Stat(path); err == nil {
@@ -173,10 +182,20 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 
 	// Regenerate configure script if needed
 	if _, err := os.Stat(configurePath); os.IsNotExist(err) {
+		// Check for autogen.sh first
 		if _, err := os.Stat(autogenPath); err == nil {
 			fmt.Printf("Running autogen.sh to regenerate configure script...\n")
 			if err := util.RunCommand(ctx, sourceDir, env, "./autogen.sh"); err != nil {
 				return fmt.Errorf("autogen.sh failed for %s: %w", dep.Name, err)
+			}
+		} else {
+			// Check for buildconf (used by curl and others)
+			buildconfPath := filepath.Join(sourceDir, "buildconf")
+			if _, err := os.Stat(buildconfPath); err == nil {
+				fmt.Printf("Running buildconf to regenerate configure script...\n")
+				if err := util.RunCommand(ctx, sourceDir, env, "./buildconf"); err != nil {
+					return fmt.Errorf("buildconf failed for %s: %w", dep.Name, err)
+				}
 			}
 		}
 	}
@@ -421,39 +440,39 @@ func (s *Service) GetPHPConfigureFlags(phpVersion domain.Version) []string {
 		depDir := filepath.Join(depsDir, dep.Name)
 
 		// Add specific flags for each dependency
-		// PHP 7.x uses different flag names than PHP 8.x
-		isPHP7 := phpVersion.Major == 7
+		// PHP 7.0-7.3 uses different flag names than PHP 7.4+ and PHP 8.x
+		isPHP7Old := phpVersion.Major == 7 && phpVersion.Minor < 4
 
 		switch dep.Name {
 		case "libxml2":
-			if isPHP7 {
-				// PHP 7.x uses --with-libxml-dir
+			if isPHP7Old {
+				// PHP 7.0-7.3 uses --with-libxml-dir
 				flags = append(flags, fmt.Sprintf("--with-libxml-dir=%s", depDir))
 			} else {
-				// PHP 8.x uses --with-libxml
+				// PHP 7.4+ and PHP 8.x use --with-libxml
 				flags = append(flags, fmt.Sprintf("--with-libxml=%s", depDir))
 			}
 		case "openssl":
-			if isPHP7 {
-				// PHP 7.x uses --with-openssl-dir
+			if isPHP7Old {
+				// PHP 7.0-7.3 uses --with-openssl-dir
 				flags = append(flags, fmt.Sprintf("--with-openssl-dir=%s", depDir))
 			} else {
-				// PHP 8.x uses --with-openssl
+				// PHP 7.4+ and PHP 8.x use --with-openssl
 				flags = append(flags, fmt.Sprintf("--with-openssl=%s", depDir))
 			}
 		case "curl":
-			// Both use --with-curl
+			// All versions use --with-curl
 			flags = append(flags, fmt.Sprintf("--with-curl=%s", depDir))
 		case "zlib":
-			if isPHP7 {
-				// PHP 7.x uses --with-zlib-dir
+			if isPHP7Old {
+				// PHP 7.0-7.3 uses --with-zlib-dir
 				flags = append(flags, fmt.Sprintf("--with-zlib-dir=%s", depDir))
 			} else {
-				// PHP 8.x uses --with-zlib
+				// PHP 7.4+ and PHP 8.x use --with-zlib
 				flags = append(flags, fmt.Sprintf("--with-zlib=%s", depDir))
 			}
 		case "oniguruma":
-			// Both use --with-onig
+			// All versions use --with-onig
 			flags = append(flags, fmt.Sprintf("--with-onig=%s", depDir))
 		}
 	}

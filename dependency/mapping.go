@@ -176,7 +176,11 @@ func getPHP7Dependencies() []domain.Dependency {
 			Version:     "1.2.13",
 			DownloadURL: "https://github.com/madler/zlib/releases/download/v1.2.13/zlib-1.2.13.tar.gz",
 			ConfigureFlags: []string{
-				"--static",
+				"-DCMAKE_INSTALL_PREFIX=%s",
+				"-DBUILD_SHARED_LIBS=OFF",
+			},
+			BuildCommands: []string{
+				"cmake",
 			},
 		},
 		{

@@ -137,7 +137,12 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	// Add version-specific flags
 	if version.Major == 7 {
 		// PHP 7.x specific flags
-		configureArgs = append(configureArgs, "--enable-hash")
+		// Note: PHP 7.4+ has libxml and hash built-in, only needed for 7.0-7.3
+		if version.Minor < 4 {
+			configureArgs = append(configureArgs, "--enable-libxml")
+			configureArgs = append(configureArgs, "--enable-hash")
+		}
+		// JSON extension exists in all PHP 7.x versions
 		configureArgs = append(configureArgs, "--enable-json")
 	}
 

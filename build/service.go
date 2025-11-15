@@ -6,16 +6,27 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/viper"
+	"github.com/supanadit/phpv/dependency"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/util"
 )
 
-type Service struct{}
+type Service struct {
+	depService *dependency.Service
+}
 
 func NewService() *Service {
-	return &Service{}
+	root := viper.GetString("PHPV_ROOT")
+	if root == "" {
+		homeDir, _ := os.UserHomeDir()
+		root = filepath.Join(homeDir, ".phpv")
+	}
+
+	return &Service{
+		depService: dependency.NewService(root),
+	}
 }
 
 // GetVersionsDir returns the versions directory path where compiled PHP binaries are installed
@@ -82,17 +93,23 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	fmt.Printf("Target: %s\n", installDir)
 	fmt.Println()
 
-	// Step 1: Run buildconf (if it exists)
+	// Step 1: Build dependencies
+	fmt.Println("Step 1: Building dependencies...")
+	if err := s.depService.BuildDependencies(ctx, version); err != nil {
+		return fmt.Errorf("failed to build dependencies: %w", err)
+	}
+
+	// Step 2: Run buildconf (if it exists)
 	buildconfPath := filepath.Join(sourceDir, "buildconf")
 	if _, err := os.Stat(buildconfPath); err == nil {
-		fmt.Println("Running buildconf...")
-		if err := s.runCommand(ctx, sourceDir, "./buildconf", "--force"); err != nil {
+		fmt.Println("Step 2: Running buildconf...")
+		if err := util.RunCommand(ctx, sourceDir, nil, "./buildconf", "--force"); err != nil {
 			return fmt.Errorf("buildconf failed: %w", err)
 		}
 	}
 
-	// Step 2: Configure
-	fmt.Println("Configuring PHP build...")
+	// Step 3: Configure with dependency paths
+	fmt.Println("Step 3: Configuring PHP build...")
 	configureArgs := []string{
 		fmt.Sprintf("--prefix=%s", installDir),
 		"--enable-static",
@@ -100,83 +117,58 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 		"--disable-all",
 		"--enable-cli",
 		"--enable-phar",
-		"--enable-json",
 		"--enable-mbstring",
 		"--enable-ctype",
 		"--enable-tokenizer",
-		"--with-openssl",
-		"--with-zlib",
 		"--enable-filter",
 		"--enable-dom",
 		"--enable-xml",
 		"--enable-simplexml",
 		"--enable-xmlreader",
 		"--enable-xmlwriter",
-		"--with-curl",
 		"--enable-fileinfo",
 		"--enable-session",
 		"--enable-pcntl",
 		"--enable-posix",
 	}
 
-	env := append(os.Environ(),
-		"CC=clang",
-		"CXX=clang++",
-	)
+	// Add dependency-specific configure flags
+	depFlags := s.depService.GetPHPConfigureFlags(version)
+	configureArgs = append(configureArgs, depFlags...)
 
-	if err := s.runCommandWithEnv(ctx, sourceDir, env, "./configure", configureArgs...); err != nil {
+	// Get environment with dependency paths
+	env := s.depService.GetPHPEnvironment(version)
+
+	if err := util.RunCommand(ctx, sourceDir, env, "./configure", configureArgs...); err != nil {
 		return fmt.Errorf("configure failed: %w", err)
 	}
 
-	// Step 3: Make
-	fmt.Println("Compiling PHP (this may take a while)...")
-	if err := s.runCommandWithEnv(ctx, sourceDir, env, "make", "-j4"); err != nil {
+	// Step 4: Make
+	fmt.Println("Step 4: Compiling PHP (this may take a while)...")
+	if err := util.RunCommand(ctx, sourceDir, env, "make", "-j4"); err != nil {
 		return fmt.Errorf("make failed: %w", err)
 	}
 
-	// Step 4: Make install
-	fmt.Println("Installing PHP...")
-	if err := s.runCommandWithEnv(ctx, sourceDir, env, "make", "install"); err != nil {
+	// Step 5: Make install
+	fmt.Println("Step 5: Installing PHP...")
+	if err := util.RunCommand(ctx, sourceDir, env, "make", "install"); err != nil {
 		return fmt.Errorf("make install failed: %w", err)
 	}
 
-	// Step 5: Verify installation
+	// Step 6: Verify installation
 	if _, err := os.Stat(phpBinary); os.IsNotExist(err) {
 		return fmt.Errorf("PHP binary not found at %s after installation", phpBinary)
 	}
 
-	// Step 6: Test the binary
-	fmt.Println("Testing PHP binary...")
-	if err := s.runCommand(ctx, sourceDir, phpBinary, "--version"); err != nil {
+	// Step 7: Test the binary
+	fmt.Println("Step 6: Testing PHP binary...")
+	if err := util.RunCommand(ctx, sourceDir, nil, phpBinary, "--version"); err != nil {
 		return fmt.Errorf("PHP binary test failed: %w", err)
 	}
 
 	fmt.Println()
 	fmt.Printf("✓ Successfully built and installed PHP %s to %s\n", versionStr, installDir)
 	fmt.Printf("  Binary: %s\n", phpBinary)
-	return nil
-}
-
-// runCommand runs a command in the specified directory and streams output to stdout/stderr
-func (s *Service) runCommand(ctx context.Context, dir string, name string, args ...string) error {
-	return s.runCommandWithEnv(ctx, dir, nil, name, args...)
-}
-
-// runCommandWithEnv runs a command with custom environment variables
-func (s *Service) runCommandWithEnv(ctx context.Context, dir string, env []string, name string, args ...string) error {
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if env != nil {
-		cmd.Env = env
-	}
-
-	fmt.Printf("→ Running: %s %s\n", name, strings.Join(args, " "))
-	if err := cmd.Run(); err != nil {
-		return err
-	}
 	return nil
 }
 

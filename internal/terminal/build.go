@@ -12,7 +12,7 @@ type BuildService interface {
 	Build(ctx context.Context, version domain.Version) error
 	FindMatchingVersion(ctx context.Context, versions []domain.Version, major int, minor *int, patch *int) (domain.Version, error)
 	GetVersionsDir() string
-	CheckClang() error
+	CheckCompiler() error
 }
 
 type BuildHandler struct {
@@ -89,14 +89,15 @@ func (h *BuildHandler) BuildVersion(ctx context.Context, versionInput string) {
 		return
 	}
 
-	// Check Clang before building
-	if err := h.buildService.CheckClang(); err != nil {
+	// Check compiler before building
+	if err := h.buildService.CheckCompiler(); err != nil {
 		fmt.Println("Error:", err)
 		fmt.Println()
-		fmt.Println("To install Clang:")
+		fmt.Println("If you're using the default clang toolchain, install it with:")
 		fmt.Println("  Ubuntu/Debian: sudo apt-get install clang autoconf bison libtool")
 		fmt.Println("  Fedora/RHEL:   sudo dnf install clang")
 		fmt.Println("  Arch Linux:    sudo pacman -S clang")
+		fmt.Println("Alternatively set PHPV_TOOLCHAIN_CC to a custom compiler path.")
 		return
 	}
 

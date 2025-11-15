@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/dependency"
@@ -15,6 +16,7 @@ import (
 
 type Service struct {
 	depService *dependency.Service
+	toolchain  *domain.ToolchainConfig
 }
 
 func NewService() *Service {
@@ -24,8 +26,12 @@ func NewService() *Service {
 		root = filepath.Join(homeDir, ".phpv")
 	}
 
+	toolchain := loadToolchainConfig()
+	depSvc := dependency.NewServiceWithToolchain(root, toolchain)
+
 	return &Service{
-		depService: dependency.NewService(root),
+		depService: depSvc,
+		toolchain:  toolchain,
 	}
 }
 
@@ -49,19 +55,20 @@ func (s *Service) GetSourcesDir() string {
 	return filepath.Join(root, "sources")
 }
 
-// CheckClang verifies that clang is installed and available
-func (s *Service) CheckClang() error {
-	cmd := exec.Command("clang", "--version")
+// CheckCompiler verifies that the selected compiler is available
+func (s *Service) CheckCompiler() error {
+	compiler := s.getCompilerBinary()
+	cmd := exec.Command(compiler, "--version")
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("clang is not installed or not in PATH. Please install clang first")
+		return fmt.Errorf("%s is not installed or not in PATH. Please install it or adjust PHPV_TOOLCHAIN_CC", compiler)
 	}
 	return nil
 }
 
 // Build compiles PHP from source using Clang and installs it to ~/.phpv/versions
 func (s *Service) Build(ctx context.Context, version domain.Version) error {
-	// Check if clang is available
-	if err := s.CheckClang(); err != nil {
+	// Check if selected compiler is available
+	if err := s.CheckCompiler(); err != nil {
 		return err
 	}
 
@@ -88,7 +95,7 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 		return fmt.Errorf("failed to create versions directory: %w", err)
 	}
 
-	fmt.Printf("Building PHP %s from source using Clang...\n", versionStr)
+	fmt.Printf("Building PHP %s from source using %s...\n", versionStr, s.compilerDisplayName())
 	fmt.Printf("Source: %s\n", sourceDir)
 	fmt.Printf("Target: %s\n", installDir)
 	fmt.Println()
@@ -214,4 +221,69 @@ func (s *Service) FindMatchingVersion(ctx context.Context, versions []domain.Ver
 
 	// Return the latest matching version (assuming versions are sorted descending)
 	return matches[0], nil
+}
+
+func (s *Service) compilerDisplayName() string {
+	if s.toolchain != nil && s.toolchain.CC != "" {
+		return s.toolchain.CC
+	}
+	return "clang"
+}
+
+func (s *Service) getCompilerBinary() string {
+	cc := s.compilerDisplayName()
+	parts := strings.Fields(cc)
+	if len(parts) > 0 && parts[0] != "" {
+		return parts[0]
+	}
+	return "clang"
+}
+
+func loadToolchainConfig() *domain.ToolchainConfig {
+	cfg := &domain.ToolchainConfig{}
+	cfg.CC = getToolchainValue("PHPV_TOOLCHAIN_CC")
+	cfg.CXX = getToolchainValue("PHPV_TOOLCHAIN_CXX")
+	cfg.Sysroot = getToolchainValue("PHPV_TOOLCHAIN_SYSROOT")
+
+	if pathVal := getToolchainValue("PHPV_TOOLCHAIN_PATH"); pathVal != "" {
+		cfg.Path = parsePathList(pathVal)
+	}
+	if cflags := getToolchainValue("PHPV_TOOLCHAIN_CFLAGS"); cflags != "" {
+		cfg.CFlags = parseFlagList(cflags)
+	}
+	if cppflags := getToolchainValue("PHPV_TOOLCHAIN_CPPFLAGS"); cppflags != "" {
+		cfg.CPPFlags = parseFlagList(cppflags)
+	}
+	if ldflags := getToolchainValue("PHPV_TOOLCHAIN_LDFLAGS"); ldflags != "" {
+		cfg.LDFlags = parseFlagList(ldflags)
+	}
+
+	if cfg.IsEmpty() {
+		return nil
+	}
+	return cfg
+}
+
+func getToolchainValue(key string) string {
+	val := strings.TrimSpace(viper.GetString(key))
+	if val == "" {
+		val = strings.TrimSpace(os.Getenv(key))
+	}
+	return val
+}
+
+func parsePathList(value string) []string {
+	segments := strings.Split(value, string(os.PathListSeparator))
+	var cleaned []string
+	for _, segment := range segments {
+		segment = strings.TrimSpace(segment)
+		if segment != "" {
+			cleaned = append(cleaned, segment)
+		}
+	}
+	return cleaned
+}
+
+func parseFlagList(value string) []string {
+	return strings.Fields(value)
 }

@@ -19,12 +19,19 @@ import (
 type Service struct {
 	httpClient *http.Client
 	phpvRoot   string
+	toolchain  *domain.ToolchainConfig
 }
 
 func NewService(phpvRoot string) *Service {
+	return NewServiceWithToolchain(phpvRoot, nil)
+}
+
+// NewServiceWithToolchain allows providing an optional toolchain configuration.
+func NewServiceWithToolchain(phpvRoot string, toolchain *domain.ToolchainConfig) *Service {
 	return &Service{
 		httpClient: &http.Client{},
 		phpvRoot:   phpvRoot,
+		toolchain:  toolchain,
 	}
 }
 
@@ -252,12 +259,13 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 // buildEnvironment creates environment variables for building dependencies
 func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Dependency) []string {
 	env := os.Environ()
-	env = append(env, "CC=clang", "CXX=clang++")
+	env = s.applyCompilerEnv(env)
 
 	// Add dependency paths for transitive dependencies
 	var pkgConfigPath []string
 	var ldflags []string
 	var cppflags []string
+	var cflags []string
 
 	for _, depName := range dep.Dependencies {
 		depInstallDir := s.GetDependencyInstallDir(phpVersion, depName)
@@ -266,17 +274,105 @@ func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Depende
 		cppflags = append(cppflags, fmt.Sprintf("-I%s/include", depInstallDir))
 	}
 
+	cflags, cppflags, ldflags = s.applyToolchainFlags(cflags, cppflags, ldflags)
+
 	if len(pkgConfigPath) > 0 {
-		env = append(env, "PKG_CONFIG_PATH="+strings.Join(pkgConfigPath, ":"))
+		env = setOrReplaceEnv(env, "PKG_CONFIG_PATH", strings.Join(pkgConfigPath, ":"))
 	}
 	if len(ldflags) > 0 {
-		env = append(env, "LDFLAGS="+strings.Join(ldflags, " "))
+		env = setOrReplaceEnv(env, "LDFLAGS", strings.Join(ldflags, " "))
 	}
 	if len(cppflags) > 0 {
-		env = append(env, "CPPFLAGS="+strings.Join(cppflags, " "))
+		env = setOrReplaceEnv(env, "CPPFLAGS", strings.Join(cppflags, " "))
+	}
+	if len(cflags) > 0 {
+		env = setOrReplaceEnv(env, "CFLAGS", strings.Join(cflags, " "))
 	}
 
 	return env
+}
+
+func (s *Service) applyCompilerEnv(env []string) []string {
+	cc := "clang"
+	cxx := "clang++"
+	if s.toolchain != nil {
+		if s.toolchain.CC != "" {
+			cc = s.toolchain.CC
+		}
+		if s.toolchain.CXX != "" {
+			cxx = s.toolchain.CXX
+		}
+	}
+
+	env = setOrReplaceEnv(env, "CC", cc)
+	env = setOrReplaceEnv(env, "CXX", cxx)
+
+	if s.toolchain != nil {
+		env = s.applyToolchainPath(env)
+		if s.toolchain.Sysroot != "" {
+			env = setOrReplaceEnv(env, "PKG_CONFIG_SYSROOT_DIR", s.toolchain.Sysroot)
+		}
+	}
+
+	return env
+}
+
+func (s *Service) applyToolchainPath(env []string) []string {
+	if s.toolchain == nil || len(s.toolchain.Path) == 0 {
+		return env
+	}
+	var cleaned []string
+	for _, segment := range s.toolchain.Path {
+		segment = strings.TrimSpace(segment)
+		if segment != "" {
+			cleaned = append(cleaned, segment)
+		}
+	}
+	if len(cleaned) == 0 {
+		return env
+	}
+	current := getEnvValue(env, "PATH")
+	if current != "" {
+		cleaned = append(cleaned, current)
+	}
+	return setOrReplaceEnv(env, "PATH", strings.Join(cleaned, string(os.PathListSeparator)))
+}
+
+func (s *Service) applyToolchainFlags(cflags, cppflags, ldflags []string) ([]string, []string, []string) {
+	if s.toolchain == nil {
+		return cflags, cppflags, ldflags
+	}
+	if s.toolchain.Sysroot != "" {
+		sysrootFlag := fmt.Sprintf("--sysroot=%s", s.toolchain.Sysroot)
+		cflags = append(cflags, sysrootFlag)
+		cppflags = append(cppflags, sysrootFlag)
+		ldflags = append(ldflags, sysrootFlag)
+	}
+	cflags = append(cflags, s.toolchain.CFlags...)
+	cppflags = append(cppflags, s.toolchain.CPPFlags...)
+	ldflags = append(ldflags, s.toolchain.LDFlags...)
+	return cflags, cppflags, ldflags
+}
+
+func setOrReplaceEnv(env []string, key, value string) []string {
+	prefix := key + "="
+	for i, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			env[i] = prefix + value
+			return env
+		}
+	}
+	return append(env, prefix+value)
+}
+
+func getEnvValue(env []string, key string) string {
+	prefix := key + "="
+	for _, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			return strings.TrimPrefix(entry, prefix)
+		}
+	}
+	return ""
 }
 
 // downloadAndExtract downloads and extracts a tarball
@@ -496,6 +592,7 @@ func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
 	var pkgConfigPath []string
 	var ldflags []string
 	var cppflags []string
+	var cflags []string
 
 	deps := GetDependenciesForVersion(phpVersion)
 	for _, dep := range deps {
@@ -505,32 +602,37 @@ func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
 		cppflags = append(cppflags, fmt.Sprintf("-I%s/include", depDir))
 	}
 
-	env = append(env, "CC=clang", "CXX=clang++")
+	env = s.applyCompilerEnv(env)
 
 	// Add version-specific CFLAGS
-	var cflags []string
 	if phpVersion.Major == 7 && phpVersion.Minor == 2 {
-		// PHP 7.2 needs _GNU_SOURCE defined and suppress deprecated declarations warnings
+		// PHP 7.2 needs specific feature test macros defined and to suppress deprecated declarations warnings
 		cflags = append(cflags, "-D_GNU_SOURCE")
+		cflags = append(cflags, "-D_DEFAULT_SOURCE")
 		cflags = append(cflags, "-Wno-deprecated-declarations")
+		// Fix for readdir_r and stream cast errors on modern systems
+		cflags = append(cflags, "-D_LARGEFILE_SOURCE")
+		cflags = append(cflags, "-D_FILE_OFFSET_BITS=64")
+		cflags = append(cflags, "-D_POSIX_C_SOURCE=200809L")
 	}
 	// Add more version-specific flags here as needed
 	// if phpVersion.Major == X && phpVersion.Minor == Y {
 	//     cflags = append(cflags, "additional-flag")
 	// }
 
-	if len(cflags) > 0 {
-		env = append(env, "CFLAGS="+strings.Join(cflags, " "))
-	}
+	cflags, cppflags, ldflags = s.applyToolchainFlags(cflags, cppflags, ldflags)
 
 	if len(pkgConfigPath) > 0 {
-		env = append(env, "PKG_CONFIG_PATH="+strings.Join(pkgConfigPath, ":"))
+		env = setOrReplaceEnv(env, "PKG_CONFIG_PATH", strings.Join(pkgConfigPath, ":"))
 	}
 	if len(ldflags) > 0 {
-		env = append(env, "LDFLAGS="+strings.Join(ldflags, " "))
+		env = setOrReplaceEnv(env, "LDFLAGS", strings.Join(ldflags, " "))
 	}
 	if len(cppflags) > 0 {
-		env = append(env, "CPPFLAGS="+strings.Join(cppflags, " "))
+		env = setOrReplaceEnv(env, "CPPFLAGS", strings.Join(cppflags, " "))
+	}
+	if len(cflags) > 0 {
+		env = setOrReplaceEnv(env, "CFLAGS", strings.Join(cflags, " "))
 	}
 
 	return env

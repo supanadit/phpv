@@ -183,8 +183,20 @@ func TestGetPHPEnvironmentWithVersionSpecificCFLAGS(t *testing.T) {
 			if !strings.Contains(e, "-D_GNU_SOURCE") {
 				t.Error("CFLAGS should contain -D_GNU_SOURCE for PHP 7.2")
 			}
+			if !strings.Contains(e, "-D_DEFAULT_SOURCE") {
+				t.Error("CFLAGS should contain -D_DEFAULT_SOURCE for PHP 7.2")
+			}
 			if !strings.Contains(e, "-Wno-deprecated-declarations") {
 				t.Error("CFLAGS should contain -Wno-deprecated-declarations for PHP 7.2")
+			}
+			if !strings.Contains(e, "-D_LARGEFILE_SOURCE") {
+				t.Error("CFLAGS should contain -D_LARGEFILE_SOURCE for PHP 7.2")
+			}
+			if !strings.Contains(e, "-D_FILE_OFFSET_BITS=64") {
+				t.Error("CFLAGS should contain -D_FILE_OFFSET_BITS=64 for PHP 7.2")
+			}
+			if !strings.Contains(e, "-D_POSIX_C_SOURCE=200809L") {
+				t.Error("CFLAGS should contain -D_POSIX_C_SOURCE=200809L for PHP 7.2")
 			}
 			break
 		}

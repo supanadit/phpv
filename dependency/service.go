@@ -421,16 +421,39 @@ func (s *Service) GetPHPConfigureFlags(phpVersion domain.Version) []string {
 		depDir := filepath.Join(depsDir, dep.Name)
 
 		// Add specific flags for each dependency
+		// PHP 7.x uses different flag names than PHP 8.x
+		isPHP7 := phpVersion.Major == 7
+
 		switch dep.Name {
 		case "libxml2":
-			flags = append(flags, fmt.Sprintf("--with-libxml=%s", depDir))
+			if isPHP7 {
+				// PHP 7.x uses --with-libxml-dir
+				flags = append(flags, fmt.Sprintf("--with-libxml-dir=%s", depDir))
+			} else {
+				// PHP 8.x uses --with-libxml
+				flags = append(flags, fmt.Sprintf("--with-libxml=%s", depDir))
+			}
 		case "openssl":
-			flags = append(flags, fmt.Sprintf("--with-openssl=%s", depDir))
+			if isPHP7 {
+				// PHP 7.x uses --with-openssl-dir
+				flags = append(flags, fmt.Sprintf("--with-openssl-dir=%s", depDir))
+			} else {
+				// PHP 8.x uses --with-openssl
+				flags = append(flags, fmt.Sprintf("--with-openssl=%s", depDir))
+			}
 		case "curl":
+			// Both use --with-curl
 			flags = append(flags, fmt.Sprintf("--with-curl=%s", depDir))
 		case "zlib":
-			flags = append(flags, fmt.Sprintf("--with-zlib=%s", depDir))
+			if isPHP7 {
+				// PHP 7.x uses --with-zlib-dir
+				flags = append(flags, fmt.Sprintf("--with-zlib-dir=%s", depDir))
+			} else {
+				// PHP 8.x uses --with-zlib
+				flags = append(flags, fmt.Sprintf("--with-zlib=%s", depDir))
+			}
 		case "oniguruma":
+			// Both use --with-onig
 			flags = append(flags, fmt.Sprintf("--with-onig=%s", depDir))
 		}
 	}

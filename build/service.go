@@ -110,6 +110,8 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 
 	// Step 3: Configure with dependency paths
 	fmt.Println("Step 3: Configuring PHP build...")
+
+	// Base configure arguments
 	configureArgs := []string{
 		fmt.Sprintf("--prefix=%s", installDir),
 		"--enable-static",
@@ -130,6 +132,13 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 		"--enable-session",
 		"--enable-pcntl",
 		"--enable-posix",
+	}
+
+	// Add version-specific flags
+	if version.Major == 7 {
+		// PHP 7.x specific flags
+		configureArgs = append(configureArgs, "--enable-hash")
+		configureArgs = append(configureArgs, "--enable-json")
 	}
 
 	// Add dependency-specific configure flags

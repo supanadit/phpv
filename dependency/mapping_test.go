@@ -31,6 +31,24 @@ func TestGetDependenciesForVersion(t *testing.T) {
 			expectedCount: 5,
 			expectedFirst: "zlib",
 		},
+		{
+			name:          "PHP 7.4",
+			version:       domain.Version{Major: 7, Minor: 4, Patch: 33},
+			expectedCount: 5,
+			expectedFirst: "zlib",
+		},
+		{
+			name:          "PHP 7.3",
+			version:       domain.Version{Major: 7, Minor: 3, Patch: 33},
+			expectedCount: 5,
+			expectedFirst: "zlib",
+		},
+		{
+			name:          "PHP 7.0",
+			version:       domain.Version{Major: 7, Minor: 0, Patch: 33},
+			expectedCount: 5,
+			expectedFirst: "zlib",
+		},
 	}
 
 	for _, tt := range tests {
@@ -83,6 +101,56 @@ func TestDependencyVersions(t *testing.T) {
 	if len(expectedDeps) > 0 {
 		for name := range expectedDeps {
 			t.Errorf("missing expected dependency: %s", name)
+		}
+	}
+}
+
+func TestPHP7DependencyVersions(t *testing.T) {
+	version := domain.Version{Major: 7, Minor: 4, Patch: 33}
+	deps := GetDependenciesForVersion(version)
+
+	// Test that PHP 7.x gets appropriate dependency versions
+	expectedVersions := map[string]string{
+		"zlib":      "1.2.13", // Older stable version for PHP 7
+		"libxml2":   "2.9.14", // libxml2 2.9.x for PHP 7
+		"openssl":   "1.1.1w", // OpenSSL 1.1.1 series for PHP 7
+		"curl":      "7.88.1", // curl 7.x for PHP 7
+		"oniguruma": "6.9.8",  // Slightly older oniguruma
+	}
+
+	for _, dep := range deps {
+		expectedVersion, exists := expectedVersions[dep.Name]
+		if !exists {
+			t.Errorf("unexpected dependency: %s", dep.Name)
+			continue
+		}
+		if dep.Version != expectedVersion {
+			t.Errorf("dependency %s: expected version %s, got %s", dep.Name, expectedVersion, dep.Version)
+		}
+	}
+}
+
+func TestPHP8DependencyVersions(t *testing.T) {
+	version := domain.Version{Major: 8, Minor: 3, Patch: 27}
+	deps := GetDependenciesForVersion(version)
+
+	// Test that PHP 8.3+ gets newer dependency versions
+	expectedVersions := map[string]string{
+		"zlib":      "1.3.1",  // Newer zlib for PHP 8
+		"libxml2":   "2.12.7", // libxml2 2.12.x for PHP 8.3+
+		"openssl":   "3.3.2",  // OpenSSL 3.x for PHP 8
+		"curl":      "8.10.1", // curl 8.x for PHP 8
+		"oniguruma": "6.9.9",  // Latest oniguruma
+	}
+
+	for _, dep := range deps {
+		expectedVersion, exists := expectedVersions[dep.Name]
+		if !exists {
+			t.Errorf("unexpected dependency: %s", dep.Name)
+			continue
+		}
+		if dep.Version != expectedVersion {
+			t.Errorf("dependency %s: expected version %s, got %s", dep.Name, expectedVersion, dep.Version)
 		}
 	}
 }

@@ -93,6 +93,49 @@ func TestGetPHPConfigureFlags_PHP8(t *testing.T) {
 	}
 }
 
+func TestGetPHPConfigureFlags_PHP74(t *testing.T) {
+	service := NewService("/tmp/test-phpv")
+	version := domain.Version{Major: 7, Minor: 4, Patch: 33}
+
+	flags := service.GetPHPConfigureFlags(version)
+
+	// PHP 7.4 uses the same flags as PHP 8.x (not -dir suffixed)
+	expectedFlags := map[string]bool{
+		"--with-libxml":  false,
+		"--with-openssl": false,
+		"--with-zlib":    false,
+		"--with-curl":    false,
+		"--with-onig":    false,
+	}
+
+	for _, flag := range flags {
+		for expectedPrefix := range expectedFlags {
+			if strings.HasPrefix(flag, expectedPrefix) {
+				expectedFlags[expectedPrefix] = true
+			}
+		}
+	}
+
+	for flag, found := range expectedFlags {
+		if !found {
+			t.Errorf("expected flag %s not found in PHP 7.4 configure flags", flag)
+		}
+	}
+
+	// Ensure old PHP 7.0-7.3 -dir flags are NOT present
+	for _, flag := range flags {
+		if strings.HasPrefix(flag, "--with-libxml-dir=") {
+			t.Error("PHP 7.4 should not have --with-libxml-dir flag (should be --with-libxml)")
+		}
+		if strings.HasPrefix(flag, "--with-openssl-dir=") {
+			t.Error("PHP 7.4 should not have --with-openssl-dir flag (should be --with-openssl)")
+		}
+		if strings.HasPrefix(flag, "--with-zlib-dir=") {
+			t.Error("PHP 7.4 should not have --with-zlib-dir flag (should be --with-zlib)")
+		}
+	}
+}
+
 func TestGetPHPEnvironment(t *testing.T) {
 	service := NewService("/tmp/test-phpv")
 	version := domain.Version{Major: 8, Minor: 3, Patch: 27}

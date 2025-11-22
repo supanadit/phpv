@@ -530,8 +530,8 @@ func getPHP7Dependencies() []domain.Dependency {
 		},
 		{
 			Name:        "oniguruma",
-			Version:     "6.9.8",
-			DownloadURL: "https://github.com/kkos/oniguruma/releases/download/v6.9.8/onig-6.9.8.tar.gz",
+			Version:     "5.9.6",
+			DownloadURL: "https://github.com/kkos/oniguruma/releases/download/v5.9.6/onig-5.9.6.tar.gz",
 			ConfigureFlags: []string{
 				"--disable-shared",
 				"--enable-static",

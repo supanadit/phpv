@@ -241,6 +241,12 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 	configureCmd := "./configure"
 	configureArgs := append([]string{fmt.Sprintf("--prefix=%s", installDir)}, dep.ConfigureFlags...)
 
+	// Special handling for Perl which uses ./Configure (capitalized)
+	if len(dep.BuildCommands) > 0 && dep.BuildCommands[0] == "./Configure" {
+		configureCmd = "./Configure"
+		configureArgs = append([]string{fmt.Sprintf("-Dprefix=%s", installDir)}, dep.ConfigureFlags...)
+	}
+
 	// Special handling for OpenSSL which uses ./config
 	if len(dep.BuildCommands) > 0 && strings.Contains(dep.BuildCommands[0], "config") {
 		configureCmd = dep.BuildCommands[0]
@@ -288,6 +294,12 @@ func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Depende
 	cmakeBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "cmake"), "bin")
 	if _, err := os.Stat(filepath.Join(cmakeBin, "cmake")); err == nil {
 		env = setOrReplaceEnv(env, "PATH", cmakeBin+":"+getEnvValue(env, "PATH"))
+	}
+
+	// Add perl to PATH if available
+	perlBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "perl"), "bin")
+	if _, err := os.Stat(filepath.Join(perlBin, "perl")); err == nil {
+		env = setOrReplaceEnv(env, "PATH", perlBin+":"+getEnvValue(env, "PATH"))
 	}
 
 	// Add dependency paths for transitive dependencies

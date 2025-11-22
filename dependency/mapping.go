@@ -34,9 +34,25 @@ func getCMakeDependency() domain.Dependency {
 	}
 }
 
+func getPerlDependency() domain.Dependency {
+	return domain.Dependency{
+		Name:        "perl",
+		Version:     "5.38.2",
+		DownloadURL: "https://www.cpan.org/src/5.0/perl-5.38.2.tar.gz",
+		ConfigureFlags: []string{
+			"-des",
+			"-Dusethreads",
+		},
+		BuildCommands: []string{
+			"./Configure",
+		},
+	}
+}
+
 func getPHP83Dependencies() []domain.Dependency {
 	return []domain.Dependency{
 		getCMakeDependency(),
+		getPerlDependency(),
 		{
 			Name:        "zlib",
 			Version:     "1.3.1",
@@ -77,6 +93,7 @@ func getPHP83Dependencies() []domain.Dependency {
 				// OpenSSL uses ./config instead of ./configure
 				"./config",
 			},
+			Dependencies: []string{"perl"},
 		},
 		{
 			Name:        "curl",
@@ -90,6 +107,7 @@ func getPHP83Dependencies() []domain.Dependency {
 				"--without-libssh2",
 				"--without-nghttp2",
 				"--without-libidn2",
+				"--without-libpsl",
 				"--disable-ldap",
 			},
 			Dependencies: []string{"openssl", "zlib"},
@@ -109,6 +127,7 @@ func getPHP83Dependencies() []domain.Dependency {
 func getPHP80Dependencies() []domain.Dependency {
 	return []domain.Dependency{
 		getCMakeDependency(),
+		getPerlDependency(),
 		{
 			Name:        "zlib",
 			Version:     "1.3.1",
@@ -148,6 +167,7 @@ func getPHP80Dependencies() []domain.Dependency {
 			BuildCommands: []string{
 				"./config",
 			},
+			Dependencies: []string{"perl"},
 		},
 		{
 			Name:        "curl",
@@ -161,6 +181,7 @@ func getPHP80Dependencies() []domain.Dependency {
 				"--without-libssh2",
 				"--without-nghttp2",
 				"--without-libidn2",
+				"--without-libpsl",
 				"--disable-ldap",
 			},
 			Dependencies: []string{"openssl", "zlib"},
@@ -185,6 +206,7 @@ func getDefaultDependencies() []domain.Dependency {
 func getPHP7Dependencies() []domain.Dependency {
 	return []domain.Dependency{
 		getCMakeDependency(),
+		getPerlDependency(),
 		{
 			Name:        "zlib",
 			Version:     "1.2.13",
@@ -225,6 +247,7 @@ func getPHP7Dependencies() []domain.Dependency {
 				// OpenSSL uses ./config instead of ./configure
 				"./config",
 			},
+			Dependencies: []string{"perl"},
 		},
 		{
 			Name:        "curl",
@@ -238,6 +261,7 @@ func getPHP7Dependencies() []domain.Dependency {
 				"--without-libssh2",
 				"--without-nghttp2",
 				"--without-libidn2",
+				"--without-libpsl",
 				"--disable-ldap",
 			},
 			Dependencies: []string{"openssl", "zlib"},

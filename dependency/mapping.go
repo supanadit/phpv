@@ -23,8 +23,20 @@ func GetDependenciesForVersion(version domain.Version) []domain.Dependency {
 	return getDefaultDependencies()
 }
 
+func getCMakeDependency() domain.Dependency {
+	return domain.Dependency{
+		Name:           "cmake",
+		Version:        "3.30.0",
+		DownloadURL:    "https://github.com/Kitware/CMake/releases/download/v3.30.0/cmake-3.30.0-linux-x86_64.tar.gz",
+		ConfigureFlags: []string{},
+		BuildCommands:  []string{"prebuilt"},
+		Dependencies:   []string{},
+	}
+}
+
 func getPHP83Dependencies() []domain.Dependency {
 	return []domain.Dependency{
+		getCMakeDependency(),
 		{
 			Name:        "zlib",
 			Version:     "1.3.1",
@@ -96,6 +108,7 @@ func getPHP83Dependencies() []domain.Dependency {
 
 func getPHP80Dependencies() []domain.Dependency {
 	return []domain.Dependency{
+		getCMakeDependency(),
 		{
 			Name:        "zlib",
 			Version:     "1.3.1",
@@ -171,6 +184,7 @@ func getDefaultDependencies() []domain.Dependency {
 
 func getPHP7Dependencies() []domain.Dependency {
 	return []domain.Dependency{
+		getCMakeDependency(),
 		{
 			Name:        "zlib",
 			Version:     "1.2.13",

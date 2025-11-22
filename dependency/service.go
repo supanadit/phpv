@@ -49,6 +49,14 @@ func (s *Service) GetDependencyInstallDir(phpVersion domain.Version, depName str
 // IsDependencyBuilt checks if a dependency is already built
 func (s *Service) IsDependencyBuilt(phpVersion domain.Version, dep domain.Dependency) bool {
 	installDir := s.GetDependencyInstallDir(phpVersion, dep.Name)
+	if dep.Name == "cmake" {
+		// For cmake, check if bin/cmake exists
+		binPath := filepath.Join(installDir, "bin", "cmake")
+		if _, err := os.Stat(binPath); err == nil {
+			return true
+		}
+		return false
+	}
 	// Check if lib directory exists with some files
 	libDir := filepath.Join(installDir, "lib")
 	if stat, err := os.Stat(libDir); err == nil && stat.IsDir() {
@@ -125,6 +133,20 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 
 	installDir := s.GetDependencyInstallDir(phpVersion, dep.Name)
 	sourceDir := filepath.Join(s.phpvRoot, "dependencies-src", dep.Name+"-"+dep.Version)
+
+	// For prebuilt dependencies, download directly to installDir
+	if len(dep.BuildCommands) > 0 && dep.BuildCommands[0] == "prebuilt" {
+		if _, err := os.Stat(installDir); os.IsNotExist(err) {
+			fmt.Printf("Downloading %s...\n", dep.Name)
+			if err := s.downloadAndExtract(ctx, dep.DownloadURL, installDir); err != nil {
+				return fmt.Errorf("failed to download %s: %w", dep.Name, err)
+			}
+		} else {
+			fmt.Printf("%s already installed: %s\n", dep.Name, installDir)
+		}
+		fmt.Printf("✓ %s %s installed successfully\n", dep.Name, dep.Version)
+		return nil
+	}
 
 	// Download if not exists
 	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
@@ -227,7 +249,8 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 
 	// Special handling for CMake-based builds
 	if len(dep.BuildCommands) > 0 && dep.BuildCommands[0] == "cmake" {
-		configureCmd = "cmake"
+		cmakeBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "cmake"), "bin")
+		configureCmd = filepath.Join(cmakeBin, "cmake")
 		configureArgs = append([]string{"."}, dep.ConfigureFlags...)
 		// Replace %s placeholder with actual installDir
 		for i, arg := range configureArgs {
@@ -260,6 +283,12 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Dependency) []string {
 	env := os.Environ()
 	env = s.applyCompilerEnv(env)
+
+	// Add cmake to PATH if available
+	cmakeBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "cmake"), "bin")
+	if _, err := os.Stat(filepath.Join(cmakeBin, "cmake")); err == nil {
+		env = setOrReplaceEnv(env, "PATH", cmakeBin+":"+getEnvValue(env, "PATH"))
+	}
 
 	// Add dependency paths for transitive dependencies
 	var pkgConfigPath []string

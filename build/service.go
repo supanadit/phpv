@@ -106,11 +106,14 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 		return fmt.Errorf("failed to build dependencies: %w", err)
 	}
 
+	// Get environment with dependency paths (needed for buildconf and configure)
+	env := s.depService.GetPHPEnvironment(version)
+
 	// Step 2: Run buildconf (if it exists)
 	buildconfPath := filepath.Join(sourceDir, "buildconf")
 	if _, err := os.Stat(buildconfPath); err == nil {
 		fmt.Println("Step 2: Running buildconf...")
-		if err := util.RunCommand(ctx, sourceDir, nil, "./buildconf", "--force"); err != nil {
+		if err := util.RunCommand(ctx, sourceDir, env, "./buildconf", "--force"); err != nil {
 			return fmt.Errorf("buildconf failed: %w", err)
 		}
 	}
@@ -156,9 +159,6 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	// Add dependency-specific configure flags
 	depFlags := s.depService.GetPHPConfigureFlags(version)
 	configureArgs = append(configureArgs, depFlags...)
-
-	// Get environment with dependency paths
-	env := s.depService.GetPHPEnvironment(version)
 
 	if err := util.RunCommand(ctx, sourceDir, env, "./configure", configureArgs...); err != nil {
 		return fmt.Errorf("configure failed: %w", err)

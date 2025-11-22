@@ -25,6 +25,16 @@ func NewService() *Service {
 	}
 }
 
+// GetCacheDir returns the cache directory for downloaded PHP archives
+func (s *Service) GetCacheDir() string {
+	root := viper.GetString("PHPV_ROOT")
+	if root == "" {
+		homeDir, _ := os.UserHomeDir()
+		root = filepath.Join(homeDir, ".phpv")
+	}
+	return filepath.Join(root, "cache", "sources")
+}
+
 // GetSourcesDir returns the sources directory path
 func (s *Service) GetSourcesDir() string {
 	root := viper.GetString("PHPV_ROOT")
@@ -68,6 +78,23 @@ func (s *Service) BuildDownloadURL(version domain.Version) string {
 	}
 }
 
+// getCachedArchivePath returns the cache path for a PHP version archive
+func (s *Service) getCachedArchivePath(version domain.Version) string {
+	versionStr := fmt.Sprintf("%d.%d.%d", version.Major, version.Minor, version.Patch)
+	source := s.GetDownloadSource()
+
+	var filename string
+	switch source.Type {
+	case domain.SourceTypeOfficial:
+		filename = fmt.Sprintf("php-%s.tar.gz", versionStr)
+	default:
+		// GitHub
+		filename = fmt.Sprintf("php-%s-github.tar.gz", versionStr)
+	}
+
+	return filepath.Join(s.GetCacheDir(), filename)
+}
+
 // Download downloads and extracts the PHP source code
 func (s *Service) Download(ctx context.Context, version domain.Version) error {
 	sourcesDir := s.GetSourcesDir()
@@ -85,33 +112,86 @@ func (s *Service) Download(ctx context.Context, version domain.Version) error {
 		return fmt.Errorf("PHP %s is already downloaded at %s", versionStr, targetDir)
 	}
 
-	downloadURL := s.BuildDownloadURL(version)
-	fmt.Printf("Downloading PHP %s from %s...\n", versionStr, downloadURL)
+	cachePath := s.getCachedArchivePath(version)
 
-	// Download the file
-	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+	// Check if already cached
+	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
+		// Download to cache
+		downloadURL := s.BuildDownloadURL(version)
+		fmt.Printf("Downloading PHP %s from %s...\n", versionStr, downloadURL)
+
+		if err := s.downloadToCache(ctx, downloadURL, cachePath); err != nil {
+			return fmt.Errorf("failed to download: %w", err)
+		}
+		fmt.Printf("Downloaded and cached: %s\n", filepath.Base(cachePath))
+	} else {
+		fmt.Printf("Using cached archive: %s\n", filepath.Base(cachePath))
 	}
 
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to download: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download: HTTP %d", resp.StatusCode)
-	}
-
-	// Extract the tar.gz file
+	// Extract the tar.gz file from cache
 	fmt.Printf("Extracting to %s...\n", targetDir)
-	if err := s.extractTarGz(resp.Body, sourcesDir, versionStr); err != nil {
+	if err := s.extractFromCache(cachePath, sourcesDir, versionStr); err != nil {
 		return fmt.Errorf("failed to extract: %w", err)
 	}
 
 	fmt.Printf("Successfully downloaded PHP %s to %s\n", versionStr, targetDir)
 	return nil
+}
+
+// downloadToCache downloads a file to the cache directory
+func (s *Service) downloadToCache(ctx context.Context, url, cachePath string) error {
+	// Ensure cache directory exists
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0755); err != nil {
+		return fmt.Errorf("failed to create cache directory: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	// Create temporary file first
+	tmpFile, err := os.CreateTemp(filepath.Dir(cachePath), ".download-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	// Write to temporary file
+	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("failed to write to temp file: %w", err)
+	}
+	tmpFile.Close()
+
+	// Move to final cache location
+	if err := os.Rename(tmpPath, cachePath); err != nil {
+		return fmt.Errorf("failed to move to cache: %w", err)
+	}
+
+	return nil
+}
+
+// extractFromCache extracts a tar.gz archive from cache
+func (s *Service) extractFromCache(cachePath, destDir, versionStr string) error {
+	file, err := os.Open(cachePath)
+	if err != nil {
+		return fmt.Errorf("failed to open cached file: %w", err)
+	}
+	defer file.Close()
+
+	return s.extractTarGz(file, destDir, versionStr)
 }
 
 // extractTarGz extracts a tar.gz archive

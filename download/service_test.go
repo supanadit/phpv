@@ -181,3 +181,71 @@ func TestFindMatchingVersion(t *testing.T) {
 func intPtr(i int) *int {
 	return &i
 }
+
+func TestGetCacheDir(t *testing.T) {
+	svc := NewService()
+
+	// Test with default (no PHPV_ROOT set)
+	viper.Reset()
+	viper.AutomaticEnv()
+	dir := svc.GetCacheDir()
+	homeDir, _ := os.UserHomeDir()
+	expected := filepath.Join(homeDir, ".phpv", "cache", "sources")
+	if dir != expected {
+		t.Errorf("Expected %s, got %s", expected, dir)
+	}
+
+	// Test with custom PHPV_ROOT
+	viper.Set("PHPV_ROOT", "/custom/path")
+	dir = svc.GetCacheDir()
+	expected = filepath.Join("/custom/path", "cache", "sources")
+	if dir != expected {
+		t.Errorf("Expected %s, got %s", expected, dir)
+	}
+
+	viper.Reset()
+}
+
+func TestGetCachedArchivePath(t *testing.T) {
+	svc := NewService()
+	viper.Set("PHPV_ROOT", "/test/phpv")
+
+	tests := []struct {
+		name         string
+		version      domain.Version
+		phpSource    string
+		expectedFile string
+	}{
+		{
+			name:         "GitHub source",
+			version:      domain.Version{Major: 8, Minor: 3, Patch: 14},
+			phpSource:    "github",
+			expectedFile: "php-8.3.14-github.tar.gz",
+		},
+		{
+			name:         "Official source",
+			version:      domain.Version{Major: 8, Minor: 4, Patch: 1},
+			phpSource:    "official",
+			expectedFile: "php-8.4.1.tar.gz",
+		},
+		{
+			name:         "Default (GitHub)",
+			version:      domain.Version{Major: 7, Minor: 4, Patch: 33},
+			phpSource:    "",
+			expectedFile: "php-7.4.33-github.tar.gz",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Set("PHP_SOURCE", tt.phpSource)
+			cachePath := svc.getCachedArchivePath(tt.version)
+			expected := filepath.Join("/test/phpv", "cache", "sources", tt.expectedFile)
+			if cachePath != expected {
+				t.Errorf("Expected %s, got %s", expected, cachePath)
+			}
+		})
+	}
+
+	viper.Reset()
+}

@@ -220,3 +220,42 @@ func TestGetPHPEnvironmentWithVersionSpecificCFLAGS(t *testing.T) {
 		t.Error("CFLAGS environment variable should not be set for PHP 8.3")
 	}
 }
+
+func TestGetCacheDir(t *testing.T) {
+	service := NewService("/tmp/test-phpv")
+	cacheDir := service.GetCacheDir()
+
+	expected := "/tmp/test-phpv/cache/sources"
+	if cacheDir != expected {
+		t.Errorf("expected cache dir %s, got %s", expected, cacheDir)
+	}
+}
+
+func TestGetCachedArchivePath(t *testing.T) {
+	service := NewService("/tmp/test-phpv")
+
+	tests := []struct {
+		url      string
+		expected string
+	}{
+		{
+			url:      "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz",
+			expected: "/tmp/test-phpv/cache/sources/zlib-1.3.1.tar.gz",
+		},
+		{
+			url:      "https://download.gnome.org/sources/libxml2/2.12/libxml2-2.12.7.tar.xz",
+			expected: "/tmp/test-phpv/cache/sources/libxml2-2.12.7.tar.xz",
+		},
+		{
+			url:      "https://www.openssl.org/source/openssl-3.3.2.tar.gz",
+			expected: "/tmp/test-phpv/cache/sources/openssl-3.3.2.tar.gz",
+		},
+	}
+
+	for _, tc := range tests {
+		result := service.getCachedArchivePath(tc.url)
+		if result != tc.expected {
+			t.Errorf("for URL %s, expected %s, got %s", tc.url, tc.expected, result)
+		}
+	}
+}

@@ -211,27 +211,35 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 
 	// Regenerate configure script if needed
 	if _, err := os.Stat(configurePath); os.IsNotExist(err) {
-		// Check for autogen.sh first
-		if _, err := os.Stat(autogenPath); err == nil {
-			fmt.Printf("Running autogen.sh to regenerate configure script...\n")
-			if err := util.RunCommand(ctx, sourceDir, env, "./autogen.sh"); err != nil {
-				return fmt.Errorf("autogen.sh failed for %s: %w", dep.Name, err)
+		// Handle bootstrap build for autotools that don't ship with configure
+		if len(dep.BuildCommands) > 0 && dep.BuildCommands[0] == "bootstrap" {
+			fmt.Printf("Bootstrapping %s to generate configure script...\n", dep.Name)
+			if err := util.RunCommand(ctx, sourceDir, env, "./bootstrap"); err != nil {
+				return fmt.Errorf("bootstrap failed for %s: %w", dep.Name, err)
 			}
 		} else {
-			// Check for buildconf (used by curl) or configure.ac (used by most autotools projects)
-			// Projects recommend using autoreconf -fi for configure regeneration
-			buildconfPath := filepath.Join(sourceDir, "buildconf")
-			configureAcPath := filepath.Join(sourceDir, "configure.ac")
-
-			if _, err := os.Stat(buildconfPath); err == nil {
-				fmt.Printf("Running autoreconf -fi to regenerate configure script...\n")
-				if err := util.RunCommand(ctx, sourceDir, env, "autoreconf", "-fi"); err != nil {
-					return fmt.Errorf("autoreconf failed for %s: %w", dep.Name, err)
+			// Check for autogen.sh first
+			if _, err := os.Stat(autogenPath); err == nil {
+				fmt.Printf("Running autogen.sh to regenerate configure script...\n")
+				if err := util.RunCommand(ctx, sourceDir, env, "./autogen.sh"); err != nil {
+					return fmt.Errorf("autogen.sh failed for %s: %w", dep.Name, err)
 				}
-			} else if _, err := os.Stat(configureAcPath); err == nil {
-				fmt.Printf("Running autoreconf -fi to regenerate configure script...\n")
-				if err := util.RunCommand(ctx, sourceDir, env, "autoreconf", "-fi"); err != nil {
-					return fmt.Errorf("autoreconf failed for %s: %w", dep.Name, err)
+			} else {
+				// Check for buildconf (used by curl) or configure.ac (used by most autotools projects)
+				// Projects recommend using autoreconf -fi for configure regeneration
+				buildconfPath := filepath.Join(sourceDir, "buildconf")
+				configureAcPath := filepath.Join(sourceDir, "configure.ac")
+
+				if _, err := os.Stat(buildconfPath); err == nil {
+					fmt.Printf("Running autoreconf -fi to regenerate configure script...\n")
+					if err := util.RunCommand(ctx, sourceDir, env, "autoreconf", "-fi"); err != nil {
+						return fmt.Errorf("autoreconf failed for %s: %w", dep.Name, err)
+					}
+				} else if _, err := os.Stat(configureAcPath); err == nil {
+					fmt.Printf("Running autoreconf -fi to regenerate configure script...\n")
+					if err := util.RunCommand(ctx, sourceDir, env, "autoreconf", "-fi"); err != nil {
+						return fmt.Errorf("autoreconf failed for %s: %w", dep.Name, err)
+					}
 				}
 			}
 		}
@@ -302,6 +310,12 @@ func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Depende
 		env = setOrReplaceEnv(env, "PATH", perlBin+":"+getEnvValue(env, "PATH"))
 	}
 
+	// Add m4 to PATH if available
+	m4Bin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "m4"), "bin")
+	if _, err := os.Stat(filepath.Join(m4Bin, "m4")); err == nil {
+		env = setOrReplaceEnv(env, "PATH", m4Bin+":"+getEnvValue(env, "PATH"))
+	}
+
 	// Add dependency paths for transitive dependencies
 	var pkgConfigPath []string
 	var ldflags []string
@@ -313,6 +327,12 @@ func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Depende
 		pkgConfigPath = append(pkgConfigPath, filepath.Join(depInstallDir, "lib", "pkgconfig"))
 		ldflags = append(ldflags, fmt.Sprintf("-L%s/lib", depInstallDir))
 		cppflags = append(cppflags, fmt.Sprintf("-I%s/include", depInstallDir))
+
+		// Add bin directory to PATH for transitive dependencies
+		depBinDir := filepath.Join(depInstallDir, "bin")
+		if stat, err := os.Stat(depBinDir); err == nil && stat.IsDir() {
+			env = setOrReplaceEnv(env, "PATH", depBinDir+":"+getEnvValue(env, "PATH"))
+		}
 	}
 
 	cflags, cppflags, ldflags = s.applyToolchainFlags(cflags, cppflags, ldflags)
@@ -680,6 +700,24 @@ func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
 	re2cBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "re2c"), "bin")
 	if _, err := os.Stat(filepath.Join(re2cBin, "re2c")); err == nil {
 		env = setOrReplaceEnv(env, "PATH", re2cBin+":"+getEnvValue(env, "PATH"))
+	}
+
+	// Add autoconf to PATH if available
+	autoconfBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "autoconf"), "bin")
+	if _, err := os.Stat(filepath.Join(autoconfBin, "autoconf")); err == nil {
+		env = setOrReplaceEnv(env, "PATH", autoconfBin+":"+getEnvValue(env, "PATH"))
+	}
+
+	// Add automake to PATH if available
+	automakeBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "automake"), "bin")
+	if _, err := os.Stat(filepath.Join(automakeBin, "automake")); err == nil {
+		env = setOrReplaceEnv(env, "PATH", automakeBin+":"+getEnvValue(env, "PATH"))
+	}
+
+	// Add libtool to PATH if available
+	libtoolBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "libtool"), "bin")
+	if _, err := os.Stat(filepath.Join(libtoolBin, "libtool")); err == nil {
+		env = setOrReplaceEnv(env, "PATH", libtoolBin+":"+getEnvValue(env, "PATH"))
 	}
 
 	return env

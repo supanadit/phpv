@@ -61,10 +61,74 @@ func getRe2cDependency() domain.Dependency {
 	}
 }
 
+func getM4Dependency() domain.Dependency {
+	return domain.Dependency{
+		Name:        "m4",
+		Version:     "1.4.19",
+		DownloadURL: "https://mirror.freedif.org/GNU/m4/m4-1.4.19.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+	}
+}
+
+func getAutoconfDependency() domain.Dependency {
+	return domain.Dependency{
+		Name:        "autoconf",
+		Version:     "2.72",
+		DownloadURL: "https://mirror.freedif.org/GNU/autoconf/autoconf-2.72.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+		BuildCommands: []string{
+			"bootstrap",
+		},
+		Dependencies: []string{"m4"},
+	}
+}
+
+func getAutomakeDependency() domain.Dependency {
+	return domain.Dependency{
+		Name:        "automake",
+		Version:     "1.17",
+		DownloadURL: "https://mirror.freedif.org/GNU/automake/automake-1.17.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+		BuildCommands: []string{
+			"bootstrap",
+		},
+		Dependencies: []string{"autoconf"},
+	}
+}
+
+func getLibtoolDependency() domain.Dependency {
+	return domain.Dependency{
+		Name:        "libtool",
+		Version:     "2.5.4",
+		DownloadURL: "https://mirror.freedif.org/GNU/libtool/libtool-2.5.4.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+		BuildCommands: []string{
+			"bootstrap",
+		},
+		Dependencies: []string{"m4"},
+	}
+}
+
 func getPHP83Dependencies() []domain.Dependency {
 	return []domain.Dependency{
 		getCMakeDependency(),
 		getPerlDependency(),
+		getM4Dependency(),
+		getAutoconfDependency(),
+		getAutomakeDependency(),
+		getLibtoolDependency(),
 		getRe2cDependency(),
 		{
 			Name:        "zlib",
@@ -141,6 +205,10 @@ func getPHP80Dependencies() []domain.Dependency {
 	return []domain.Dependency{
 		getCMakeDependency(),
 		getPerlDependency(),
+		getM4Dependency(),
+		getAutoconfDependency(),
+		getAutomakeDependency(),
+		getLibtoolDependency(),
 		getRe2cDependency(),
 		{
 			Name:        "zlib",
@@ -221,6 +289,10 @@ func getPHP7Dependencies() []domain.Dependency {
 	return []domain.Dependency{
 		getCMakeDependency(),
 		getPerlDependency(),
+		getM4Dependency(),
+		getAutoconfDependency(),
+		getAutomakeDependency(),
+		getLibtoolDependency(),
 		getRe2cDependency(),
 		{
 			Name:        "zlib",

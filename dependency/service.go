@@ -177,9 +177,12 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 			"config.h",
 		}
 
-		// Only remove autotools-generated files for autotools-based projects
-		// For zlib (uses CMake), don't remove configure-related files
-		if dep.Name != "zlib" {
+		// Don't remove configure and related files for packages that ship with them
+		// These include: zlib (CMake), m4, autoconf, automake, libtool (stable GNU packages)
+		shouldKeepConfigure := dep.Name == "zlib" || dep.Name == "m4" ||
+			dep.Name == "autoconf" || dep.Name == "automake" || dep.Name == "libtool"
+
+		if !shouldKeepConfigure {
 			filesToRemove = append(filesToRemove,
 				"Makefile.in",
 				"config.h.in",
@@ -213,9 +216,19 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 	if _, err := os.Stat(configurePath); os.IsNotExist(err) {
 		// Handle bootstrap build for autotools that don't ship with configure
 		if len(dep.BuildCommands) > 0 && dep.BuildCommands[0] == "bootstrap" {
-			fmt.Printf("Bootstrapping %s to generate configure script...\n", dep.Name)
-			if err := util.RunCommand(ctx, sourceDir, env, "./bootstrap"); err != nil {
-				return fmt.Errorf("bootstrap failed for %s: %w", dep.Name, err)
+			// Check if there's a bootstrap script
+			bootstrapPath := filepath.Join(sourceDir, "bootstrap")
+			if _, err := os.Stat(bootstrapPath); err == nil {
+				fmt.Printf("Running bootstrap script for %s...\n", dep.Name)
+				if err := util.RunCommand(ctx, sourceDir, env, "./bootstrap"); err != nil {
+					return fmt.Errorf("bootstrap failed for %s: %w", dep.Name, err)
+				}
+			} else {
+				fmt.Printf("Generating configure script for %s using autoreconf...\n", dep.Name)
+				// Fallback to autoreconf if no bootstrap script exists
+				if err := util.RunCommand(ctx, sourceDir, env, "autoreconf", "-fi"); err != nil {
+					return fmt.Errorf("autoreconf failed for %s (system autoreconf required for bootstrapping): %w", dep.Name, err)
+				}
 			}
 		} else {
 			// Check for autogen.sh first

@@ -70,6 +70,9 @@ func getM4Dependency() domain.Dependency {
 			"--disable-shared",
 			"--enable-static",
 		},
+		BuildCommands: []string{
+			"bootstrap",
+		},
 	}
 }
 

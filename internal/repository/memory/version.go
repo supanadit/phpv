@@ -51,6 +51,10 @@ func (r *VersionRepository) GetVersions(ctx context.Context) ([]domain.Version, 
 	)
 	versions = append(
 		versions,
+		r.generateRangeVersions(7, 0, 0, 33)...,
+	)
+	versions = append(
+		versions,
 		r.generateRangeVersions(5, 6, 0, 40)...,
 	)
 	versions = append(

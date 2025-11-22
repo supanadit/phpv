@@ -585,6 +585,7 @@ func getPHP5Dependencies() []domain.Dependency {
 			ConfigureFlags: []string{
 				"no-shared",
 				"no-tests",
+				"no-gost",
 			},
 			BuildCommands: []string{
 				"./config",
@@ -600,12 +601,14 @@ func getPHP5Dependencies() []domain.Dependency {
 				"--disable-shared",
 				"--enable-static",
 				"--without-libssh2",
-				"--without-nghttp2",
-				"--without-libidn2",
-				"--without-libpsl",
 				"--disable-ldap",
+				"--disable-ldaps",
 			},
-			Dependencies: []string{"openssl", "zlib", "autoconf", "automake", "libtool"},
+			BuildCommands: []string{
+				"ac_cv_func_select=yes",
+				"ac_cv_func_socket=yes",
+			},
+			Dependencies: []string{"openssl", "zlib"},
 		},
 		{
 			Name:        "oniguruma",

@@ -1,7 +1,6 @@
 package dependency
 
 import (
-	"archive/tar"
 	"context"
 	"fmt"
 	"io"
@@ -177,96 +176,13 @@ func (s *ToolchainService) extractLLVM(cachePath, installDir string) error {
 		return fmt.Errorf("failed to create install directory: %w", err)
 	}
 
-	// Open the cached file
-	file, err := os.Open(cachePath)
+	// Use tar command directly to extract the tar.xz file
+	// tar automatically handles xz decompression with -J or by detecting the format
+	cmd := exec.Command("tar", "-xvf", cachePath, "-C", installDir, "--strip-components=1")
+
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to open cached file: %w", err)
-	}
-	defer file.Close()
-
-	// Use xz command to decompress to temporary file
-	tmpFile, err := os.CreateTemp("", "llvm-*.tar")
-	if err != nil {
-		return fmt.Errorf("failed to create temp tar file: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
-	tmpFile.Close()
-
-	// Decompress using xz
-	xzCmd := exec.Command("xz", "-dc", cachePath)
-	tarFile, err := os.Create(tmpPath)
-	if err != nil {
-		return fmt.Errorf("failed to create tar file: %w", err)
-	}
-	xzCmd.Stdout = tarFile
-
-	if err := xzCmd.Run(); err != nil {
-		tarFile.Close()
-		return fmt.Errorf("failed to decompress with xz: %w", err)
-	}
-	tarFile.Close()
-
-	// Extract tar
-	tarFileReader, err := os.Open(tmpPath)
-	if err != nil {
-		return fmt.Errorf("failed to open decompressed tar: %w", err)
-	}
-	defer tarFileReader.Close()
-
-	return s.extractTar(tar.NewReader(tarFileReader), installDir)
-}
-
-// extractTar extracts a tar archive, stripping the first directory component
-func (s *ToolchainService) extractTar(tr *tar.Reader, destDir string) error {
-	for {
-		header, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-
-		// Strip the first directory component (e.g., "LLVM-21.1.6-Linux-X64/")
-		parts := strings.SplitN(header.Name, "/", 2)
-		if len(parts) < 2 {
-			continue
-		}
-
-		target := filepath.Join(destDir, parts[1])
-
-		switch header.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0755); err != nil {
-				return err
-			}
-		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-				return err
-			}
-
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
-			if err != nil {
-				return err
-			}
-
-			if _, err := io.Copy(f, tr); err != nil {
-				f.Close()
-				return err
-			}
-			f.Close()
-		case tar.TypeSymlink:
-			// Handle symlinks
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-				return err
-			}
-			// Remove existing file/link if it exists
-			os.Remove(target)
-			if err := os.Symlink(header.Linkname, target); err != nil {
-				return err
-			}
-		}
+		return fmt.Errorf("failed to extract LLVM archive: %w (output: %s)", err, string(output))
 	}
 
 	return nil

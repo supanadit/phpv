@@ -155,7 +155,11 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	}
 
 	// Add version-specific flags
-	if version.Major == 7 {
+	switch version.Major {
+	case 5:
+		// PHP 5.x requires libxml to be explicitly enabled
+		configureArgs = append(configureArgs, "--enable-libxml")
+	case 7:
 		// PHP 7.x specific flags
 		// Note: PHP 7.4+ has libxml and hash built-in, only needed for 7.0-7.3
 		if version.Minor < 4 {

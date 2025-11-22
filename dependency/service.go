@@ -21,6 +21,7 @@ type Service struct {
 	phpvRoot         string
 	toolchain        *domain.ToolchainConfig
 	toolchainService *ToolchainService
+	phpVersion       *domain.Version // Used to determine which LLVM toolchain to use
 }
 
 func NewService(phpvRoot string) *Service {
@@ -34,6 +35,7 @@ func NewServiceWithToolchain(phpvRoot string, toolchain *domain.ToolchainConfig)
 		phpvRoot:         phpvRoot,
 		toolchain:        toolchain,
 		toolchainService: NewToolchainService(phpvRoot),
+		phpVersion:       nil, // Will be set when building dependencies
 	}
 }
 
@@ -81,6 +83,9 @@ func (s *Service) IsDependencyBuilt(phpVersion domain.Version, dep domain.Depend
 
 // BuildDependencies builds all dependencies for a PHP version
 func (s *Service) BuildDependencies(ctx context.Context, phpVersion domain.Version) error {
+	// Store the PHP version to ensure we use the correct LLVM toolchain
+	s.phpVersion = &phpVersion
+
 	deps := GetDependenciesForVersion(phpVersion)
 
 	fmt.Printf("\n=== Building Dependencies for PHP %d.%d.%d ===\n\n",
@@ -400,27 +405,44 @@ func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Depende
 }
 
 func (s *Service) applyCompilerEnv(env []string) []string {
-	cc := "clang"
-	cxx := "clang++"
-	if s.toolchain != nil {
-		if s.toolchain.CC != "" {
-			cc = s.toolchain.CC
-		}
+	// Use custom toolchain if provided
+	if s.toolchain != nil && s.toolchain.CC != "" {
+		env = setOrReplaceEnv(env, "CC", s.toolchain.CC)
 		if s.toolchain.CXX != "" {
-			cxx = s.toolchain.CXX
+			env = setOrReplaceEnv(env, "CXX", s.toolchain.CXX)
 		}
-	}
-
-	env = setOrReplaceEnv(env, "CC", cc)
-	env = setOrReplaceEnv(env, "CXX", cxx)
-
-	if s.toolchain != nil {
 		env = s.applyToolchainPath(env)
 		if s.toolchain.Sysroot != "" {
 			env = setOrReplaceEnv(env, "PKG_CONFIG_SYSROOT_DIR", s.toolchain.Sysroot)
 		}
+		return env
 	}
 
+	// Use version-specific LLVM toolchain if we have a PHP version
+	if s.phpVersion != nil {
+		llvmConfig := domain.GetLLVMVersionForPHP(*s.phpVersion)
+		llvmInstallDir := s.toolchainService.GetLLVMInstallDir(llvmConfig.Version)
+		llvmBinDir := filepath.Join(llvmInstallDir, "bin")
+
+		cc := filepath.Join(llvmBinDir, "clang")
+		cxx := filepath.Join(llvmBinDir, "clang++")
+
+		env = setOrReplaceEnv(env, "CC", cc)
+		env = setOrReplaceEnv(env, "CXX", cxx)
+
+		// Add LLVM bin directory to PATH
+		currentPath := getEnvValue(env, "PATH")
+		if currentPath != "" {
+			env = setOrReplaceEnv(env, "PATH", llvmBinDir+":"+currentPath)
+		} else {
+			env = setOrReplaceEnv(env, "PATH", llvmBinDir)
+		}
+		return env
+	}
+
+	// Fallback to system clang (shouldn't happen in normal usage)
+	env = setOrReplaceEnv(env, "CC", "clang")
+	env = setOrReplaceEnv(env, "CXX", "clang++")
 	return env
 }
 
@@ -761,6 +783,9 @@ func (s *Service) GetPHPConfigureFlags(phpVersion domain.Version) []string {
 
 // GetPHPEnvironment returns environment variables for PHP build
 func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
+	// Store the PHP version to ensure we use the correct LLVM toolchain
+	s.phpVersion = &phpVersion
+
 	env := os.Environ()
 	depsDir := s.GetDependenciesDir(phpVersion)
 

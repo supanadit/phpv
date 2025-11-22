@@ -53,7 +53,8 @@ func getCMakeDependency() domain.Dependency {
 	}
 }
 
-func getPerlDependency() domain.Dependency {
+// Version-specific dependency builders for PHP 8.3+
+func getPerlDependency_PHP83() domain.Dependency {
 	return domain.Dependency{
 		Name:        "perl",
 		Version:     "5.38.2",
@@ -61,6 +62,7 @@ func getPerlDependency() domain.Dependency {
 		ConfigureFlags: []string{
 			"-des",
 			"-Dusethreads",
+			"-Dccflags=-Wno-error=incompatible-pointer-types -Wno-error=pointer-arith",
 		},
 		BuildCommands: []string{
 			"./Configure",
@@ -68,7 +70,7 @@ func getPerlDependency() domain.Dependency {
 	}
 }
 
-func getRe2cDependency() domain.Dependency {
+func getRe2cDependency_PHP83() domain.Dependency {
 	return domain.Dependency{
 		Name:        "re2c",
 		Version:     "3.1",
@@ -81,7 +83,7 @@ func getRe2cDependency() domain.Dependency {
 	}
 }
 
-func getM4Dependency() domain.Dependency {
+func getM4Dependency_PHP83() domain.Dependency {
 	return domain.Dependency{
 		Name:        "m4",
 		Version:     "1.4.19",
@@ -93,7 +95,7 @@ func getM4Dependency() domain.Dependency {
 	}
 }
 
-func getAutoconfDependency() domain.Dependency {
+func getAutoconfDependency_PHP83() domain.Dependency {
 	return domain.Dependency{
 		Name:        "autoconf",
 		Version:     "2.72",
@@ -106,7 +108,7 @@ func getAutoconfDependency() domain.Dependency {
 	}
 }
 
-func getAutomakeDependency() domain.Dependency {
+func getAutomakeDependency_PHP83() domain.Dependency {
 	return domain.Dependency{
 		Name:        "automake",
 		Version:     "1.17",
@@ -119,7 +121,7 @@ func getAutomakeDependency() domain.Dependency {
 	}
 }
 
-func getLibtoolDependency() domain.Dependency {
+func getLibtoolDependency_PHP83() domain.Dependency {
 	return domain.Dependency{
 		Name:        "libtool",
 		Version:     "2.5.4",
@@ -132,15 +134,177 @@ func getLibtoolDependency() domain.Dependency {
 	}
 }
 
+// Version-specific dependency builders for PHP 8.0-8.2
+func getPerlDependency_PHP80() domain.Dependency {
+	return domain.Dependency{
+		Name:        "perl",
+		Version:     "5.36.0",
+		DownloadURL: "https://www.cpan.org/src/5.0/perl-5.36.0.tar.gz",
+		ConfigureFlags: []string{
+			"-des",
+			"-Dusethreads",
+			"-Dccflags=-Wno-error=incompatible-pointer-types -Wno-error=pointer-arith",
+		},
+		BuildCommands: []string{
+			"./Configure",
+		},
+	}
+}
+
+func getRe2cDependency_PHP80() domain.Dependency {
+	return domain.Dependency{
+		Name:        "re2c",
+		Version:     "2.2",
+		DownloadURL: "https://github.com/skvadrik/re2c/releases/download/2.2/re2c-2.2.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+		Dependencies: []string{"autoconf", "automake", "libtool"},
+	}
+}
+
+func getM4Dependency_PHP80() domain.Dependency {
+	return domain.Dependency{
+		Name:        "m4",
+		Version:     "1.4.19",
+		DownloadURL: "https://mirror.freedif.org/GNU/m4/m4-1.4.19.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+	}
+}
+
+func getAutoconfDependency_PHP80() domain.Dependency {
+	return domain.Dependency{
+		Name:        "autoconf",
+		Version:     "2.71",
+		DownloadURL: "https://mirror.freedif.org/GNU/autoconf/autoconf-2.71.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+		Dependencies: []string{"m4"},
+	}
+}
+
+func getAutomakeDependency_PHP80() domain.Dependency {
+	return domain.Dependency{
+		Name:        "automake",
+		Version:     "1.16.5",
+		DownloadURL: "https://mirror.freedif.org/GNU/automake/automake-1.16.5.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+		Dependencies: []string{"autoconf"},
+	}
+}
+
+func getLibtoolDependency_PHP80() domain.Dependency {
+	return domain.Dependency{
+		Name:        "libtool",
+		Version:     "2.4.7",
+		DownloadURL: "https://mirror.freedif.org/GNU/libtool/libtool-2.4.7.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+		Dependencies: []string{"m4"},
+	}
+}
+
+// Version-specific dependency builders for PHP 7.x (older, stable versions)
+func getPerlDependency_PHP7() domain.Dependency {
+	return domain.Dependency{
+		Name:        "perl",
+		Version:     "5.32.1",
+		DownloadURL: "https://www.cpan.org/src/5.0/perl-5.32.1.tar.gz",
+		ConfigureFlags: []string{
+			"-des",
+			"-Dusethreads",
+			"-Dccflags=-Wno-error=incompatible-pointer-types -Wno-error=pointer-arith",
+		},
+		BuildCommands: []string{
+			"./Configure",
+		},
+	}
+}
+
+func getRe2cDependency_PHP7() domain.Dependency {
+	return domain.Dependency{
+		Name:        "re2c",
+		Version:     "1.3",
+		DownloadURL: "https://github.com/skvadrik/re2c/releases/download/1.3/re2c-1.3.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+		Dependencies: []string{"autoconf", "automake", "libtool"},
+	}
+}
+
+func getM4Dependency_PHP7() domain.Dependency {
+	return domain.Dependency{
+		Name:        "m4",
+		Version:     "1.4.18",
+		DownloadURL: "https://mirror.freedif.org/GNU/m4/m4-1.4.18.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+	}
+}
+
+func getAutoconfDependency_PHP7() domain.Dependency {
+	return domain.Dependency{
+		Name:        "autoconf",
+		Version:     "2.69",
+		DownloadURL: "https://mirror.freedif.org/GNU/autoconf/autoconf-2.69.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+		Dependencies: []string{"m4"},
+	}
+}
+
+func getAutomakeDependency_PHP7() domain.Dependency {
+	return domain.Dependency{
+		Name:        "automake",
+		Version:     "1.15.1",
+		DownloadURL: "https://mirror.freedif.org/GNU/automake/automake-1.15.1.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+		Dependencies: []string{"autoconf"},
+	}
+}
+
+func getLibtoolDependency_PHP7() domain.Dependency {
+	return domain.Dependency{
+		Name:        "libtool",
+		Version:     "2.4.6",
+		DownloadURL: "https://mirror.freedif.org/GNU/libtool/libtool-2.4.6.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+		Dependencies: []string{"m4"},
+	}
+}
+
 func getPHP83Dependencies() []domain.Dependency {
 	return []domain.Dependency{
 		getCMakeDependency(),
-		getPerlDependency(),
-		getM4Dependency(),
-		getAutoconfDependency(),
-		getAutomakeDependency(),
-		getLibtoolDependency(),
-		getRe2cDependency(),
+		getPerlDependency_PHP83(),
+		getM4Dependency_PHP83(),
+		getAutoconfDependency_PHP83(),
+		getAutomakeDependency_PHP83(),
+		getLibtoolDependency_PHP83(),
+		getRe2cDependency_PHP83(),
 		{
 			Name:        "zlib",
 			Version:     "1.3.1",
@@ -215,12 +379,12 @@ func getPHP83Dependencies() []domain.Dependency {
 func getPHP80Dependencies() []domain.Dependency {
 	return []domain.Dependency{
 		getCMakeDependency(),
-		getPerlDependency(),
-		getM4Dependency(),
-		getAutoconfDependency(),
-		getAutomakeDependency(),
-		getLibtoolDependency(),
-		getRe2cDependency(),
+		getPerlDependency_PHP80(),
+		getM4Dependency_PHP80(),
+		getAutoconfDependency_PHP80(),
+		getAutomakeDependency_PHP80(),
+		getLibtoolDependency_PHP80(),
+		getRe2cDependency_PHP80(),
 		{
 			Name:        "zlib",
 			Version:     "1.3.1",
@@ -299,12 +463,12 @@ func getDefaultDependencies() []domain.Dependency {
 func getPHP7Dependencies() []domain.Dependency {
 	return []domain.Dependency{
 		getCMakeDependency(),
-		getPerlDependency(),
-		getM4Dependency(),
-		getAutoconfDependency(),
-		getAutomakeDependency(),
-		getLibtoolDependency(),
-		getRe2cDependency(),
+		getPerlDependency_PHP7(),
+		getM4Dependency_PHP7(),
+		getAutoconfDependency_PHP7(),
+		getAutomakeDependency_PHP7(),
+		getLibtoolDependency_PHP7(),
+		getRe2cDependency_PHP7(),
 		{
 			Name:        "zlib",
 			Version:     "1.2.13",

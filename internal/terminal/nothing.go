@@ -12,6 +12,7 @@ func NewNothingHandler() {
 	fmt.Println("    list                        List installed PHP versions")
 	fmt.Println("    download                    Download PHP source code")
 	fmt.Println("    build                       Build and install PHP from source (using Clang)")
+	fmt.Println("    prune                       Remove all build artifacts binaries, directories and files")
 	fmt.Println("    help                        Show this help message")
 	fmt.Println()
 	fmt.Println("EXAMPLES:")

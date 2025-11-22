@@ -11,6 +11,7 @@ import (
 	"github.com/supanadit/phpv/download"
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/terminal"
+	"github.com/supanadit/phpv/prune"
 	"github.com/supanadit/phpv/version"
 )
 
@@ -41,11 +42,14 @@ func main() {
 	versionSvc := version.NewService(versionRepo)
 	downloadSvc := download.NewService()
 	buildSvc := build.NewService()
+	pruneSvc := prune.NewService()
 
 	if !terminal.NewDownloadHandler(ctx, versionSvc, downloadSvc) {
 		if !terminal.NewBuildHandler(ctx, versionSvc, buildSvc) {
-			if !terminal.NewVersionHandler(ctx, versionSvc) {
-				terminal.NewNothingHandler()
+			if !terminal.NewPruneHandler(ctx, pruneSvc) {
+				if !terminal.NewVersionHandler(ctx, versionSvc) {
+					terminal.NewNothingHandler()
+				}
 			}
 		}
 	}

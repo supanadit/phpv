@@ -63,15 +63,20 @@ func (s *Service) IsDependencyBuilt(phpVersion domain.Version, dep domain.Depend
 	}
 
 	installDir := s.GetDependencyInstallDir(phpVersion, dep.Name)
-	if dep.Name == "cmake" {
-		// For cmake, check if bin/cmake exists
-		binPath := filepath.Join(installDir, "bin", "cmake")
-		if _, err := os.Stat(binPath); err == nil {
-			return true
+
+	// Special checks for tool dependencies that install binaries, not libraries
+	toolDeps := []string{"cmake", "perl", "m4", "autoconf", "automake", "libtool", "re2c"}
+	for _, tool := range toolDeps {
+		if dep.Name == tool {
+			binPath := filepath.Join(installDir, "bin", dep.Name)
+			if _, err := os.Stat(binPath); err == nil {
+				return true
+			}
+			return false
 		}
-		return false
 	}
-	// Check if lib directory exists with some files
+
+	// For library dependencies, check if lib directory exists with some files
 	libDir := filepath.Join(installDir, "lib")
 	if stat, err := os.Stat(libDir); err == nil && stat.IsDir() {
 		// Check if there are any files in lib directory

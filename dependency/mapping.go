@@ -62,7 +62,7 @@ func getPerlDependency_PHP83() domain.Dependency {
 		ConfigureFlags: []string{
 			"-des",
 			"-Dusethreads",
-			"-Dccflags=-Wno-error=incompatible-pointer-types -Wno-error=pointer-arith",
+			"-Dccflags=-Wno-error=incompatible-pointer-types -Wno-error=pointer-arith -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion -Wno-compound-token-split-by-macro -Wno-error=deprecated-declarations",
 		},
 		BuildCommands: []string{
 			"./Configure",
@@ -143,7 +143,7 @@ func getPerlDependency_PHP80() domain.Dependency {
 		ConfigureFlags: []string{
 			"-des",
 			"-Dusethreads",
-			"-Dccflags=-Wno-error=incompatible-pointer-types -Wno-error=pointer-arith",
+			"-Dccflags=-Wno-error=incompatible-pointer-types -Wno-error=pointer-arith -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion -Wno-compound-token-split-by-macro -Wno-error=deprecated-declarations",
 		},
 		BuildCommands: []string{
 			"./Configure",
@@ -224,7 +224,7 @@ func getPerlDependency_PHP7() domain.Dependency {
 		ConfigureFlags: []string{
 			"-des",
 			"-Dusethreads",
-			"-Dccflags=-Wno-error=incompatible-pointer-types -Wno-error=pointer-arith",
+			"-Dccflags=-Wno-error=incompatible-pointer-types -Wno-error=pointer-arith -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion -Wno-error=deprecated-declarations -Wno-error=address -Wno-error=sequence-point",
 		},
 		BuildCommands: []string{
 			"./Configure",

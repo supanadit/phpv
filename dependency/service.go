@@ -304,6 +304,11 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 	if len(dep.BuildCommands) > 0 && dep.BuildCommands[0] == "./Configure" {
 		configureCmd = "./Configure"
 		configureArgs = append([]string{fmt.Sprintf("-Dprefix=%s", installDir)}, dep.ConfigureFlags...)
+
+		// For Perl, explicitly set the compiler to ensure it uses LLVM clang
+		if cc := getEnvValue(env, "CC"); cc != "" {
+			configureArgs = append(configureArgs, fmt.Sprintf("-Dcc=%s", cc))
+		}
 	}
 
 	// Special handling for OpenSSL which uses ./config

@@ -248,8 +248,8 @@ func getRe2cDependency_PHP7() domain.Dependency {
 func getM4Dependency_PHP7() domain.Dependency {
 	return domain.Dependency{
 		Name:        "m4",
-		Version:     "1.4.18",
-		DownloadURL: "https://mirror.freedif.org/GNU/m4/m4-1.4.18.tar.xz",
+		Version:     "1.4.19",
+		DownloadURL: "https://mirror.freedif.org/GNU/m4/m4-1.4.19.tar.xz",
 		ConfigureFlags: []string{
 			"--disable-shared",
 			"--enable-static",
@@ -362,7 +362,7 @@ func getPHP83Dependencies() []domain.Dependency {
 				"--without-libpsl",
 				"--disable-ldap",
 			},
-			Dependencies: []string{"openssl", "zlib"},
+			Dependencies: []string{"openssl", "zlib", "autoconf", "automake", "libtool"},
 		},
 		{
 			Name:        "oniguruma",
@@ -441,7 +441,7 @@ func getPHP80Dependencies() []domain.Dependency {
 				"--without-libpsl",
 				"--disable-ldap",
 			},
-			Dependencies: []string{"openssl", "zlib"},
+			Dependencies: []string{"openssl", "zlib", "autoconf", "automake", "libtool"},
 		},
 		{
 			Name:        "oniguruma",
@@ -526,7 +526,7 @@ func getPHP7Dependencies() []domain.Dependency {
 				"--without-libpsl",
 				"--disable-ldap",
 			},
-			Dependencies: []string{"openssl", "zlib"},
+			Dependencies: []string{"openssl", "zlib", "autoconf", "automake", "libtool"},
 		},
 		{
 			Name:        "oniguruma",

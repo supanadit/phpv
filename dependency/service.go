@@ -398,6 +398,24 @@ func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Depende
 		env = setOrReplaceEnv(env, "PATH", libtoolBin+":"+getEnvValue(env, "PATH"))
 	}
 
+	// Add libtool m4 macros to ACLOCAL_PATH for autoreconf
+	var aclocalPath []string
+	libtoolShare := filepath.Join(s.GetDependencyInstallDir(phpVersion, "libtool"), "share", "aclocal")
+	if _, err := os.Stat(libtoolShare); err == nil {
+		aclocalPath = append(aclocalPath, libtoolShare)
+	}
+	automakeShare := filepath.Join(s.GetDependencyInstallDir(phpVersion, "automake"), "share", "aclocal")
+	if _, err := os.Stat(automakeShare); err == nil {
+		aclocalPath = append(aclocalPath, automakeShare)
+	}
+	if len(aclocalPath) > 0 {
+		currentAclocal := getEnvValue(env, "ACLOCAL_PATH")
+		if currentAclocal != "" {
+			aclocalPath = append(aclocalPath, currentAclocal)
+		}
+		env = setOrReplaceEnv(env, "ACLOCAL_PATH", strings.Join(aclocalPath, ":"))
+	}
+
 	// Add dependency paths for transitive dependencies
 	var pkgConfigPath []string
 	var ldflags []string

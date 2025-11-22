@@ -601,14 +601,16 @@ func getPHP5Dependencies() []domain.Dependency {
 				"--disable-shared",
 				"--enable-static",
 				"--without-libssh2",
+				"--without-nghttp2",
+				"--without-libidn2",
+				"--without-libpsl",
 				"--disable-ldap",
-				"--disable-ldaps",
 			},
 			BuildCommands: []string{
-				"ac_cv_func_select=yes",
-				"ac_cv_func_socket=yes",
+				"autoreconf -fi",
+				"./configure",
 			},
-			Dependencies: []string{"openssl", "zlib"},
+			Dependencies: []string{"openssl", "zlib", "autoconf", "automake", "libtool"},
 		},
 		{
 			Name:        "oniguruma",
@@ -680,8 +682,8 @@ func getPHP7Dependencies() []domain.Dependency {
 		},
 		{
 			Name:        "curl",
-			Version:     "7.88.1",
-			DownloadURL: "https://curl.se/download/curl-7.88.1.tar.gz",
+			Version:     "7.19.7",
+			DownloadURL: "https://curl.se/download/curl-7.19.7.tar.gz",
 			ConfigureFlags: []string{
 				"--with-openssl",
 				"--with-zlib",

@@ -305,12 +305,12 @@ func getLibtoolDependency_PHP7() domain.Dependency {
 func getPerlDependency_PHP5() domain.Dependency {
 	return domain.Dependency{
 		Name:        "perl",
-		Version:     "5.24.0",
-		DownloadURL: "https://www.cpan.org/src/5.0/perl-5.24.0.tar.gz",
+		Version:     "5.32.1",
+		DownloadURL: "https://www.cpan.org/src/5.0/perl-5.32.1.tar.gz",
 		ConfigureFlags: []string{
 			"-des",
 			"-Dusethreads",
-			"-Dccflags=-Wno-error=incompatible-pointer-types -Wno-error=pointer-arith -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion -Wno-compound-token-split-by-macro -Wno-error=deprecated-declarations -Wno-error=address -Wno-error=sequence-point",
+			"-Dccflags=-Wno-error=incompatible-pointer-types -Wno-error=pointer-arith -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion -Wno-error=deprecated-declarations -Wno-error=address -Wno-error=sequence-point",
 		},
 		BuildCommands: []string{
 			"./Configure",
@@ -334,8 +334,8 @@ func getRe2cDependency_PHP5() domain.Dependency {
 func getM4Dependency_PHP5() domain.Dependency {
 	return domain.Dependency{
 		Name:        "m4",
-		Version:     "1.4.18",
-		DownloadURL: "https://mirror.freedif.org/GNU/m4/m4-1.4.18.tar.xz",
+		Version:     "1.4.19",
+		DownloadURL: "https://mirror.freedif.org/GNU/m4/m4-1.4.19.tar.xz",
 		ConfigureFlags: []string{
 			"--disable-shared",
 			"--enable-static",
@@ -552,8 +552,8 @@ func getPHP5Dependencies() []domain.Dependency {
 		getRe2cDependency_PHP5(),
 		{
 			Name:        "zlib",
-			Version:     "1.2.11",
-			DownloadURL: "https://github.com/madler/zlib/releases/download/v1.2.11/zlib-1.2.11.tar.gz",
+			Version:     "1.3.1",
+			DownloadURL: "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz",
 			ConfigureFlags: []string{
 				"-DCMAKE_INSTALL_PREFIX=%s",
 				"-DBUILD_SHARED_LIBS=OFF",
@@ -564,8 +564,8 @@ func getPHP5Dependencies() []domain.Dependency {
 		},
 		{
 			Name:        "libxml2",
-			Version:     "2.9.10",
-			DownloadURL: "https://download.gnome.org/sources/libxml2/2.9/libxml2-2.9.10.tar.xz",
+			Version:     "2.9.14",
+			DownloadURL: "https://download.gnome.org/sources/libxml2/2.9/libxml2-2.9.14.tar.xz",
 			ConfigureFlags: []string{
 				"--without-python",
 				"--without-readline",
@@ -580,8 +580,8 @@ func getPHP5Dependencies() []domain.Dependency {
 		},
 		{
 			Name:        "openssl",
-			Version:     "1.0.2u",
-			DownloadURL: "https://www.openssl.org/source/openssl-1.0.2u.tar.gz",
+			Version:     "1.0.1u",
+			DownloadURL: "https://www.openssl.org/source/openssl-1.0.1u.tar.gz",
 			ConfigureFlags: []string{
 				"no-shared",
 				"no-tests",
@@ -589,12 +589,11 @@ func getPHP5Dependencies() []domain.Dependency {
 			BuildCommands: []string{
 				"./config",
 			},
-			Dependencies: []string{"perl"},
 		},
 		{
 			Name:        "curl",
-			Version:     "7.60.0",
-			DownloadURL: "https://curl.se/download/curl-7.60.0.tar.gz",
+			Version:     "7.12.0",
+			DownloadURL: "https://curl.se/download/archeology/curl-7.12.0.tar.gz",
 			ConfigureFlags: []string{
 				"--with-openssl",
 				"--with-zlib",

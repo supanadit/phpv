@@ -26,7 +26,9 @@ func NewService() *Service {
 		root = filepath.Join(homeDir, ".phpv")
 	}
 
+	// User-provided toolchain configuration takes precedence
 	toolchain := loadToolchainConfig()
+
 	depSvc := dependency.NewServiceWithToolchain(root, toolchain)
 
 	return &Service{
@@ -57,11 +59,19 @@ func (s *Service) GetSourcesDir() string {
 
 // CheckCompiler verifies that the selected compiler is available
 func (s *Service) CheckCompiler() error {
-	compiler := s.getCompilerBinary()
-	cmd := exec.Command(compiler, "--version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s is not installed or not in PATH. Please install it or adjust PHPV_TOOLCHAIN_CC", compiler)
+	// If user provided custom toolchain, check that
+	if s.toolchain != nil && s.toolchain.CC != "" {
+		compiler := s.toolchain.CC
+		parts := strings.Fields(compiler)
+		if len(parts) > 0 && parts[0] != "" {
+			compiler = parts[0]
+		}
+		cmd := exec.Command(compiler, "--version")
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("%s is not installed or not in PATH. Please install it or adjust PHPV_TOOLCHAIN_CC", compiler)
+		}
 	}
+	// LLVM will be downloaded automatically during dependency build
 	return nil
 }
 
@@ -95,12 +105,12 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 		return fmt.Errorf("failed to create versions directory: %w", err)
 	}
 
-	fmt.Printf("Building PHP %s from source using %s...\n", versionStr, s.compilerDisplayName())
+	fmt.Printf("Building PHP %s from source using %s...\n", versionStr, s.compilerDisplayName(version))
 	fmt.Printf("Source: %s\n", sourceDir)
 	fmt.Printf("Target: %s\n", installDir)
 	fmt.Println()
 
-	// Step 1: Build dependencies
+	// Step 1: Build dependencies (this will download and install LLVM)
 	fmt.Println("Step 1: Building dependencies...")
 	if err := s.depService.BuildDependencies(ctx, version); err != nil {
 		return fmt.Errorf("failed to build dependencies: %w", err)
@@ -223,20 +233,36 @@ func (s *Service) FindMatchingVersion(ctx context.Context, versions []domain.Ver
 	return matches[0], nil
 }
 
-func (s *Service) compilerDisplayName() string {
+func (s *Service) compilerDisplayName(version domain.Version) string {
+	// Check if user provided a custom toolchain
 	if s.toolchain != nil && s.toolchain.CC != "" {
 		return s.toolchain.CC
 	}
-	return "clang"
+
+	// Get LLVM version for this PHP version
+	llvmVersion := domain.GetLLVMVersionForPHP(version)
+	return fmt.Sprintf("LLVM %s (clang)", llvmVersion.Version)
 }
 
-func (s *Service) getCompilerBinary() string {
-	cc := s.compilerDisplayName()
-	parts := strings.Fields(cc)
-	if len(parts) > 0 && parts[0] != "" {
-		return parts[0]
+func (s *Service) getCompilerBinary(version domain.Version) string {
+	// Check if user provided a custom toolchain
+	if s.toolchain != nil && s.toolchain.CC != "" {
+		cc := s.toolchain.CC
+		parts := strings.Fields(cc)
+		if len(parts) > 0 && parts[0] != "" {
+			return parts[0]
+		}
 	}
-	return "clang"
+
+	// Use LLVM from dependencies
+	llvmVersion := domain.GetLLVMVersionForPHP(version)
+	root := viper.GetString("PHPV_ROOT")
+	if root == "" {
+		homeDir, _ := os.UserHomeDir()
+		root = filepath.Join(homeDir, ".phpv")
+	}
+	llvmBin := filepath.Join(root, "toolchains", "llvm-"+llvmVersion.Version, "bin", "clang")
+	return llvmBin
 }
 
 func loadToolchainConfig() *domain.ToolchainConfig {

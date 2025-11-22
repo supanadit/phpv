@@ -17,9 +17,10 @@ import (
 )
 
 type Service struct {
-	httpClient *http.Client
-	phpvRoot   string
-	toolchain  *domain.ToolchainConfig
+	httpClient       *http.Client
+	phpvRoot         string
+	toolchain        *domain.ToolchainConfig
+	toolchainService *ToolchainService
 }
 
 func NewService(phpvRoot string) *Service {
@@ -29,9 +30,10 @@ func NewService(phpvRoot string) *Service {
 // NewServiceWithToolchain allows providing an optional toolchain configuration.
 func NewServiceWithToolchain(phpvRoot string, toolchain *domain.ToolchainConfig) *Service {
 	return &Service{
-		httpClient: &http.Client{},
-		phpvRoot:   phpvRoot,
-		toolchain:  toolchain,
+		httpClient:       &http.Client{},
+		phpvRoot:         phpvRoot,
+		toolchain:        toolchain,
+		toolchainService: NewToolchainService(phpvRoot),
 	}
 }
 
@@ -53,6 +55,11 @@ func (s *Service) GetDependencyInstallDir(phpVersion domain.Version, depName str
 
 // IsDependencyBuilt checks if a dependency is already built
 func (s *Service) IsDependencyBuilt(phpVersion domain.Version, dep domain.Dependency) bool {
+	// LLVM is managed by the toolchain service
+	if dep.Name == "llvm" {
+		return s.toolchainService.IsLLVMInstalled(dep.Version)
+	}
+
 	installDir := s.GetDependencyInstallDir(phpVersion, dep.Name)
 	if dep.Name == "cmake" {
 		// For cmake, check if bin/cmake exists
@@ -78,6 +85,20 @@ func (s *Service) BuildDependencies(ctx context.Context, phpVersion domain.Versi
 
 	fmt.Printf("\n=== Building Dependencies for PHP %d.%d.%d ===\n\n",
 		phpVersion.Major, phpVersion.Minor, phpVersion.Patch)
+
+	// First, ensure LLVM is installed (it's always the first dependency)
+	for _, dep := range deps {
+		if dep.Name == "llvm" {
+			if err := s.toolchainService.DownloadAndInstallLLVM(ctx, phpVersion); err != nil {
+				return fmt.Errorf("failed to install LLVM: %w", err)
+			}
+			// Update toolchain configuration to use the downloaded LLVM
+			if s.toolchain == nil || s.toolchain.IsEmpty() {
+				s.toolchain = s.toolchainService.GetToolchainConfig(phpVersion)
+			}
+			break
+		}
+	}
 
 	// Build dependencies in order (respecting transitive dependencies)
 	builtDeps := make(map[string]bool)
@@ -138,6 +159,13 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 
 	installDir := s.GetDependencyInstallDir(phpVersion, dep.Name)
 	sourceDir := filepath.Join(s.phpvRoot, "dependencies-src", dep.Name+"-"+dep.Version)
+
+	// LLVM is handled specially by the toolchain service
+	if dep.Name == "llvm" {
+		// Already installed by BuildDependencies
+		fmt.Printf("✓ %s %s already installed by toolchain service\n", dep.Name, dep.Version)
+		return nil
+	}
 
 	// For prebuilt dependencies, download directly to installDir
 	if len(dep.BuildCommands) > 0 && dep.BuildCommands[0] == "prebuilt" {
@@ -683,6 +711,11 @@ func (s *Service) GetPHPConfigureFlags(phpVersion domain.Version) []string {
 
 	deps := GetDependenciesForVersion(phpVersion)
 	for _, dep := range deps {
+		// Skip LLVM - it's a toolchain, not a PHP dependency
+		if dep.Name == "llvm" {
+			continue
+		}
+
 		depDir := filepath.Join(depsDir, dep.Name)
 
 		// Add specific flags for each dependency
@@ -738,6 +771,11 @@ func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
 
 	deps := GetDependenciesForVersion(phpVersion)
 	for _, dep := range deps {
+		// Skip LLVM - it's a toolchain, not a PHP dependency
+		if dep.Name == "llvm" {
+			continue
+		}
+
 		depDir := filepath.Join(depsDir, dep.Name)
 		pkgConfigPath = append(pkgConfigPath, filepath.Join(depDir, "lib", "pkgconfig"))
 		ldflags = append(ldflags, fmt.Sprintf("-L%s/lib", depDir))

@@ -4,23 +4,42 @@ import "github.com/supanadit/phpv/domain"
 
 // GetDependenciesForVersion returns the required dependencies for a PHP version
 func GetDependenciesForVersion(version domain.Version) []domain.Dependency {
+	// Get LLVM version for this PHP version
+	llvmVersion := domain.GetLLVMVersionForPHP(version)
+	llvmDep := getLLVMDependency(llvmVersion)
+
 	// For PHP 8.3+, we need these dependencies
 	if version.Major == 8 && version.Minor >= 3 {
-		return getPHP83Dependencies()
+		deps := getPHP83Dependencies()
+		return append([]domain.Dependency{llvmDep}, deps...)
 	}
 
 	// For PHP 8.0-8.2
 	if version.Major == 8 {
-		return getPHP80Dependencies()
+		deps := getPHP80Dependencies()
+		return append([]domain.Dependency{llvmDep}, deps...)
 	}
 
 	// For PHP 7.x
 	if version.Major == 7 {
-		return getPHP7Dependencies()
+		deps := getPHP7Dependencies()
+		return append([]domain.Dependency{llvmDep}, deps...)
 	}
 
 	// Default set for older versions (PHP 5.x, etc.)
-	return getDefaultDependencies()
+	deps := getDefaultDependencies()
+	return append([]domain.Dependency{llvmDep}, deps...)
+}
+
+func getLLVMDependency(llvmVersion domain.LLVMVersion) domain.Dependency {
+	return domain.Dependency{
+		Name:           "llvm",
+		Version:        llvmVersion.Version,
+		DownloadURL:    llvmVersion.DownloadURL,
+		ConfigureFlags: []string{},
+		BuildCommands:  []string{"prebuilt"},
+		Dependencies:   []string{},
+	}
 }
 
 func getCMakeDependency() domain.Dependency {

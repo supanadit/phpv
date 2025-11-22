@@ -16,38 +16,38 @@ func TestGetDependenciesForVersion(t *testing.T) {
 		{
 			name:          "PHP 8.3",
 			version:       domain.Version{Major: 8, Minor: 3, Patch: 27},
-			expectedCount: 5,
-			expectedFirst: "zlib",
+			expectedCount: 13, // LLVM + 12 other dependencies
+			expectedFirst: "llvm",
 		},
 		{
 			name:          "PHP 8.4",
 			version:       domain.Version{Major: 8, Minor: 4, Patch: 14},
-			expectedCount: 5,
-			expectedFirst: "zlib",
+			expectedCount: 13, // LLVM + 12 other dependencies
+			expectedFirst: "llvm",
 		},
 		{
 			name:          "PHP 8.0",
 			version:       domain.Version{Major: 8, Minor: 0, Patch: 30},
-			expectedCount: 5,
-			expectedFirst: "zlib",
+			expectedCount: 13, // LLVM + 12 other dependencies
+			expectedFirst: "llvm",
 		},
 		{
 			name:          "PHP 7.4",
 			version:       domain.Version{Major: 7, Minor: 4, Patch: 33},
-			expectedCount: 5,
-			expectedFirst: "zlib",
+			expectedCount: 13, // LLVM + 12 other dependencies
+			expectedFirst: "llvm",
 		},
 		{
 			name:          "PHP 7.3",
 			version:       domain.Version{Major: 7, Minor: 3, Patch: 33},
-			expectedCount: 5,
-			expectedFirst: "zlib",
+			expectedCount: 13, // LLVM + 12 other dependencies
+			expectedFirst: "llvm",
 		},
 		{
 			name:          "PHP 7.0",
 			version:       domain.Version{Major: 7, Minor: 0, Patch: 33},
-			expectedCount: 5,
-			expectedFirst: "zlib",
+			expectedCount: 13, // LLVM + 12 other dependencies
+			expectedFirst: "llvm",
 		},
 	}
 
@@ -84,6 +84,14 @@ func TestDependencyVersions(t *testing.T) {
 	deps := GetDependenciesForVersion(version)
 
 	expectedDeps := map[string]bool{
+		"llvm":      true,
+		"cmake":     true,
+		"perl":      true,
+		"m4":        true,
+		"autoconf":  true,
+		"automake":  true,
+		"libtool":   true,
+		"re2c":      true,
 		"zlib":      true,
 		"libxml2":   true,
 		"openssl":   true,
@@ -121,6 +129,12 @@ func TestPHP7DependencyVersions(t *testing.T) {
 	for _, dep := range deps {
 		expectedVersion, exists := expectedVersions[dep.Name]
 		if !exists {
+			// Skip toolchain dependencies in this test
+			if dep.Name == "llvm" || dep.Name == "cmake" || dep.Name == "perl" ||
+				dep.Name == "m4" || dep.Name == "autoconf" || dep.Name == "automake" ||
+				dep.Name == "libtool" || dep.Name == "re2c" {
+				continue
+			}
 			t.Errorf("unexpected dependency: %s", dep.Name)
 			continue
 		}
@@ -146,6 +160,12 @@ func TestPHP8DependencyVersions(t *testing.T) {
 	for _, dep := range deps {
 		expectedVersion, exists := expectedVersions[dep.Name]
 		if !exists {
+			// Skip toolchain dependencies in this test
+			if dep.Name == "llvm" || dep.Name == "cmake" || dep.Name == "perl" ||
+				dep.Name == "m4" || dep.Name == "autoconf" || dep.Name == "automake" ||
+				dep.Name == "libtool" || dep.Name == "re2c" {
+				continue
+			}
 			t.Errorf("unexpected dependency: %s", dep.Name)
 			continue
 		}

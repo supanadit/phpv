@@ -93,11 +93,8 @@ func (h *BuildHandler) BuildVersion(ctx context.Context, versionInput string) {
 	if err := h.buildService.CheckCompiler(); err != nil {
 		fmt.Println("Error:", err)
 		fmt.Println()
-		fmt.Println("If you're using the default clang toolchain, install it with:")
-		fmt.Println("  Ubuntu/Debian: sudo apt-get install clang autoconf bison libtool")
-		fmt.Println("  Fedora/RHEL:   sudo dnf install clang")
-		fmt.Println("  Arch Linux:    sudo pacman -S clang")
-		fmt.Println("Alternatively set PHPV_TOOLCHAIN_CC to a custom compiler path.")
+		fmt.Println("If you're using a custom toolchain (PHPV_TOOLCHAIN_CC), make sure it's installed.")
+		fmt.Println("Otherwise, LLVM will be automatically downloaded for building PHP.")
 		return
 	}
 

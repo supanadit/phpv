@@ -70,9 +70,6 @@ func getM4Dependency() domain.Dependency {
 			"--disable-shared",
 			"--enable-static",
 		},
-		BuildCommands: []string{
-			"bootstrap",
-		},
 	}
 }
 
@@ -84,9 +81,6 @@ func getAutoconfDependency() domain.Dependency {
 		ConfigureFlags: []string{
 			"--disable-shared",
 			"--enable-static",
-		},
-		BuildCommands: []string{
-			"bootstrap",
 		},
 		Dependencies: []string{"m4"},
 	}
@@ -101,9 +95,6 @@ func getAutomakeDependency() domain.Dependency {
 			"--disable-shared",
 			"--enable-static",
 		},
-		BuildCommands: []string{
-			"bootstrap",
-		},
 		Dependencies: []string{"autoconf"},
 	}
 }
@@ -116,9 +107,6 @@ func getLibtoolDependency() domain.Dependency {
 		ConfigureFlags: []string{
 			"--disable-shared",
 			"--enable-static",
-		},
-		BuildCommands: []string{
-			"bootstrap",
 		},
 		Dependencies: []string{"m4"},
 	}

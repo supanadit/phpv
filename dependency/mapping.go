@@ -26,6 +26,12 @@ func GetDependenciesForVersion(version domain.Version) []domain.Dependency {
 		return append([]domain.Dependency{llvmDep}, deps...)
 	}
 
+	// For PHP 5.x
+	if version.Major == 5 {
+		deps := getPHP5Dependencies()
+		return append([]domain.Dependency{llvmDep}, deps...)
+	}
+
 	// Default set for older versions (PHP 5.x, etc.)
 	deps := getDefaultDependencies()
 	return append([]domain.Dependency{llvmDep}, deps...)
@@ -296,6 +302,86 @@ func getLibtoolDependency_PHP7() domain.Dependency {
 	}
 }
 
+func getPerlDependency_PHP5() domain.Dependency {
+	return domain.Dependency{
+		Name:        "perl",
+		Version:     "5.24.0",
+		DownloadURL: "https://www.cpan.org/src/5.0/perl-5.24.0.tar.gz",
+		ConfigureFlags: []string{
+			"-des",
+			"-Dusethreads",
+			"-Dccflags=-Wno-error=incompatible-pointer-types -Wno-error=pointer-arith -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion -Wno-compound-token-split-by-macro -Wno-error=deprecated-declarations -Wno-error=address -Wno-error=sequence-point",
+		},
+		BuildCommands: []string{
+			"./Configure",
+		},
+	}
+}
+
+func getRe2cDependency_PHP5() domain.Dependency {
+	return domain.Dependency{
+		Name:        "re2c",
+		Version:     "0.16",
+		DownloadURL: "https://github.com/skvadrik/re2c/releases/download/0.16/re2c-0.16.tar.gz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+		Dependencies: []string{"autoconf", "automake", "libtool"},
+	}
+}
+
+func getM4Dependency_PHP5() domain.Dependency {
+	return domain.Dependency{
+		Name:        "m4",
+		Version:     "1.4.18",
+		DownloadURL: "https://mirror.freedif.org/GNU/m4/m4-1.4.18.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+	}
+}
+
+func getAutoconfDependency_PHP5() domain.Dependency {
+	return domain.Dependency{
+		Name:        "autoconf",
+		Version:     "2.69",
+		DownloadURL: "https://mirror.freedif.org/GNU/autoconf/autoconf-2.69.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+		Dependencies: []string{"m4"},
+	}
+}
+
+func getAutomakeDependency_PHP5() domain.Dependency {
+	return domain.Dependency{
+		Name:        "automake",
+		Version:     "1.15",
+		DownloadURL: "https://mirror.freedif.org/GNU/automake/automake-1.15.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+		Dependencies: []string{"autoconf"},
+	}
+}
+
+func getLibtoolDependency_PHP5() domain.Dependency {
+	return domain.Dependency{
+		Name:        "libtool",
+		Version:     "2.4.6",
+		DownloadURL: "https://mirror.freedif.org/GNU/libtool/libtool-2.4.6.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+		Dependencies: []string{"m4"},
+	}
+}
+
 func getPHP83Dependencies() []domain.Dependency {
 	return []domain.Dependency{
 		getCMakeDependency(),
@@ -455,9 +541,88 @@ func getPHP80Dependencies() []domain.Dependency {
 	}
 }
 
+func getPHP5Dependencies() []domain.Dependency {
+	return []domain.Dependency{
+		getCMakeDependency(),
+		getPerlDependency_PHP5(),
+		getM4Dependency_PHP5(),
+		getAutoconfDependency_PHP5(),
+		getAutomakeDependency_PHP5(),
+		getLibtoolDependency_PHP5(),
+		getRe2cDependency_PHP5(),
+		{
+			Name:        "zlib",
+			Version:     "1.2.11",
+			DownloadURL: "https://github.com/madler/zlib/releases/download/v1.2.11/zlib-1.2.11.tar.gz",
+			ConfigureFlags: []string{
+				"-DCMAKE_INSTALL_PREFIX=%s",
+				"-DBUILD_SHARED_LIBS=OFF",
+			},
+			BuildCommands: []string{
+				"cmake",
+			},
+		},
+		{
+			Name:        "libxml2",
+			Version:     "2.9.10",
+			DownloadURL: "https://download.gnome.org/sources/libxml2/2.9/libxml2-2.9.10.tar.xz",
+			ConfigureFlags: []string{
+				"--without-python",
+				"--without-readline",
+				"--without-http",
+				"--without-ftp",
+				"--without-modules",
+				"--without-lzma",
+				"--disable-shared",
+				"--enable-static",
+			},
+			Dependencies: []string{"zlib"},
+		},
+		{
+			Name:        "openssl",
+			Version:     "1.0.2u",
+			DownloadURL: "https://www.openssl.org/source/openssl-1.0.2u.tar.gz",
+			ConfigureFlags: []string{
+				"no-shared",
+				"no-tests",
+			},
+			BuildCommands: []string{
+				"./config",
+			},
+			Dependencies: []string{"perl"},
+		},
+		{
+			Name:        "curl",
+			Version:     "7.60.0",
+			DownloadURL: "https://curl.se/download/curl-7.60.0.tar.gz",
+			ConfigureFlags: []string{
+				"--with-openssl",
+				"--with-zlib",
+				"--disable-shared",
+				"--enable-static",
+				"--without-libssh2",
+				"--without-nghttp2",
+				"--without-libidn2",
+				"--without-libpsl",
+				"--disable-ldap",
+			},
+			Dependencies: []string{"openssl", "zlib", "autoconf", "automake", "libtool"},
+		},
+		{
+			Name:        "oniguruma",
+			Version:     "5.9.6",
+			DownloadURL: "https://github.com/kkos/oniguruma/releases/download/v5.9.6/onig-5.9.6.tar.gz",
+			ConfigureFlags: []string{
+				"--disable-shared",
+				"--enable-static",
+			},
+		},
+	}
+}
+
 func getDefaultDependencies() []domain.Dependency {
-	// Same as PHP 8.0 for now
-	return getPHP80Dependencies()
+	// Same as PHP 5 for now
+	return getPHP5Dependencies()
 }
 
 func getPHP7Dependencies() []domain.Dependency {
@@ -530,8 +695,8 @@ func getPHP7Dependencies() []domain.Dependency {
 		},
 		{
 			Name:        "oniguruma",
-			Version:     "5.9.6",
-			DownloadURL: "https://github.com/kkos/oniguruma/releases/download/v5.9.6/onig-5.9.6.tar.gz",
+			Version:     "6.9.8",
+			DownloadURL: "https://github.com/kkos/oniguruma/releases/download/v6.9.8/onig-6.9.8.tar.gz",
 			ConfigureFlags: []string{
 				"--disable-shared",
 				"--enable-static",

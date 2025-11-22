@@ -222,8 +222,16 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 
 		// Don't remove configure and related files for packages that ship with them
 		// These include: zlib (CMake), m4, autoconf, automake, libtool (stable GNU packages)
+		// For curl with ./reconf build command, keep the shipped configure script
+		useReconf := false
+		for _, cmd := range dep.BuildCommands {
+			if cmd == "./reconf" {
+				useReconf = true
+				break
+			}
+		}
 		shouldKeepConfigure := dep.Name == "zlib" || dep.Name == "m4" ||
-			dep.Name == "autoconf" || dep.Name == "automake" || dep.Name == "libtool"
+			dep.Name == "autoconf" || dep.Name == "automake" || dep.Name == "libtool" || useReconf
 
 		if !shouldKeepConfigure {
 			filesToRemove = append(filesToRemove,
@@ -283,11 +291,65 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 				}
 			} else {
 				// Check for buildconf (used by curl) or configure.ac (used by most autotools projects)
-				// Projects recommend using autoreconf -fi for configure regeneration
 				buildconfPath := filepath.Join(sourceDir, "buildconf")
+				reconfPath := filepath.Join(sourceDir, "reconf")
 				configureAcPath := filepath.Join(sourceDir, "configure.ac")
 
-				if _, err := os.Stat(buildconfPath); err == nil {
+				// If BuildCommands explicitly specifies "./buildconf" or "./reconf", use it directly
+				useBuildconf := false
+				useReconf := false
+				for _, cmd := range dep.BuildCommands {
+					if cmd == "./buildconf" {
+						useBuildconf = true
+						break
+					}
+					if cmd == "./reconf" {
+						useReconf = true
+						break
+					}
+				}
+
+				if useBuildconf {
+					if _, err := os.Stat(buildconfPath); err == nil {
+						fmt.Printf("Running buildconf to regenerate configure script...\n")
+						if err := util.RunCommand(ctx, sourceDir, env, "./buildconf"); err != nil {
+							return fmt.Errorf("buildconf failed for %s: %w", dep.Name, err)
+						}
+					}
+				} else if useReconf {
+					if _, err := os.Stat(reconfPath); err == nil {
+						// For old curl with reconf, copy all libtool macros to source directory
+						// because old aclocal (1.4-p6) doesn't support ACLOCAL_PATH
+						libtoolShare := filepath.Join(s.GetDependencyInstallDir(phpVersion, "libtool"), "share", "aclocal")
+						if _, err := os.Stat(libtoolShare); err == nil {
+							// Copy all libtool .m4 files to current directory
+							m4Files := []string{"libtool.m4", "ltoptions.m4", "ltsugar.m4", "ltversion.m4", "lt~obsolete.m4"}
+							for _, m4File := range m4Files {
+								src := filepath.Join(libtoolShare, m4File)
+								dst := filepath.Join(sourceDir, m4File)
+								if srcData, err := os.ReadFile(src); err == nil {
+									os.WriteFile(dst, srcData, 0644)
+								}
+							}
+						}
+
+						// Old automake 1.4 expects configure.in instead of configure.ac
+						configureAcPath := filepath.Join(sourceDir, "configure.ac")
+						configureInPath := filepath.Join(sourceDir, "configure.in")
+						if _, err := os.Stat(configureAcPath); err == nil {
+							if _, err := os.Stat(configureInPath); os.IsNotExist(err) {
+								// Create symlink from configure.in to configure.ac
+								os.Symlink("configure.ac", configureInPath)
+							}
+						}
+
+						fmt.Printf("Running reconf to regenerate configure script...\n")
+						if err := util.RunCommand(ctx, sourceDir, env, "./reconf"); err != nil {
+							return fmt.Errorf("reconf failed for %s: %w", dep.Name, err)
+						}
+					}
+				} else if _, err := os.Stat(buildconfPath); err == nil {
+					// Use autoreconf for modern curl versions
 					fmt.Printf("Running autoreconf -fi to regenerate configure script...\n")
 					autoreconfPath := filepath.Join(s.GetDependencyInstallDir(phpVersion, "autoconf"), "bin", "autoreconf")
 					if err := util.RunCommand(ctx, sourceDir, env, autoreconfPath, "-fi"); err != nil {

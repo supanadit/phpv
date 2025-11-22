@@ -346,8 +346,8 @@ func getM4Dependency_PHP5() domain.Dependency {
 func getAutoconfDependency_PHP5() domain.Dependency {
 	return domain.Dependency{
 		Name:        "autoconf",
-		Version:     "2.69",
-		DownloadURL: "https://mirror.freedif.org/GNU/autoconf/autoconf-2.69.tar.xz",
+		Version:     "2.13",
+		DownloadURL: "https://mirror.freedif.org/GNU/autoconf/autoconf-2.13.tar.gz",
 		ConfigureFlags: []string{
 			"--disable-shared",
 			"--enable-static",
@@ -359,8 +359,8 @@ func getAutoconfDependency_PHP5() domain.Dependency {
 func getAutomakeDependency_PHP5() domain.Dependency {
 	return domain.Dependency{
 		Name:        "automake",
-		Version:     "1.15",
-		DownloadURL: "https://mirror.freedif.org/GNU/automake/automake-1.15.tar.xz",
+		Version:     "1.4-p6",
+		DownloadURL: "https://mirror.freedif.org/GNU/automake/automake-1.4-p6.tar.gz",
 		ConfigureFlags: []string{
 			"--disable-shared",
 			"--enable-static",
@@ -372,8 +372,8 @@ func getAutomakeDependency_PHP5() domain.Dependency {
 func getLibtoolDependency_PHP5() domain.Dependency {
 	return domain.Dependency{
 		Name:        "libtool",
-		Version:     "2.4.6",
-		DownloadURL: "https://mirror.freedif.org/GNU/libtool/libtool-2.4.6.tar.xz",
+		Version:     "1.5.26",
+		DownloadURL: "https://mirror.freedif.org/GNU/libtool/libtool-1.5.26.tar.gz",
 		ConfigureFlags: []string{
 			"--disable-shared",
 			"--enable-static",
@@ -607,7 +607,8 @@ func getPHP5Dependencies() []domain.Dependency {
 				"--disable-ldap",
 			},
 			BuildCommands: []string{
-				"autoreconf -fi",
+				// For PHP 5.x, curl 7.12.0 uses reconf instead of buildconf
+				"./reconf",
 				"./configure",
 			},
 			Dependencies: []string{"openssl", "zlib", "autoconf", "automake", "libtool"},

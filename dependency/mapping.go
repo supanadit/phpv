@@ -49,10 +49,23 @@ func getPerlDependency() domain.Dependency {
 	}
 }
 
+func getRe2cDependency() domain.Dependency {
+	return domain.Dependency{
+		Name:        "re2c",
+		Version:     "3.1",
+		DownloadURL: "https://github.com/skvadrik/re2c/releases/download/3.1/re2c-3.1.tar.xz",
+		ConfigureFlags: []string{
+			"--disable-shared",
+			"--enable-static",
+		},
+	}
+}
+
 func getPHP83Dependencies() []domain.Dependency {
 	return []domain.Dependency{
 		getCMakeDependency(),
 		getPerlDependency(),
+		getRe2cDependency(),
 		{
 			Name:        "zlib",
 			Version:     "1.3.1",
@@ -128,6 +141,7 @@ func getPHP80Dependencies() []domain.Dependency {
 	return []domain.Dependency{
 		getCMakeDependency(),
 		getPerlDependency(),
+		getRe2cDependency(),
 		{
 			Name:        "zlib",
 			Version:     "1.3.1",
@@ -207,6 +221,7 @@ func getPHP7Dependencies() []domain.Dependency {
 	return []domain.Dependency{
 		getCMakeDependency(),
 		getPerlDependency(),
+		getRe2cDependency(),
 		{
 			Name:        "zlib",
 			Version:     "1.2.13",

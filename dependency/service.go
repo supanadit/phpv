@@ -676,5 +676,11 @@ func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
 		env = setOrReplaceEnv(env, "CFLAGS", strings.Join(cflags, " "))
 	}
 
+	// Add re2c to PATH if available
+	re2cBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "re2c"), "bin")
+	if _, err := os.Stat(filepath.Join(re2cBin, "re2c")); err == nil {
+		env = setOrReplaceEnv(env, "PATH", re2cBin+":"+getEnvValue(env, "PATH"))
+	}
+
 	return env
 }

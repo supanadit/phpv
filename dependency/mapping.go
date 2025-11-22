@@ -58,7 +58,7 @@ func getRe2cDependency() domain.Dependency {
 			"--disable-shared",
 			"--enable-static",
 		},
-		Dependencies: []string{"autoconf", "automake"},
+		Dependencies: []string{"autoconf", "automake", "libtool"},
 	}
 }
 

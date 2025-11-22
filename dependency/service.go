@@ -431,9 +431,17 @@ func (s *Service) applyCompilerEnv(env []string) []string {
 
 		cc := filepath.Join(llvmBinDir, "clang")
 		cxx := filepath.Join(llvmBinDir, "clang++")
+		ar := filepath.Join(llvmBinDir, "llvm-ar")
+		ranlib := filepath.Join(llvmBinDir, "llvm-ranlib")
+		nm := filepath.Join(llvmBinDir, "llvm-nm")
+		ld := filepath.Join(llvmBinDir, "ld.lld")
 
 		env = setOrReplaceEnv(env, "CC", cc)
 		env = setOrReplaceEnv(env, "CXX", cxx)
+		env = setOrReplaceEnv(env, "AR", ar)
+		env = setOrReplaceEnv(env, "RANLIB", ranlib)
+		env = setOrReplaceEnv(env, "NM", nm)
+		env = setOrReplaceEnv(env, "LD", ld)
 
 		// Add LLVM bin directory to PATH
 		currentPath := getEnvValue(env, "PATH")

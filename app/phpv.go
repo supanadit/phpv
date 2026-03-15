@@ -12,6 +12,7 @@ import (
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/terminal"
 	"github.com/supanadit/phpv/prune"
+	"github.com/supanadit/phpv/shell"
 	"github.com/supanadit/phpv/version"
 )
 
@@ -45,12 +46,20 @@ func main() {
 	downloadSvc := download.NewService()
 	buildSvc := build.NewService()
 	pruneSvc := prune.NewService()
+	shellSvc := shell.NewService()
 
-	if !terminal.NewDownloadHandler(ctx, versionSvc, downloadSvc) {
-		if !terminal.NewBuildHandler(ctx, versionSvc, buildSvc) {
-			if !terminal.NewPruneHandler(ctx, pruneSvc) {
-				if !terminal.NewVersionHandler(ctx, versionSvc) {
-					terminal.NewNothingHandler()
+	// Shell command handlers (sh-use, sh-shell) must come first
+	// as they're called by shell wrappers
+	if !terminal.NewShellCommandHandler(ctx, shellSvc) {
+		// Shell integration handlers (init, use, default, versions, which)
+		if !terminal.NewShellHandler(ctx, shellSvc) {
+			if !terminal.NewDownloadHandler(ctx, versionSvc, downloadSvc) {
+				if !terminal.NewBuildHandler(ctx, versionSvc, buildSvc) {
+					if !terminal.NewPruneHandler(ctx, pruneSvc) {
+						if !terminal.NewVersionHandler(ctx, versionSvc) {
+							terminal.NewNothingHandler()
+						}
+					}
 				}
 			}
 		}

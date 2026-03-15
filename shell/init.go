@@ -19,6 +19,11 @@ const (
 )
 
 func (s *Service) Init(shellType string) (string, error) {
+	// Ensure shims are created before initializing
+	if err := s.EnsureShims(); err != nil {
+		return "", fmt.Errorf("failed to create shims: %w", err)
+	}
+
 	shell := ShellType(shellType)
 	if shell == "" {
 		shell = detectShell()

@@ -50,6 +50,11 @@ func (s *Service) EnsureShims() error {
 	root := viper.GetString("PHPV_ROOT")
 	shimsDir := filepath.Join(root, "bin")
 
+	// Create the bin directory if it doesn't exist
+	if err := os.MkdirAll(shimsDir, 0755); err != nil {
+		return fmt.Errorf("failed to create shims directory: %w", err)
+	}
+
 	binaries := []string{
 		"php",
 		"php-cgi",
@@ -108,12 +113,12 @@ fi
 VERSION_DIR="${PHPV_ROOT}/versions/${PHPV_VERSION}"
 BINARY="${VERSION_DIR}/bin/%s"
 
-if [ ! -x "$BINARY" ]; then
-  echo "phpv: version ${PHPV_VERSION} is not installed" >&2
-  exit 1
-fi
+	if [ ! -x "$BINARY" ]; then
+	  echo "phpv: version ${PHPV_VERSION} is not installed" >&2
+	  exit 1
+	fi
 
-exec "$BINARY" "$@
+	exec "$BINARY" "$@"
 `, binary)
 
 	if _, err := f.WriteString(shimContent); err != nil {

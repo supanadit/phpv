@@ -9,12 +9,15 @@
 ## Quickstart
 
 ```bash
-  # Install
-  go install ./app/phpv.go
-  # Add to your shell config (~/.bashrc, ~/.zshrc, etc.)
-  eval "$(phpv init -)"
+  # Quick Install (Recommended)
+  curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bash
+
+  # Or install a specific version
+  INSTALL_VERSION=0.1.1 curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bash
+
   # Restart shell or source config
   source ~/.zshrc  # or ~/.bashrc
+
   # Use it
   phpv list             # See available versions
   phpv install 8.4      # Install latest PHP 8.4
@@ -22,6 +25,15 @@
   phpv default 8.4      # Set PHP 8.4 as default
   phpv versions         # List installed versions
   phpv which            # Show current PHP path
+```
+
+### Alternative: Install from Source
+
+```bash
+  # Install from source (requires Go 1.21+)
+  git clone https://github.com/supanadit/phpv.git
+  cd phpv
+  go install ./app/phpv.go
 ```
 
 ## Shell Integration
@@ -136,6 +148,22 @@ The architecture is intentionally layered, following clean/hexagonal architectur
 
 ## Installation
 
+### Quick Install (Recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bash
+```
+
+This will:
+- Download the latest PHPV binary to `~/.phpv/bin/phpv`
+- Create shims for PHP commands (`php`, `php-cgi`, `phpize`, etc.)
+- Add shell integration to your `~/.bashrc` or `~/.zshrc`
+
+To install a specific version:
+```bash
+INSTALL_VERSION=0.1.1 curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bash
+```
+
 ### From Source
 
 ```bash
@@ -164,8 +192,6 @@ phpv versions
 ## The Roadmap: Where PHPV Is Going
 
 PHPV is already functional for core version management. But this is just the beginning:
-
-### ✅ **Now Available**
 
 **✅ Available Now:**
 
@@ -235,7 +261,7 @@ PHPV is built on these principles:
 | **PHP 7.x.x**     | 🟡 SimiSupported | End-of-life, but functional                            |
 | **PHP 5.x / 4.x** | ⚠️ Legacy        | Dependencies difficult to source, use at your own risk |
 
-## **Older versions (PHP 4.x, 5.x):** These can be built, but some dependencies are no longer available from original sources. PHPV will do its best, but expect some manual intervention. Create an issue if you need these — we can find solutions together.
+**Older versions (PHP 4.x, 5.x):** These can be built, but some dependencies are no longer available from original sources. PHPV will do its best, but expect some manual intervention. Create an issue if you need these — we can find solutions together.
 
 ## Architecture Details
 
@@ -280,7 +306,7 @@ export PHPV_TOOLCHAIN_LDFLAGS="-static"
 phpv install 8.4
 ```
 
-## Full override capability for experimentation with Zig, GCC, Clang, or any compiler.
+Full override capability for experimentation with Zig, GCC, Clang, or any compiler.
 
 ## Contributing
 
@@ -302,7 +328,7 @@ go run app/phpv.go build 8
 go run app/phpv.go use 8
 ```
 
-## See [AGENTS.md](./AGENTS.md) for development context and architecture details.
+See [AGENTS.md](./AGENTS.md) for development context and architecture details.
 
 ## Project Status
 

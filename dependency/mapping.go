@@ -2,9 +2,202 @@ package dependency
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/supanadit/phpv/domain"
 )
+
+type DependencyPattern struct {
+	URLTemplate    string
+	Extension      string
+	BuildCommands  []string
+	ConfigureFlags []string
+}
+
+type DependencyURLConfig struct {
+	Default DependencyPattern
+	Exact   map[string]DependencyPattern
+	Ranges  []VersionRange
+}
+
+type VersionRange struct {
+	Min     string
+	Max     string
+	Pattern DependencyPattern
+}
+
+var urlConfigs = map[string]DependencyURLConfig{
+	"perl": {
+		Default: DependencyPattern{
+			URLTemplate: "https://www.cpan.org/src/5.0/perl-%s.tar.gz",
+			Extension:   ".tar.gz",
+		},
+	},
+	"m4": {
+		Default: DependencyPattern{
+			URLTemplate: "https://mirror.freedif.org/GNU/m4/m4-%s.tar.xz",
+			Extension:   ".tar.xz",
+		},
+	},
+	"autoconf": {
+		Default: DependencyPattern{
+			URLTemplate: "https://mirror.freedif.org/GNU/autoconf/autoconf-%s.tar.xz",
+			Extension:   ".tar.xz",
+		},
+		Exact: map[string]DependencyPattern{
+			"2.13": {
+				URLTemplate: "https://mirror.freedif.org/GNU/autoconf/autoconf-%s.tar.gz",
+				Extension:   ".tar.gz",
+			},
+		},
+	},
+	"automake": {
+		Default: DependencyPattern{
+			URLTemplate: "https://mirror.freedif.org/GNU/automake/automake-%s.tar.xz",
+			Extension:   ".tar.xz",
+		},
+		Exact: map[string]DependencyPattern{
+			"1.4-p6": {
+				URLTemplate: "https://mirror.freedif.org/GNU/automake/automake-%s.tar.gz",
+				Extension:   ".tar.gz",
+			},
+		},
+	},
+	"libtool": {
+		Default: DependencyPattern{
+			URLTemplate: "https://mirror.freedif.org/GNU/libtool/libtool-%s.tar.xz",
+			Extension:   ".tar.xz",
+		},
+		Exact: map[string]DependencyPattern{
+			"1.5.26": {
+				URLTemplate: "https://mirror.freedif.org/GNU/libtool/libtool-%s.tar.gz",
+				Extension:   ".tar.gz",
+			},
+		},
+	},
+	"re2c": {
+		Default: DependencyPattern{
+			URLTemplate: "https://github.com/skvadrik/re2c/releases/download/%s/re2c-%s.tar.xz",
+			Extension:   ".tar.xz",
+		},
+		Exact: map[string]DependencyPattern{
+			"0.16": {
+				URLTemplate: "https://github.com/skvadrik/re2c/releases/download/0.16/re2c-0.16.tar.gz",
+				Extension:   ".tar.gz",
+			},
+			"0.14": {
+				URLTemplate: "https://github.com/skvadrik/re2c/releases/download/0.14/re2c-0.14.tar.gz",
+				Extension:   ".tar.gz",
+			},
+		},
+		Ranges: []VersionRange{
+			{
+				Max: "1.0",
+				Pattern: DependencyPattern{
+					URLTemplate: "https://github.com/skvadrik/re2c/releases/download/%s/re2c-%s.tar.gz",
+					Extension:   ".tar.gz",
+				},
+			},
+		},
+	},
+	"zlib": {
+		Default: DependencyPattern{
+			URLTemplate: "https://github.com/madler/zlib/releases/download/v%s/zlib-%s.tar.gz",
+			Extension:   ".tar.gz",
+		},
+	},
+	"libxml2": {
+		Default: DependencyPattern{
+			URLTemplate: "https://download.gnome.org/sources/libxml2/%s/libxml2-%s.tar.xz",
+			Extension:   ".tar.xz",
+		},
+	},
+	"openssl": {
+		Default: DependencyPattern{
+			URLTemplate: "https://www.openssl.org/source/openssl-%s.tar.gz",
+			Extension:   ".tar.gz",
+		},
+	},
+	"curl": {
+		Default: DependencyPattern{
+			URLTemplate: "https://curl.se/download/curl-%s.tar.gz",
+			Extension:   ".tar.gz",
+		},
+		Exact: map[string]DependencyPattern{
+			"7.12.0": {
+				URLTemplate: "https://curl.se/download/archeology/curl-7.12.0.tar.gz",
+				Extension:   ".tar.gz",
+			},
+			"7.12.1": {
+				URLTemplate: "https://curl.se/download/archeology/curl-7.12.1.tar.gz",
+				Extension:   ".tar.gz",
+			},
+		},
+		Ranges: []VersionRange{
+			{
+				Max: "7.20",
+				Pattern: DependencyPattern{
+					URLTemplate: "https://curl.se/download/archeology/curl-%s.tar.gz",
+					Extension:   ".tar.gz",
+				},
+			},
+		},
+	},
+	"oniguruma": {
+		Default: DependencyPattern{
+			URLTemplate: "https://github.com/kkos/oniguruma/releases/download/v%s/onig-%s.tar.gz",
+			Extension:   ".tar.gz",
+		},
+	},
+	"llvm": {
+		Default: DependencyPattern{
+			URLTemplate: "https://github.com/llvm/llvm-project/releases/download/llvmorg-%s/LLVM-%s-Linux-X64.tar.xz",
+			Extension:   ".tar.xz",
+		},
+	},
+	"cmake": {
+		Default: DependencyPattern{
+			URLTemplate: "https://github.com/Kitware/CMake/releases/download/v%s/cmake-%s-linux-x86_64.tar.gz",
+			Extension:   ".tar.gz",
+		},
+	},
+}
+
+func (c *DependencyURLConfig) getPattern(version string) DependencyPattern {
+	if pattern, ok := c.Exact[version]; ok {
+		return pattern
+	}
+
+	for _, r := range c.Ranges {
+		if inRange(version, r.Min, r.Max) {
+			return r.Pattern
+		}
+	}
+
+	return c.Default
+}
+
+func (c *DependencyURLConfig) buildURL(version string) string {
+	pattern := c.getPattern(version)
+
+	if strings.Contains(pattern.URLTemplate, "%s") && strings.Contains(pattern.URLTemplate, "%s") {
+		return fmt.Sprintf(pattern.URLTemplate, version, version)
+	}
+	if strings.Contains(pattern.URLTemplate, "%s") {
+		return fmt.Sprintf(pattern.URLTemplate, version)
+	}
+	return pattern.URLTemplate
+}
+
+func inRange(version, min, max string) bool {
+	if min != "" && version < min {
+		return false
+	}
+	if max != "" && version >= max {
+		return false
+	}
+	return true
+}
 
 type PHPVersionConfig struct {
 	Perl       string
@@ -19,6 +212,18 @@ type PHPVersionConfig struct {
 	OpenSSL    string
 	Curl       string
 	Oniguruma  string
+
+	PerlOverride      *DependencyPattern
+	M4Override        *DependencyPattern
+	AutoconfOverride  *DependencyPattern
+	AutomakeOverride  *DependencyPattern
+	LibtoolOverride   *DependencyPattern
+	Re2cOverride      *DependencyPattern
+	ZlibOverride      *DependencyPattern
+	Libxml2Override   *DependencyPattern
+	OpenSSLEverride   *DependencyPattern
+	CurlOverride      *DependencyPattern
+	OnigurumaOverride *DependencyPattern
 }
 
 var versionRegistry = map[string]PHPVersionConfig{
@@ -108,18 +313,18 @@ func GetDependenciesForVersion(version domain.Version) []domain.Dependency {
 
 	deps := []domain.Dependency{
 		newLLVMDependency(llvmVersion),
-		newCMakeDependency(),
-		newPerlDependency(config.Perl),
-		newM4Dependency(config.M4),
-		newAutoconfDependency(config.Autoconf),
-		newAutomakeDependency(config.Automake),
-		newLibtoolDependency(config.Libtool),
-		newRe2cDependency(config.Re2c),
-		newZlibDependency(config.Zlib),
-		newLibxml2Dependency(config.Libxml2, config.Libxml2Dir),
-		newOpenSSLDependency(config.OpenSSL),
-		newCurlDependency(config.Curl),
-		newOnigurumaDependency(config.Oniguruma),
+		newCMakeDependency(config),
+		newPerlDependency(config),
+		newM4Dependency(config),
+		newAutoconfDependency(config),
+		newAutomakeDependency(config),
+		newLibtoolDependency(config),
+		newRe2cDependency(config),
+		newZlibDependency(config),
+		newLibxml2Dependency(config),
+		newOpenSSLDependency(config),
+		newCurlDependency(config),
+		newOnigurumaDependency(config),
 	}
 
 	return deps
@@ -145,6 +350,30 @@ func getConfigForVersion(v domain.Version) PHPVersionConfig {
 	return versionRegistry["5.6"]
 }
 
+func getURL(config *DependencyURLConfig, version string, override *DependencyPattern) string {
+	if override != nil && override.URLTemplate != "" {
+		if strings.Contains(override.URLTemplate, "%s") && strings.Count(override.URLTemplate, "%s") >= 2 {
+			return fmt.Sprintf(override.URLTemplate, version, version)
+		}
+		return fmt.Sprintf(override.URLTemplate, version)
+	}
+	return config.buildURL(version)
+}
+
+func getConfigureFlags(config *DependencyURLConfig, version string, override *DependencyPattern, defaults []string) []string {
+	if override != nil && len(override.ConfigureFlags) > 0 {
+		return override.ConfigureFlags
+	}
+	return defaults
+}
+
+func getBuildCommands(config *DependencyURLConfig, version string, override *DependencyPattern, defaults []string) []string {
+	if override != nil && len(override.BuildCommands) > 0 {
+		return override.BuildCommands
+	}
+	return defaults
+}
+
 func newLLVMDependency(llvmVersion domain.LLVMVersion) domain.Dependency {
 	return domain.Dependency{
 		Name:           "llvm",
@@ -156,114 +385,158 @@ func newLLVMDependency(llvmVersion domain.LLVMVersion) domain.Dependency {
 	}
 }
 
-func newCMakeDependency() domain.Dependency {
+func newCMakeDependency(config PHPVersionConfig) domain.Dependency {
+	version := "3.30.0"
+
 	return domain.Dependency{
 		Name:           "cmake",
-		Version:        "3.30.0",
-		DownloadURL:    "https://github.com/Kitware/CMake/releases/download/v3.30.0/cmake-3.30.0-linux-x86_64.tar.gz",
+		Version:        version,
+		DownloadURL:    fmt.Sprintf("https://github.com/Kitware/CMake/releases/download/v%s/cmake-%s-linux-x86_64.tar.gz", version, version),
 		ConfigureFlags: []string{},
 		BuildCommands:  []string{"prebuilt"},
 		Dependencies:   []string{},
 	}
 }
 
-func newPerlDependency(version string) domain.Dependency {
+func newPerlDependency(config PHPVersionConfig) domain.Dependency {
+	version := config.Perl
+	urlConfig := urlConfigs["perl"]
+	override := config.PerlOverride
+
+	defaultFlags := []string{
+		"-des",
+		"-Dusethreads",
+		"-Dccflags=-Wno-error=incompatible-pointer-types -Wno-error=pointer-arith -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion -Wno-compound-token-split-by-macro -Wno-error=deprecated-declarations",
+	}
+
 	return domain.Dependency{
-		Name:        "perl",
-		Version:     version,
-		DownloadURL: fmt.Sprintf("https://www.cpan.org/src/5.0/perl-%s.tar.gz", version),
-		ConfigureFlags: []string{
-			"-des",
-			"-Dusethreads",
-			"-Dccflags=-Wno-error=incompatible-pointer-types -Wno-error=pointer-arith -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion -Wno-compound-token-split-by-macro -Wno-error=deprecated-declarations",
-		},
-		BuildCommands: []string{"./Configure"},
+		Name:           "perl",
+		Version:        version,
+		DownloadURL:    getURL(&urlConfig, version, override),
+		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, defaultFlags),
+		BuildCommands:  []string{"./Configure"},
 	}
 }
 
-func newM4Dependency(version string) domain.Dependency {
+func newM4Dependency(config PHPVersionConfig) domain.Dependency {
+	version := config.M4
+	urlConfig := urlConfigs["m4"]
+	override := config.M4Override
+
 	return domain.Dependency{
 		Name:        "m4",
 		Version:     version,
-		DownloadURL: fmt.Sprintf("https://mirror.freedif.org/GNU/m4/m4-%s.tar.xz", version),
-		ConfigureFlags: []string{
+		DownloadURL: getURL(&urlConfig, version, override),
+		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
 			"--disable-shared",
 			"--enable-static",
-		},
+		}),
 	}
 }
 
-func newAutoconfDependency(version string) domain.Dependency {
+func newAutoconfDependency(config PHPVersionConfig) domain.Dependency {
+	version := config.Autoconf
+	urlConfig := urlConfigs["autoconf"]
+	override := config.AutoconfOverride
+
 	return domain.Dependency{
 		Name:        "autoconf",
 		Version:     version,
-		DownloadURL: fmt.Sprintf("https://mirror.freedif.org/GNU/autoconf/autoconf-%s.tar.xz", version),
-		ConfigureFlags: []string{
+		DownloadURL: getURL(&urlConfig, version, override),
+		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
 			"--disable-shared",
 			"--enable-static",
-		},
+		}),
 		Dependencies: []string{"m4"},
 	}
 }
 
-func newAutomakeDependency(version string) domain.Dependency {
+func newAutomakeDependency(config PHPVersionConfig) domain.Dependency {
+	version := config.Automake
+	urlConfig := urlConfigs["automake"]
+	override := config.AutomakeOverride
+
 	return domain.Dependency{
 		Name:        "automake",
 		Version:     version,
-		DownloadURL: fmt.Sprintf("https://mirror.freedif.org/GNU/automake/automake-%s.tar.xz", version),
-		ConfigureFlags: []string{
+		DownloadURL: getURL(&urlConfig, version, override),
+		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
 			"--disable-shared",
 			"--enable-static",
-		},
+		}),
 		Dependencies: []string{"autoconf"},
 	}
 }
 
-func newLibtoolDependency(version string) domain.Dependency {
+func newLibtoolDependency(config PHPVersionConfig) domain.Dependency {
+	version := config.Libtool
+	urlConfig := urlConfigs["libtool"]
+	override := config.LibtoolOverride
+
 	return domain.Dependency{
 		Name:        "libtool",
 		Version:     version,
-		DownloadURL: fmt.Sprintf("https://mirror.freedif.org/GNU/libtool/libtool-%s.tar.xz", version),
-		ConfigureFlags: []string{
+		DownloadURL: getURL(&urlConfig, version, override),
+		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
 			"--disable-shared",
 			"--enable-static",
-		},
+		}),
 		Dependencies: []string{"m4"},
 	}
 }
 
-func newRe2cDependency(version string) domain.Dependency {
+func newRe2cDependency(config PHPVersionConfig) domain.Dependency {
+	version := config.Re2c
+	urlConfig := urlConfigs["re2c"]
+	override := config.Re2cOverride
+
 	return domain.Dependency{
 		Name:        "re2c",
 		Version:     version,
-		DownloadURL: fmt.Sprintf("https://github.com/skvadrik/re2c/releases/download/%s/re2c-%s.tar.xz", version, version),
-		ConfigureFlags: []string{
+		DownloadURL: getURL(&urlConfig, version, override),
+		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
 			"--disable-shared",
 			"--enable-static",
-		},
+		}),
 		Dependencies: []string{"autoconf", "automake", "libtool"},
 	}
 }
 
-func newZlibDependency(version string) domain.Dependency {
+func newZlibDependency(config PHPVersionConfig) domain.Dependency {
+	version := config.Zlib
+	urlConfig := urlConfigs["zlib"]
+	override := config.ZlibOverride
+
+	defaultFlags := []string{
+		"-DCMAKE_INSTALL_PREFIX=%s",
+		"-DBUILD_SHARED_LIBS=OFF",
+	}
+
 	return domain.Dependency{
-		Name:        "zlib",
-		Version:     version,
-		DownloadURL: fmt.Sprintf("https://github.com/madler/zlib/releases/download/v%s/zlib-%s.tar.gz", version, version),
-		ConfigureFlags: []string{
-			"-DCMAKE_INSTALL_PREFIX=%s",
-			"-DBUILD_SHARED_LIBS=OFF",
-		},
-		BuildCommands: []string{"cmake"},
+		Name:           "zlib",
+		Version:        version,
+		DownloadURL:    getURL(&urlConfig, version, override),
+		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, defaultFlags),
+		BuildCommands:  getBuildCommands(&urlConfig, version, override, []string{"cmake"}),
 	}
 }
 
-func newLibxml2Dependency(version, dirVersion string) domain.Dependency {
+func newLibxml2Dependency(config PHPVersionConfig) domain.Dependency {
+	version := config.Libxml2
+	dirVersion := config.Libxml2Dir
+	urlConfig := urlConfigs["libxml2"]
+	override := config.Libxml2Override
+
+	url := getURL(&urlConfig, dirVersion, override)
+	if !strings.Contains(url, "%s") {
+		url = fmt.Sprintf("https://download.gnome.org/sources/libxml2/%s/libxml2-%s.tar.xz", dirVersion, version)
+	}
+
 	return domain.Dependency{
 		Name:        "libxml2",
 		Version:     version,
-		DownloadURL: fmt.Sprintf("https://download.gnome.org/sources/libxml2/%s/libxml2-%s.tar.xz", dirVersion, version),
-		ConfigureFlags: []string{
+		DownloadURL: url,
+		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
 			"--without-python",
 			"--without-readline",
 			"--without-http",
@@ -272,31 +545,39 @@ func newLibxml2Dependency(version, dirVersion string) domain.Dependency {
 			"--without-lzma",
 			"--disable-shared",
 			"--enable-static",
-		},
+		}),
 		Dependencies: []string{"zlib"},
 	}
 }
 
-func newOpenSSLDependency(version string) domain.Dependency {
+func newOpenSSLDependency(config PHPVersionConfig) domain.Dependency {
+	version := config.OpenSSL
+	urlConfig := urlConfigs["openssl"]
+	override := config.OpenSSLEverride
+
 	return domain.Dependency{
 		Name:        "openssl",
 		Version:     version,
-		DownloadURL: fmt.Sprintf("https://www.openssl.org/source/openssl-%s.tar.gz", version),
-		ConfigureFlags: []string{
+		DownloadURL: getURL(&urlConfig, version, override),
+		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
 			"no-shared",
 			"no-tests",
-		},
-		BuildCommands: []string{"./config"},
+		}),
+		BuildCommands: getBuildCommands(&urlConfig, version, override, []string{"./config"}),
 		Dependencies:  []string{"perl"},
 	}
 }
 
-func newCurlDependency(version string) domain.Dependency {
+func newCurlDependency(config PHPVersionConfig) domain.Dependency {
+	version := config.Curl
+	urlConfig := urlConfigs["curl"]
+	override := config.CurlOverride
+
 	return domain.Dependency{
 		Name:        "curl",
 		Version:     version,
-		DownloadURL: fmt.Sprintf("https://curl.se/download/curl-%s.tar.gz", version),
-		ConfigureFlags: []string{
+		DownloadURL: getURL(&urlConfig, version, override),
+		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
 			"--with-openssl",
 			"--with-zlib",
 			"--disable-shared",
@@ -306,19 +587,23 @@ func newCurlDependency(version string) domain.Dependency {
 			"--without-libidn2",
 			"--without-libpsl",
 			"--disable-ldap",
-		},
+		}),
 		Dependencies: []string{"openssl", "zlib", "autoconf", "automake", "libtool"},
 	}
 }
 
-func newOnigurumaDependency(version string) domain.Dependency {
+func newOnigurumaDependency(config PHPVersionConfig) domain.Dependency {
+	version := config.Oniguruma
+	urlConfig := urlConfigs["oniguruma"]
+	override := config.OnigurumaOverride
+
 	return domain.Dependency{
 		Name:        "oniguruma",
 		Version:     version,
-		DownloadURL: fmt.Sprintf("https://github.com/kkos/oniguruma/releases/download/v%s/onig-%s.tar.gz", version, version),
-		ConfigureFlags: []string{
+		DownloadURL: getURL(&urlConfig, version, override),
+		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
 			"--disable-shared",
 			"--enable-static",
-		},
+		}),
 	}
 }

@@ -9,31 +9,28 @@
 ## Quickstart
 
 ```bash
-  # Quick Install (Recommended)
-  curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bash
+# Quick Install (Recommended)
+curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | INSTALL_VERSION=0.1.1 bash
 
-  # Or install a specific version
-  INSTALL_VERSION=0.1.1 curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bash
+# Restart shell or source config
+source ~/.zshrc  # or ~/.bashrc
 
-  # Restart shell or source config
-  source ~/.zshrc  # or ~/.bashrc
-
-  # Use it
-  phpv list             # See available versions
-  phpv install 8.4      # Install latest PHP 8.4
-  phpv use 8.4          # Switch to PHP 8.4 in current shell
-  phpv default 8.4      # Set PHP 8.4 as default
-  phpv versions         # List installed versions
-  phpv which            # Show current PHP path
+# Use it
+phpv list             # See available versions
+phpv install 8.4      # Install latest PHP 8.4
+phpv use 8.4          # Switch to PHP 8.4 in current shell
+phpv default 8.4      # Set PHP 8.4 as default
+phpv versions         # List installed versions
+phpv which            # Show current PHP path
 ```
 
 ### Alternative: Install from Source
 
 ```bash
-  # Install from source (requires Go 1.21+)
-  git clone https://github.com/supanadit/phpv.git
-  cd phpv
-  go install ./app/phpv.go
+# Install from source (requires Go 1.21+)
+git clone https://github.com/supanadit/phpv.git
+cd phpv
+go install ./app/phpv.go
 ```
 
 ## Shell Integration
@@ -155,13 +152,15 @@ curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | ba
 ```
 
 This will:
+
 - Download the latest PHPV binary to `~/.phpv/bin/phpv`
 - Create shims for PHP commands (`php`, `php-cgi`, `phpize`, etc.)
 - Add shell integration to your `~/.bashrc` or `~/.zshrc`
 
 To install a specific version:
+
 ```bash
-INSTALL_VERSION=0.1.1 curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | INSTALL_VERSION=0.1.1 bash
 ```
 
 ### From Source

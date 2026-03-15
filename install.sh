@@ -16,15 +16,15 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 log_info() {
-    echo -e "${BLUE}==>${NC} $*"
+    echo -e "${BLUE}==>${NC} $*" >&2
 }
 
 log_success() {
-    echo -e "${GREEN}✓${NC} $*"
+    echo -e "${GREEN}✓${NC} $*" >&2
 }
 
 log_warn() {
-    echo -e "${YELLOW}⚠${NC} $*"
+    echo -e "${YELLOW}⚠${NC} $*" >&2
 }
 
 log_error() {
@@ -117,9 +117,9 @@ get_latest_version() {
     local version
 
     if [ "$downloader" = "curl" ]; then
-        version=$(curl -fsSL https://api.github.com/repos/supanadit/phpv/releases/latest 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')
+        version=$(curl -fsSL https://api.github.com/repos/supanadit/phpv/releases 2>/dev/null | grep '"tag_name"' | head -1 | sed -E 's/.*"v?([^"]+)".*/\1/')
     else
-        version=$(wget -qO- https://api.github.com/repos/supanadit/phpv/releases/latest 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')
+        version=$(wget -qO- https://api.github.com/repos/supanadit/phpv/releases 2>/dev/null | grep '"tag_name"' | head -1 | sed -E 's/.*"v?([^"]+)".*/\1/')
     fi
 
     if [ -z "$version" ]; then
@@ -222,11 +222,11 @@ setup_shell_integration() {
 
     log_info "Adding PHPV initialization to ${shell_config}..."
 
-    cat >> "$shell_config" <<EOF
-
-# PHPV - PHP Version Manager
-$init_line
-EOF
+    {
+        echo ""
+        echo "# PHPV - PHP Version Manager"
+        echo "${init_line}"
+    } >> "$shell_config"
 
     log_success "Added shell integration to ${shell_config}"
 }

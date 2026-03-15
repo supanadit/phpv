@@ -180,7 +180,7 @@ func (c *DependencyURLConfig) getPattern(version string) DependencyPattern {
 func (c *DependencyURLConfig) buildURL(version string) string {
 	pattern := c.getPattern(version)
 
-	if strings.Contains(pattern.URLTemplate, "%s") && strings.Contains(pattern.URLTemplate, "%s") {
+	if strings.Count(pattern.URLTemplate, "%s") >= 2 {
 		return fmt.Sprintf(pattern.URLTemplate, version, version)
 	}
 	if strings.Contains(pattern.URLTemplate, "%s") {

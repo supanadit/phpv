@@ -1,0 +1,279 @@
+package download
+
+import (
+	"archive/tar"
+	"compress/gzip"
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/spf13/viper"
+	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/util"
+)
+
+type Service struct {
+	httpClient *http.Client
+}
+
+func NewService() *Service {
+	return &Service{
+		httpClient: &http.Client{},
+	}
+}
+
+// GetCacheDir returns the cache directory for downloaded PHP archives
+func (s *Service) GetCacheDir() string {
+	root := viper.GetString("PHPV_ROOT")
+	if root == "" {
+		homeDir, _ := os.UserHomeDir()
+		root = filepath.Join(homeDir, ".phpv")
+	}
+	return filepath.Join(root, "cache", "sources")
+}
+
+// GetSourcesDir returns the sources directory path
+func (s *Service) GetSourcesDir() string {
+	root := viper.GetString("PHPV_ROOT")
+	if root == "" {
+		homeDir, _ := os.UserHomeDir()
+		root = filepath.Join(homeDir, ".phpv")
+	}
+	return filepath.Join(root, "sources")
+}
+
+// GetDownloadSource returns the download source configuration
+func (s *Service) GetDownloadSource() domain.DownloadSource {
+	phpSource := viper.GetString("PHP_SOURCE")
+
+	switch strings.ToLower(phpSource) {
+	case "official", "php.net":
+		return domain.DownloadSource{
+			Type: domain.SourceTypeOfficial,
+			URL:  "https://www.php.net/distributions",
+		}
+	default:
+		// Default to GitHub
+		return domain.DownloadSource{
+			Type: domain.SourceTypeGitHub,
+			URL:  "https://github.com/php/php-src",
+		}
+	}
+}
+
+// BuildDownloadURL constructs the download URL based on source and version
+func (s *Service) BuildDownloadURL(version domain.Version) string {
+	source := s.GetDownloadSource()
+	versionStr := fmt.Sprintf("%d.%d.%d", version.Major, version.Minor, version.Patch)
+
+	switch source.Type {
+	case domain.SourceTypeOfficial:
+		return fmt.Sprintf("https://www.php.net/distributions/php-%s.tar.gz", versionStr)
+	default:
+		// GitHub
+		return fmt.Sprintf("https://github.com/php/php-src/archive/refs/tags/php-%s.tar.gz", versionStr)
+	}
+}
+
+// getCachedArchivePath returns the cache path for a PHP version archive
+func (s *Service) getCachedArchivePath(version domain.Version) string {
+	versionStr := fmt.Sprintf("%d.%d.%d", version.Major, version.Minor, version.Patch)
+	source := s.GetDownloadSource()
+
+	var filename string
+	switch source.Type {
+	case domain.SourceTypeOfficial:
+		filename = fmt.Sprintf("php-%s.tar.gz", versionStr)
+	default:
+		// GitHub
+		filename = fmt.Sprintf("php-%s-github.tar.gz", versionStr)
+	}
+
+	return filepath.Join(s.GetCacheDir(), filename)
+}
+
+// Download downloads and extracts the PHP source code
+func (s *Service) Download(ctx context.Context, version domain.Version) error {
+	sourcesDir := s.GetSourcesDir()
+
+	// Create sources directory if it doesn't exist
+	if err := os.MkdirAll(sourcesDir, 0755); err != nil {
+		return fmt.Errorf("failed to create sources directory: %w", err)
+	}
+
+	versionStr := fmt.Sprintf("%d.%d.%d", version.Major, version.Minor, version.Patch)
+	targetDir := filepath.Join(sourcesDir, versionStr)
+
+	// Check if already downloaded
+	if _, err := os.Stat(targetDir); err == nil {
+		return fmt.Errorf("PHP %s is already downloaded at %s", versionStr, targetDir)
+	}
+
+	cachePath := s.getCachedArchivePath(version)
+
+	// Check if already cached
+	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
+		// Download to cache
+		downloadURL := s.BuildDownloadURL(version)
+		fmt.Printf("Downloading PHP %s from %s...\n", versionStr, downloadURL)
+
+		if err := s.downloadToCache(ctx, downloadURL, cachePath); err != nil {
+			return fmt.Errorf("failed to download: %w", err)
+		}
+		fmt.Printf("Downloaded and cached: %s\n", filepath.Base(cachePath))
+	} else {
+		fmt.Printf("Using cached archive: %s\n", filepath.Base(cachePath))
+	}
+
+	// Extract the tar.gz file from cache
+	fmt.Printf("Extracting to %s...\n", targetDir)
+	if err := s.extractFromCache(cachePath, sourcesDir, versionStr); err != nil {
+		return fmt.Errorf("failed to extract: %w", err)
+	}
+
+	fmt.Printf("Successfully downloaded PHP %s to %s\n", versionStr, targetDir)
+	return nil
+}
+
+// downloadToCache downloads a file to the cache directory
+func (s *Service) downloadToCache(ctx context.Context, url, cachePath string) error {
+	// Ensure cache directory exists
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0755); err != nil {
+		return fmt.Errorf("failed to create cache directory: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	// Create temporary file first
+	tmpFile, err := os.CreateTemp(filepath.Dir(cachePath), ".download-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	// Write to temporary file with progress bar
+	if err := util.DownloadWithProgress(resp, tmpFile, filepath.Base(cachePath)); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("failed to download: %w", err)
+	}
+	tmpFile.Close()
+
+	// Move to final cache location
+	if err := os.Rename(tmpPath, cachePath); err != nil {
+		return fmt.Errorf("failed to move to cache: %w", err)
+	}
+
+	return nil
+}
+
+// extractFromCache extracts a tar.gz archive from cache
+func (s *Service) extractFromCache(cachePath, destDir, versionStr string) error {
+	file, err := os.Open(cachePath)
+	if err != nil {
+		return fmt.Errorf("failed to open cached file: %w", err)
+	}
+	defer file.Close()
+
+	return s.extractTarGz(file, destDir, versionStr)
+}
+
+// extractTarGz extracts a tar.gz archive
+func (s *Service) extractTarGz(r io.Reader, destDir, versionStr string) error {
+	gzr, err := gzip.NewReader(r)
+	if err != nil {
+		return err
+	}
+	defer gzr.Close()
+
+	tr := tar.NewReader(gzr)
+
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		// Strip the first directory component and replace with version string
+		parts := strings.SplitN(header.Name, "/", 2)
+		if len(parts) < 2 {
+			continue
+		}
+
+		target := filepath.Join(destDir, versionStr, parts[1])
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
+			if err != nil {
+				return err
+			}
+
+			if _, err := io.Copy(f, tr); err != nil {
+				f.Close()
+				return err
+			}
+			f.Close()
+		}
+	}
+
+	return nil
+}
+
+// FindMatchingVersion finds a matching version based on the input
+func (s *Service) FindMatchingVersion(ctx context.Context, versions []domain.Version, major int, minor *int, patch *int) (domain.Version, error) {
+	var matches []domain.Version
+
+	for _, v := range versions {
+		if v.Major != major {
+			continue
+		}
+		if minor != nil && v.Minor != *minor {
+			continue
+		}
+		if patch != nil && v.Patch != *patch {
+			continue
+		}
+		matches = append(matches, v)
+	}
+
+	if len(matches) == 0 {
+		if patch != nil {
+			return domain.Version{}, fmt.Errorf("no version found matching %d.%d.%d", major, *minor, *patch)
+		} else if minor != nil {
+			return domain.Version{}, fmt.Errorf("no version found matching %d.%d", major, *minor)
+		}
+		return domain.Version{}, fmt.Errorf("no version found matching %d", major)
+	}
+
+	// Return the latest matching version (assuming versions are sorted descending)
+	return matches[0], nil
+}

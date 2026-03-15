@@ -3,7 +3,6 @@ package dependency
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -11,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/util"
 )
 
 // ToolchainService manages downloading and installing LLVM toolchains
@@ -154,10 +154,10 @@ func (s *ToolchainService) downloadToCache(ctx context.Context, url, cachePath s
 	tmpPath := tmpFile.Name()
 	defer os.Remove(tmpPath)
 
-	// Write to temporary file
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+	// Write to temporary file with progress bar
+	if err := util.DownloadWithProgress(resp, tmpFile, filepath.Base(cachePath)); err != nil {
 		tmpFile.Close()
-		return fmt.Errorf("failed to write to temp file: %w", err)
+		return fmt.Errorf("failed to download: %w", err)
 	}
 	tmpFile.Close()
 

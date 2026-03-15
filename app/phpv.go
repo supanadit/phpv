@@ -30,7 +30,9 @@ func main() {
 
 	// Register and check help flag
 	pflag.BoolP("help", "h", false, "Show help")
+	pflag.BoolP("quiet", "q", false, "Suppress progress output (for CI)")
 	pflag.Parse()
+	viper.BindPFlags(pflag.CommandLine)
 	help, _ := pflag.CommandLine.GetBool("help")
 	h, _ := pflag.CommandLine.GetBool("h")
 	if help || h {

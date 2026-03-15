@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/util"
 )
 
 type Service struct {
@@ -168,10 +169,10 @@ func (s *Service) downloadToCache(ctx context.Context, url, cachePath string) er
 	tmpPath := tmpFile.Name()
 	defer os.Remove(tmpPath)
 
-	// Write to temporary file
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+	// Write to temporary file with progress bar
+	if err := util.DownloadWithProgress(resp, tmpFile, filepath.Base(cachePath)); err != nil {
 		tmpFile.Close()
-		return fmt.Errorf("failed to write to temp file: %w", err)
+		return fmt.Errorf("failed to download: %w", err)
 	}
 	tmpFile.Close()
 

@@ -1,36 +1,142 @@
-# PHPV - PHP Version Manager
+# 🚀 PHPV - PHP Version Manager
 
-**IMPORTANT: This project is currently being rewritten in Go. The bash version is deprecated.**
+**The PHP version manager PHP developers deserve.**
 
-A simple PHP version manager for Linux/Unix systems, similar to `pyenv` and `nvm`. PHPV allows you to install, manage, and switch between multiple PHP versions in user space without requiring root privileges for version management.
+> _"NVM manages Node. Pyenv manages Python. **PHPV manages PHP.**"_
 
-## Planned Features
+---
 
-- 🚀 Install multiple PHP versions from source
-- 🔄 Switch between installed versions instantly
-- 🏠 User space installation (no root required for version management)
-- 💾 Automatic PATH management
-- 🧹 Clean uninstallation of versions
-- 📦 Automatic dependency detection and guidance
-- 🛠️ Shell integration for bash, and zsh
-- 📅 Day one latest PHP support
-- 🆓 True open source ([MIT License](LICENSE))
-- 🐳 Compatible with Docker and CI environments
-- 🐧 Support all linux distros (Distro agnostic)
-- 🧩 Easily extensible for custom configurations
-  - Adding and removing PHP extensions per version from PECL or source
-  - Enabling and disabling extensions per version on the fly
-  - Managing `php.ini` from this tool
-  - Integration with web servers (Apache, Nginx, Caddy)
-- 🧱 Isolated dependency management for each PHP version
-- 🪟 Windows support
-- 🍏 MacOS support
+## Quickstart
 
-## Go Implementation (Current Development)
+```bash
+  # Install
+  go install ./app/phpv.go
+  # Add to your shell config (~/.bashrc, ~/.zshrc, etc.)
+  eval "$(phpv init -)"
+  # Restart shell or source config
+  source ~/.zshrc  # or ~/.bashrc
+  # Use it
+  phpv list             # See available versions
+  phpv install 8.4      # Install latest PHP 8.4
+  phpv use 8.4          # Switch to PHP 8.4 in current shell
+  phpv default 8.4      # Set PHP 8.4 as default
+  phpv versions         # List installed versions
+  phpv which            # Show current PHP path
+```
 
-The project is being actively developed in Go for better performance, reliability, and maintainability.
+## Shell Integration
 
-### Building from Source
+- Already supports: bash, zsh, fish, ksh
+- Works with: `eval "$(phpv init -)"` or `phpv init bash`, `phpv init zsh`, etc.
+- Includes: `use`, `default`, `versions`, `which` commands
+
+## Commands Already Implemented
+
+```
+  ✅ list              - List available PHP versions
+  ✅ download          - Download PHP source code
+  ✅ build/install     - Build PHP from source
+  ✅ prune             - Remove all build artifacts
+  ✅ init              - Shell integration (bash/zsh/fish/pwsh/ksh)
+  ✅ use/shell         - Switch PHP version in current shell
+  ✅ default           - Set/show default PHP version
+  ✅ versions          - List installed versions
+  ✅ which             - Show current PHP path
+```
+
+## The Problem: Why PHP Version Management Is Fundamentally Different
+
+If you've worked with Node.js or Python, you know the luxury: `nvm install 20`, `pyenv install 3.12`, done. Binaries download, paths get wired, you're productive in seconds.
+**PHP is not that simple.**
+PHP doesn't just need a binary. It needs:
+
+- **Version-specific compilers** — PHP 8.3 requires different LLVM toolchains than PHP 8.0
+- **Dependency chains** — libxml2, openssl, curl, onigurama, each with precise version requirements
+- **Static linking** — For portable binaries that work across distros
+- **PECL extensions** — Compiled per-version, with their own dependency graphs
+- **Web server integration** — Apache modules, PHP-FPM configs, NGINX wiring
+  This is why **no true PHP version manager has existed** — until now. The bash scripts and Docker containers you've been using? They're workarounds, not solutions. They don't handle the complexity. They don't work across distros. They require root. They break when you need that one extension.
+
+---
+
+## The Vision: What PHPV Does Differently
+
+**PHPV is not a script. It's not a container. It's a version manager.**
+Built from the ground up in Go (not bash, not Python) because PHP ecosystem complexity demands a real programming language. Here's what makes it different:
+
+### 🧠 **Complexity Handled, Not Hidden**
+
+Most tools hide complexity. PHPV handles it.
+
+- **Automatic dependency resolution** — Each PHP version knows exactly which libraries it needs and builds them from source
+- **Transitive dependency chains** — When curl needs openssl and zlib, PHPV knows. When dependencies have dependencies, PHPV tracks it all
+- **Version-specific LLVM toolchains** — PHP 8.3+? LLVM 21.1.6. PHP 8.0-8.2? LLVM 18.1.8. Older PHP? LLVM 15.0.6. **Automatically downloaded and configured.**
+
+### 🏠 **True User-Space Installation**
+
+```bash
+# No sudo. No root. No system pollution.
+phpv install 8.4
+phpv use 8.4
+```
+
+Your PHP versions live in `~/.phpv/`. Your system PHP stays untouched. Need five versions for testing different projects? They coexist peacefully.
+
+### 🔒 **Statically-Linked, Portable Binaries**
+
+Every PHP built by PHPV is **linked statically**. This isn't just technical — it's practical:
+
+- Move `~/.phpv/versions/8.4/` to another Linux machine? **Works.**
+- Build on Ubuntu, run on Alpine? **Works.**
+- No more "works on my machine" — **it works on every machine.**
+
+### 🚀 **Day-One PHP Support**
+
+PHP 8.5 in dev? PHPV has it. New PHP version released yesterday? PHPV supports it today.
+No waiting for:
+
+- Ubuntu PPA updates
+- Homebrew bottling
+- Distribution package freezes
+  **You're always on current PHP.**
+
+---
+
+## How PHPV Works: A Peek Under the Hood
+
+The architecture is intentionally layered, following clean/hexagonal architecture principles:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  CLI Layer (internal/terminal)                          │
+│  Command handlers, argument parsing, user interaction   │
+├─────────────────────────────────────────────────────────┤
+│  Service Layer (*/service.go)                           │
+│  Business logic, orchestration, build coordination      │
+├─────────────────────────────────────────────────────────┤
+│  Domain Layer (domain/)                                 │
+│  Version structs, dependency models, toolchain config  │
+├─────────────────────────────────────────────────────────┤
+│  Repository Layer (internal/repository)                 │
+│  Version data, source manifests, release tracking       │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Key Technical Decisions That Matter
+
+| Challenge                                                   | PHPV's Solution                                                                                 |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| **Different PHP versions need different compiler versions** | Automatic LLVM toolchain download per major PHP version (8.3+: LLVM 21, 8.0-8.2: LLVM 18, etc.) |
+| **Dependency version conflicts**                            | Isolated dependency builds per PHP version in `~/.phpv/dependencies/`                           |
+| **"Works on my machine" syndrome**                          | Statically-linked builds with `--enable-static --disable-shared`                                |
+| **Custom compilers (Zig, custom GCC)**                      | Full toolchain override via `PHPV_TOOLCHAIN_*` environment variables                            |
+| **PECL extensions**                                         | _[Planned]_ Per-version extension management with automatic dependency resolution               |
+
+---
+
+## Installation
+
+### From Source
 
 ```bash
 git clone https://github.com/supanadit/phpv.git
@@ -38,47 +144,188 @@ cd phpv
 go install ./app/phpv.go
 ```
 
-### Demo
+**Requirements:** Go 1.21+, LLVM (auto-downloaded), standard build tools
 
-Run the demo application:
+### First Steps
 
 ```bash
-# Fast simulated builds (for testing)
-go run app/phpv.go
+# See what PHP versions are available
+phpv list
+# Install a specific version
+phpv install 8.4
+# Install latest from a major version
+phpv install 8
+# See installed versions
+phpv versions
 ```
+
+---
+
+## The Roadmap: Where PHPV Is Going
+
+PHPV is already functional for core version management. But this is just the beginning:
+
+### ✅ **Now Available**
+
+**✅ Available Now:**
+
+- [x] Install PHP from source (8.0+ fully supported)
+- [x] Multi-compiler support (LLVM, GCC, custom toolchains)
+- [x] Automatic dependency resolution
+- [x] Version-specific LLVM toolchains
+- [x] Static linking for portable binaries
+- [x] User-space installation (no root)
+- [x] **Shell integration (bash, zsh, fish, PowerShell/ksh)** ← Already done!
+- [x] **Version switching commands** (`use`, `shell`, `default`, `versions`, `which`)
+- [x] Linux support (distro-agnostic)
+
+**🛠️ In Progress:**
+
+- [ ] PECL extension management
+- [ ] PHP-FPM and web server integration
+- [ ] `php.ini` management per version
+
+**🔮 Future:**
+
+- [ ] Cross-compilation with Zig
+- [ ] Truly portable binary builds
+- [ ] macOS support
+- [ ] Windows support
+- [ ] Pre-built binary cache
+- [ ] `.phpvrc` project-level configuration
+
+---
+
+## Why This Matters
+
+**The PHP ecosystem has been underserved.**
+Node developers have had NVM since 2014. Python developers have had Pyenv since 2012. PHP developers? We've been manually compiling, using brittle bash scripts, or locked into platform-specific solutions.
+**PHPV changes that.**
+This isn't about convenience. It's about:
+
+- **Developer productivity** — Switching PHP versions in seconds, not hours
+- **Team consistency** — Same PHP version across development and production
+- **Modern PHP adoption** — Day-one access to new PHP features and security fixes
+- **Freedom** — Not locked into a specific distro or Docker image
+
+---
+
+## Philosophy
+
+PHPV is built on these principles:
+
+1. **Complexity should be handled, not hidden** — Users shouldn't need to understand LLVM versions, dependency chains, or static linking. But the tool should handle them correctly.
+2. **User-space is sovereign** — Root access is for system administrators. Developer tools should never require `sudo`.
+3. **Portability over convenience** — A static binary that works everywhere beats a shared library build that's faster to compile but fragile.
+4. **Day-one support matters** — PHP releases should be available immediately, not months later through package managers.
+5. **Real architecture scales** — Go over bash. Clean architecture over quick scripts. Long-term maintainability over temporary fixes.
+
+---
 
 ## PHP Versions Supported
 
-After this project released in stable state, each new PHP version will be supported as soon as possible. So you don't need to wait the operating system package manager to provide the latest PHP version.
+| Version Range     | Status           | Notes                                                  |
+| ----------------- | ---------------- | ------------------------------------------------------ |
+| **PHP 8.5.x**     | 🔬 Dev Preview   | Supported for testing                                  |
+| **PHP 8.4.x**     | ✅ Stable        | Latest production PHP                                  |
+| **PHP 8.3.x**     | ✅ Stable        | —                                                      |
+| **PHP 8.2.x**     | ✅ Stable        | —                                                      |
+| **PHP 8.1.x**     | ✅ Stable        | —                                                      |
+| **PHP 8.0.x**     | ✅ Stable        | —                                                      |
+| **PHP 7.x.x**     | 🟡 SimiSupported | End-of-life, but functional                            |
+| **PHP 5.x / 4.x** | ⚠️ Legacy        | Dependencies difficult to source, use at your own risk |
 
-- PHP 8.5.x ( Dev Preview, Coming Soon )
-- PHP 8.4.x
-- PHP 8.3.x
-- PHP 8.2.x
-- PHP 8.1.x
-- PHP 8.0.x
-- PHP 7.x.x
+## **Older versions (PHP 4.x, 5.x):** These can be built, but some dependencies are no longer available from original sources. PHPV will do its best, but expect some manual intervention. Create an issue if you need these — we can find solutions together.
 
-### Deprecated PHP Versions Supported ( Not Recommended )
+## Architecture Details
 
-These versions are deprecated and not recommended for use in production environments. They are provided for legacy support and testing purposes only. Most of dependencies for these versions are no longer maintained and even not available to be downloaded.
+For those who want to understand the internals:
 
-I understand that some users may still need these versions for specific use cases, such as maintaining legacy applications or testing compatibility. So I will try my best to make it work. If you need any of these versions, please create a Github Issue.
+### Directory Structure
 
-- PHP 5.0.x below ( EOL, not recommended )
-- PHP 4.x.x below ( EOL, not recommended )
-- PHP 3.x.x below ( EOL, not recommended )
-- PHP 2.x.x below ( EOL, not recommended )
-- PHP 1.x.x below ( EOL, not recommended )
+```
+~/.phpv/
+├── cache/
+│   ├── sources/          # Downloaded PHP source archives (tarballs)
+│   └── toolchains/       # Downloaded LLVM releases
+├── sources/              # Extracted PHP source ready to build
+├── versions/             # Compiled PHP installations (the binaries)
+├── dependencies/         # Built libraries for each PHP version
+├── dependencies-src/     # Source code for all dependencies
+└── toolchains/           # Extracted LLVM toolchains
+```
+
+### Dependency Management
+
+Each PHP version has a **dependency manifest** (`dependency/mapping.go`). For example, PHP 8.4.0 needs:
+
+```
+Toolchain:     LLVM 21.1.6
+Build Tools:   cmake 3.30.2, perl 5.40.0, m4 1.4.19, autoconf 2.72,
+               automake 1.17, libtool 2.4.7, re2c 3.1
+Libraries:     zlib 1.3.1, libxml2 2.13.4, openssl 3.3.2,
+               curl 8.10.1, oniguruma 6.9.9
+```
+
+Dependencies have **transitive relationships** (curl needs openssl, openssl needs zlib). PHPV resolves the entire graph and builds in correct order.
+
+### Custom Toolchain Support
+
+Want to use your own compiler? Set environment variables:
+
+```bash
+export PHPV_TOOLCHAIN_CC=zig cc
+export PHPV_TOOLCHAIN_CXX=zig c++
+export PHPV_TOOLCHAIN_LDFLAGS="-static"
+phpv install 8.4
+```
+
+## Full override capability for experimentation with Zig, GCC, Clang, or any compiler.
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test with multiple PHP versions
-5. Submit a pull request
+PHPV is early in its journey. There's much to build:
 
-## License
+- **Extension management** — Design the PECL integration
+- **Web server integration** — Create Apache/NGINX/Caddy modules
+- **Platform support** — Help with macOS and Windows ports
+- **Testing** — Add integration tests, extend coverage
+- **Documentation** — Improve guides, add examples
 
-MIT License - see [LICENSE](LICENSE) file for details.
+```bash
+# Standard Go project setup
+git clone https://github.com/supanadit/phpv.git
+cd phpv
+
+go run app/phpv.go download 8
+go run app/phpv.go build 8
+go run app/phpv.go use 8
+```
+
+## See [AGENTS.md](./AGENTS.md) for development context and architecture details.
+
+## Project Status
+
+**Current Version:** Early development, functional for core use cases  
+**License:** MIT License — truly open source  
+**Language:** Go (why? because PHP ecosystem complexity demands a real programming language, not bash scripts)  
+**Author:** [Supan Adit Pratama](https://github.com/supanadit)
+
+---
+
+## The Bottom Line
+
+**Node developers have NVM. Python developers have Pyenv. Ruby developers have Rbenv. PHP developers deserve PHPV.**
+This is the PHP version manager that handles the complexity PHP ecosystem demands. Not a workaround. Not a script. Not a container. A real version manager.
+**Built for PHP developers who deserve better.**
+
+---
+
+<p align="center">
+  <strong>Star the repo if you believe PHP developers deserve better tooling.</strong>
+</p>
+<p align="center">
+  <a href="https://github.com/supanadit/phpv/issues">Report Bug</a> •
+  <a href="https://github.com/supanadit/phpv/issues">Request Feature</a> •
+  <a href="https://github.com/supanadit/phpv/blob/main/AGENTS.md">Architecture Deep Dive</a>
+</p>

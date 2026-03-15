@@ -7,13 +7,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - arch: amd64
-            artifact_name: phpv-${{ github.event.release.tag_name }}-linux-amd64
-          - arch: arm64
-            artifact_name: phpv-${{ github.event.release.tag_name }}-linux-arm64
 
     steps:
       - name: Checkout code
@@ -27,14 +20,14 @@ jobs:
       - name: Build binary
         env:
           GOOS: linux
-          GOARCH: ${{ matrix.arch }}
+          GOARCH: amd64
           CGO_ENABLED: 0
         run: |
-          go build -o ${{ matrix.artifact_name }} ./app/phpv.go
+          go build -o phpv-${{ github.event.release.tag_name }}-linux-amd64 ./app/phpv.go
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.artifact_name }}
+          files: phpv-${{ github.event.release.tag_name }}-linux-amd64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

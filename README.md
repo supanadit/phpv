@@ -10,7 +10,10 @@
 
 ```bash
 # Quick Install (Recommended)
-curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | INSTALL_VERSION=0.1.1 bash
+curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bash
+
+# Specific Version
+# curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | INSTALL_VERSION=0.1.1 bash
 
 # Restart shell or source config
 source ~/.zshrc  # or ~/.bashrc

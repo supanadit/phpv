@@ -55,6 +55,12 @@ func (s *Service) GetDependencyInstallDir(phpVersion domain.Version, depName str
 	return filepath.Join(s.GetDependenciesDir(phpVersion), depName)
 }
 
+// GetDependencySourceDir returns the source directory for a dependency (isolated per PHP version)
+func (s *Service) GetDependencySourceDir(phpVersion domain.Version, dep domain.Dependency) string {
+	versionStr := fmt.Sprintf("%d.%d.%d", phpVersion.Major, phpVersion.Minor, phpVersion.Patch)
+	return filepath.Join(s.phpvRoot, "dependencies-src", versionStr, dep.Name+"-"+dep.Version)
+}
+
 // IsDependencyBuilt checks if a dependency is already built
 func (s *Service) IsDependencyBuilt(phpVersion domain.Version, dep domain.Dependency) bool {
 	// LLVM is managed by the toolchain service
@@ -168,7 +174,7 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 	fmt.Printf("\n--- Building %s %s ---\n", dep.Name, dep.Version)
 
 	installDir := s.GetDependencyInstallDir(phpVersion, dep.Name)
-	sourceDir := filepath.Join(s.phpvRoot, "dependencies-src", dep.Name+"-"+dep.Version)
+	sourceDir := s.GetDependencySourceDir(phpVersion, dep)
 
 	// LLVM is handled specially by the toolchain service
 	if dep.Name == "llvm" {

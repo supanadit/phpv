@@ -132,6 +132,10 @@ var urlConfigs = map[string]DependencyURLConfig{
 				URLTemplate: "https://curl.se/download/archeology/curl-7.12.1.tar.gz",
 				Extension:   ".tar.gz",
 			},
+			"7.20.0": {
+				URLTemplate: "https://curl.se/download/archeology/curl-7.20.0.tar.gz",
+				Extension:   ".tar.gz",
+			},
 		},
 		Ranges: []VersionRange{
 			{
@@ -285,25 +289,25 @@ var versionRegistry = map[string]PHPVersionConfig{
 		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
 		Libtool: "1.5.26", Re2c: "0.16", Zlib: "1.3.1",
 		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "1.0.1u", Curl: "7.12.0", Oniguruma: "5.9.6",
+		OpenSSL: "1.0.1u", Curl: "7.20.0", Oniguruma: "5.9.6",
 	},
 	"5.5": {
 		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
 		Libtool: "1.5.26", Re2c: "0.16", Zlib: "1.3.1",
 		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "1.0.1u", Curl: "7.12.0", Oniguruma: "5.9.6",
+		OpenSSL: "1.0.1u", Curl: "7.20.0", Oniguruma: "5.9.6",
 	},
 	"5.4": {
 		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
 		Libtool: "1.5.26", Re2c: "0.16", Zlib: "1.3.1",
 		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "1.0.1u", Curl: "7.12.0", Oniguruma: "5.9.6",
+		OpenSSL: "1.0.1u", Curl: "7.20.0", Oniguruma: "5.9.6",
 	},
 	"5.3": {
 		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
 		Libtool: "1.5.26", Re2c: "0.16", Zlib: "1.3.1",
 		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "1.0.1u", Curl: "7.12.0", Oniguruma: "5.9.6",
+		OpenSSL: "1.0.1u", Curl: "7.20.0", Oniguruma: "5.9.6",
 	},
 }
 
@@ -573,10 +577,16 @@ func newCurlDependency(config PHPVersionConfig) domain.Dependency {
 	urlConfig := urlConfigs["curl"]
 	override := config.CurlOverride
 
+	var buildCommands []string
+	if version >= "7.15" {
+		buildCommands = []string{"./buildconf"}
+	}
+
 	return domain.Dependency{
-		Name:        "curl",
-		Version:     version,
-		DownloadURL: getURL(&urlConfig, version, override),
+		Name:          "curl",
+		Version:       version,
+		DownloadURL:   getURL(&urlConfig, version, override),
+		BuildCommands: buildCommands,
 		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
 			"--with-openssl",
 			"--with-zlib",

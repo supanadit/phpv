@@ -123,6 +123,20 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	buildconfPath := filepath.Join(sourceDir, "buildconf")
 	if _, err := os.Stat(buildconfPath); err == nil {
 		fmt.Println("Step 2: Running buildconf...")
+		// Use autoconf 2.71 for PHP buildconf (autoconf 2.13 is too old for modern PHP)
+		phpvRoot := viper.GetString("PHPV_ROOT")
+		if phpvRoot == "" {
+			homeDir, _ := os.UserHomeDir()
+			phpvRoot = filepath.Join(homeDir, ".phpv")
+		}
+		autoconf271Bin := filepath.Join(phpvRoot, "toolchains", "autoconf-2.71", "bin")
+		if _, err := os.Stat(filepath.Join(autoconf271Bin, "autoconf")); err == nil {
+			env = s.addToPathEnv(env, autoconf271Bin)
+			env = s.setEnvVar(env, "AUTOCONF", filepath.Join(autoconf271Bin, "autoconf"))
+			env = s.setEnvVar(env, "AUTOHEADER", filepath.Join(autoconf271Bin, "autoheader"))
+			env = s.setEnvVar(env, "AUTOMAKE", filepath.Join(autoconf271Bin, "automake"))
+			env = s.setEnvVar(env, "ACLOCAL", filepath.Join(autoconf271Bin, "aclocal"))
+		}
 		if err := util.RunCommand(ctx, sourceDir, env, "./buildconf", "--force"); err != nil {
 			return fmt.Errorf("buildconf failed: %w", err)
 		}
@@ -316,4 +330,25 @@ func parsePathList(value string) []string {
 
 func parseFlagList(value string) []string {
 	return strings.Fields(value)
+}
+
+func (s *Service) addToPathEnv(env []string, path string) []string {
+	for i, e := range env {
+		if strings.HasPrefix(e, "PATH=") {
+			env[i] = "PATH=" + path + ":" + strings.TrimPrefix(e, "PATH=")
+			return env
+		}
+	}
+	return append(env, "PATH="+path)
+}
+
+func (s *Service) setEnvVar(env []string, key, value string) []string {
+	prefix := key + "="
+	for i, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			env[i] = prefix + value
+			return env
+		}
+	}
+	return append(env, prefix+value)
 }

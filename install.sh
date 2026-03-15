@@ -140,13 +140,53 @@ get_download_url() {
     echo "$url"
 }
 
+get_installed_version() {
+    local phpv_root="${PHPV_ROOT:-$HOME/.phpv}"
+    local version_file="${phpv_root}/version"
+
+    if [ -f "$version_file" ]; then
+        cat "$version_file"
+    fi
+}
+
+write_installed_version() {
+    local version="$1"
+    local phpv_root="${PHPV_ROOT:-$HOME/.phpv}"
+
+    mkdir -p "$phpv_root"
+    echo "$version" > "${phpv_root}/version"
+}
+
+compare_versions() {
+    local current="$1"
+    local target="$2"
+
+    if [ -z "$current" ] || [ -z "$target" ]; then
+        echo "unknown"
+        return
+    fi
+
+    if [ "$current" = "$target" ]; then
+        echo "same"
+        return
+    fi
+
+    local lowest
+    lowest="$(printf '%s\n%s\n' "$current" "$target" | sort -V | head -n1)"
+
+    if [ "$lowest" = "$current" ]; then
+        echo "upgrade"
+    else
+        echo "downgrade"
+    fi
+}
+
 install_phpv() {
     local version="$1"
-    local install_dir="$2"
+    local action="$2"
+    local install_dir="$3"
     local bin_dir="${install_dir}/bin"
     local bin_path="${bin_dir}/phpv"
-
-    log_info "Installing PHPV v${version}..."
 
     mkdir -p "$bin_dir"
 
@@ -160,15 +200,22 @@ install_phpv() {
         exit 1
     fi
 
-    if [ -f "$bin_path" ] && [ "$FORCE_INSTALL" != "1" ]; then
-        log_warn "PHPV already exists at ${bin_path}"
-        log_info "Skipping installation (use FORCE_INSTALL=1 to overwrite)"
-        echo "$bin_path"
-        return 0
-    fi
+    case "$action" in
+        skip)
+            log_info "PHPV v${version} is already the latest version"
+            echo "$bin_path"
+            write_installed_version "$version"
+            return 0
+            ;;
+        downgrade)
+            log_info "Downgrading PHPV to v${version}..."
+            ;;
+        *)
+            log_info "Installing PHPV v${version}..."
+            ;;
+    esac
 
     if [ -f "$bin_path" ]; then
-        log_warn "PHPV already exists at ${bin_path}"
         log_info "Backing up existing binary..."
         mv "$bin_path" "${bin_path}.backup.$(date +%s)"
     fi
@@ -189,6 +236,8 @@ install_phpv() {
 
     mv "$tmp_file" "$bin_path"
     chmod +x "$bin_path"
+
+    write_installed_version "$version"
 
     log_success "Installed PHPV to ${bin_path}"
 
@@ -237,6 +286,15 @@ main() {
 
     local version="${INSTALL_VERSION:-}"
     local phpv_root="${PHPV_ROOT:-$HOME/.phpv}"
+    local action="install"
+
+    local os
+    os="$(detect_os)"
+    local arch
+    arch="$(detect_arch)"
+
+    log_info "Platform: ${os}-${arch}"
+    log_info "Installation directory: ${phpv_root}"
 
     if [ -z "$version" ]; then
         log_info "Detecting latest version..."
@@ -246,24 +304,57 @@ main() {
         log_info "Installing specified version: v${version}"
     fi
 
-    local os
-    os="$(detect_os)"
-    local arch
-    arch="$(detect_arch)"
+    local installed_version
+    installed_version="$(get_installed_version)"
 
-    log_info "Platform: ${os}-${arch}"
-    log_info "Installation directory: ${phpv_root}"
+    if [ -n "$installed_version" ]; then
+        local comparison
+        comparison="$(compare_versions "$installed_version" "$version")"
+
+        case "$comparison" in
+            same)
+                log_info "PHPV v${version} is already installed"
+                action="skip"
+                ;;
+            upgrade)
+                log_info "Current version: v${installed_version}"
+                log_info "Upgrading to v${version}..."
+                action="upgrade"
+                ;;
+            downgrade)
+                log_info "Current version: v${installed_version}"
+                log_info "Downgrading to v${version}..."
+                action="downgrade"
+                ;;
+        esac
+    else
+        log_info "No PHPV installation found, installing..."
+    fi
+
     echo
 
     local bin_path
-    bin_path="$(install_phpv "$version" "$phpv_root")"
+    bin_path="$(install_phpv "$version" "$action" "$phpv_root")"
 
     local shell
     shell="$(detect_shell "")"
     setup_shell_integration "$bin_path" "$shell"
 
     echo
-    log_success "PHPV v${version} installed successfully!"
+    case "$action" in
+        skip)
+            log_success "PHPV v${version} is already the latest version!"
+            ;;
+        upgrade)
+            log_success "PHPV upgraded to v${version} successfully!"
+            ;;
+        downgrade)
+            log_success "PHPV downgraded to v${version} successfully!"
+            ;;
+        *)
+            log_success "PHPV v${version} installed successfully!"
+            ;;
+    esac
     echo
     echo "Next steps:"
     echo "  1. Restart your shell or run: source ~/.bashrc  # or ~/.zshrc"

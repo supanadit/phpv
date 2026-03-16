@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/build"
+	"github.com/supanadit/phpv/dependency"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/download"
 	"github.com/supanadit/phpv/internal/repository/memory"
@@ -61,6 +62,7 @@ func main() {
 	buildSvc := build.NewService()
 	pruneSvc := prune.NewService()
 	shellSvc := shell.NewService()
+	depSvc := dependency.NewService(viper.GetString("PHPV_ROOT"))
 
 	// Shell command handlers (sh-use, sh-shell) must come first
 	// as they're called by shell wrappers
@@ -69,9 +71,13 @@ func main() {
 		if !terminal.NewShellHandler(ctx, shellSvc) {
 			if !terminal.NewDownloadHandler(ctx, versionSvc, downloadSvc) {
 				if !terminal.NewBuildHandler(ctx, versionSvc, buildSvc) {
-					if !terminal.NewPruneHandler(ctx, pruneSvc) {
-						if !terminal.NewVersionHandler(ctx, versionSvc) {
-							terminal.NewNothingHandler()
+					if !terminal.NewCleanHandler(ctx, versionSvc, terminal.NewCleanServiceAdapter(depSvc)) {
+						if !terminal.NewUninstallHandler(ctx, terminal.NewUninstallServiceAdapter()) {
+							if !terminal.NewPruneHandler(ctx, pruneSvc) {
+								if !terminal.NewVersionHandler(ctx, versionSvc) {
+									terminal.NewNothingHandler()
+								}
+							}
 						}
 					}
 				}

@@ -451,7 +451,7 @@ func newAutoconfDependency(config PHPVersionConfig) domain.Dependency {
 			"--disable-shared",
 			"--enable-static",
 		}),
-		Dependencies: []string{"m4"},
+		Dependencies: []string{"m4", "perl"},
 	}
 }
 

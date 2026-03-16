@@ -123,19 +123,14 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	buildconfPath := filepath.Join(sourceDir, "buildconf")
 	if _, err := os.Stat(buildconfPath); err == nil {
 		fmt.Println("Step 2: Running buildconf...")
-		// Use autoconf 2.71 for PHP buildconf (autoconf 2.13 is too old for modern PHP)
-		phpvRoot := viper.GetString("PHPV_ROOT")
-		if phpvRoot == "" {
-			homeDir, _ := os.UserHomeDir()
-			phpvRoot = filepath.Join(homeDir, ".phpv")
-		}
-		autoconf271Bin := filepath.Join(phpvRoot, "toolchains", "autoconf-2.71", "bin")
-		if _, err := os.Stat(filepath.Join(autoconf271Bin, "autoconf")); err == nil {
-			env = s.addToPathEnv(env, autoconf271Bin)
-			env = s.setEnvVar(env, "AUTOCONF", filepath.Join(autoconf271Bin, "autoconf"))
-			env = s.setEnvVar(env, "AUTOHEADER", filepath.Join(autoconf271Bin, "autoheader"))
-			env = s.setEnvVar(env, "AUTOMAKE", filepath.Join(autoconf271Bin, "automake"))
-			env = s.setEnvVar(env, "ACLOCAL", filepath.Join(autoconf271Bin, "aclocal"))
+		// Use per-version autoconf for PHP buildconf
+		autoconfBin := filepath.Join(s.depService.GetDependencyInstallDir(version, "autoconf"), "bin")
+		if _, err := os.Stat(filepath.Join(autoconfBin, "autoconf")); err == nil {
+			env = s.addToPathEnv(env, autoconfBin)
+			env = s.setEnvVar(env, "AUTOCONF", filepath.Join(autoconfBin, "autoconf"))
+			env = s.setEnvVar(env, "AUTOHEADER", filepath.Join(autoconfBin, "autoheader"))
+			env = s.setEnvVar(env, "AUTOMAKE", filepath.Join(autoconfBin, "automake"))
+			env = s.setEnvVar(env, "ACLOCAL", filepath.Join(autoconfBin, "aclocal"))
 		}
 		if err := util.RunCommand(ctx, sourceDir, env, "./buildconf", "--force"); err != nil {
 			return fmt.Errorf("buildconf failed: %w", err)

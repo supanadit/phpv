@@ -83,3 +83,37 @@ func (s *InstalledStorage) Exists(version domain.Version) (bool, error) {
 	}
 	return true, nil
 }
+
+func (s *InstalledStorage) Remove(version domain.Version) error {
+	versionDir := filepath.Join(s.root, "versions", version.String())
+
+	if _, err := os.Stat(versionDir); os.IsNotExist(err) {
+		return fmt.Errorf("PHP version %s is not installed", version.String())
+	}
+
+	if err := os.RemoveAll(versionDir); err != nil {
+		return fmt.Errorf("failed to remove PHP version %s: %w", version.String(), err)
+	}
+
+	return nil
+}
+
+func (s *InstalledStorage) RemoveDependencies(version domain.Version) error {
+	versionStr := version.String()
+
+	depsDir := filepath.Join(s.root, "dependencies", versionStr)
+	if _, err := os.Stat(depsDir); err == nil {
+		if err := os.RemoveAll(depsDir); err != nil {
+			return fmt.Errorf("failed to remove dependencies directory: %w", err)
+		}
+	}
+
+	depsSrcDir := filepath.Join(s.root, "dependencies-src", versionStr)
+	if _, err := os.Stat(depsSrcDir); err == nil {
+		if err := os.RemoveAll(depsSrcDir); err != nil {
+			return fmt.Errorf("failed to remove dependencies-src directory: %w", err)
+		}
+	}
+
+	return nil
+}

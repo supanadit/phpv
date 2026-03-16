@@ -327,16 +327,13 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 					if _, err := os.Stat(configurePath); err == nil {
 						fmt.Printf("configure already exists, skipping buildconf\n")
 					} else {
-						// Use autoconf 2.71 for regenerating configure (autoconf 2.13 is too old)
-						if err := s.ensureAutoconf271(ctx); err != nil {
-							return fmt.Errorf("failed to ensure autoconf 2.71: %w", err)
-						}
-						autoconf271Bin := filepath.Join(s.phpvRoot, "toolchains", "autoconf-2.71", "bin")
+						// Use per-version autoconf for regenerating configure
+						autoconfBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "autoconf"), "bin")
 						depsBin := s.getDependencyBinPath(phpVersion)
-						env = setOrReplaceEnv(env, "PATH", autoconf271Bin+":"+depsBin+":"+getEnvValue(env, "PATH"))
-						env = setOrReplaceEnv(env, "AUTOCONF", filepath.Join(autoconf271Bin, "autoconf"))
-						env = setOrReplaceEnv(env, "AUTOMAKE", filepath.Join(autoconf271Bin, "automake"))
-						env = setOrReplaceEnv(env, "ACLOCAL", filepath.Join(autoconf271Bin, "aclocal"))
+						env = setOrReplaceEnv(env, "PATH", autoconfBin+":"+depsBin+":"+getEnvValue(env, "PATH"))
+						env = setOrReplaceEnv(env, "AUTOCONF", filepath.Join(autoconfBin, "autoconf"))
+						env = setOrReplaceEnv(env, "AUTOMAKE", filepath.Join(autoconfBin, "automake"))
+						env = setOrReplaceEnv(env, "ACLOCAL", filepath.Join(autoconfBin, "aclocal"))
 						fmt.Printf("Running buildconf to regenerate configure script...\n")
 						if err := util.RunCommand(ctx, sourceDir, env, "./buildconf"); err != nil {
 							return fmt.Errorf("buildconf failed for %s: %w", dep.Name, err)
@@ -376,26 +373,18 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 					}
 				} else if _, err := os.Stat(buildconfPath); err == nil {
 					// Use buildconf for modern curl versions
-					// Use autoconf 2.71 for regenerating configure (autoconf 2.13 is too old)
-					fmt.Printf("[DEBUG] Calling ensureAutoconf271 for %s\n", dep.Name)
-					err = s.ensureAutoconf271(ctx)
-					fmt.Printf("[DEBUG] ensureAutoconf271 returned: %v\n", err)
-					if err != nil {
-						return fmt.Errorf("failed to ensure autoconf 2.71: %w", err)
-					}
-					autoconf271Bin := filepath.Join(s.phpvRoot, "toolchains", "autoconf-2.71", "bin")
-					env = setOrReplaceEnv(env, "PATH", autoconf271Bin+":"+getEnvValue(env, "PATH"))
-					env = setOrReplaceEnv(env, "AUTOCONF", filepath.Join(autoconf271Bin, "autoconf"))
-					env = setOrReplaceEnv(env, "AUTOMAKE", filepath.Join(autoconf271Bin, "automake"))
-					env = setOrReplaceEnv(env, "ACLOCAL", filepath.Join(autoconf271Bin, "aclocal"))
+					// Use per-version autoconf for regenerating configure
+					autoconfBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "autoconf"), "bin")
+					depsBin := s.getDependencyBinPath(phpVersion)
+					env = setOrReplaceEnv(env, "PATH", autoconfBin+":"+depsBin+":"+getEnvValue(env, "PATH"))
+					env = setOrReplaceEnv(env, "AUTOCONF", filepath.Join(autoconfBin, "autoconf"))
+					env = setOrReplaceEnv(env, "AUTOMAKE", filepath.Join(autoconfBin, "automake"))
+					env = setOrReplaceEnv(env, "ACLOCAL", filepath.Join(autoconfBin, "aclocal"))
 					fmt.Printf("Running buildconf to regenerate configure script...\n")
 					if err := util.RunCommand(ctx, sourceDir, env, "./buildconf"); err != nil {
 						return fmt.Errorf("buildconf failed for %s: %w", dep.Name, err)
 					}
 				} else if _, err := os.Stat(configureAcPath); err == nil {
-					if err := s.ensureAutoconf271(ctx); err != nil {
-						return fmt.Errorf("failed to ensure autoconf 2.71: %w", err)
-					}
 					autoreconfPath := s.getAutoreconfPath(phpVersion)
 					if autoreconfPath == "" {
 						return fmt.Errorf("autoreconf not available for %s", dep.Name)
@@ -610,14 +599,9 @@ func (s *Service) getCleanBaseEnv() []string {
 }
 
 func (s *Service) getAutoreconfPath(phpVersion domain.Version) string {
-	autoconf271Path := filepath.Join(s.phpvRoot, "toolchains", "autoconf-2.71", "bin", "autoreconf")
-	if _, err := os.Stat(autoconf271Path); err == nil {
-		return autoconf271Path
-	}
-
-	autoconf213Path := filepath.Join(s.GetDependencyInstallDir(phpVersion, "autoconf"), "bin", "autoreconf")
-	if _, err := os.Stat(autoconf213Path); err == nil {
-		return autoconf213Path
+	autoconfPath := filepath.Join(s.GetDependencyInstallDir(phpVersion, "autoconf"), "bin", "autoreconf")
+	if _, err := os.Stat(autoconfPath); err == nil {
+		return autoconfPath
 	}
 
 	return ""
@@ -633,60 +617,6 @@ func (s *Service) getDependencyBinPath(phpVersion domain.Version) string {
 		}
 	}
 	return strings.Join(bins, ":")
-}
-
-func (s *Service) ensureAutoconf271(ctx context.Context) error {
-	autoconf271Path := filepath.Join(s.phpvRoot, "toolchains", "autoconf-2.71", "bin", "autoconf")
-	if _, err := os.Stat(autoconf271Path); err == nil {
-		return nil
-	}
-
-	fmt.Printf("=== Building autoconf 2.71 for configure regeneration ===\n")
-
-	autoconfDir := filepath.Join(s.phpvRoot, "toolchains", "autoconf-2.71")
-	sourceDir := filepath.Join(s.phpvRoot, "dependencies-src", "autoconf-2.71")
-
-	downloadURL := "https://mirror.freedif.org/GNU/autoconf/autoconf-2.71.tar.xz"
-
-	if err := s.downloadAndExtract(ctx, downloadURL, sourceDir); err != nil {
-		return fmt.Errorf("failed to download autoconf 2.71: %w", err)
-	}
-
-	env := s.getCleanBaseEnv()
-
-	perlBin := filepath.Join(s.GetDependencyInstallDir(domain.Version{Major: 5, Minor: 6, Patch: 40}, "perl"), "bin")
-	if _, err := os.Stat(filepath.Join(perlBin, "perl")); err == nil {
-		env = setOrReplaceEnv(env, "PATH", perlBin+":"+getEnvValue(env, "PATH"))
-	}
-
-	configurePath := filepath.Join(sourceDir, "configure")
-	if _, err := os.Stat(configurePath); os.IsNotExist(err) {
-		bootstrapPath := filepath.Join(sourceDir, "bootstrap")
-		if _, err := os.Stat(bootstrapPath); err == nil {
-			fmt.Printf("Running bootstrap for autoconf 2.71...\n")
-			if err := util.RunCommand(ctx, sourceDir, env, "./bootstrap"); err != nil {
-				return fmt.Errorf("bootstrap failed for autoconf 2.71: %w", err)
-			}
-		}
-	}
-
-	fmt.Printf("Configuring autoconf 2.71...\n")
-	if err := util.RunCommand(ctx, sourceDir, env, configurePath, "--prefix="+autoconfDir); err != nil {
-		return fmt.Errorf("configure failed for autoconf 2.71: %w", err)
-	}
-
-	fmt.Printf("Compiling autoconf 2.71...\n")
-	if err := util.RunCommand(ctx, sourceDir, env, "make", "-j4"); err != nil {
-		return fmt.Errorf("make failed for autoconf 2.71: %w", err)
-	}
-
-	fmt.Printf("Installing autoconf 2.71...\n")
-	if err := util.RunCommand(ctx, sourceDir, env, "make", "install"); err != nil {
-		return fmt.Errorf("make install failed for autoconf 2.71: %w", err)
-	}
-
-	fmt.Printf("✓ autoconf 2.71 built successfully\n")
-	return nil
 }
 
 func (s *Service) applyCompilerEnv(env []string) []string {
@@ -1167,4 +1097,56 @@ func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
 	}
 
 	return env
+}
+
+func (s *Service) Clean(phpVersion domain.Version, depName string) error {
+	versionStr := fmt.Sprintf("%d.%d.%d", phpVersion.Major, phpVersion.Minor, phpVersion.Patch)
+
+	if depName == "" {
+		depsDir := filepath.Join(s.phpvRoot, "dependencies", versionStr)
+		if _, err := os.Stat(depsDir); err == nil {
+			if err := os.RemoveAll(depsDir); err != nil {
+				return fmt.Errorf("failed to remove dependencies directory: %w", err)
+			}
+			fmt.Printf("Removed dependencies directory: %s\n", depsDir)
+		}
+
+		depsSrcDir := filepath.Join(s.phpvRoot, "dependencies-src", versionStr)
+		if _, err := os.Stat(depsSrcDir); err == nil {
+			if err := os.RemoveAll(depsSrcDir); err != nil {
+				return fmt.Errorf("failed to remove dependencies-src directory: %w", err)
+			}
+			fmt.Printf("Removed dependencies-src directory: %s\n", depsSrcDir)
+		}
+
+		fmt.Printf("✓ Cleaned all dependencies for PHP %s\n", versionStr)
+		return nil
+	}
+
+	installDir := filepath.Join(s.phpvRoot, "dependencies", versionStr, depName)
+	if _, err := os.Stat(installDir); err == nil {
+		if err := os.RemoveAll(installDir); err != nil {
+			return fmt.Errorf("failed to remove dependency %s: %w", depName, err)
+		}
+		fmt.Printf("Removed: %s\n", installDir)
+	}
+
+	depsSrcDir := filepath.Join(s.phpvRoot, "dependencies-src", versionStr)
+	if _, err := os.Stat(depsSrcDir); err == nil {
+		entries, err := os.ReadDir(depsSrcDir)
+		if err == nil {
+			for _, entry := range entries {
+				if strings.HasPrefix(entry.Name(), depName+"-") {
+					srcPath := filepath.Join(depsSrcDir, entry.Name())
+					if err := os.RemoveAll(srcPath); err != nil {
+						return fmt.Errorf("failed to remove dependency source %s: %w", entry.Name(), err)
+					}
+					fmt.Printf("Removed: %s\n", srcPath)
+				}
+			}
+		}
+	}
+
+	fmt.Printf("✓ Cleaned dependency '%s' for PHP %s\n", depName, versionStr)
+	return nil
 }

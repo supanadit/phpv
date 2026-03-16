@@ -1096,6 +1096,26 @@ func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
 		env = setOrReplaceEnv(env, "PATH", libtoolBin+":"+getEnvValue(env, "PATH"))
 	}
 
+	// Add m4 to PATH if available (bison depends on it)
+	m4Bin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "m4"), "bin")
+	if _, err := os.Stat(filepath.Join(m4Bin, "m4")); err == nil {
+		env = setOrReplaceEnv(env, "PATH", m4Bin+":"+getEnvValue(env, "PATH"))
+	}
+
+	// For PHP 5+, add bison and flex to PATH for parser regeneration
+	// For PHP 4.x, skip these to use pre-generated scanner files
+	if phpVersion.Major >= 5 {
+		bisonBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "bison"), "bin")
+		if _, err := os.Stat(filepath.Join(bisonBin, "bison")); err == nil {
+			env = setOrReplaceEnv(env, "PATH", bisonBin+":"+getEnvValue(env, "PATH"))
+		}
+
+		flexBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "flex"), "bin")
+		if _, err := os.Stat(filepath.Join(flexBin, "flex")); err == nil {
+			env = setOrReplaceEnv(env, "PATH", flexBin+":"+getEnvValue(env, "PATH"))
+		}
+	}
+
 	if os.Getenv("PHPV_DEBUG") == "1" {
 		fmt.Printf("[DEBUG] PHP environment:\n")
 		for _, e := range env {

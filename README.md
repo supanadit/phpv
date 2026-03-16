@@ -13,7 +13,7 @@
 curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bash
 
 # Specific Version
-# curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | INSTALL_VERSION=0.1.1 bash
+# curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | INSTALL_VERSION=0.1.2 bash
 
 # Restart shell or source config
 source ~/.zshrc  # or ~/.bashrc
@@ -145,36 +145,6 @@ The architecture is intentionally layered, following clean/hexagonal architectur
 | **PECL extensions**                                         | _[Planned]_ Per-version extension management with automatic dependency resolution               |
 
 ---
-
-## Installation
-
-### Quick Install (Recommended)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bash
-```
-
-This will:
-
-- Download the latest PHPV binary to `~/.phpv/bin/phpv`
-- Create shims for PHP commands (`php`, `php-cgi`, `phpize`, etc.)
-- Add shell integration to your `~/.bashrc` or `~/.zshrc`
-
-To install a specific version:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | INSTALL_VERSION=0.1.1 bash
-```
-
-### From Source
-
-```bash
-git clone https://github.com/supanadit/phpv.git
-cd phpv
-go install ./app/phpv.go
-```
-
-**Requirements:** Go 1.21+, LLVM (auto-downloaded), standard build tools
 
 ### First Steps
 

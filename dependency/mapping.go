@@ -227,20 +227,20 @@ func inRange(version, min, max string) bool {
 }
 
 type PHPVersionConfig struct {
-	Perl       string
-	M4         string
-	Autoconf   string
-	Automake   string
-	Libtool    string
-	Re2c       string
-	Flex       string
-	Bison      string
-	Zlib       string
-	Libxml2    string
+	Perl       domain.DependencyVersionSpec
+	M4         domain.DependencyVersionSpec
+	Autoconf   domain.DependencyVersionSpec
+	Automake   domain.DependencyVersionSpec
+	Libtool    domain.DependencyVersionSpec
+	Re2c       domain.DependencyVersionSpec
+	Flex       domain.DependencyVersionSpec
+	Bison      domain.DependencyVersionSpec
+	Zlib       domain.DependencyVersionSpec
+	Libxml2    domain.DependencyVersionSpec
 	Libxml2Dir string
-	OpenSSL    string
-	Curl       string
-	Oniguruma  string
+	OpenSSL    domain.DependencyVersionSpec
+	Curl       domain.DependencyVersionSpec
+	Oniguruma  domain.DependencyVersionSpec
 
 	PerlOverride      *DependencyPattern
 	M4Override        *DependencyPattern
@@ -257,142 +257,337 @@ type PHPVersionConfig struct {
 	OnigurumaOverride *DependencyPattern
 }
 
+func parseDepSpec(constraint string, optional bool) domain.DependencyVersionSpec {
+	spec := domain.DependencyVersionSpec{
+		ConstraintStr: constraint,
+		Optional:      optional,
+	}
+	c, err := domain.ParseConstraint(constraint)
+	if err != nil {
+		spec.Constraint = &domain.DependencyConstraint{
+			Optional: optional,
+		}
+	} else {
+		c.Optional = optional
+		spec.Constraint = c
+	}
+	return spec
+}
+
 var versionRegistry = map[string]PHPVersionConfig{
 	"8.3": {
-		Perl: "5.38.2", M4: "1.4.19", Autoconf: "2.72", Automake: "1.17",
-		Libtool: "2.5.4", Re2c: "3.1", Zlib: "1.3.1",
-		Libxml2: "2.12.7", Libxml2Dir: "2.12",
-		OpenSSL: "3.3.2", Curl: "8.10.1", Oniguruma: "6.9.9",
+		Perl:       parseDepSpec("5.38.2", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.72", false),
+		Automake:   parseDepSpec("1.17", false),
+		Libtool:    parseDepSpec("2.5.4", false),
+		Re2c:       parseDepSpec("3.1", false),
+		Zlib:       parseDepSpec("1.3.1", false),
+		Libxml2:    parseDepSpec("2.12.7|~2.12.0", false),
+		Libxml2Dir: "2.12",
+		OpenSSL:    parseDepSpec("3.3.2", false),
+		Curl:       parseDepSpec("8.10.1|>=8.0.0", false),
+		Oniguruma:  parseDepSpec("6.9.9|~6.9.0", false),
 	},
 	"8.2": {
-		Perl: "5.36.0", M4: "1.4.19", Autoconf: "2.71", Automake: "1.16.5",
-		Libtool: "2.4.7", Re2c: "2.2", Zlib: "1.3.1",
-		Libxml2: "2.11.7", Libxml2Dir: "2.11",
-		OpenSSL: "3.0.14", Curl: "8.10.1", Oniguruma: "6.9.9",
+		Perl:       parseDepSpec("5.36.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.71", false),
+		Automake:   parseDepSpec("1.16.5", false),
+		Libtool:    parseDepSpec("2.4.7", false),
+		Re2c:       parseDepSpec("2.2", false),
+		Zlib:       parseDepSpec("1.3.1", false),
+		Libxml2:    parseDepSpec("2.11.7|~2.11.0", false),
+		Libxml2Dir: "2.11",
+		OpenSSL:    parseDepSpec("3.0.14|>=3.0.0,<3.1.0", false),
+		Curl:       parseDepSpec("8.10.1|>=8.0.0", false),
+		Oniguruma:  parseDepSpec("6.9.9|~6.9.0", false),
 	},
 	"8.1": {
-		Perl: "5.36.0", M4: "1.4.19", Autoconf: "2.71", Automake: "1.16.5",
-		Libtool: "2.4.7", Re2c: "2.2", Zlib: "1.3.1",
-		Libxml2: "2.11.7", Libxml2Dir: "2.11",
-		OpenSSL: "3.0.14", Curl: "8.10.1", Oniguruma: "6.9.9",
+		Perl:       parseDepSpec("5.36.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.71", false),
+		Automake:   parseDepSpec("1.16.5", false),
+		Libtool:    parseDepSpec("2.4.7", false),
+		Re2c:       parseDepSpec("2.2", false),
+		Zlib:       parseDepSpec("1.3.1", false),
+		Libxml2:    parseDepSpec("2.11.7|~2.11.0", false),
+		Libxml2Dir: "2.11",
+		OpenSSL:    parseDepSpec("3.0.14|>=3.0.0,<3.1.0", false),
+		Curl:       parseDepSpec("8.10.1|>=8.0.0", false),
+		Oniguruma:  parseDepSpec("6.9.9|~6.9.0", false),
 	},
 	"8.0": {
-		Perl: "5.36.0", M4: "1.4.19", Autoconf: "2.71", Automake: "1.16.5",
-		Libtool: "2.4.7", Re2c: "2.2", Zlib: "1.3.1",
-		Libxml2: "2.11.7", Libxml2Dir: "2.11",
-		OpenSSL: "3.0.14", Curl: "8.10.1", Oniguruma: "6.9.9",
+		Perl:       parseDepSpec("5.36.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.71", false),
+		Automake:   parseDepSpec("1.16.5", false),
+		Libtool:    parseDepSpec("2.4.7", false),
+		Re2c:       parseDepSpec("2.2", false),
+		Zlib:       parseDepSpec("1.3.1", false),
+		Libxml2:    parseDepSpec("2.11.7|~2.11.0", false),
+		Libxml2Dir: "2.11",
+		OpenSSL:    parseDepSpec("3.0.14|>=3.0.0,<3.1.0", false),
+		Curl:       parseDepSpec("8.10.1|>=8.0.0", false),
+		Oniguruma:  parseDepSpec("6.9.9|~6.9.0", false),
 	},
 	"7.4": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.69", Automake: "1.15.1",
-		Libtool: "2.4.6", Re2c: "1.3", Zlib: "1.2.13",
-		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "1.1.1w", Curl: "7.88.1", Oniguruma: "6.9.8",
+		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.69", false),
+		Automake:   parseDepSpec("1.15.1", false),
+		Libtool:    parseDepSpec("2.4.6", false),
+		Re2c:       parseDepSpec("1.3", false),
+		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
+		Libxml2Dir: "2.9",
+		OpenSSL:    parseDepSpec("1.1.1w|>=1.1.0,<1.2.0", false),
+		Curl:       parseDepSpec("7.88.1|>=7.80.0", false),
+		Oniguruma:  parseDepSpec("6.9.8|~6.9.0", false),
 	},
 	"7.3": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.69", Automake: "1.15.1",
-		Libtool: "2.4.6", Re2c: "1.3", Zlib: "1.2.13",
-		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "1.1.1w", Curl: "7.88.1", Oniguruma: "6.9.8",
+		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.69", false),
+		Automake:   parseDepSpec("1.15.1", false),
+		Libtool:    parseDepSpec("2.4.6", false),
+		Re2c:       parseDepSpec("1.3", false),
+		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
+		Libxml2Dir: "2.9",
+		OpenSSL:    parseDepSpec("1.1.1w|>=1.1.0,<1.2.0", false),
+		Curl:       parseDepSpec("7.88.1|>=7.80.0", false),
+		Oniguruma:  parseDepSpec("6.9.8|~6.9.0", false),
 	},
 	"7.2": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.69", Automake: "1.15.1",
-		Libtool: "2.4.6", Re2c: "1.3", Zlib: "1.2.13",
-		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "1.1.1w", Curl: "7.88.1", Oniguruma: "6.9.8",
+		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.69", false),
+		Automake:   parseDepSpec("1.15.1", false),
+		Libtool:    parseDepSpec("2.4.6", false),
+		Re2c:       parseDepSpec("1.3", false),
+		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
+		Libxml2Dir: "2.9",
+		OpenSSL:    parseDepSpec("1.1.1w|>=1.1.0,<1.2.0", false),
+		Curl:       parseDepSpec("7.88.1|>=7.80.0", false),
+		Oniguruma:  parseDepSpec("6.9.8|~6.9.0", false),
 	},
 	"7.1": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.69", Automake: "1.15.1",
-		Libtool: "2.4.6", Re2c: "1.3", Zlib: "1.2.13",
-		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "1.1.1w", Curl: "7.88.1", Oniguruma: "6.9.8",
+		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.69", false),
+		Automake:   parseDepSpec("1.15.1", false),
+		Libtool:    parseDepSpec("2.4.6", false),
+		Re2c:       parseDepSpec("1.3", false),
+		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
+		Libxml2Dir: "2.9",
+		OpenSSL:    parseDepSpec("1.1.1w|>=1.1.0,<1.2.0", false),
+		Curl:       parseDepSpec("7.88.1|>=7.80.0", false),
+		Oniguruma:  parseDepSpec("6.9.8|~6.9.0", false),
 	},
 	"7.0": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.69", Automake: "1.15.1",
-		Libtool: "2.4.6", Re2c: "1.3", Zlib: "1.2.13",
-		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "1.1.1w", Curl: "7.88.1", Oniguruma: "6.9.8",
+		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.69", false),
+		Automake:   parseDepSpec("1.15.1", false),
+		Libtool:    parseDepSpec("2.4.6", false),
+		Re2c:       parseDepSpec("1.3", false),
+		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
+		Libxml2Dir: "2.9",
+		OpenSSL:    parseDepSpec("1.1.1w|>=1.1.0,<1.2.0", false),
+		Curl:       parseDepSpec("7.88.1|>=7.80.0", false),
+		Oniguruma:  parseDepSpec("6.9.8|~6.9.0", false),
 	},
 	"5.6": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.59", Automake: "1.9.6",
-		Libtool: "1.5.26", Re2c: "0.16", Zlib: "1.3.1",
-		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "1.0.1u", Curl: "7.20.0", Oniguruma: "5.9.6",
+		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.59", false),
+		Automake:   parseDepSpec("1.9.6", false),
+		Libtool:    parseDepSpec("1.5.26", false),
+		Re2c:       parseDepSpec("0.16", false),
+		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
+		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
+		Libxml2Dir: "2.9",
+		OpenSSL:    parseDepSpec("1.0.1u|>=1.0.0,<1.1.0", false),
+		Curl:       parseDepSpec("7.20.0|>=7.20.0,<7.21.0", false),
+		Oniguruma:  parseDepSpec("5.9.6|~5.9.0", false),
 	},
 	"5.5": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.59", Automake: "1.9.6",
-		Libtool: "1.5.26", Re2c: "0.16", Zlib: "1.3.1",
-		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "1.0.1u", Curl: "7.20.0", Oniguruma: "5.9.6",
+		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.59", false),
+		Automake:   parseDepSpec("1.9.6", false),
+		Libtool:    parseDepSpec("1.5.26", false),
+		Re2c:       parseDepSpec("0.16", false),
+		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
+		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
+		Libxml2Dir: "2.9",
+		OpenSSL:    parseDepSpec("1.0.1u|>=1.0.0,<1.1.0", false),
+		Curl:       parseDepSpec("7.20.0|>=7.20.0,<7.21.0", false),
+		Oniguruma:  parseDepSpec("5.9.6|~5.9.0", false),
 	},
 	"5.4": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.59", Automake: "1.9.6",
-		Libtool: "1.5.26", Re2c: "0.16", Flex: "", Bison: "",
-		Zlib:    "1.3.1",
-		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "1.0.1u", Curl: "7.20.0", Oniguruma: "5.9.6",
+		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.59", false),
+		Automake:   parseDepSpec("1.9.6", false),
+		Libtool:    parseDepSpec("1.5.26", false),
+		Re2c:       parseDepSpec("0.16", false),
+		Flex:       parseDepSpec("", true),
+		Bison:      parseDepSpec("", true),
+		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
+		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
+		Libxml2Dir: "2.9",
+		OpenSSL:    parseDepSpec("1.0.1u|>=1.0.0,<1.1.0", false),
+		Curl:       parseDepSpec("7.20.0|>=7.20.0,<7.21.0", false),
+		Oniguruma:  parseDepSpec("5.9.6|~5.9.0", false),
 	},
 	"5.3": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.59", Automake: "1.9.6",
-		Libtool: "1.5.26", Re2c: "0.16", Flex: "2.5.39", Bison: "1.28",
-		Zlib:    "1.3.1",
-		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "1.0.1u", Curl: "7.20.0", Oniguruma: "5.9.6",
+		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.59", false),
+		Automake:   parseDepSpec("1.9.6", false),
+		Libtool:    parseDepSpec("1.5.26", false),
+		Re2c:       parseDepSpec("0.16", false),
+		Flex:       parseDepSpec("2.5.39", false),
+		Bison:      parseDepSpec("1.28", false),
+		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
+		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
+		Libxml2Dir: "2.9",
+		OpenSSL:    parseDepSpec("1.0.1u|>=1.0.0,<1.1.0", false),
+		Curl:       parseDepSpec("7.20.0|>=7.20.0,<7.21.0", false),
+		Oniguruma:  parseDepSpec("5.9.6|~5.9.0", false),
 	},
 	"5.2": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.59", Automake: "1.9.6",
-		Libtool: "1.5.26", Re2c: "0.16", Flex: "2.5.39", Bison: "1.28",
-		Zlib:    "1.3.1",
-		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "1.0.1u", Curl: "7.20.0", Oniguruma: "5.9.6",
+		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.59", false),
+		Automake:   parseDepSpec("1.9.6", false),
+		Libtool:    parseDepSpec("1.5.26", false),
+		Re2c:       parseDepSpec("0.16", false),
+		Flex:       parseDepSpec("2.5.39", false),
+		Bison:      parseDepSpec("1.28", false),
+		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
+		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
+		Libxml2Dir: "2.9",
+		OpenSSL:    parseDepSpec("1.0.1u|>=1.0.0,<1.1.0", false),
+		Curl:       parseDepSpec("7.20.0|>=7.20.0,<7.21.0", false),
+		Oniguruma:  parseDepSpec("5.9.6|~5.9.0", false),
 	},
 	"5.1": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.59", Automake: "1.9.6",
-		Libtool: "1.5.26", Re2c: "0.16", Flex: "2.5.39", Bison: "1.28",
-		Zlib:    "1.3.1",
-		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "1.0.1u", Curl: "7.12.1", Oniguruma: "5.9.6",
+		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.59", false),
+		Automake:   parseDepSpec("1.9.6", false),
+		Libtool:    parseDepSpec("1.5.26", false),
+		Re2c:       parseDepSpec("0.16", false),
+		Flex:       parseDepSpec("2.5.39", false),
+		Bison:      parseDepSpec("1.28", false),
+		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
+		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
+		Libxml2Dir: "2.9",
+		OpenSSL:    parseDepSpec("1.0.1u|>=1.0.0,<1.1.0", false),
+		Curl:       parseDepSpec("7.12.1|>=7.12.0,<7.13.0", false),
+		Oniguruma:  parseDepSpec("5.9.6|~5.9.0", false),
 	},
 	"5.0": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.59", Automake: "1.9.6",
-		Libtool: "1.5.26", Re2c: "0.14", Flex: "2.5.39", Bison: "1.28",
-		Zlib:    "1.2.13",
-		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "0.9.8zh", Curl: "7.12.0", Oniguruma: "5.9.6",
+		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.59", false),
+		Automake:   parseDepSpec("1.9.6", false),
+		Libtool:    parseDepSpec("1.5.26", false),
+		Re2c:       parseDepSpec("0.14", false),
+		Flex:       parseDepSpec("2.5.39", false),
+		Bison:      parseDepSpec("1.28", false),
+		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
+		Libxml2Dir: "2.9",
+		OpenSSL:    parseDepSpec("0.9.8zh|>=0.9.8,<1.0.0", false),
+		Curl:       parseDepSpec("7.12.0|>=7.12.0,<7.13.0", false),
+		Oniguruma:  parseDepSpec("5.9.6|~5.9.0", false),
 	},
 	"4.4": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
-		Libtool: "1.5.26", Re2c: "0.14", Flex: "", Bison: "",
-		Zlib:    "1.2.13",
-		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "1.0.1u", Curl: "7.88.1", Oniguruma: "5.9.6",
+		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.13", false),
+		Automake:   parseDepSpec("1.4-p6", false),
+		Libtool:    parseDepSpec("1.5.26", false),
+		Re2c:       parseDepSpec("0.14", false),
+		Flex:       parseDepSpec("", true),
+		Bison:      parseDepSpec("", true),
+		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
+		Libxml2Dir: "2.9",
+		OpenSSL:    parseDepSpec("1.0.1u|>=1.0.0,<1.1.0", false),
+		Curl:       parseDepSpec("7.88.1|>=7.80.0", false),
+		Oniguruma:  parseDepSpec("5.9.6|~5.9.0", false),
 	},
 	"4.3": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
-		Libtool: "1.5.26", Re2c: "0.14", Flex: "", Bison: "",
-		Zlib:    "1.2.13",
-		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "0.9.8zh", Curl: "7.12.0", Oniguruma: "5.9.6",
+		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.13", false),
+		Automake:   parseDepSpec("1.4-p6", false),
+		Libtool:    parseDepSpec("1.5.26", false),
+		Re2c:       parseDepSpec("0.14", false),
+		Flex:       parseDepSpec("", true),
+		Bison:      parseDepSpec("", true),
+		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
+		Libxml2Dir: "2.9",
+		OpenSSL:    parseDepSpec("0.9.8zh|>=0.9.8,<1.0.0", false),
+		Curl:       parseDepSpec("7.12.0|>=7.12.0,<7.13.0", false),
+		Oniguruma:  parseDepSpec("5.9.6|~5.9.0", false),
 	},
 	"4.2": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
-		Libtool: "1.5.26", Re2c: "0.14", Flex: "", Bison: "",
-		Zlib:    "1.2.13",
-		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "0.9.8zh", Curl: "7.12.0", Oniguruma: "5.9.6",
+		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.13", false),
+		Automake:   parseDepSpec("1.4-p6", false),
+		Libtool:    parseDepSpec("1.5.26", false),
+		Re2c:       parseDepSpec("0.14", false),
+		Flex:       parseDepSpec("", true),
+		Bison:      parseDepSpec("", true),
+		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
+		Libxml2Dir: "2.9",
+		OpenSSL:    parseDepSpec("0.9.8zh|>=0.9.8,<1.0.0", false),
+		Curl:       parseDepSpec("7.12.0|>=7.12.0,<7.13.0", false),
+		Oniguruma:  parseDepSpec("5.9.6|~5.9.0", false),
 	},
 	"4.1": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
-		Libtool: "1.5.26", Re2c: "0.14", Flex: "", Bison: "",
-		Zlib:    "1.2.13",
-		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "0.9.8zh", Curl: "7.12.0", Oniguruma: "5.9.6",
+		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.13", false),
+		Automake:   parseDepSpec("1.4-p6", false),
+		Libtool:    parseDepSpec("1.5.26", false),
+		Re2c:       parseDepSpec("0.14", false),
+		Flex:       parseDepSpec("", true),
+		Bison:      parseDepSpec("", true),
+		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
+		Libxml2Dir: "2.9",
+		OpenSSL:    parseDepSpec("0.9.8zh|>=0.9.8,<1.0.0", false),
+		Curl:       parseDepSpec("7.12.0|>=7.12.0,<7.13.0", false),
+		Oniguruma:  parseDepSpec("5.9.6|~5.9.0", false),
 	},
 	"4.0": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
-		Libtool: "1.5.26", Re2c: "0.14", Flex: "", Bison: "",
-		Zlib:    "1.2.13",
-		Libxml2: "2.9.14", Libxml2Dir: "2.9",
-		OpenSSL: "0.9.8zh", Curl: "7.12.0", Oniguruma: "5.9.6",
+		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:         parseDepSpec("1.4.19", false),
+		Autoconf:   parseDepSpec("2.13", false),
+		Automake:   parseDepSpec("1.4-p6", false),
+		Libtool:    parseDepSpec("1.5.26", false),
+		Re2c:       parseDepSpec("0.14", false),
+		Flex:       parseDepSpec("", true),
+		Bison:      parseDepSpec("", true),
+		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
+		Libxml2Dir: "2.9",
+		OpenSSL:    parseDepSpec("0.9.8zh|>=0.9.8,<1.0.0", false),
+		Curl:       parseDepSpec("7.12.0|>=7.12.0,<7.13.0", false),
+		Oniguruma:  parseDepSpec("5.9.6|~5.9.0", false),
 	},
 }
 
@@ -503,7 +698,7 @@ func newCMakeDependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newPerlDependency(config PHPVersionConfig) domain.Dependency {
-	version := config.Perl
+	version := config.Perl.GetRecommended()
 	urlConfig := urlConfigs["perl"]
 	override := config.PerlOverride
 
@@ -523,7 +718,7 @@ func newPerlDependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newM4Dependency(config PHPVersionConfig) domain.Dependency {
-	version := config.M4
+	version := config.M4.GetRecommended()
 	urlConfig := urlConfigs["m4"]
 	override := config.M4Override
 
@@ -539,7 +734,7 @@ func newM4Dependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newAutoconfDependency(config PHPVersionConfig) domain.Dependency {
-	version := config.Autoconf
+	version := config.Autoconf.GetRecommended()
 	urlConfig := urlConfigs["autoconf"]
 	override := config.AutoconfOverride
 
@@ -556,7 +751,7 @@ func newAutoconfDependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newAutomakeDependency(config PHPVersionConfig) domain.Dependency {
-	version := config.Automake
+	version := config.Automake.GetRecommended()
 	urlConfig := urlConfigs["automake"]
 	override := config.AutomakeOverride
 
@@ -573,7 +768,7 @@ func newAutomakeDependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newLibtoolDependency(config PHPVersionConfig) domain.Dependency {
-	version := config.Libtool
+	version := config.Libtool.GetRecommended()
 	urlConfig := urlConfigs["libtool"]
 	override := config.LibtoolOverride
 
@@ -590,10 +785,10 @@ func newLibtoolDependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newFlexDependency(config PHPVersionConfig) domain.Dependency {
-	version := config.Flex
-	if version == "" {
+	if config.Flex.IsOptional() && config.Flex.ConstraintStr == "" {
 		return domain.Dependency{}
 	}
+	version := config.Flex.GetRecommended()
 	urlConfig := urlConfigs["flex"]
 	override := config.FlexOverride
 
@@ -610,10 +805,10 @@ func newFlexDependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newBisonDependency(config PHPVersionConfig) domain.Dependency {
-	version := config.Bison
-	if version == "" {
+	if config.Bison.IsOptional() && config.Bison.ConstraintStr == "" {
 		return domain.Dependency{}
 	}
+	version := config.Bison.GetRecommended()
 	urlConfig := urlConfigs["bison"]
 	override := config.BisonOverride
 
@@ -630,7 +825,7 @@ func newBisonDependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newRe2cDependency(config PHPVersionConfig) domain.Dependency {
-	version := config.Re2c
+	version := config.Re2c.GetRecommended()
 	urlConfig := urlConfigs["re2c"]
 	override := config.Re2cOverride
 
@@ -647,7 +842,7 @@ func newRe2cDependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newZlibDependency(config PHPVersionConfig) domain.Dependency {
-	version := config.Zlib
+	version := config.Zlib.GetRecommended()
 	urlConfig := urlConfigs["zlib"]
 	override := config.ZlibOverride
 
@@ -666,7 +861,7 @@ func newZlibDependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newLibxml2Dependency(config PHPVersionConfig) domain.Dependency {
-	version := config.Libxml2
+	version := config.Libxml2.GetRecommended()
 	dirVersion := config.Libxml2Dir
 	urlConfig := urlConfigs["libxml2"]
 	override := config.Libxml2Override
@@ -695,7 +890,7 @@ func newLibxml2Dependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newOpenSSLDependency(config PHPVersionConfig) domain.Dependency {
-	version := config.OpenSSL
+	version := config.OpenSSL.GetRecommended()
 	urlConfig := urlConfigs["openssl"]
 	override := config.OpenSSLEverride
 
@@ -713,7 +908,7 @@ func newOpenSSLDependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newCurlDependency(config PHPVersionConfig) domain.Dependency {
-	version := config.Curl
+	version := config.Curl.GetRecommended()
 	urlConfig := urlConfigs["curl"]
 	override := config.CurlOverride
 
@@ -743,7 +938,7 @@ func newCurlDependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newOnigurumaDependency(config PHPVersionConfig) domain.Dependency {
-	version := config.Oniguruma
+	version := config.Oniguruma.GetRecommended()
 	urlConfig := urlConfigs["oniguruma"]
 	override := config.OnigurumaOverride
 

@@ -68,14 +68,6 @@ func (s *Service) IsDependencyBuilt(phpVersion domain.Version, dep domain.Depend
 		return s.toolchainService.IsLLVMInstalled(dep.Version)
 	}
 
-	// For PHP 4.x and PHP 5.0-5.2, use prebuilt flex if available
-	if dep.Name == "flex" {
-		flexPath := "/usr/bin/flex"
-		if info, err := os.Stat(flexPath); err == nil && !info.IsDir() {
-			return true
-		}
-	}
-
 	installDir := s.GetDependencyInstallDir(phpVersion, dep.Name)
 
 	// Special checks for tool dependencies that install binaries, not libraries
@@ -98,34 +90,6 @@ func (s *Service) IsDependencyBuilt(phpVersion domain.Version, dep domain.Depend
 		return err == nil && len(entries) > 0
 	}
 	return false
-}
-
-// isSystemFlexAvailable checks if flex is available in the system PATH
-func (s *Service) isSystemFlexAvailable() bool {
-	flexPath, err := exec.LookPath("flex")
-	if err != nil {
-		return false
-	}
-	// Verify it's a valid executable
-	info, err := os.Stat(flexPath)
-	return err == nil && !info.IsDir()
-}
-
-// getFlexPrebuilt returns a prebuilt flex binary URL for legacy PHP versions
-// that cannot compile flex from source with modern compilers
-func (s *Service) getFlexPrebuilt(phpVersion domain.Version) string {
-	// Only use prebuilt flex for PHP 4.x and PHP 5.0-5.2
-	if phpVersion.Major > 5 || (phpVersion.Major == 5 && phpVersion.Minor > 2) {
-		return ""
-	}
-
-	// Check if we have a prebuilt flex binary
-	flexPath := "/usr/bin/flex"
-	if info, err := os.Stat(flexPath); err == nil && !info.IsDir() {
-		return flexPath
-	}
-
-	return ""
 }
 
 // BuildDependencies builds all dependencies for a PHP version
@@ -170,16 +134,6 @@ func (s *Service) buildDependencyWithDeps(ctx context.Context, phpVersion domain
 	// Skip if already built
 	if built[dep.Name] {
 		return nil
-	}
-
-	// For PHP 4.x and PHP 5.0-5.2, use prebuilt flex if available
-	if dep.Name == "flex" {
-		flexPrebuilt := s.getFlexPrebuilt(phpVersion)
-		if flexPrebuilt != "" {
-			fmt.Printf("→ using prebuilt flex from: %s\n", flexPrebuilt)
-			built[dep.Name] = true
-			return nil
-		}
 	}
 
 	// Check if already installed
@@ -1048,20 +1002,26 @@ func (s *Service) GetPHPConfigureFlags(phpVersion domain.Version) []string {
 
 		depDir := filepath.Join(depsDir, dep.Name)
 
-		// Add specific flags for each dependency
+		// PHP 4.x has different flag names
+		isPHP4 := phpVersion.Major == 4
 		// PHP 7.0-7.3 uses different flag names than PHP 7.4+ and PHP 8.x
 		isPHP7Old := phpVersion.Major == 7 && phpVersion.Minor < 4
 
 		switch dep.Name {
 		case "libxml2":
-			if isPHP7Old {
-				// PHP 7.0-7.3 uses --with-libxml-dir
+			if isPHP4 || isPHP7Old {
+				// PHP 4 and PHP 7.0-7.3 uses --with-libxml-dir
 				flags = append(flags, fmt.Sprintf("--with-libxml-dir=%s", depDir))
 			} else {
 				// PHP 7.4+ and PHP 8.x use --with-libxml
 				flags = append(flags, fmt.Sprintf("--with-libxml=%s", depDir))
 			}
 		case "openssl":
+			// PHP 4's OpenSSL extension is incompatible with modern OpenSSL
+			// Skip adding OpenSSL support for PHP 4
+			if isPHP4 {
+				continue
+			}
 			if isPHP7Old {
 				// PHP 7.0-7.3 uses --with-openssl-dir
 				flags = append(flags, fmt.Sprintf("--with-openssl-dir=%s", depDir))
@@ -1073,15 +1033,15 @@ func (s *Service) GetPHPConfigureFlags(phpVersion domain.Version) []string {
 			// All versions use --with-curl
 			flags = append(flags, fmt.Sprintf("--with-curl=%s", depDir))
 		case "zlib":
-			if isPHP7Old {
-				// PHP 7.0-7.3 uses --with-zlib-dir
+			if isPHP4 || isPHP7Old {
+				// PHP 4 and PHP 7.0-7.3 uses --with-zlib-dir
 				flags = append(flags, fmt.Sprintf("--with-zlib-dir=%s", depDir))
 			} else {
 				// PHP 7.4+ and PHP 8.x use --with-zlib
 				flags = append(flags, fmt.Sprintf("--with-zlib=%s", depDir))
 			}
 		case "oniguruma":
-			// All versions use --with-onig
+			// PHP 4 uses --with-onig, PHP 5+ uses --with-onig
 			flags = append(flags, fmt.Sprintf("--with-onig=%s", depDir))
 		}
 	}

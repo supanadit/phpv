@@ -187,8 +187,9 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 		configureArgs = append(configureArgs, "--enable-pcre")
 		configureArgs = append(configureArgs, "--enable-ftp")
 		configureArgs = append(configureArgs, "--enable-zlib")
-		configureArgs = append(configureArgs, "--with-openssl")
 		configureArgs = append(configureArgs, "--with-curl")
+		// Note: OpenSSL is skipped because PHP 4's OpenSSL extension is
+		// incompatible with modern OpenSSL versions
 	}
 
 	// Add dependency-specific configure flags

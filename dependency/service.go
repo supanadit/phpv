@@ -1393,6 +1393,10 @@ func (s *Service) getSystemDepConfigureFlag(depName string, phpVersion domain.Ve
 	case "curl":
 		return []string{"--with-curl"}
 	case "oniguruma":
+		// PHP 8.5+ removed the --with-oniguruma option (built-in)
+		if phpVersion.Major >= 8 && phpVersion.Minor >= 5 {
+			return []string{}
+		}
 		if isPHP8Plus {
 			return []string{"--with-oniguruma"}
 		}
@@ -1446,8 +1450,40 @@ func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
 			continue
 		}
 
-		// Skip system deps - they don't need user-space paths
+		// For system dependencies, add system pkg-config path
 		if useSystemDeps && s.isSystemDependencyAvailable(dep.Name) {
+			// Get system library path via pkg-config
+			libPath, incPath, _, found := s.GetSystemDependencyPath(dep.Name)
+			if found {
+				// Add system pkg-config path
+				pkgConfigPath = append(pkgConfigPath, "/usr/lib/pkgconfig", "/usr/local/lib/pkgconfig")
+				// Add system library path
+				if libPath != "" {
+					// Extract just the -L path from pkg-config output
+					if !strings.Contains(libPath, "/") {
+						// It's just -L without path, use default
+						ldflags = append(ldflags, "-L/usr/lib", "-L/usr/local/lib")
+					}
+				}
+				// Add system include path
+				if incPath != "" {
+					cppflags = append(cppflags, fmt.Sprintf("-I%s", incPath))
+				} else {
+					// Use default include paths
+					switch dep.Name {
+					case "libxml2":
+						cppflags = append(cppflags, "-I/usr/include/libxml2")
+					case "openssl":
+						cppflags = append(cppflags, "-I/usr/include/openssl")
+					case "curl":
+						cppflags = append(cppflags, "-I/usr/include")
+					case "zlib":
+						cppflags = append(cppflags, "-I/usr/include")
+					case "oniguruma":
+						cppflags = append(cppflags, "-I/usr/include")
+					}
+				}
+			}
 			continue
 		}
 

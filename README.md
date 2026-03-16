@@ -143,6 +143,7 @@ PHPV is already functional for core version management. But this is just the beg
 
 - [x] Install PHP from source (8.0+ fully supported)
 - [x] Multi-compiler support (LLVM, GCC, custom toolchains)
+- [x] Smart compiling strategy, use system GCC by default and fallback to LLVM if necessary
 - [x] Automatic dependency resolution
 - [x] Version-specific LLVM toolchains
 - [x] User-space installation (no root)
@@ -152,6 +153,7 @@ PHPV is already functional for core version management. But this is just the beg
 
 **🛠️ In Progress:**
 
+- [ ] Compaction build size to reduce and delete unecessary file
 - [ ] PECL extension management
 - [ ] [PIE](https://github.com/php/pie) support out of the box
 - [ ] PHP-FPM and web server integration

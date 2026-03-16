@@ -372,3 +372,80 @@ func (s *Service) setEnvVar(env []string, key, value string) []string {
 	}
 	return append(env, prefix+value)
 }
+
+// cleanSourceDir removes old build artifacts from the source directory
+// This ensures a clean build when switching between different configurations
+func (s *Service) cleanSourceDir(sourceDir string) error {
+	// Try to run make clean first to remove build artifacts
+	cleanMakefile := filepath.Join(sourceDir, "Makefile")
+	if _, err := os.Stat(cleanMakefile); err == nil {
+		// Try make clean
+		cmd := exec.Command("make", "clean")
+		cmd.Dir = sourceDir
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			// If make clean fails, continue with manual cleanup
+		}
+	}
+
+	// Also manually remove files that might cause issues
+	patterns := []string{
+		"Makefile",
+		"Makefile.fragments",
+		"Makefile.global",
+		"Makefile.objects",
+		"acinclude.m4",
+		"build.mk",
+		"configure",
+		"main/php_config.h",
+		"main/internal_functions.c",
+		"main/internal_functions_cli.c",
+		"*.lo",
+		"*.o",
+		".deps",
+		"libtool",
+		"ltmain.sh",
+		"autom4te.cache",
+	}
+
+	// Remove files matching patterns
+	for _, pattern := range patterns {
+		if strings.Contains(pattern, "*") {
+			// Handle wildcards - find matching files
+			files, err := filepath.Glob(filepath.Join(sourceDir, pattern))
+			if err != nil {
+				continue
+			}
+			for _, f := range files {
+				if err := os.RemoveAll(f); err != nil {
+					fmt.Printf("Warning: Failed to remove %s: %v\n", f, err)
+				}
+			}
+		} else {
+			// Handle specific files/directories
+			path := filepath.Join(sourceDir, pattern)
+			if _, err := os.Stat(path); err == nil {
+				if err := os.RemoveAll(path); err != nil {
+					fmt.Printf("Warning: Failed to remove %s: %v\n", path, err)
+				}
+			}
+		}
+	}
+
+	// Also clean any ext/*/Makefile files
+	extDir := filepath.Join(sourceDir, "ext")
+	if entries, err := os.ReadDir(extDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				extMakefile := filepath.Join(extDir, entry.Name(), "Makefile")
+				if _, err := os.Stat(extMakefile); err == nil {
+					os.RemoveAll(extMakefile)
+				}
+			}
+		}
+	}
+
+	fmt.Println("  Cleaned source directory")
+	return nil
+}

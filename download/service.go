@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/domain"
@@ -255,6 +256,55 @@ func (s *Service) extractTarGz(r io.Reader, destDir, versionStr string) error {
 			}
 			f.Close()
 		}
+	}
+
+	// For PHP 4.x, touch pre-generated scanner/parser files to ensure they have
+	// newer timestamps than the .l/.y source files. This prevents make from
+	// trying to regenerate them using flex/bison, which fails because PHP 4's
+	// bundled flex.skl skeleton is incompatible with modern flex versions.
+	if strings.HasPrefix(versionStr, "4.") {
+		if err := s.touchPregeneratedFiles(destDir, versionStr); err != nil {
+			// Log warning but don't fail - extraction succeeded
+			fmt.Printf("Warning: Failed to touch pre-generated files: %v\n", err)
+		}
+	}
+
+	return nil
+}
+
+// touchPregeneratedFiles updates timestamps on pre-generated scanner/parser files
+// for PHP 4.x to prevent make from trying to regenerate them.
+func (s *Service) touchPregeneratedFiles(destDir, versionStr string) error {
+	versionDir := filepath.Join(destDir, versionStr)
+
+	// List of pre-generated files to touch (relative to source root)
+	filesToTouch := []string{
+		// Zend scanner/parser files
+		"Zend/zend_language_scanner.c",
+		"Zend/zend_language_parser.c",
+		"Zend/zend_language_parser.h",
+		"Zend/zend_ini_scanner.c",
+		"Zend/zend_ini_parser.c",
+		"Zend/zend_ini_parser.h",
+		// ext/standard parsedate (bison-generated)
+		"ext/standard/parsedate.c",
+	}
+
+	now := time.Now()
+	touched := 0
+
+	for _, file := range filesToTouch {
+		fullPath := filepath.Join(versionDir, file)
+		if _, err := os.Stat(fullPath); err == nil {
+			if err := os.Chtimes(fullPath, now, now); err != nil {
+				return fmt.Errorf("failed to touch %s: %w", file, err)
+			}
+			touched++
+		}
+	}
+
+	if touched > 0 {
+		fmt.Printf("Touched %d pre-generated scanner/parser files for PHP %s\n", touched, versionStr)
 	}
 
 	return nil

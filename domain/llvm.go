@@ -36,9 +36,28 @@ func GetLLVMVersionForPHP(phpVersion Version) LLVMVersion {
 	// Modern GCC/LLVM have issues with PHP 4.x's old scanner/parser files
 	if phpVersion.Major == 4 {
 		return LLVMVersion{
-			Version:     "3.4",
-			DownloadURL: "https://releases.llvm.org/3.4/clang+llvm-3.4-x86_64-unknown-ubuntu12.04.tar.xz",
+			Version:     "15.0.6",
+			DownloadURL: "https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/clang+llvm-15.0.6-x86_64-linux-gnu-ubuntu-18.04.tar.xz",
 		}
+		// return LLVMVersion{
+		// 	Version:     "9.0.0",
+		// 	DownloadURL: "https://releases.llvm.org/9.0.0/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz",
+		// }
+		// Or
+		// return LLVMVersion{
+		// 	Version:     "8.0.0",
+		// 	DownloadURL: "https://releases.llvm.org/8.0.0/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz",
+		// }
+		// Or
+		// return LLVMVersion{
+		// 	Version:     "7.1.0",
+		// 	DownloadURL: "https://github.com/llvm/llvm-project/releases/download/llvmorg-7.1.0/clang+llvm-7.1.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz",
+		// }
+		// Or
+		// return LLVMVersion{
+		// 	Version:     "6.0.1",
+		// 	DownloadURL: "https://releases.llvm.org/6.0.1/clang+llvm-6.0.1-x86_64-linux-gnu-ubuntu-14.04.tar.xz",
+		// }
 	}
 
 	// Default fallback - Use LLVM 21

@@ -76,3 +76,25 @@ func (s *Service) Prune() error {
 
 	return nil
 }
+
+// CleanSource removes only the source directory for a specific PHP version
+// This is useful for testing - it removes the source but keeps dependencies
+func (s *Service) CleanSource(version string) error {
+	root := s.GetPhpvRoot()
+	sourceDir := filepath.Join(root, "sources", version)
+
+	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
+		fmt.Printf("Source directory doesn't exist: %s\n", sourceDir)
+		fmt.Println("Nothing to clean")
+		return nil
+	}
+
+	fmt.Printf("Removing source directory: %s\n", sourceDir)
+	if err := os.RemoveAll(sourceDir); err != nil {
+		return fmt.Errorf("failed to remove source directory: %w", err)
+	}
+
+	fmt.Printf("✓ Removed source for PHP %s (dependencies preserved)\n", version)
+	fmt.Println("Run 'phpv download " + version + "' to re-extract from cache")
+	return nil
+}

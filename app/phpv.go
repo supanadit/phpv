@@ -72,10 +72,12 @@ func main() {
 			if !terminal.NewDownloadHandler(ctx, versionSvc, downloadSvc) {
 				if !terminal.NewBuildHandler(ctx, versionSvc, buildSvc) {
 					if !terminal.NewCleanHandler(ctx, versionSvc, terminal.NewCleanServiceAdapter(depSvc)) {
-						if !terminal.NewUninstallHandler(ctx, terminal.NewUninstallServiceAdapter()) {
-							if !terminal.NewPruneHandler(ctx, pruneSvc) {
-								if !terminal.NewVersionHandler(ctx, versionSvc) {
-									terminal.NewNothingHandler()
+						if !terminal.NewCleanSourceHandler(ctx, pruneSvc) {
+							if !terminal.NewUninstallHandler(ctx, terminal.NewUninstallServiceAdapter()) {
+								if !terminal.NewPruneHandler(ctx, pruneSvc) {
+									if !terminal.NewVersionHandler(ctx, versionSvc) {
+										terminal.NewNothingHandler()
+									}
 								}
 							}
 						}

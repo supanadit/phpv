@@ -1052,10 +1052,20 @@ func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
 		cflags = append(cflags, "-D_FILE_OFFSET_BITS=64")
 		cflags = append(cflags, "-D_POSIX_C_SOURCE=200809L")
 	}
-	// Add more version-specific flags here as needed
-	// if phpVersion.Major == X && phpVersion.Minor == Y {
-	//     cflags = append(cflags, "additional-flag")
-	// }
+
+	// PHP 4.x needs special flags to handle multiple scanner definitions
+	if phpVersion.Major == 4 {
+		// Fix for yytext multiple definition error between zend_language_scanner and zend_ini_scanner
+		// The pre-generated scanner files have conflicting global yytext variables
+		// -fcommon allows multiple definitions (like older GCC behavior)
+		cflags = append(cflags, "-fcommon")
+		// Suppress warnings about implicit function declarations (PHP 4 uses old-style declarations)
+		cflags = append(cflags, "-Wno-implicit-function-declaration")
+		// Fix for LONG_MAX comparison issues in zend_operators.c
+		cflags = append(cflags, "-Wno-implicit-const-int-float-conversion")
+		// Fix for abs() function with long argument
+		cflags = append(cflags, "-Wno-absolute-value")
+	}
 
 	cflags, cppflags, ldflags = s.applyToolchainFlags(cflags, cppflags, ldflags)
 

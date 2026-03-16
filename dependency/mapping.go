@@ -49,6 +49,10 @@ var urlConfigs = map[string]DependencyURLConfig{
 				URLTemplate: "https://mirror.freedif.org/GNU/autoconf/autoconf-%s.tar.gz",
 				Extension:   ".tar.gz",
 			},
+			"2.59": {
+				URLTemplate: "https://mirror.freedif.org/GNU/autoconf/autoconf-%s.tar.gz",
+				Extension:   ".tar.gz",
+			},
 		},
 	},
 	"automake": {
@@ -58,6 +62,10 @@ var urlConfigs = map[string]DependencyURLConfig{
 		},
 		Exact: map[string]DependencyPattern{
 			"1.4-p6": {
+				URLTemplate: "https://mirror.freedif.org/GNU/automake/automake-%s.tar.gz",
+				Extension:   ".tar.gz",
+			},
+			"1.9.6": {
 				URLTemplate: "https://mirror.freedif.org/GNU/automake/automake-%s.tar.gz",
 				Extension:   ".tar.gz",
 			},
@@ -286,25 +294,25 @@ var versionRegistry = map[string]PHPVersionConfig{
 		OpenSSL: "1.1.1w", Curl: "7.88.1", Oniguruma: "6.9.8",
 	},
 	"5.6": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
+		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.59", Automake: "1.9.6",
 		Libtool: "1.5.26", Re2c: "0.16", Zlib: "1.3.1",
 		Libxml2: "2.9.14", Libxml2Dir: "2.9",
 		OpenSSL: "1.0.1u", Curl: "7.20.0", Oniguruma: "5.9.6",
 	},
 	"5.5": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
+		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.59", Automake: "1.9.6",
 		Libtool: "1.5.26", Re2c: "0.16", Zlib: "1.3.1",
 		Libxml2: "2.9.14", Libxml2Dir: "2.9",
 		OpenSSL: "1.0.1u", Curl: "7.20.0", Oniguruma: "5.9.6",
 	},
 	"5.4": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
+		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.59", Automake: "1.9.6",
 		Libtool: "1.5.26", Re2c: "0.16", Zlib: "1.3.1",
 		Libxml2: "2.9.14", Libxml2Dir: "2.9",
 		OpenSSL: "1.0.1u", Curl: "7.20.0", Oniguruma: "5.9.6",
 	},
 	"5.3": {
-		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
+		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.59", Automake: "1.9.6",
 		Libtool: "1.5.26", Re2c: "0.16", Zlib: "1.3.1",
 		Libxml2: "2.9.14", Libxml2Dir: "2.9",
 		OpenSSL: "1.0.1u", Curl: "7.20.0", Oniguruma: "5.9.6",

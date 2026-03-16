@@ -14,6 +14,7 @@ import (
 	"github.com/supanadit/phpv/download"
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/terminal"
+	"github.com/supanadit/phpv/internal/ui"
 	"github.com/supanadit/phpv/prune"
 	"github.com/supanadit/phpv/shell"
 	"github.com/supanadit/phpv/version"
@@ -36,6 +37,7 @@ func main() {
 	pflag.BoolP("help", "h", false, "Show help")
 	pflag.BoolP("quiet", "q", false, "Suppress progress output (for CI)")
 	pflag.BoolP("version", "v", false, "Show phpv version")
+	pflag.BoolP("verbose", "V", false, "Enable verbose output")
 	pflag.Parse()
 	viper.BindPFlags(pflag.CommandLine)
 
@@ -55,6 +57,8 @@ func main() {
 		}
 		return
 	}
+
+	ui.GetUI()
 
 	versionRepo := memory.NewVersionRepository()
 	versionSvc := version.NewService(versionRepo)

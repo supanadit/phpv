@@ -68,6 +68,11 @@ func (s *Service) IsDependencyBuilt(phpVersion domain.Version, dep domain.Depend
 		return s.toolchainService.IsLLVMInstalled(dep.Version)
 	}
 
+	// Check if system dependency is available (for PHP 8.3+)
+	if s.isSystemDependencyAvailable(dep.Name) {
+		return true
+	}
+
 	installDir := s.GetDependencyInstallDir(phpVersion, dep.Name)
 
 	// Special checks for tool dependencies that install binaries, not libraries
@@ -92,6 +97,111 @@ func (s *Service) IsDependencyBuilt(phpVersion domain.Version, dep domain.Depend
 	return false
 }
 
+// isSystemDependencyAvailable checks if a system dependency is available
+// This is used for PHP 8.3+ which can use system libraries
+func (s *Service) isSystemDependencyAvailable(depName string) bool {
+	// Only use system deps for PHP 8.3+ (or when not using LLVM)
+	if s.phpVersion == nil {
+		return false
+	}
+	if !domain.ShouldUseLLVMToolchain(*s.phpVersion) {
+		// Use the new version-aware system dependency checking
+		result := domain.CheckSystemDependency(depName, *s.phpVersion)
+		return result.CanUse
+	}
+	return false
+}
+
+// checkSystemDependency checks a single system dependency and logs the result
+func (s *Service) checkSystemDependency(depName string) domain.SystemDepCheckResult {
+	if s.phpVersion == nil {
+		return domain.SystemDepCheckResult{Name: depName, CanUse: false}
+	}
+	return domain.CheckSystemDependency(depName, *s.phpVersion)
+}
+
+// checkSystemPkgConfig checks if a system library is available via pkg-config
+func (s *Service) checkSystemPkgConfig(depName string) bool {
+	// Map dependency names to pkg-config names
+	pkgConfigMap := map[string]string{
+		"zlib":         "zlib",
+		"libxml2":      "libxml-2.0",
+		"openssl":      "openssl",
+		"curl":         "libcurl",
+		"oniguruma":    "oniguruma",
+		"libzip":       "libzip",
+		"brotli":       "libbrotlidec",
+		"lz4":          "liblz4",
+		"zstd":         "libzstd",
+		"icu-uc":       "icu-i18n",
+		"sqlite3":      "sqlite3",
+		"libedit":      "libedit",
+		"libmemcached": "libmemcached",
+		"libavif":      "libavif",
+		"libwebp":      "libwebp",
+		"libjpeg":      "libjpeg",
+		"libpng":       "libpng",
+		"freetype":     "freetype2",
+		"gmp":          "gmp",
+		"libxslt":      "libxslt",
+		"libgd":        "gd",
+	}
+
+	pkgName, ok := pkgConfigMap[depName]
+	if !ok {
+		return false
+	}
+
+	// Check if pkg-config can find it
+	cmd := exec.Command("pkg-config", "--exists", pkgName)
+	if err := cmd.Run(); err == nil {
+		fmt.Printf("→ Using system %s\n", depName)
+		return true
+	}
+	return false
+}
+
+// GetSystemDependencyPath returns the system library path for a dependency
+func (s *Service) GetSystemDependencyPath(depName string) (string, string, string, bool) {
+	// Map dependency names to pkg-config names and default paths
+	pkgConfigMap := map[string]struct {
+		pkg        string
+		defaultLib string
+		defaultInc string
+	}{
+		"zlib":      {"zlib", "/usr/lib", "/usr/include"},
+		"libxml2":   {"libxml-2.0", "/usr/lib", "/usr/include/libxml2"},
+		"openssl":   {"openssl", "/usr/lib", "/usr/include/openssl"},
+		"curl":      {"libcurl", "/usr/lib", "/usr/include"},
+		"oniguruma": {"oniguruma", "/usr/lib", "/usr/include"},
+	}
+
+	info, ok := pkgConfigMap[depName]
+	if !ok {
+		return "", "", "", false
+	}
+
+	// Check if pkg-config can find it
+	cmd := exec.Command("pkg-config", "--exists", info.pkg)
+	if err := cmd.Run(); err != nil {
+		return "", "", "", false
+	}
+
+	// Get the library and include paths
+	libCmd := exec.Command("pkg-config", "--libs", "-L", info.pkg)
+	libOut, _ := libCmd.Output()
+	incCmd := exec.Command("pkg-config", "--cflags", info.pkg)
+	incOut, _ := incCmd.Output()
+
+	libPath := strings.TrimSpace(string(libOut))
+	incPath := strings.TrimSpace(string(incOut))
+
+	// Parse -I prefix from cflags
+	incPath = strings.TrimPrefix(incPath, "-I")
+
+	return libPath, incPath, info.pkg, true
+}
+
 // BuildDependencies builds all dependencies for a PHP version
 func (s *Service) BuildDependencies(ctx context.Context, phpVersion domain.Version) error {
 	// Store the PHP version to ensure we use the correct LLVM toolchain
@@ -102,18 +212,30 @@ func (s *Service) BuildDependencies(ctx context.Context, phpVersion domain.Versi
 	fmt.Printf("\n=== Building Dependencies for PHP %d.%d.%d ===\n\n",
 		phpVersion.Major, phpVersion.Minor, phpVersion.Patch)
 
-	// First, ensure LLVM is installed (it's always the first dependency)
-	for _, dep := range deps {
-		if dep.Name == "llvm" {
-			if err := s.toolchainService.DownloadAndInstallLLVM(ctx, phpVersion); err != nil {
-				return fmt.Errorf("failed to install LLVM: %w", err)
+	// Check if we should use LLVM or system toolchain
+	useLLVM := domain.ShouldUseLLVMToolchain(phpVersion)
+
+	// Check and report system dependencies for PHP 8.3+
+	if !useLLVM {
+		s.checkAndReportSystemDeps(phpVersion)
+	}
+
+	// First, ensure LLVM is installed if needed (for PHP < 8.3 or PHPV_USE_LLVM=1)
+	if useLLVM {
+		for _, dep := range deps {
+			if dep.Name == "llvm" {
+				if err := s.toolchainService.DownloadAndInstallLLVM(ctx, phpVersion); err != nil {
+					return fmt.Errorf("failed to install LLVM: %w", err)
+				}
+				// Update toolchain configuration to use the downloaded LLVM
+				if s.toolchain == nil || s.toolchain.IsEmpty() {
+					s.toolchain = s.toolchainService.GetToolchainConfig(phpVersion)
+				}
+				break
 			}
-			// Update toolchain configuration to use the downloaded LLVM
-			if s.toolchain == nil || s.toolchain.IsEmpty() {
-				s.toolchain = s.toolchainService.GetToolchainConfig(phpVersion)
-			}
-			break
 		}
+	} else {
+		fmt.Println("Using system GCC (no LLVM needed)")
 	}
 
 	// Build dependencies in order (respecting transitive dependencies)
@@ -127,6 +249,44 @@ func (s *Service) BuildDependencies(ctx context.Context, phpVersion domain.Versi
 
 	fmt.Printf("\n✓ All dependencies built successfully\n\n")
 	return nil
+}
+
+// checkAndReportSystemDeps checks system dependencies and prints a report
+func (s *Service) checkAndReportSystemDeps(phpVersion domain.Version) {
+	fmt.Println("Checking system dependencies...")
+
+	toolDeps := []string{"autoconf", "automake", "libtool", "cmake", "perl", "m4", "re2c", "flex", "bison"}
+	libDeps := []string{"zlib", "libxml2", "openssl", "curl", "oniguruma"}
+
+	fmt.Println("\nBuild Tools:")
+	for _, depName := range toolDeps {
+		result := domain.CheckSystemDependency(depName, phpVersion)
+		if result.Found {
+			if result.CanUse {
+				fmt.Printf("  ✓ %s: system %s (meets requirement ≥%s)\n", result.Name, result.Version, result.MinVersion)
+			} else {
+				fmt.Printf("  → %s: system %s (need ≥%s, will build)\n", result.Name, result.Version, result.MinVersion)
+			}
+		} else {
+			fmt.Printf("  → %s: not found (will build)\n", depName)
+		}
+	}
+
+	fmt.Println("\nLibraries:")
+	for _, depName := range libDeps {
+		result := domain.CheckSystemDependency(depName, phpVersion)
+		if result.Found {
+			if result.CanUse {
+				fmt.Printf("  ✓ %s: system %s (via pkg-config)\n", result.Name, result.Version)
+			} else {
+				fmt.Printf("  → %s: system %s (too old, will build)\n", result.Name, result.Version)
+			}
+		} else {
+			fmt.Printf("  → %s: not found (will build)\n", depName)
+		}
+	}
+
+	fmt.Println()
 }
 
 // buildDependencyWithDeps recursively builds a dependency and its dependencies
@@ -455,8 +615,157 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Dependency) []string {
 	env := s.getCleanBaseEnv()
 
-	// Use LLVM toolchain for all dependencies including flex
+	// Use LLVM toolchain or system GCC based on PHP version
 	env = s.applyCompilerEnv(env)
+
+	// Check if using system dependencies
+	useSystemDeps := !domain.ShouldUseLLVMToolchain(phpVersion)
+
+	// Get system PATH first - we want system tools to take precedence
+	systemPath := "/usr/local/bin:/usr/bin:/bin"
+
+	if useSystemDeps {
+		// Add system tool paths first (but keep our PATH clean)
+		// Only add built tool paths if system version is not available
+
+		// Add cmake to PATH only if system cmake is not available or too old
+		cmakeResult := domain.CheckSystemDependency("cmake", phpVersion)
+		if !cmakeResult.CanUse {
+			cmakeBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "cmake"), "bin")
+			if _, err := os.Stat(filepath.Join(cmakeBin, "cmake")); err == nil {
+				systemPath = cmakeBin + ":" + systemPath
+			}
+		}
+
+		// Add perl to PATH only if system perl is not available or too old
+		perlResult := domain.CheckSystemDependency("perl", phpVersion)
+		if !perlResult.CanUse {
+			perlBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "perl"), "bin")
+			if _, err := os.Stat(filepath.Join(perlBin, "perl")); err == nil {
+				systemPath = perlBin + ":" + systemPath
+			}
+		}
+
+		// Add m4 to PATH only if system m4 is not available or too old
+		m4Result := domain.CheckSystemDependency("m4", phpVersion)
+		if !m4Result.CanUse {
+			m4Bin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "m4"), "bin")
+			if _, err := os.Stat(filepath.Join(m4Bin, "m4")); err == nil {
+				systemPath = m4Bin + ":" + systemPath
+			}
+		}
+
+		// Add autoconf to PATH only if system autoconf is not available or too old
+		autoconfResult := domain.CheckSystemDependency("autoconf", phpVersion)
+		if !autoconfResult.CanUse {
+			autoconfBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "autoconf"), "bin")
+			if _, err := os.Stat(filepath.Join(autoconfBin, "autoconf")); err == nil {
+				systemPath = autoconfBin + ":" + systemPath
+			}
+		}
+
+		// Add automake to PATH only if system automake is not available or too old
+		automakeResult := domain.CheckSystemDependency("automake", phpVersion)
+		if !automakeResult.CanUse {
+			automakeBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "automake"), "bin")
+			if _, err := os.Stat(filepath.Join(automakeBin, "automake")); err == nil {
+				systemPath = automakeBin + ":" + systemPath
+			}
+		}
+
+		// Add libtool to PATH only if system libtool is not available or too old
+		libtoolResult := domain.CheckSystemDependency("libtool", phpVersion)
+		if !libtoolResult.CanUse {
+			libtoolBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "libtool"), "bin")
+			if _, err := os.Stat(filepath.Join(libtoolBin, "libtoolize")); err == nil {
+				systemPath = libtoolBin + ":" + systemPath
+			}
+		}
+
+		// Add re2c to PATH only if system re2c is not available or too old
+		re2cResult := domain.CheckSystemDependency("re2c", phpVersion)
+		if !re2cResult.CanUse {
+			re2cBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "re2c"), "bin")
+			if _, err := os.Stat(filepath.Join(re2cBin, "re2c")); err == nil {
+				systemPath = re2cBin + ":" + systemPath
+			}
+		}
+
+		// Add bison to PATH only if system bison is not available or too old
+		bisonResult := domain.CheckSystemDependency("bison", phpVersion)
+		if !bisonResult.CanUse {
+			bisonBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "bison"), "bin")
+			if _, err := os.Stat(filepath.Join(bisonBin, "bison")); err == nil {
+				systemPath = bisonBin + ":" + systemPath
+			}
+		}
+
+		// Add flex to PATH only if system flex is not available or too old
+		flexResult := domain.CheckSystemDependency("flex", phpVersion)
+		if !flexResult.CanUse {
+			flexBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "flex"), "bin")
+			if _, err := os.Stat(filepath.Join(flexBin, "flex")); err == nil {
+				systemPath = flexBin + ":" + systemPath
+			}
+		}
+	} else {
+		// Using LLVM - add all built tool paths
+		// Add cmake to PATH if available
+		cmakeBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "cmake"), "bin")
+		if _, err := os.Stat(filepath.Join(cmakeBin, "cmake")); err == nil {
+			systemPath = cmakeBin + ":" + systemPath
+		}
+
+		// Add perl to PATH if available
+		perlBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "perl"), "bin")
+		if _, err := os.Stat(filepath.Join(perlBin, "perl")); err == nil {
+			systemPath = perlBin + ":" + systemPath
+		}
+
+		// Add m4 to PATH if available
+		m4Bin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "m4"), "bin")
+		if _, err := os.Stat(filepath.Join(m4Bin, "m4")); err == nil {
+			systemPath = m4Bin + ":" + systemPath
+		}
+
+		// Add autoconf to PATH if available
+		autoconfBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "autoconf"), "bin")
+		if _, err := os.Stat(filepath.Join(autoconfBin, "autoconf")); err == nil {
+			systemPath = autoconfBin + ":" + systemPath
+		}
+
+		// Add automake to PATH if available
+		automakeBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "automake"), "bin")
+		if _, err := os.Stat(filepath.Join(automakeBin, "automake")); err == nil {
+			systemPath = automakeBin + ":" + systemPath
+		}
+
+		// Add libtool to PATH if available
+		libtoolBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "libtool"), "bin")
+		if _, err := os.Stat(filepath.Join(libtoolBin, "libtoolize")); err == nil {
+			systemPath = libtoolBin + ":" + systemPath
+		}
+
+		// Add re2c to PATH if available
+		re2cBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "re2c"), "bin")
+		if _, err := os.Stat(filepath.Join(re2cBin, "re2c")); err == nil {
+			systemPath = re2cBin + ":" + systemPath
+		}
+
+		// Add bison to PATH if available
+		bisonBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "bison"), "bin")
+		if _, err := os.Stat(filepath.Join(bisonBin, "bison")); err == nil {
+			systemPath = bisonBin + ":" + systemPath
+		}
+
+		// Add flex to PATH if available
+		flexBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "flex"), "bin")
+		if _, err := os.Stat(filepath.Join(flexBin, "flex")); err == nil {
+			systemPath = flexBin + ":" + systemPath
+		}
+	}
+
+	env = setOrReplaceEnv(env, "PATH", systemPath)
 
 	if os.Getenv("PHPV_DEBUG") == "1" {
 		fmt.Printf("[DEBUG] Environment for %s %s:\n", dep.Name, dep.Version)
@@ -467,51 +776,26 @@ func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Depende
 		}
 	}
 
-	// Add cmake to PATH if available
-	cmakeBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "cmake"), "bin")
-	if _, err := os.Stat(filepath.Join(cmakeBin, "cmake")); err == nil {
-		env = setOrReplaceEnv(env, "PATH", cmakeBin+":"+getEnvValue(env, "PATH"))
-	}
-
-	// Add perl to PATH if available
-	perlBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "perl"), "bin")
-	if _, err := os.Stat(filepath.Join(perlBin, "perl")); err == nil {
-		env = setOrReplaceEnv(env, "PATH", perlBin+":"+getEnvValue(env, "PATH"))
-	}
-
-	// Add m4 to PATH if available
-	m4Bin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "m4"), "bin")
-	if _, err := os.Stat(filepath.Join(m4Bin, "m4")); err == nil {
-		env = setOrReplaceEnv(env, "PATH", m4Bin+":"+getEnvValue(env, "PATH"))
-	}
-
-	// Add autoconf to PATH if available
-	autoconfBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "autoconf"), "bin")
-	if _, err := os.Stat(filepath.Join(autoconfBin, "autoconf")); err == nil {
-		env = setOrReplaceEnv(env, "PATH", autoconfBin+":"+getEnvValue(env, "PATH"))
-	}
-
-	// Add automake to PATH if available
-	automakeBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "automake"), "bin")
-	if _, err := os.Stat(filepath.Join(automakeBin, "automake")); err == nil {
-		env = setOrReplaceEnv(env, "PATH", automakeBin+":"+getEnvValue(env, "PATH"))
-	}
-
-	// Add libtool to PATH if available
-	libtoolBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "libtool"), "bin")
-	if _, err := os.Stat(filepath.Join(libtoolBin, "libtool")); err == nil {
-		env = setOrReplaceEnv(env, "PATH", libtoolBin+":"+getEnvValue(env, "PATH"))
-	}
-
 	// Add libtool m4 macros to ACLOCAL_PATH for autoreconf
+	// Check if using system or built libtool
 	var aclocalPath []string
-	libtoolShare := filepath.Join(s.GetDependencyInstallDir(phpVersion, "libtool"), "share", "aclocal")
-	if _, err := os.Stat(libtoolShare); err == nil {
-		aclocalPath = append(aclocalPath, libtoolShare)
+
+	libtoolResult := domain.CheckSystemDependency("libtool", phpVersion)
+	if !libtoolResult.CanUse {
+		// Use built libtool
+		libtoolShare := filepath.Join(s.GetDependencyInstallDir(phpVersion, "libtool"), "share", "aclocal")
+		if _, err := os.Stat(libtoolShare); err == nil {
+			aclocalPath = append(aclocalPath, libtoolShare)
+		}
 	}
-	automakeShare := filepath.Join(s.GetDependencyInstallDir(phpVersion, "automake"), "share", "aclocal")
-	if _, err := os.Stat(automakeShare); err == nil {
-		aclocalPath = append(aclocalPath, automakeShare)
+
+	automakeResult := domain.CheckSystemDependency("automake", phpVersion)
+	if !automakeResult.CanUse {
+		// Use built automake
+		automakeShare := filepath.Join(s.GetDependencyInstallDir(phpVersion, "automake"), "share", "aclocal")
+		if _, err := os.Stat(automakeShare); err == nil {
+			aclocalPath = append(aclocalPath, automakeShare)
+		}
 	}
 	if len(aclocalPath) > 0 {
 		currentAclocal := getEnvValue(env, "ACLOCAL_PATH")
@@ -602,7 +886,28 @@ func (s *Service) getCleanBaseEnv() []string {
 }
 
 func (s *Service) getAutoreconfPath(phpVersion domain.Version) string {
+	// First check if we should use system autoconf
+	if !domain.ShouldUseLLVMToolchain(phpVersion) {
+		result := domain.CheckSystemDependency("autoconf", phpVersion)
+		if result.CanUse {
+			// Check system autoconf first
+			if _, err := exec.LookPath("autoconf"); err == nil {
+				return "autoconf"
+			}
+			if _, err := exec.LookPath("autoreconf"); err == nil {
+				return "autoreconf"
+			}
+		}
+	}
+
+	// Fall back to built autoconf
 	autoconfPath := filepath.Join(s.GetDependencyInstallDir(phpVersion, "autoconf"), "bin", "autoreconf")
+	if _, err := os.Stat(autoconfPath); err == nil {
+		return autoconfPath
+	}
+
+	// Try autoconf itself
+	autoconfPath = filepath.Join(s.GetDependencyInstallDir(phpVersion, "autoconf"), "bin", "autoconf")
 	if _, err := os.Stat(autoconfPath); err == nil {
 		return autoconfPath
 	}
@@ -611,18 +916,42 @@ func (s *Service) getAutoreconfPath(phpVersion domain.Version) string {
 }
 
 func (s *Service) getDependencyBinPath(phpVersion domain.Version) string {
-	deps := []string{"autoconf", "automake", "libtool", "m4", "perl"}
 	var bins []string
-	for _, dep := range deps {
-		binPath := filepath.Join(s.GetDependenciesDir(phpVersion), dep, "bin")
-		if _, err := os.Stat(binPath); err == nil {
-			bins = append(bins, binPath)
+	useSystem := !domain.ShouldUseLLVMToolchain(phpVersion)
+
+	// Check which tools are available on the system
+	if useSystem {
+		systemTools := []string{"autoconf", "automake", "libtool", "m4", "perl", "cmake"}
+		for _, tool := range systemTools {
+			result := domain.CheckSystemDependency(tool, phpVersion)
+			if result.CanUse {
+				// Tool is available on system, no need to add built path
+				continue
+			}
+			// Tool not available or too old, add built path
+			binPath := filepath.Join(s.GetDependenciesDir(phpVersion), tool, "bin")
+			if _, err := os.Stat(binPath); err == nil {
+				bins = append(bins, binPath)
+			}
+		}
+	} else {
+		// Using LLVM, add all built tool paths
+		deps := []string{"autoconf", "automake", "libtool", "m4", "perl", "cmake"}
+		for _, dep := range deps {
+			binPath := filepath.Join(s.GetDependenciesDir(phpVersion), dep, "bin")
+			if _, err := os.Stat(binPath); err == nil {
+				bins = append(bins, binPath)
+			}
 		}
 	}
+
 	return strings.Join(bins, ":")
 }
 
 func (s *Service) applyCompilerEnv(env []string) []string {
+	// Check if we should use LLVM or system GCC
+	useLLVM := s.phpVersion != nil && domain.ShouldUseLLVMToolchain(*s.phpVersion)
+
 	// Use custom toolchain if provided
 	if s.toolchain != nil && s.toolchain.CC != "" {
 		env = setOrReplaceEnv(env, "CC", s.toolchain.CC)
@@ -633,6 +962,18 @@ func (s *Service) applyCompilerEnv(env []string) []string {
 		if s.toolchain.Sysroot != "" {
 			env = setOrReplaceEnv(env, "PKG_CONFIG_SYSROOT_DIR", s.toolchain.Sysroot)
 		}
+		return env
+	}
+
+	// Use system GCC if not using LLVM
+	if !useLLVM {
+		env = setOrReplaceEnv(env, "CC", "gcc")
+		env = setOrReplaceEnv(env, "CXX", "g++")
+		// Use system ar, ranlib, nm
+		env = setOrReplaceEnv(env, "AR", "ar")
+		env = setOrReplaceEnv(env, "RANLIB", "ranlib")
+		env = setOrReplaceEnv(env, "NM", "nm")
+		env = setOrReplaceEnv(env, "LD", "ld")
 		return env
 	}
 
@@ -957,11 +1298,23 @@ func (s *Service) GetPHPConfigureFlags(phpVersion domain.Version) []string {
 
 	var flags []string
 
+	// Check if we should use system dependencies (for PHP 8.3+)
+	useSystemDeps := domain.ShouldUseLLVMToolchain(phpVersion) == false
+
 	deps := GetDependenciesForVersion(phpVersion)
 	for _, dep := range deps {
 		// Skip LLVM - it's a toolchain, not a PHP dependency
 		if dep.Name == "llvm" {
 			continue
+		}
+
+		// If using system deps, check if this dep is available on the system
+		if useSystemDeps {
+			if s.isSystemDependencyAvailable(dep.Name) {
+				// Use system library
+				flags = append(flags, s.getSystemDepConfigureFlag(dep.Name, phpVersion)...)
+				continue
+			}
 		}
 
 		depDir := filepath.Join(depsDir, dep.Name)
@@ -1013,6 +1366,67 @@ func (s *Service) GetPHPConfigureFlags(phpVersion domain.Version) []string {
 	return flags
 }
 
+// getSystemDepConfigureFlag returns configure flags for system dependencies
+func (s *Service) getSystemDepConfigureFlag(depName string, phpVersion domain.Version) []string {
+	isPHP7Old := phpVersion.Major == 7 && phpVersion.Minor < 4
+	isPHP8Plus := phpVersion.Major >= 8
+
+	switch depName {
+	case "zlib":
+		if isPHP7Old {
+			return []string{"--with-zlib-dir=/usr"}
+		}
+		return []string{"--with-zlib"}
+	case "libxml2":
+		if isPHP7Old {
+			return []string{"--with-libxml-dir=/usr"}
+		}
+		return []string{"--with-libxml"}
+	case "openssl":
+		if isPHP7Old {
+			return []string{"--with-openssl-dir=/usr"}
+		}
+		if isPHP8Plus {
+			return []string{"--with-openssl"}
+		}
+		return []string{"--with-openssl"}
+	case "curl":
+		return []string{"--with-curl"}
+	case "oniguruma":
+		// PHP 8.5+ removed the --with-oniguruma option (built-in)
+		if phpVersion.Major >= 8 && phpVersion.Minor >= 5 {
+			return []string{}
+		}
+		if isPHP8Plus {
+			return []string{"--with-oniguruma"}
+		}
+		return []string{"--with-onig"}
+	case "libzip":
+		return []string{"--with-libzip"}
+	case "brotli":
+		return []string{"--with-brotli"}
+	case "zstd":
+		return []string{"--with-zstd"}
+	case "libedit":
+		return []string{"--with-libedit"}
+	case "libxslt":
+		return []string{"--with-xsl"}
+	case "libgd":
+		return []string{"--with-gd"}
+	case "freetype":
+		return []string{"--with-freetype"}
+	case "jpeg":
+		return []string{"--with-jpeg"}
+	case "png":
+		return []string{"--with-png"}
+	case "webp":
+		return []string{"--with-webp"}
+	case "avif":
+		return []string{"--with-avif"}
+	}
+	return []string{}
+}
+
 // GetPHPEnvironment returns environment variables for PHP build
 func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
 	// Store the PHP version to ensure we use the correct LLVM toolchain
@@ -1020,6 +1434,9 @@ func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
 
 	env := s.getCleanBaseEnv()
 	depsDir := s.GetDependenciesDir(phpVersion)
+
+	// Check if we should use system dependencies (for PHP 8.3+)
+	useSystemDeps := domain.ShouldUseLLVMToolchain(phpVersion) == false
 
 	var pkgConfigPath []string
 	var ldflags []string
@@ -1030,6 +1447,43 @@ func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
 	for _, dep := range deps {
 		// Skip LLVM - it's a toolchain, not a PHP dependency
 		if dep.Name == "llvm" {
+			continue
+		}
+
+		// For system dependencies, add system pkg-config path
+		if useSystemDeps && s.isSystemDependencyAvailable(dep.Name) {
+			// Get system library path via pkg-config
+			libPath, incPath, _, found := s.GetSystemDependencyPath(dep.Name)
+			if found {
+				// Add system pkg-config path
+				pkgConfigPath = append(pkgConfigPath, "/usr/lib/pkgconfig", "/usr/local/lib/pkgconfig")
+				// Add system library path
+				if libPath != "" {
+					// Extract just the -L path from pkg-config output
+					if !strings.Contains(libPath, "/") {
+						// It's just -L without path, use default
+						ldflags = append(ldflags, "-L/usr/lib", "-L/usr/local/lib")
+					}
+				}
+				// Add system include path
+				if incPath != "" {
+					cppflags = append(cppflags, fmt.Sprintf("-I%s", incPath))
+				} else {
+					// Use default include paths
+					switch dep.Name {
+					case "libxml2":
+						cppflags = append(cppflags, "-I/usr/include/libxml2")
+					case "openssl":
+						cppflags = append(cppflags, "-I/usr/include/openssl")
+					case "curl":
+						cppflags = append(cppflags, "-I/usr/include")
+					case "zlib":
+						cppflags = append(cppflags, "-I/usr/include")
+					case "oniguruma":
+						cppflags = append(cppflags, "-I/usr/include")
+					}
+				}
+			}
 			continue
 		}
 

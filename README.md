@@ -204,8 +204,8 @@ PHPV is built on these principles:
 
 | Version Range     | Status           | Notes                                                  |
 | ----------------- | ---------------- | ------------------------------------------------------ |
-| **PHP 8.5.x**     | 🔬 Dev Preview   | Supported for testing                                  |
-| **PHP 8.4.x**     | ✅ Stable        | Latest production PHP                                  |
+| **PHP 8.5.x**     | ✅ Stable        | Latest production PHP                                  |
+| **PHP 8.4.x**     | ✅ Stable        | —                                                      |
 | **PHP 8.3.x**     | ✅ Stable        | —                                                      |
 | **PHP 8.2.x**     | ✅ Stable        | —                                                      |
 | **PHP 8.1.x**     | ✅ Stable        | —                                                      |

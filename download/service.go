@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/domain"
+	uiPkg "github.com/supanadit/phpv/internal/ui"
 	"github.com/supanadit/phpv/internal/util"
 )
 
@@ -121,6 +122,8 @@ func (s *Service) Download(ctx context.Context, version domain.Version) error {
 	versionStr := fmt.Sprintf("%d.%d.%d", version.Major, version.Minor, version.Patch)
 	targetDir := filepath.Join(sourcesDir, versionStr)
 
+	ui := uiPkg.GetUI()
+
 	// Check if already downloaded
 	if _, err := os.Stat(targetDir); err == nil {
 		return fmt.Errorf("PHP %s is already downloaded at %s", versionStr, targetDir)
@@ -132,23 +135,23 @@ func (s *Service) Download(ctx context.Context, version domain.Version) error {
 	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
 		// Download to cache
 		downloadURL := s.BuildDownloadURL(version)
-		fmt.Printf("Downloading PHP %s from %s...\n", versionStr, downloadURL)
+		ui.PrintInfo(fmt.Sprintf("Downloading PHP %s from %s...", versionStr, downloadURL))
 
 		if err := s.downloadToCache(ctx, downloadURL, cachePath); err != nil {
 			return fmt.Errorf("failed to download: %w", err)
 		}
-		fmt.Printf("Downloaded and cached: %s\n", filepath.Base(cachePath))
+		ui.PrintSuccess(fmt.Sprintf("Downloaded and cached: %s", filepath.Base(cachePath)))
 	} else {
-		fmt.Printf("Using cached archive: %s\n", filepath.Base(cachePath))
+		ui.PrintDim(fmt.Sprintf("Using cached archive: %s", filepath.Base(cachePath)))
 	}
 
 	// Extract the tar.gz file from cache
-	fmt.Printf("Extracting to %s...\n", targetDir)
+	ui.PrintInfo(fmt.Sprintf("Extracting to %s...", targetDir))
 	if err := s.extractFromCache(cachePath, sourcesDir, versionStr); err != nil {
 		return fmt.Errorf("failed to extract: %w", err)
 	}
 
-	fmt.Printf("Successfully downloaded PHP %s to %s\n", versionStr, targetDir)
+	ui.PrintSuccess(fmt.Sprintf("Successfully downloaded PHP %s to %s", versionStr, targetDir))
 	return nil
 }
 
@@ -210,6 +213,8 @@ func (s *Service) extractFromCache(cachePath, destDir, versionStr string) error 
 
 // extractTarGz extracts a tar.gz archive
 func (s *Service) extractTarGz(r io.Reader, destDir, versionStr string) error {
+	ui := uiPkg.GetUI()
+
 	gzr, err := gzip.NewReader(r)
 	if err != nil {
 		return err
@@ -265,7 +270,7 @@ func (s *Service) extractTarGz(r io.Reader, destDir, versionStr string) error {
 	if strings.HasPrefix(versionStr, "4.") {
 		if err := s.touchPregeneratedFiles(destDir, versionStr); err != nil {
 			// Log warning but don't fail - extraction succeeded
-			fmt.Printf("Warning: Failed to touch pre-generated files: %v\n", err)
+			ui.PrintWarning(fmt.Sprintf("Failed to touch pre-generated files: %v", err))
 		}
 	}
 

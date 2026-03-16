@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/ui"
 	"github.com/supanadit/phpv/internal/util"
 )
 
@@ -207,10 +208,11 @@ func (s *Service) BuildDependencies(ctx context.Context, phpVersion domain.Versi
 	// Store the PHP version to ensure we use the correct LLVM toolchain
 	s.phpVersion = &phpVersion
 
+	ui := ui.GetUI()
+
 	deps := GetDependenciesForVersion(phpVersion)
 
-	fmt.Printf("\n=== Building Dependencies for PHP %d.%d.%d ===\n\n",
-		phpVersion.Major, phpVersion.Minor, phpVersion.Patch)
+	ui.PrintSection(fmt.Sprintf("Building Dependencies for PHP %d.%d.%d", phpVersion.Major, phpVersion.Minor, phpVersion.Patch))
 
 	// Check if we should use LLVM or system toolchain
 	useLLVM := domain.ShouldUseLLVMToolchain(phpVersion)
@@ -235,7 +237,7 @@ func (s *Service) BuildDependencies(ctx context.Context, phpVersion domain.Versi
 			}
 		}
 	} else {
-		fmt.Println("Using system GCC (no LLVM needed)")
+		ui.PrintInfo("Using system GCC (no LLVM needed)")
 	}
 
 	// Build dependencies in order (respecting transitive dependencies)
@@ -247,50 +249,54 @@ func (s *Service) BuildDependencies(ctx context.Context, phpVersion domain.Versi
 		}
 	}
 
-	fmt.Printf("\n✓ All dependencies built successfully\n\n")
+	ui.PrintSuccess("All dependencies built successfully")
+	ui.Println()
 	return nil
 }
 
 // checkAndReportSystemDeps checks system dependencies and prints a report
 func (s *Service) checkAndReportSystemDeps(phpVersion domain.Version) {
-	fmt.Println("Checking system dependencies...")
+	ui := ui.GetUI()
+	ui.PrintInfo("Checking system dependencies...")
 
 	toolDeps := []string{"autoconf", "automake", "libtool", "cmake", "perl", "m4", "re2c", "flex", "bison"}
 	libDeps := []string{"zlib", "libxml2", "openssl", "curl", "oniguruma"}
 
-	fmt.Println("\nBuild Tools:")
+	ui.PrintSubheader("Build Tools:")
 	for _, depName := range toolDeps {
 		result := domain.CheckSystemDependency(depName, phpVersion)
 		if result.Found {
 			if result.CanUse {
-				fmt.Printf("  ✓ %s: system %s (meets requirement ≥%s)\n", result.Name, result.Version, result.MinVersion)
+				ui.PrintDependencyStatus(result.Name, result.Version, result.MinVersion, true)
 			} else {
-				fmt.Printf("  → %s: system %s (need ≥%s, will build)\n", result.Name, result.Version, result.MinVersion)
+				ui.PrintAction("Building", fmt.Sprintf("%s (need ≥%s)", result.Name, result.MinVersion))
 			}
 		} else {
-			fmt.Printf("  → %s: not found (will build)\n", depName)
+			ui.PrintAction("Building", fmt.Sprintf("%s (not found)", depName))
 		}
 	}
 
-	fmt.Println("\nLibraries:")
+	ui.PrintSubheader("Libraries:")
 	for _, depName := range libDeps {
 		result := domain.CheckSystemDependency(depName, phpVersion)
 		if result.Found {
 			if result.CanUse {
-				fmt.Printf("  ✓ %s: system %s (via pkg-config)\n", result.Name, result.Version)
+				ui.PrintDependencyStatus(result.Name, result.Version, "", true)
 			} else {
-				fmt.Printf("  → %s: system %s (too old, will build)\n", result.Name, result.Version)
+				ui.PrintAction("Building", fmt.Sprintf("%s (too old)", result.Name))
 			}
 		} else {
-			fmt.Printf("  → %s: not found (will build)\n", depName)
+			ui.PrintAction("Building", fmt.Sprintf("%s (not found)", depName))
 		}
 	}
 
-	fmt.Println()
+	ui.Println()
 }
 
 // buildDependencyWithDeps recursively builds a dependency and its dependencies
 func (s *Service) buildDependencyWithDeps(ctx context.Context, phpVersion domain.Version, dep domain.Dependency, allDeps []domain.Dependency, built map[string]bool) error {
+	ui := ui.GetUI()
+
 	// Skip if already built
 	if built[dep.Name] {
 		return nil
@@ -298,7 +304,7 @@ func (s *Service) buildDependencyWithDeps(ctx context.Context, phpVersion domain
 
 	// Check if already installed
 	if s.IsDependencyBuilt(phpVersion, dep) {
-		fmt.Printf("→ %s %s already built, skipping\n", dep.Name, dep.Version)
+		ui.PrintAlreadyBuilt(dep.Name, dep.Version)
 		built[dep.Name] = true
 		return nil
 	}

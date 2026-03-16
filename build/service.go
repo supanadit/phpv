@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/dependency"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/ui"
 	"github.com/supanadit/phpv/internal/util"
 )
 
@@ -100,18 +101,25 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 		return fmt.Errorf("PHP %s is already built at %s", versionStr, installDir)
 	}
 
+	ui := ui.GetUI()
+
 	// Create versions directory
 	if err := os.MkdirAll(versionsDir, 0755); err != nil {
 		return fmt.Errorf("failed to create versions directory: %w", err)
 	}
 
-	fmt.Printf("Building PHP %s from source using %s...\n", versionStr, s.compilerDisplayName(version))
-	fmt.Printf("Source: %s\n", sourceDir)
-	fmt.Printf("Target: %s\n", installDir)
-	fmt.Println()
+	compiler := s.compilerDisplayName(version)
+	ui.PrintInfo(fmt.Sprintf("Building PHP %s from source using %s...", versionStr, compiler))
+
+	info := map[string]string{
+		"Source": sourceDir,
+		"Target": installDir,
+	}
+	ui.PrintBuildInfo("PHP Build Information", info)
+	ui.Println()
 
 	// Step 1: Build dependencies (this will download and install LLVM)
-	fmt.Println("Step 1: Building dependencies...")
+	ui.PrintStep(1, 6, "Building dependencies...")
 	if err := s.depService.BuildDependencies(ctx, version); err != nil {
 		return fmt.Errorf("failed to build dependencies: %w", err)
 	}
@@ -122,7 +130,7 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	// Step 2: Run buildconf (if it exists)
 	buildconfPath := filepath.Join(sourceDir, "buildconf")
 	if _, err := os.Stat(buildconfPath); err == nil {
-		fmt.Println("Step 2: Running buildconf...")
+		ui.PrintStep(2, 6, "Running buildconf...")
 		// Use per-version autoconf for PHP buildconf
 		autoconfBin := filepath.Join(s.depService.GetDependencyInstallDir(version, "autoconf"), "bin")
 		if _, err := os.Stat(filepath.Join(autoconfBin, "autoconf")); err == nil {
@@ -138,7 +146,7 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	}
 
 	// Step 3: Configure with dependency paths
-	fmt.Println("Step 3: Configuring PHP build...")
+	ui.PrintStep(3, 6, "Configuring PHP build...")
 
 	// Base configure arguments
 	configureArgs := []string{
@@ -201,13 +209,13 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	}
 
 	// Step 4: Make
-	fmt.Println("Step 4: Compiling PHP (this may take a while)...")
+	ui.PrintStep(4, 6, "Compiling PHP (this may take a while)...")
 	if err := util.RunCommand(ctx, sourceDir, env, "make", "-j4"); err != nil {
 		return fmt.Errorf("make failed: %w", err)
 	}
 
 	// Step 5: Make install
-	fmt.Println("Step 5: Installing PHP...")
+	ui.PrintStep(5, 6, "Installing PHP...")
 	if err := util.RunCommand(ctx, sourceDir, env, "make", "install"); err != nil {
 		return fmt.Errorf("make install failed: %w", err)
 	}
@@ -218,14 +226,13 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	}
 
 	// Step 7: Test the binary
-	fmt.Println("Step 6: Testing PHP binary...")
+	ui.PrintStep(6, 6, "Testing PHP binary...")
 	if err := util.RunCommand(ctx, sourceDir, nil, phpBinary, "--version"); err != nil {
 		return fmt.Errorf("PHP binary test failed: %w", err)
 	}
 
-	fmt.Println()
-	fmt.Printf("✓ Successfully built and installed PHP %s to %s\n", versionStr, installDir)
-	fmt.Printf("  Binary: %s\n", phpBinary)
+	ui.Println()
+	ui.PrintBuildComplete("PHP", versionStr, installDir)
 	return nil
 }
 

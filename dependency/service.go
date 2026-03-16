@@ -283,7 +283,7 @@ func (s *Service) checkAndReportSystemDeps(phpVersion domain.Version) {
 			if result.CanUse {
 				ui.PrintDependencyStatus(result.Name, result.Version, "", true)
 			} else {
-				ui.PrintAction("Building", fmt.Sprintf("%s (too old)", result.Name))
+				ui.PrintAction("Building", fmt.Sprintf("%s (too old)", depName))
 			}
 		} else {
 			ui.PrintAction("Building", fmt.Sprintf("%s (not found)", depName))
@@ -291,6 +291,50 @@ func (s *Service) checkAndReportSystemDeps(phpVersion domain.Version) {
 	}
 
 	ui.Println()
+
+	s.validateDependencyConstraints(phpVersion)
+}
+
+func (s *Service) validateDependencyConstraints(phpVersion domain.Version) {
+	ui := ui.GetUI()
+
+	config := getConfigForVersion(phpVersion)
+
+	specs := map[string]domain.DependencyVersionSpec{
+		"perl":      config.Perl,
+		"m4":        config.M4,
+		"autoconf":  config.Autoconf,
+		"automake":  config.Automake,
+		"libtool":   config.Libtool,
+		"re2c":      config.Re2c,
+		"flex":      config.Flex,
+		"bison":     config.Bison,
+		"zlib":      config.Zlib,
+		"libxml2":   config.Libxml2,
+		"openssl":   config.OpenSSL,
+		"curl":      config.Curl,
+		"oniguruma": config.Oniguruma,
+	}
+
+	currentVersions := make(map[string]string)
+	depNames := []string{"perl", "m4", "autoconf", "automake", "libtool", "re2c", "flex", "bison", "zlib", "libxml2", "openssl", "curl", "oniguruma"}
+
+	for _, depName := range depNames {
+		result := domain.CheckSystemDependency(depName, phpVersion)
+		if result.Found {
+			currentVersions[depName] = result.Version
+		}
+	}
+
+	warnings := domain.ValidateAllDependencies(specs, currentVersions)
+
+	if len(warnings) > 0 {
+		ui.PrintSubheader("Dependency Constraint Warnings:")
+		for _, w := range warnings {
+			ui.PrintWarning(w.Message)
+		}
+		ui.Println()
+	}
 }
 
 // buildDependencyWithDeps recursively builds a dependency and its dependencies

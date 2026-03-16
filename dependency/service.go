@@ -455,13 +455,8 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Dependency) []string {
 	env := s.getCleanBaseEnv()
 
-	// For flex, use GCC instead of clang/LLVM because old flex versions
-	// have C code that doesn't compile with modern clang
-	if dep.Name == "flex" {
-		env = s.applyGCCEnv(env)
-	} else {
-		env = s.applyCompilerEnv(env)
-	}
+	// Use LLVM toolchain for all dependencies including flex
+	env = s.applyCompilerEnv(env)
 
 	if os.Getenv("PHPV_DEBUG") == "1" {
 		fmt.Printf("[DEBUG] Environment for %s %s:\n", dep.Name, dep.Version)
@@ -674,37 +669,6 @@ func (s *Service) applyCompilerEnv(env []string) []string {
 	// Fallback to system clang (shouldn't happen in normal usage)
 	env = setOrReplaceEnv(env, "CC", "clang")
 	env = setOrReplaceEnv(env, "CXX", "clang++")
-	return env
-}
-
-// applyGCCEnv uses system GCC for building legacy dependencies that don't compile with clang
-func (s *Service) applyGCCEnv(env []string) []string {
-	// Try to find GCC in the system
-	gccPath, err := exec.LookPath("gcc")
-	if err != nil {
-		// Fallback to clang if GCC is not available
-		fmt.Printf("Warning: GCC not found, using clang for flex (may fail)\n")
-		env = setOrReplaceEnv(env, "CC", "clang")
-		env = setOrReplaceEnv(env, "CXX", "clang++")
-		return env
-	}
-
-	gxxPath, _ := exec.LookPath("g++")
-
-	env = setOrReplaceEnv(env, "CC", gccPath)
-	if gxxPath != "" {
-		env = setOrReplaceEnv(env, "CXX", gxxPath)
-	}
-
-	// Get the directory containing gcc for adding to PATH
-	gccDir := filepath.Dir(gccPath)
-	currentPath := getEnvValue(env, "PATH")
-	if currentPath != "" {
-		env = setOrReplaceEnv(env, "PATH", gccDir+":"+currentPath)
-	} else {
-		env = setOrReplaceEnv(env, "PATH", gccDir)
-	}
-
 	return env
 }
 

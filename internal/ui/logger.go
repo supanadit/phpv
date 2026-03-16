@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/charmbracelet/log"
-	"github.com/spf13/viper"
 )
 
 type Logger struct {
@@ -31,22 +30,16 @@ func GetLogger() *Logger {
 }
 
 func NewLogger() *Logger {
-	verbose := viper.GetBool("PHPV_VERBOSE")
-	quiet := viper.GetBool("PHPV_QUIET")
-
 	logger := log.New(os.Stderr)
 	logger.SetPrefix("")
 	logger.SetReportTimestamp(false)
 	logger.SetFormatter(log.TextFormatter)
-
-	if quiet {
-		logger.SetOutput(io.Discard)
-	}
+	logger.SetLevel(log.InfoLevel)
 
 	return &Logger{
 		logger:  logger,
-		verbose: verbose,
-		quiet:   quiet,
+		verbose: false,
+		quiet:   false,
 	}
 }
 

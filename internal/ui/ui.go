@@ -9,12 +9,11 @@ import (
 )
 
 type UI struct {
-	logger   *Logger
-	renderer *Renderer
-	spinner  *Spinner
-	mu       sync.RWMutex
-	quiet    bool
-	verbose  bool
+	logger     *Logger
+	renderer   *Renderer
+	spinner    *Spinner
+	mu         sync.RWMutex
+	outputMode OutputMode
 }
 
 var (
@@ -30,19 +29,27 @@ func GetUI() *UI {
 }
 
 func NewUI() *UI {
-	quiet := viper.GetBool("PHPV_QUIET")
-	verbose := viper.GetBool("PHPV_VERBOSE")
+	quiet := viper.GetBool("quiet")
+	verbose := viper.GetBool("verbose")
 
-	ui := &UI{
-		logger:   NewLogger(),
-		renderer: NewRenderer(),
-		spinner:  NewSpinner(),
-		quiet:    quiet,
-		verbose:  verbose,
+	var mode OutputMode
+	if quiet {
+		mode = ModeQuiet
+	} else if verbose {
+		mode = ModeVerbose
+	} else {
+		mode = ModeAnimation
 	}
 
-	ui.logger.SetQuiet(quiet)
-	ui.logger.SetVerbose(verbose)
+	ui := &UI{
+		logger:     NewLogger(),
+		renderer:   NewRenderer(),
+		spinner:    NewSpinner(),
+		outputMode: mode,
+	}
+
+	ui.logger.SetQuiet(mode == ModeQuiet)
+	ui.logger.SetVerbose(mode == ModeVerbose)
 
 	return ui
 }
@@ -59,44 +66,80 @@ func (u *UI) Spinner() *Spinner {
 	return u.spinner
 }
 
-func (u *UI) SetVerbose(verbose bool) {
+func (u *UI) SetOutputMode(mode OutputMode) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	u.verbose = verbose
-	u.logger.SetVerbose(verbose)
+	u.outputMode = mode
+	u.logger.SetQuiet(mode == ModeQuiet)
+	u.logger.SetVerbose(mode == ModeVerbose)
+}
+
+func (u *UI) SetVerbose(verbose bool) {
+	if verbose {
+		u.SetOutputMode(ModeVerbose)
+	} else if u.outputMode == ModeVerbose {
+		u.SetOutputMode(ModeAnimation)
+	}
 }
 
 func (u *UI) SetQuiet(quiet bool) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	u.quiet = quiet
-	u.logger.SetQuiet(quiet)
+	if quiet {
+		u.SetOutputMode(ModeQuiet)
+	} else if u.outputMode == ModeQuiet {
+		u.SetOutputMode(ModeAnimation)
+	}
 }
 
 func (u *UI) IsVerbose() bool {
 	u.mu.RLock()
 	defer u.mu.RUnlock()
-	return u.verbose
+	return u.outputMode == ModeVerbose
 }
 
 func (u *UI) IsQuiet() bool {
 	u.mu.RLock()
 	defer u.mu.RUnlock()
-	return u.quiet
+	return u.outputMode == ModeQuiet
+}
+
+func (u *UI) IsAnimation() bool {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
+	return u.outputMode == ModeAnimation
+}
+
+func (u *UI) OutputMode() OutputMode {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
+	return u.outputMode
 }
 
 func (u *UI) StartSpinner(message string) {
-	if u.IsQuiet() {
+	if !u.IsAnimation() {
 		return
 	}
 	u.spinner.Start(message)
+}
+
+func (u *UI) StartSpinnerWithDisplay(message string) {
+	if !u.IsAnimation() {
+		return
+	}
+	u.spinner.StartWithDisplay(message)
 }
 
 func (u *UI) StopSpinner() {
 	u.spinner.Stop()
 }
 
+func (u *UI) StopSpinnerWithClear() {
+	u.spinner.StopWithClear()
+}
+
 func (u *UI) SpinnerView() string {
+	if !u.IsAnimation() {
+		return ""
+	}
 	return u.spinner.View()
 }
 
@@ -113,7 +156,7 @@ func (u *UI) RenderMarkdownf(format string, args ...interface{}) string {
 }
 
 func (u *UI) PrintBox(title, content string) {
-	if u.IsQuiet() {
+	if u.outputMode == ModeQuiet {
 		return
 	}
 
@@ -122,21 +165,21 @@ func (u *UI) PrintBox(title, content string) {
 }
 
 func (u *UI) PrintHeader(title string) {
-	if u.IsQuiet() {
+	if u.outputMode == ModeQuiet {
 		return
 	}
 	fmt.Println(HeaderStyle.Render(title))
 }
 
 func (u *UI) PrintSubheader(title string) {
-	if u.IsQuiet() {
+	if u.outputMode == ModeQuiet {
 		return
 	}
 	fmt.Println(SubheaderStyle.Render(title))
 }
 
 func (u *UI) PrintSuccess(message string) {
-	if u.IsQuiet() {
+	if u.outputMode == ModeQuiet {
 		return
 	}
 	fmt.Println(SuccessStyle.Render("✓ ") + message)
@@ -147,35 +190,35 @@ func (u *UI) PrintError(message string) {
 }
 
 func (u *UI) PrintWarning(message string) {
-	if u.IsQuiet() {
+	if u.outputMode == ModeQuiet {
 		return
 	}
 	fmt.Println(WarningStyle.Render("⚠ ") + message)
 }
 
 func (u *UI) PrintInfo(message string) {
-	if u.IsQuiet() {
+	if u.outputMode == ModeQuiet {
 		return
 	}
 	fmt.Println(InfoStyle.Render("ℹ ") + message)
 }
 
 func (u *UI) PrintDim(message string) {
-	if u.IsQuiet() {
+	if u.outputMode == ModeQuiet {
 		return
 	}
 	fmt.Println(DimStyle.Render(message))
 }
 
 func (u *UI) Println() {
-	if u.IsQuiet() {
+	if u.outputMode == ModeQuiet {
 		return
 	}
 	fmt.Println()
 }
 
 func (u *UI) PrintCheckList(items []string, title string) {
-	if u.IsQuiet() {
+	if u.outputMode == ModeQuiet {
 		return
 	}
 
@@ -195,7 +238,7 @@ func (u *UI) PrintCheckList(items []string, title string) {
 }
 
 func (u *UI) PrintDependencyStatus(depName string, systemVersion string, requirement string, met bool) {
-	if u.IsQuiet() {
+	if u.outputMode == ModeQuiet {
 		return
 	}
 
@@ -215,7 +258,7 @@ func (u *UI) PrintDependencyStatus(depName string, systemVersion string, require
 }
 
 func (u *UI) PrintStep(stepNum int, totalSteps int, description string) {
-	if u.IsQuiet() {
+	if u.outputMode == ModeQuiet {
 		return
 	}
 
@@ -223,8 +266,28 @@ func (u *UI) PrintStep(stepNum int, totalSteps int, description string) {
 	fmt.Printf("\n%s %s\n\n", HeaderStyle.Render(stepStr), description)
 }
 
+func (u *UI) PrintProcessingStep(stepNum int, totalSteps int, description string) {
+	if u.outputMode == ModeQuiet {
+		fmt.Printf("\nProcessing Step %d/%d: %s\n", stepNum, totalSteps, description)
+		return
+	}
+
+	if u.outputMode == ModeAnimation {
+		u.StartSpinnerWithDisplay(fmt.Sprintf("Step %d/%d: %s", stepNum, totalSteps, description))
+		return
+	}
+
+	u.PrintStep(stepNum, totalSteps, description)
+}
+
+func (u *UI) StopProcessingStep() {
+	if u.IsAnimation() {
+		u.StopSpinnerWithClear()
+	}
+}
+
 func (u *UI) PrintSection(title string) {
-	if u.IsQuiet() {
+	if u.outputMode == ModeQuiet {
 		return
 	}
 
@@ -232,7 +295,7 @@ func (u *UI) PrintSection(title string) {
 }
 
 func (u *UI) PrintAction(action, target string) {
-	if u.IsQuiet() {
+	if u.outputMode == ModeQuiet {
 		return
 	}
 
@@ -240,7 +303,7 @@ func (u *UI) PrintAction(action, target string) {
 }
 
 func (u *UI) PrintAlreadyBuilt(name, version string) {
-	if u.IsQuiet() {
+	if u.outputMode == ModeQuiet {
 		return
 	}
 
@@ -251,7 +314,7 @@ func (u *UI) PrintAlreadyBuilt(name, version string) {
 }
 
 func (u *UI) PrintBuildComplete(name, version, location string) {
-	if u.IsQuiet() {
+	if u.outputMode == ModeQuiet {
 		return
 	}
 
@@ -263,7 +326,7 @@ func (u *UI) PrintBuildComplete(name, version, location string) {
 }
 
 func (u *UI) PrintBuildInfo(title string, info map[string]string) {
-	if u.IsQuiet() {
+	if u.outputMode == ModeQuiet {
 		return
 	}
 

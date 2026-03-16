@@ -119,10 +119,11 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	ui.Println()
 
 	// Step 1: Build dependencies (this will download and install LLVM)
-	ui.PrintStep(1, 6, "Building dependencies...")
+	ui.PrintProcessingStep(1, 6, "Building dependencies...")
 	if err := s.depService.BuildDependencies(ctx, version); err != nil {
 		return fmt.Errorf("failed to build dependencies: %w", err)
 	}
+	ui.StopProcessingStep()
 
 	// Get environment with dependency paths (needed for buildconf and configure)
 	env := s.depService.GetPHPEnvironment(version)
@@ -130,7 +131,7 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	// Step 2: Run buildconf (if it exists)
 	buildconfPath := filepath.Join(sourceDir, "buildconf")
 	if _, err := os.Stat(buildconfPath); err == nil {
-		ui.PrintStep(2, 6, "Running buildconf...")
+		ui.PrintProcessingStep(2, 6, "Running buildconf...")
 		// Use per-version autoconf for PHP buildconf
 		autoconfBin := filepath.Join(s.depService.GetDependencyInstallDir(version, "autoconf"), "bin")
 		if _, err := os.Stat(filepath.Join(autoconfBin, "autoconf")); err == nil {
@@ -143,10 +144,11 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 		if err := util.RunCommand(ctx, sourceDir, env, "./buildconf", "--force"); err != nil {
 			return fmt.Errorf("buildconf failed: %w", err)
 		}
+		ui.StopProcessingStep()
 	}
 
 	// Step 3: Configure with dependency paths
-	ui.PrintStep(3, 6, "Configuring PHP build...")
+	ui.PrintProcessingStep(3, 6, "Configuring PHP build...")
 
 	// Base configure arguments
 	configureArgs := []string{
@@ -207,18 +209,21 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	if err := util.RunCommand(ctx, sourceDir, env, "./configure", configureArgs...); err != nil {
 		return fmt.Errorf("configure failed: %w", err)
 	}
+	ui.StopProcessingStep()
 
 	// Step 4: Make
-	ui.PrintStep(4, 6, "Compiling PHP (this may take a while)...")
+	ui.PrintProcessingStep(4, 6, "Compiling PHP (this may take a while)...")
 	if err := util.RunCommand(ctx, sourceDir, env, "make", "-j4"); err != nil {
 		return fmt.Errorf("make failed: %w", err)
 	}
+	ui.StopProcessingStep()
 
 	// Step 5: Make install
-	ui.PrintStep(5, 6, "Installing PHP...")
+	ui.PrintProcessingStep(5, 6, "Installing PHP...")
 	if err := util.RunCommand(ctx, sourceDir, env, "make", "install"); err != nil {
 		return fmt.Errorf("make install failed: %w", err)
 	}
+	ui.StopProcessingStep()
 
 	// Step 6: Verify installation
 	if _, err := os.Stat(phpBinary); os.IsNotExist(err) {
@@ -226,10 +231,11 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	}
 
 	// Step 7: Test the binary
-	ui.PrintStep(6, 6, "Testing PHP binary...")
+	ui.PrintProcessingStep(6, 6, "Testing PHP binary...")
 	if err := util.RunCommand(ctx, sourceDir, nil, phpBinary, "--version"); err != nil {
 		return fmt.Errorf("PHP binary test failed: %w", err)
 	}
+	ui.StopProcessingStep()
 
 	ui.Println()
 	ui.PrintBuildComplete("PHP", versionStr, installDir)

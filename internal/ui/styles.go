@@ -61,11 +61,32 @@ var (
 
 type Theme string
 
+type OutputMode int
+
+const (
+	ModeQuiet OutputMode = iota
+	ModeAnimation
+	ModeVerbose
+)
+
 const (
 	ThemeAuto  Theme = "auto"
 	ThemeDark  Theme = "dark"
 	ThemeLight Theme = "light"
 )
+
+func (m OutputMode) String() string {
+	switch m {
+	case ModeQuiet:
+		return "quiet"
+	case ModeAnimation:
+		return "animation"
+	case ModeVerbose:
+		return "verbose"
+	default:
+		return "unknown"
+	}
+}
 
 func GetThemeStyles(theme Theme) map[string]lipgloss.Style {
 	if theme == ThemeAuto {

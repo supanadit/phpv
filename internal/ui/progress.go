@@ -12,12 +12,13 @@ import (
 )
 
 type Spinner struct {
-	frames   []string
-	frame    int
-	mu       sync.Mutex
-	running  bool
-	message  string
-	stopChan chan struct{}
+	frames    []string
+	frame     int
+	mu        sync.Mutex
+	running   bool
+	message   string
+	stopChan  chan struct{}
+	startTime time.Time
 }
 
 func NewSpinner() *Spinner {
@@ -41,6 +42,7 @@ func (s *Spinner) Start(message string) {
 
 	s.message = message
 	s.running = true
+	s.startTime = time.Now()
 	s.stopChan = make(chan struct{})
 
 	go func() {
@@ -72,6 +74,42 @@ func (s *Spinner) Stop() {
 	s.running = false
 }
 
+func (s *Spinner) StartWithDisplay(message string) {
+	s.Start(message)
+	go func() {
+		ticker := time.NewTicker(80 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				s.mu.Lock()
+				running := s.running
+				s.mu.Unlock()
+				if !running {
+					return
+				}
+				fmt.Printf("\r%s", s.View())
+			case <-s.stopChan:
+				return
+			}
+		}
+	}()
+}
+
+func (s *Spinner) StopWithClear() {
+	s.Stop()
+	fmt.Print("\r\033[K")
+}
+
+func (s *Spinner) Elapsed() time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.startTime.IsZero() {
+		return 0
+	}
+	return time.Since(s.startTime)
+}
+
 func (s *Spinner) View() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -81,7 +119,24 @@ func (s *Spinner) View() string {
 	}
 
 	frame := s.frames[s.frame%len(s.frames)]
-	return fmt.Sprintf("%s %s", InfoStyle.Render(frame), s.message)
+	elapsed := time.Since(s.startTime)
+	timer := formatDuration(elapsed)
+
+	return fmt.Sprintf("%s %s %s", InfoStyle.Render(frame), s.message, DimStyle.Render("["+timer+"]"))
+}
+
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	h := d / time.Hour
+	d -= h * time.Hour
+	m := d / time.Minute
+	d -= m * time.Minute
+	s := d / time.Second
+
+	if h > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", h, m, s)
+	}
+	return fmt.Sprintf("%d:%02d", m, s)
 }
 
 func (s *Spinner) SetMessage(msg string) {

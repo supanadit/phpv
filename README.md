@@ -36,26 +36,6 @@ cd phpv
 go install ./app/phpv.go
 ```
 
-## Shell Integration
-
-- Already supports: bash, zsh, fish, ksh
-- Works with: `eval "$(phpv init -)"` or `phpv init bash`, `phpv init zsh`, etc.
-- Includes: `use`, `default`, `versions`, `which` commands
-
-## Commands Already Implemented
-
-```
-  ✅ list              - List available PHP versions
-  ✅ download          - Download PHP source code
-  ✅ build/install     - Build PHP from source
-  ✅ prune             - Remove all build artifacts
-  ✅ init              - Shell integration (bash/zsh/fish/pwsh/ksh)
-  ✅ use/shell         - Switch PHP version in current shell
-  ✅ default           - Set/show default PHP version
-  ✅ versions          - List installed versions
-  ✅ which             - Show current PHP path
-```
-
 ## The Problem: Why PHP Version Management Is Fundamentally Different
 
 If you've worked with Node.js or Python, you know the luxury: `nvm install 20`, `pyenv install 3.12`, done. Binaries download, paths get wired, you're productive in seconds.

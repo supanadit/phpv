@@ -13,16 +13,17 @@
 curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | bash
 
 # Specific Version
-# curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | INSTALL_VERSION=0.1.2 bash
+# curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/install.sh | INSTALL_VERSION=0.1.4 bash
 
 # Restart shell or source config
 source ~/.zshrc  # or ~/.bashrc
 
 # Use it
 phpv list             # See available versions
-phpv install 8.4      # Install latest PHP 8.4
-phpv use 8.4          # Switch to PHP 8.4 in current shell
-phpv default 8.4      # Set PHP 8.4 as default
+phpv download 8.5     # For now we need download source, It might be removed after stable version which enough with `install` command
+phpv install 8.5      # Install latest PHP 8.5
+phpv use 8.5          # Switch to PHP 8.5 in current shell
+phpv default 8.5      # Set PHP 8.5 as default
 phpv versions         # List installed versions
 phpv which            # Show current PHP path
 ```
@@ -68,23 +69,16 @@ Most tools hide complexity. PHPV handles it.
 
 ```bash
 # No sudo. No root. No system pollution.
+phpv download 8.4
 phpv install 8.4
 phpv use 8.4
 ```
 
 Your PHP versions live in `~/.phpv/`. Your system PHP stays untouched. Need five versions for testing different projects? They coexist peacefully.
 
-### 🔒 **Statically-Linked, Portable Binaries**
-
-Every PHP built by PHPV is **linked statically**. This isn't just technical — it's practical:
-
-- Move `~/.phpv/versions/8.4/` to another Linux machine? **Works.**
-- Build on Ubuntu, run on Alpine? **Works.**
-- No more "works on my machine" — **it works on every machine.**
-
 ### 🚀 **Day-One PHP Support**
 
-PHP 8.5 in dev? PHPV has it. New PHP version released yesterday? PHPV supports it today.
+PHP 9.x in dev? PHPV has it. New PHP version released yesterday? PHPV supports it today.
 No waiting for:
 
 - Ubuntu PPA updates
@@ -120,7 +114,7 @@ The architecture is intentionally layered, following clean/hexagonal architectur
 | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | **Different PHP versions need different compiler versions** | Automatic LLVM toolchain download per major PHP version (8.3+: LLVM 21, 8.0-8.2: LLVM 18, etc.) |
 | **Dependency version conflicts**                            | Isolated dependency builds per PHP version in `~/.phpv/dependencies/`                           |
-| **"Works on my machine" syndrome**                          | Statically-linked builds with `--enable-static --disable-shared`                                |
+| **"Works on my machine" syndrome**                          | Statically-linked builds with `--enable-static --disable-shared` (In Progress)                  |
 | **Custom compilers (Zig, custom GCC)**                      | Full toolchain override via `PHPV_TOOLCHAIN_*` environment variables                            |
 | **PECL extensions**                                         | _[Planned]_ Per-version extension management with automatic dependency resolution               |
 
@@ -151,9 +145,8 @@ PHPV is already functional for core version management. But this is just the beg
 - [x] Multi-compiler support (LLVM, GCC, custom toolchains)
 - [x] Automatic dependency resolution
 - [x] Version-specific LLVM toolchains
-- [x] Static linking for portable binaries
 - [x] User-space installation (no root)
-- [x] **Shell integration (bash, zsh, fish, PowerShell/ksh)** ← Already done!
+- [x] Shell integration (bash, zsh, fish)
 - [x] **Version switching commands** (`use`, `shell`, `default`, `versions`, `which`)
 - [x] Linux support (distro-agnostic)
 
@@ -162,6 +155,7 @@ PHPV is already functional for core version management. But this is just the beg
 - [ ] PECL extension management
 - [ ] PHP-FPM and web server integration
 - [ ] `php.ini` management per version
+- [ ] Static linking for portable binaries
 
 **🔮 Future:**
 

@@ -83,18 +83,46 @@ var urlConfigs = map[string]DependencyURLConfig{
 			},
 		},
 	},
+	"flex": {
+		Default: DependencyPattern{
+			URLTemplate: "https://github.com/westes/flex/releases/download/v%s/flex-%s.tar.gz",
+			Extension:   ".tar.gz",
+		},
+		Exact: map[string]DependencyPattern{
+			"2.5.39": {
+				URLTemplate: "https://github.com/westes/flex/releases/download/flex-2.5.39/flex-2.5.39.tar.gz",
+				Extension:   ".tar.gz",
+			},
+		},
+	},
+	"bison": {
+		Default: DependencyPattern{
+			URLTemplate: "https://mirror.freedif.org/GNU/bison/bison-%s.tar.xz",
+			Extension:   ".tar.xz",
+		},
+		Exact: map[string]DependencyPattern{
+			"1.28": {
+				URLTemplate: "https://mirror.freedif.org/GNU/bison/bison-%s.tar.gz",
+				Extension:   ".tar.gz",
+			},
+			"1.35": {
+				URLTemplate: "https://mirror.freedif.org/GNU/bison/bison-%s.tar.gz",
+				Extension:   ".tar.gz",
+			},
+		},
+	},
 	"re2c": {
 		Default: DependencyPattern{
 			URLTemplate: "https://github.com/skvadrik/re2c/releases/download/%s/re2c-%s.tar.xz",
 			Extension:   ".tar.xz",
 		},
 		Exact: map[string]DependencyPattern{
-			"0.16": {
-				URLTemplate: "https://github.com/skvadrik/re2c/releases/download/0.16/re2c-0.16.tar.gz",
-				Extension:   ".tar.gz",
-			},
 			"0.14": {
 				URLTemplate: "https://github.com/skvadrik/re2c/releases/download/0.14/re2c-0.14.tar.gz",
+				Extension:   ".tar.gz",
+			},
+			"0.16": {
+				URLTemplate: "https://github.com/skvadrik/re2c/releases/download/0.16/re2c-0.16.tar.gz",
 				Extension:   ".tar.gz",
 			},
 		},
@@ -108,9 +136,9 @@ var urlConfigs = map[string]DependencyURLConfig{
 			},
 		},
 	},
-	"zlib": {
+	"cmake": {
 		Default: DependencyPattern{
-			URLTemplate: "https://github.com/madler/zlib/releases/download/v%s/zlib-%s.tar.gz",
+			URLTemplate: "https://github.com/Kitware/CMake/releases/download/v%s/cmake-%s-linux-x86_64.tar.gz",
 			Extension:   ".tar.gz",
 		},
 	},
@@ -119,11 +147,33 @@ var urlConfigs = map[string]DependencyURLConfig{
 			URLTemplate: "https://download.gnome.org/sources/libxml2/%s/libxml2-%s.tar.xz",
 			Extension:   ".tar.xz",
 		},
+		Exact: map[string]DependencyPattern{
+			"2.6.30": {
+				URLTemplate: "https://github.com/GNOME/libxml2/archive/refs/tags/LIBXML2_2_6_30.tar.gz",
+				Extension:   ".tar.gz",
+			},
+		},
+	},
+	"zlib": {
+		Default: DependencyPattern{
+			URLTemplate: "https://github.com/madler/zlib/releases/download/v%s/zlib-%s.tar.gz",
+			Extension:   ".tar.gz",
+		},
 	},
 	"openssl": {
 		Default: DependencyPattern{
-			URLTemplate: "https://www.openssl.org/source/openssl-%s.tar.gz",
+			URLTemplate: "https://github.com/openssl/openssl/releases/download/openssl-%s/openssl-%s.tar.gz",
 			Extension:   ".tar.gz",
+		},
+		Exact: map[string]DependencyPattern{
+			"1.0.1u": {
+				URLTemplate: "https://www.openssl.org/source/openssl-1.0.1u.tar.gz",
+				Extension:   ".tar.gz",
+			},
+			"0.9.8zh": {
+				URLTemplate: "https://www.openssl.org/source/openssl-0.9.8zh.tar.gz",
+				Extension:   ".tar.gz",
+			},
 		},
 	},
 	"curl": {
@@ -131,45 +181,10 @@ var urlConfigs = map[string]DependencyURLConfig{
 			URLTemplate: "https://curl.se/download/curl-%s.tar.gz",
 			Extension:   ".tar.gz",
 		},
-		Exact: map[string]DependencyPattern{
-			"7.12.0": {
-				URLTemplate: "https://curl.se/download/archeology/curl-7.12.0.tar.gz",
-				Extension:   ".tar.gz",
-			},
-			"7.12.1": {
-				URLTemplate: "https://curl.se/download/archeology/curl-7.12.1.tar.gz",
-				Extension:   ".tar.gz",
-			},
-			"7.20.0": {
-				URLTemplate: "https://curl.se/download/archeology/curl-7.20.0.tar.gz",
-				Extension:   ".tar.gz",
-			},
-		},
-		Ranges: []VersionRange{
-			{
-				Max: "7.20",
-				Pattern: DependencyPattern{
-					URLTemplate: "https://curl.se/download/archeology/curl-%s.tar.gz",
-					Extension:   ".tar.gz",
-				},
-			},
-		},
 	},
 	"oniguruma": {
 		Default: DependencyPattern{
 			URLTemplate: "https://github.com/kkos/oniguruma/releases/download/v%s/onig-%s.tar.gz",
-			Extension:   ".tar.gz",
-		},
-	},
-	"llvm": {
-		Default: DependencyPattern{
-			URLTemplate: "https://github.com/llvm/llvm-project/releases/download/llvmorg-%s/LLVM-%s-Linux-X64.tar.xz",
-			Extension:   ".tar.xz",
-		},
-	},
-	"cmake": {
-		Default: DependencyPattern{
-			URLTemplate: "https://github.com/Kitware/CMake/releases/download/v%s/cmake-%s-linux-x86_64.tar.gz",
 			Extension:   ".tar.gz",
 		},
 	},
@@ -218,6 +233,8 @@ type PHPVersionConfig struct {
 	Automake   string
 	Libtool    string
 	Re2c       string
+	Flex       string
+	Bison      string
 	Zlib       string
 	Libxml2    string
 	Libxml2Dir string
@@ -231,6 +248,8 @@ type PHPVersionConfig struct {
 	AutomakeOverride  *DependencyPattern
 	LibtoolOverride   *DependencyPattern
 	Re2cOverride      *DependencyPattern
+	FlexOverride      *DependencyPattern
+	BisonOverride     *DependencyPattern
 	ZlibOverride      *DependencyPattern
 	Libxml2Override   *DependencyPattern
 	OpenSSLEverride   *DependencyPattern
@@ -307,15 +326,73 @@ var versionRegistry = map[string]PHPVersionConfig{
 	},
 	"5.4": {
 		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.59", Automake: "1.9.6",
-		Libtool: "1.5.26", Re2c: "0.16", Zlib: "1.3.1",
+		Libtool: "1.5.26", Re2c: "0.16", Flex: "", Bison: "",
+		Zlib:    "1.3.1",
 		Libxml2: "2.9.14", Libxml2Dir: "2.9",
 		OpenSSL: "1.0.1u", Curl: "7.20.0", Oniguruma: "5.9.6",
 	},
 	"5.3": {
 		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.59", Automake: "1.9.6",
-		Libtool: "1.5.26", Re2c: "0.16", Zlib: "1.3.1",
+		Libtool: "1.5.26", Re2c: "0.16", Flex: "2.5.39", Bison: "1.28",
+		Zlib:    "1.3.1",
 		Libxml2: "2.9.14", Libxml2Dir: "2.9",
 		OpenSSL: "1.0.1u", Curl: "7.20.0", Oniguruma: "5.9.6",
+	},
+	"5.2": {
+		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.59", Automake: "1.9.6",
+		Libtool: "1.5.26", Re2c: "0.16", Flex: "2.5.39", Bison: "1.28",
+		Zlib:    "1.3.1",
+		Libxml2: "2.9.14", Libxml2Dir: "2.9",
+		OpenSSL: "1.0.1u", Curl: "7.20.0", Oniguruma: "5.9.6",
+	},
+	"5.1": {
+		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.59", Automake: "1.9.6",
+		Libtool: "1.5.26", Re2c: "0.16", Flex: "2.5.39", Bison: "1.28",
+		Zlib:    "1.3.1",
+		Libxml2: "2.9.14", Libxml2Dir: "2.9",
+		OpenSSL: "1.0.1u", Curl: "7.12.1", Oniguruma: "5.9.6",
+	},
+	"5.0": {
+		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.59", Automake: "1.9.6",
+		Libtool: "1.5.26", Re2c: "0.14", Flex: "2.5.39", Bison: "1.28",
+		Zlib:    "1.2.13",
+		Libxml2: "2.9.14", Libxml2Dir: "2.9",
+		OpenSSL: "0.9.8zh", Curl: "7.12.0", Oniguruma: "5.9.6",
+	},
+	"4.4": {
+		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
+		Libtool: "1.5.26", Re2c: "0.14", Flex: "2.5.39", Bison: "1.35",
+		Zlib:    "1.2.13",
+		Libxml2: "2.9.14", Libxml2Dir: "2.9",
+		OpenSSL: "1.0.1u", Curl: "7.88.1", Oniguruma: "5.9.6",
+	},
+	"4.3": {
+		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
+		Libtool: "1.5.26", Re2c: "0.14", Flex: "2.5.39", Bison: "1.35",
+		Zlib:    "1.2.13",
+		Libxml2: "2.9.14", Libxml2Dir: "2.9",
+		OpenSSL: "0.9.8zh", Curl: "7.12.0", Oniguruma: "5.9.6",
+	},
+	"4.2": {
+		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
+		Libtool: "1.5.26", Re2c: "0.14", Flex: "2.5.39", Bison: "1.35",
+		Zlib:    "1.2.13",
+		Libxml2: "2.9.14", Libxml2Dir: "2.9",
+		OpenSSL: "0.9.8zh", Curl: "7.12.0", Oniguruma: "5.9.6",
+	},
+	"4.1": {
+		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
+		Libtool: "1.5.26", Re2c: "0.14", Flex: "2.5.39", Bison: "1.35",
+		Zlib:    "1.2.13",
+		Libxml2: "2.9.14", Libxml2Dir: "2.9",
+		OpenSSL: "0.9.8zh", Curl: "7.12.0", Oniguruma: "5.9.6",
+	},
+	"4.0": {
+		Perl: "5.32.1", M4: "1.4.19", Autoconf: "2.13", Automake: "1.4-p6",
+		Libtool: "1.5.26", Re2c: "0.14", Flex: "2.5.39", Bison: "1.35",
+		Zlib:    "1.2.13",
+		Libxml2: "2.9.14", Libxml2Dir: "2.9",
+		OpenSSL: "0.9.8zh", Curl: "7.12.0", Oniguruma: "5.9.6",
 	},
 }
 
@@ -331,6 +408,8 @@ func GetDependenciesForVersion(version domain.Version) []domain.Dependency {
 		newAutoconfDependency(config),
 		newAutomakeDependency(config),
 		newLibtoolDependency(config),
+		newFlexDependency(config),
+		newBisonDependency(config),
 		newRe2cDependency(config),
 		newZlibDependency(config),
 		newLibxml2Dependency(config),
@@ -358,6 +437,12 @@ func getConfigForVersion(v domain.Version) PHPVersionConfig {
 	}
 	if v.Major == 7 {
 		return versionRegistry["7.4"]
+	}
+	if v.Major == 5 && v.Minor >= 3 {
+		return versionRegistry["5.3"]
+	}
+	if v.Major == 4 {
+		return versionRegistry["4.4"]
 	}
 	return versionRegistry["5.6"]
 }
@@ -497,6 +582,46 @@ func newLibtoolDependency(config PHPVersionConfig) domain.Dependency {
 	}
 }
 
+func newFlexDependency(config PHPVersionConfig) domain.Dependency {
+	version := config.Flex
+	if version == "" {
+		return domain.Dependency{}
+	}
+	urlConfig := urlConfigs["flex"]
+	override := config.FlexOverride
+
+	return domain.Dependency{
+		Name:        "flex",
+		Version:     version,
+		DownloadURL: getURL(&urlConfig, version, override),
+		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
+			"--disable-shared",
+			"--enable-static",
+		}),
+		Dependencies: []string{"m4"},
+	}
+}
+
+func newBisonDependency(config PHPVersionConfig) domain.Dependency {
+	version := config.Bison
+	if version == "" {
+		return domain.Dependency{}
+	}
+	urlConfig := urlConfigs["bison"]
+	override := config.BisonOverride
+
+	return domain.Dependency{
+		Name:        "bison",
+		Version:     version,
+		DownloadURL: getURL(&urlConfig, version, override),
+		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
+			"--disable-shared",
+			"--enable-static",
+		}),
+		Dependencies: []string{"m4"},
+	}
+}
+
 func newRe2cDependency(config PHPVersionConfig) domain.Dependency {
 	version := config.Re2c
 	urlConfig := urlConfigs["re2c"]
@@ -539,7 +664,7 @@ func newLibxml2Dependency(config PHPVersionConfig) domain.Dependency {
 	urlConfig := urlConfigs["libxml2"]
 	override := config.Libxml2Override
 
-	url := getURL(&urlConfig, dirVersion, override)
+	url := getURL(&urlConfig, version, override)
 	if !strings.Contains(url, "%s") {
 		url = fmt.Sprintf("https://download.gnome.org/sources/libxml2/%s/libxml2-%s.tar.xz", dirVersion, version)
 	}

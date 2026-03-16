@@ -32,6 +32,14 @@ func GetLLVMVersionForPHP(phpVersion Version) LLVMVersion {
 		}
 	}
 
+	// PHP 4.x - Use LLVM 15 (or consider using GCC for this legacy version)
+	if phpVersion.Major == 4 {
+		return LLVMVersion{
+			Version:     "15.0.6",
+			DownloadURL: "https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/clang+llvm-15.0.6-x86_64-linux-gnu-ubuntu-18.04.tar.xz",
+		}
+	}
+
 	// Default fallback - Use LLVM 21
 	return LLVMVersion{
 		Version:     "21.1.6",

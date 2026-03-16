@@ -177,6 +177,18 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 		}
 		// JSON extension exists in all PHP 7.x versions
 		configureArgs = append(configureArgs, "--enable-json")
+	case 4:
+		// PHP 4.x specific flags
+		configureArgs = append(configureArgs, "--enable-libxml")
+		configureArgs = append(configureArgs, "--with-regex=system")
+		// PHP 4 uses different session handling
+		configureArgs = append(configureArgs, "--enable-track-vars")
+		// Enable standard extensions that exist in PHP 4
+		configureArgs = append(configureArgs, "--enable-pcre")
+		configureArgs = append(configureArgs, "--enable-ftp")
+		configureArgs = append(configureArgs, "--enable-zlib")
+		configureArgs = append(configureArgs, "--with-openssl")
+		configureArgs = append(configureArgs, "--with-curl")
 	}
 
 	// Add dependency-specific configure flags

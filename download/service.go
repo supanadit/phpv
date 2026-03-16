@@ -67,8 +67,14 @@ func (s *Service) GetDownloadSource() domain.DownloadSource {
 
 // BuildDownloadURL constructs the download URL based on source and version
 func (s *Service) BuildDownloadURL(version domain.Version) string {
-	source := s.GetDownloadSource()
 	versionStr := fmt.Sprintf("%d.%d.%d", version.Major, version.Minor, version.Patch)
+
+	// For PHP 4.x, always use official source because GitHub archive is incomplete (missing Zend directory)
+	if version.Major == 4 {
+		return fmt.Sprintf("https://www.php.net/distributions/php-%s.tar.gz", versionStr)
+	}
+
+	source := s.GetDownloadSource()
 
 	switch source.Type {
 	case domain.SourceTypeOfficial:
@@ -82,6 +88,12 @@ func (s *Service) BuildDownloadURL(version domain.Version) string {
 // getCachedArchivePath returns the cache path for a PHP version archive
 func (s *Service) getCachedArchivePath(version domain.Version) string {
 	versionStr := fmt.Sprintf("%d.%d.%d", version.Major, version.Minor, version.Patch)
+
+	// For PHP 4.x, always use official format (no "-github" suffix)
+	if version.Major == 4 {
+		return filepath.Join(s.GetCacheDir(), fmt.Sprintf("php-%s.tar.gz", versionStr))
+	}
+
 	source := s.GetDownloadSource()
 
 	var filename string

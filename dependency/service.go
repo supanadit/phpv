@@ -68,10 +68,18 @@ func (s *Service) IsDependencyBuilt(phpVersion domain.Version, dep domain.Depend
 		return s.toolchainService.IsLLVMInstalled(dep.Version)
 	}
 
+	// For PHP 4.x and PHP 5.0-5.2, use prebuilt flex if available
+	if dep.Name == "flex" {
+		flexPath := "/usr/bin/flex"
+		if info, err := os.Stat(flexPath); err == nil && !info.IsDir() {
+			return true
+		}
+	}
+
 	installDir := s.GetDependencyInstallDir(phpVersion, dep.Name)
 
 	// Special checks for tool dependencies that install binaries, not libraries
-	toolDeps := []string{"cmake", "perl", "m4", "autoconf", "automake", "libtool", "re2c"}
+	toolDeps := []string{"cmake", "perl", "m4", "autoconf", "automake", "libtool", "re2c", "flex"}
 	for _, tool := range toolDeps {
 		if dep.Name == tool {
 			binPath := filepath.Join(installDir, "bin", dep.Name)
@@ -90,6 +98,34 @@ func (s *Service) IsDependencyBuilt(phpVersion domain.Version, dep domain.Depend
 		return err == nil && len(entries) > 0
 	}
 	return false
+}
+
+// isSystemFlexAvailable checks if flex is available in the system PATH
+func (s *Service) isSystemFlexAvailable() bool {
+	flexPath, err := exec.LookPath("flex")
+	if err != nil {
+		return false
+	}
+	// Verify it's a valid executable
+	info, err := os.Stat(flexPath)
+	return err == nil && !info.IsDir()
+}
+
+// getFlexPrebuilt returns a prebuilt flex binary URL for legacy PHP versions
+// that cannot compile flex from source with modern compilers
+func (s *Service) getFlexPrebuilt(phpVersion domain.Version) string {
+	// Only use prebuilt flex for PHP 4.x and PHP 5.0-5.2
+	if phpVersion.Major > 5 || (phpVersion.Major == 5 && phpVersion.Minor > 2) {
+		return ""
+	}
+
+	// Check if we have a prebuilt flex binary
+	flexPath := "/usr/bin/flex"
+	if info, err := os.Stat(flexPath); err == nil && !info.IsDir() {
+		return flexPath
+	}
+
+	return ""
 }
 
 // BuildDependencies builds all dependencies for a PHP version
@@ -134,6 +170,16 @@ func (s *Service) buildDependencyWithDeps(ctx context.Context, phpVersion domain
 	// Skip if already built
 	if built[dep.Name] {
 		return nil
+	}
+
+	// For PHP 4.x and PHP 5.0-5.2, use prebuilt flex if available
+	if dep.Name == "flex" {
+		flexPrebuilt := s.getFlexPrebuilt(phpVersion)
+		if flexPrebuilt != "" {
+			fmt.Printf("→ using prebuilt flex from: %s\n", flexPrebuilt)
+			built[dep.Name] = true
+			return nil
+		}
 	}
 
 	// Check if already installed
@@ -244,6 +290,7 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 		}
 		shouldKeepConfigure := dep.Name == "zlib" || dep.Name == "m4" ||
 			dep.Name == "autoconf" || dep.Name == "automake" || dep.Name == "libtool" ||
+			dep.Name == "bison" ||
 			useBuildconf || useReconf
 
 		if !shouldKeepConfigure {
@@ -453,7 +500,14 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 // buildEnvironment creates environment variables for building dependencies
 func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Dependency) []string {
 	env := s.getCleanBaseEnv()
-	env = s.applyCompilerEnv(env)
+
+	// For flex, use GCC instead of clang/LLVM because old flex versions
+	// have C code that doesn't compile with modern clang
+	if dep.Name == "flex" {
+		env = s.applyGCCEnv(env)
+	} else {
+		env = s.applyCompilerEnv(env)
+	}
 
 	if os.Getenv("PHPV_DEBUG") == "1" {
 		fmt.Printf("[DEBUG] Environment for %s %s:\n", dep.Name, dep.Version)
@@ -666,6 +720,37 @@ func (s *Service) applyCompilerEnv(env []string) []string {
 	// Fallback to system clang (shouldn't happen in normal usage)
 	env = setOrReplaceEnv(env, "CC", "clang")
 	env = setOrReplaceEnv(env, "CXX", "clang++")
+	return env
+}
+
+// applyGCCEnv uses system GCC for building legacy dependencies that don't compile with clang
+func (s *Service) applyGCCEnv(env []string) []string {
+	// Try to find GCC in the system
+	gccPath, err := exec.LookPath("gcc")
+	if err != nil {
+		// Fallback to clang if GCC is not available
+		fmt.Printf("Warning: GCC not found, using clang for flex (may fail)\n")
+		env = setOrReplaceEnv(env, "CC", "clang")
+		env = setOrReplaceEnv(env, "CXX", "clang++")
+		return env
+	}
+
+	gxxPath, _ := exec.LookPath("g++")
+
+	env = setOrReplaceEnv(env, "CC", gccPath)
+	if gxxPath != "" {
+		env = setOrReplaceEnv(env, "CXX", gxxPath)
+	}
+
+	// Get the directory containing gcc for adding to PATH
+	gccDir := filepath.Dir(gccPath)
+	currentPath := getEnvValue(env, "PATH")
+	if currentPath != "" {
+		env = setOrReplaceEnv(env, "PATH", gccDir+":"+currentPath)
+	} else {
+		env = setOrReplaceEnv(env, "PATH", gccDir)
+	}
+
 	return env
 }
 

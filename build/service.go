@@ -265,9 +265,15 @@ func (s *Service) compilerDisplayName(version domain.Version) string {
 		return s.toolchain.CC
 	}
 
-	// Get LLVM version for this PHP version
-	llvmVersion := domain.GetLLVMVersionForPHP(version)
-	return fmt.Sprintf("LLVM %s (clang)", llvmVersion.Version)
+	// Check if we should use LLVM or system GCC
+	if domain.ShouldUseLLVMToolchain(version) {
+		// Get LLVM version for this PHP version
+		llvmVersion := domain.GetLLVMVersionForPHP(version)
+		return fmt.Sprintf("LLVM %s (clang)", llvmVersion.Version)
+	}
+
+	// Use system GCC
+	return "System GCC (gcc)"
 }
 
 func (s *Service) getCompilerBinary(version domain.Version) string {
@@ -280,15 +286,21 @@ func (s *Service) getCompilerBinary(version domain.Version) string {
 		}
 	}
 
-	// Use LLVM from dependencies
-	llvmVersion := domain.GetLLVMVersionForPHP(version)
-	root := viper.GetString("PHPV_ROOT")
-	if root == "" {
-		homeDir, _ := os.UserHomeDir()
-		root = filepath.Join(homeDir, ".phpv")
+	// Check if we should use LLVM or system GCC
+	if domain.ShouldUseLLVMToolchain(version) {
+		// Use LLVM from dependencies
+		llvmVersion := domain.GetLLVMVersionForPHP(version)
+		root := viper.GetString("PHPV_ROOT")
+		if root == "" {
+			homeDir, _ := os.UserHomeDir()
+			root = filepath.Join(homeDir, ".phpv")
+		}
+		llvmBin := filepath.Join(root, "toolchains", "llvm-"+llvmVersion.Version, "bin", "clang")
+		return llvmBin
 	}
-	llvmBin := filepath.Join(root, "toolchains", "llvm-"+llvmVersion.Version, "bin", "clang")
-	return llvmBin
+
+	// Use system GCC
+	return "gcc"
 }
 
 func loadToolchainConfig() *domain.ToolchainConfig {

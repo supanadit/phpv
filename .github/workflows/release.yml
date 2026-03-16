@@ -26,7 +26,7 @@ jobs:
           GOARCH: amd64
           CGO_ENABLED: 0
         run: |
-          go build -o phpv-${{ github.event.release.tag_name }}-linux-amd64 ./app/phpv.go
+          go build -ldflags "-X github.com/supanadit/phpv/domain.AppVersion=${{ github.event.release.tag_name }}" -o phpv-${{ github.event.release.tag_name }}-linux-amd64 ./app/phpv.go
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2

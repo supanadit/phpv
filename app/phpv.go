@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/build"
+	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/download"
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/terminal"
@@ -32,12 +34,24 @@ func main() {
 	// Register and check help flag
 	pflag.BoolP("help", "h", false, "Show help")
 	pflag.BoolP("quiet", "q", false, "Suppress progress output (for CI)")
+	pflag.BoolP("version", "v", false, "Show phpv version")
 	pflag.Parse()
 	viper.BindPFlags(pflag.CommandLine)
+
 	help, _ := pflag.CommandLine.GetBool("help")
 	h, _ := pflag.CommandLine.GetBool("h")
 	if help || h {
 		terminal.NewNothingHandler()
+		return
+	}
+
+	versionFlag, _ := pflag.CommandLine.GetBool("version")
+	if versionFlag {
+		if domain.AppGitCommit != "unknown" {
+			fmt.Printf("phpv %s (%s)\n", domain.AppGitBranch, domain.AppGitCommit)
+		} else {
+			fmt.Printf("phpv %s\n", domain.AppVersion)
+		}
 		return
 	}
 

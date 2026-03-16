@@ -71,7 +71,7 @@ func (s *Service) IsDependencyBuilt(phpVersion domain.Version, dep domain.Depend
 	installDir := s.GetDependencyInstallDir(phpVersion, dep.Name)
 
 	// Special checks for tool dependencies that install binaries, not libraries
-	toolDeps := []string{"cmake", "perl", "m4", "autoconf", "automake", "libtool", "re2c", "flex"}
+	toolDeps := []string{"cmake", "perl", "m4", "autoconf", "automake", "libtool", "re2c", "flex", "bison"}
 	for _, tool := range toolDeps {
 		if dep.Name == tool {
 			binPath := filepath.Join(installDir, "bin", dep.Name)

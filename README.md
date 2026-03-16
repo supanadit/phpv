@@ -6,6 +6,29 @@
 
 ---
 
+## Prerequisites
+
+To speed up builds using system dependencies:
+**Ubuntu / Debian:**
+
+```bash
+sudo apt update && sudo apt install -y build-essential cmake perl m4 autoconf automake libtool flex bison re2c libssl-dev zlib1g-dev libxml2-dev libcurl4-openssl-dev libonig-dev libsqlite3-dev libpng-dev libjpeg-dev libzip-dev pkg-config
+```
+
+**Fedora / RHEL / CentOS:**
+
+```bash
+sudo dnf install -y gcc gcc-c++ make cmake perl m4 autoconf automake libtool flex bison re2c openssl-devel zlib-devel libxml2-devel curl-devel oniguruma-devel sqlite-devel libpng-devel libjpeg-devel libzip-devel pkgconfig
+```
+
+**Arch Linux:**
+
+```bash
+sudo pacman -S --needed base-devel cmake perl m4 autoconf automake libtool flex bison re2c openssl zlib libxml2 curl oniguruma sqlite libpng libjpeg-turbo libzip pkgconf
+```
+
+> Installing these system dependencies is **optional but recommended**. Without them, builds take 15-30 minutes instead of 2-5 minutes.
+
 ## Quickstart
 
 ```bash

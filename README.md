@@ -153,6 +153,7 @@ PHPV is already functional for core version management. But this is just the beg
 **🛠️ In Progress:**
 
 - [ ] PECL extension management
+- [ ] [PIE](https://github.com/php/pie) support out of the box
 - [ ] PHP-FPM and web server integration
 - [ ] `php.ini` management per version
 - [ ] Static linking for portable binaries

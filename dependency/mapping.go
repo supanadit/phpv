@@ -418,7 +418,14 @@ func GetDependenciesForVersion(version domain.Version) []domain.Dependency {
 		newOnigurumaDependency(config),
 	}
 
-	return deps
+	var filtered []domain.Dependency
+	for _, dep := range deps {
+		if dep.Name != "" {
+			filtered = append(filtered, dep)
+		}
+	}
+
+	return filtered
 }
 
 func getConfigForVersion(v domain.Version) PHPVersionConfig {

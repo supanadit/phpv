@@ -80,6 +80,14 @@ jobs:
           echo "PHPV_ROOT=$PHPV_ROOT" >> $GITHUB_ENV
           echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
 
+      - name: Download PHP ${{ matrix.php-version }} source
+        timeout-minutes: 30
+        run: |
+          echo "Downloading PHP ${{ matrix.php-version }} source..."
+          phpv download ${{ matrix.php-version }} -q
+        env:
+          PHPV_ROOT: ${{ env.PHPV_ROOT }}
+
       - name: Build PHP ${{ matrix.php-version }}
         timeout-minutes: 60
         run: |

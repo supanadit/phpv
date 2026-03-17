@@ -263,7 +263,8 @@ func (s *Service) extractTarGz(r io.Reader, destDir, versionStr string) error {
 	// newer timestamps than the .l/.y source files. This prevents make from
 	// trying to regenerate them using flex/bison, which fails because PHP 4's
 	// bundled flex.skl skeleton is incompatible with modern flex versions.
-	if strings.HasPrefix(versionStr, "4.") {
+	// Also touch for PHP 5.2 and earlier since old flex/bison don't build with modern compilers
+	if strings.HasPrefix(versionStr, "4.") || (strings.HasPrefix(versionStr, "5.") && versionStr <= "5.2.99") {
 		if err := s.touchPregeneratedFiles(destDir, versionStr); err != nil {
 			// Log warning but don't fail - extraction succeeded
 			ui.PrintWarning(fmt.Sprintf("Failed to touch pre-generated files: %v", err))

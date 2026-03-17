@@ -24,40 +24,21 @@ func GetLLVMVersionForPHP(phpVersion Version) LLVMVersion {
 		}
 	}
 
-	// PHP 5.x and 7.x - Use LLVM 15
-	if phpVersion.Major == 5 || phpVersion.Major == 7 {
+	// PHP 5.3+ and 7.x - Use LLVM 15
+	if (phpVersion.Major == 5 && phpVersion.Minor >= 3) || phpVersion.Major == 7 {
 		return LLVMVersion{
 			Version:     "15.0.6",
 			DownloadURL: "https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/clang+llvm-15.0.6-x86_64-linux-gnu-ubuntu-18.04.tar.xz",
 		}
 	}
 
-	// PHP 4.x - Use LLVM 5.0 (Ubuntu 14.04 era) for better compatibility with legacy C code
-	// Modern GCC/LLVM have issues with PHP 4.x's old scanner/parser files
-	if phpVersion.Major == 4 {
+	// PHP 5.2 and earlier, and PHP 4.x - Use LLVM 8.0 (Ubuntu 14.04 era) for better compatibility
+	// Modern LLVM have issues with old configure scripts and legacy C code
+	if phpVersion.Major == 4 || (phpVersion.Major == 5 && phpVersion.Minor <= 2) {
 		return LLVMVersion{
-			Version:     "15.0.6",
-			DownloadURL: "https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/clang+llvm-15.0.6-x86_64-linux-gnu-ubuntu-18.04.tar.xz",
+			Version:     "8.0.0",
+			DownloadURL: "https://releases.llvm.org/8.0.0/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz",
 		}
-		// return LLVMVersion{
-		// 	Version:     "9.0.0",
-		// 	DownloadURL: "https://releases.llvm.org/9.0.0/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz",
-		// }
-		// Or
-		// return LLVMVersion{
-		// 	Version:     "8.0.0",
-		// 	DownloadURL: "https://releases.llvm.org/8.0.0/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz",
-		// }
-		// Or
-		// return LLVMVersion{
-		// 	Version:     "7.1.0",
-		// 	DownloadURL: "https://github.com/llvm/llvm-project/releases/download/llvmorg-7.1.0/clang+llvm-7.1.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz",
-		// }
-		// Or
-		// return LLVMVersion{
-		// 	Version:     "6.0.1",
-		// 	DownloadURL: "https://releases.llvm.org/6.0.1/clang+llvm-6.0.1-x86_64-linux-gnu-ubuntu-14.04.tar.xz",
-		// }
 	}
 
 	// Default fallback - Use LLVM 21

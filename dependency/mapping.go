@@ -53,6 +53,10 @@ var urlConfigs = map[string]DependencyURLConfig{
 				URLTemplate: "https://mirror.freedif.org/GNU/autoconf/autoconf-%s.tar.gz",
 				Extension:   ".tar.gz",
 			},
+			"2.69": {
+				URLTemplate: "https://mirror.freedif.org/GNU/autoconf/autoconf-%s.tar.xz",
+				Extension:   ".tar.xz",
+			},
 		},
 	},
 	"automake": {
@@ -118,6 +122,10 @@ var urlConfigs = map[string]DependencyURLConfig{
 				Extension:   ".tar.gz",
 			},
 			"2.6.4": {
+				URLTemplate: "https://mirror.freedif.org/GNU/bison/bison-%s.tar.xz",
+				Extension:   ".tar.xz",
+			},
+			"3.0": {
 				URLTemplate: "https://mirror.freedif.org/GNU/bison/bison-%s.tar.xz",
 				Extension:   ".tar.xz",
 			},
@@ -478,9 +486,9 @@ var versionRegistry = map[string]PHPVersionConfig{
 		Autoconf:   parseDepSpec("2.59", false),
 		Automake:   parseDepSpec("1.9.6", false),
 		Libtool:    parseDepSpec("1.5.26", false),
-		Re2c:       parseDepSpec("0.16", false),
-		Flex:       parseDepSpec("2.5.39", false),
-		Bison:      parseDepSpec("1.28", false),
+		Re2c:       parseDepSpec("", false),
+		Flex:       parseDepSpec("2.6.4", false),
+		Bison:      parseDepSpec("2.4.1", false),
 		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
 		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
 		Libxml2Dir: "2.9",
@@ -491,12 +499,12 @@ var versionRegistry = map[string]PHPVersionConfig{
 	"5.1": {
 		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
 		M4:         parseDepSpec("1.4.19", false),
-		Autoconf:   parseDepSpec("2.59", false),
-		Automake:   parseDepSpec("1.9.6", false),
+		Autoconf:   parseDepSpec("2.69", false),
+		Automake:   parseDepSpec("1.15", false),
 		Libtool:    parseDepSpec("1.5.26", false),
-		Re2c:       parseDepSpec("0.16", false),
-		Flex:       parseDepSpec("2.5.39", false),
-		Bison:      parseDepSpec("1.28", false),
+		Re2c:       parseDepSpec("1.3", false),
+		Flex:       parseDepSpec("2.6.4", false),
+		Bison:      parseDepSpec("3.0", false),
 		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
 		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
 		Libxml2Dir: "2.9",
@@ -507,12 +515,12 @@ var versionRegistry = map[string]PHPVersionConfig{
 	"5.0": {
 		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
 		M4:         parseDepSpec("1.4.19", false),
-		Autoconf:   parseDepSpec("2.59", false),
-		Automake:   parseDepSpec("1.9.6", false),
+		Autoconf:   parseDepSpec("2.69", false),
+		Automake:   parseDepSpec("1.15", false),
 		Libtool:    parseDepSpec("1.5.26", false),
-		Re2c:       parseDepSpec("0.14", false),
-		Flex:       parseDepSpec("2.5.39", false),
-		Bison:      parseDepSpec("1.28", false),
+		Re2c:       parseDepSpec("1.3", false),
+		Flex:       parseDepSpec("2.6.4", false),
+		Bison:      parseDepSpec("3.0", false),
 		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
 		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
 		Libxml2Dir: "2.9",
@@ -838,6 +846,10 @@ func newBisonDependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newRe2cDependency(config PHPVersionConfig) domain.Dependency {
+	// If Re2c is not defined at all (empty constraint), skip it
+	if config.Re2c.ConstraintStr == "" {
+		return domain.Dependency{}
+	}
 	version := config.Re2c.GetRecommended()
 	urlConfig := urlConfigs["re2c"]
 	override := config.Re2cOverride

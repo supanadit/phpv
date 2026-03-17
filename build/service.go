@@ -184,12 +184,7 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 		"--enable-mbstring",
 		"--enable-ctype",
 		"--enable-tokenizer",
-		"--enable-filter",
-		"--enable-dom",
 		"--enable-xml",
-		"--enable-simplexml",
-		"--enable-xmlreader",
-		"--enable-xmlwriter",
 		"--enable-fileinfo",
 		"--enable-session",
 		"--enable-pcntl",
@@ -216,8 +211,8 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 		configureArgs = append(configureArgs, "--with-regex=system")
 		// PHP 4 uses different session handling
 		configureArgs = append(configureArgs, "--enable-track-vars")
-		// Enable standard extensions that exist in PHP 4
-		configureArgs = append(configureArgs, "--enable-pcre")
+		// PHP 5.2 needs PCRE - use system or bundled
+		configureArgs = append(configureArgs, "--without-pcre-regex")
 		configureArgs = append(configureArgs, "--enable-ftp")
 		configureArgs = append(configureArgs, "--enable-zlib")
 		configureArgs = append(configureArgs, "--with-curl")

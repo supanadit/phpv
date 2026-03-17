@@ -785,7 +785,8 @@ func newLibtoolDependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newFlexDependency(config PHPVersionConfig) domain.Dependency {
-	if config.Flex.IsOptional() && config.Flex.ConstraintStr == "" {
+	// If Flex is not defined at all (empty constraint), skip it
+	if config.Flex.ConstraintStr == "" {
 		return domain.Dependency{}
 	}
 	version := config.Flex.GetRecommended()
@@ -805,7 +806,8 @@ func newFlexDependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newBisonDependency(config PHPVersionConfig) domain.Dependency {
-	if config.Bison.IsOptional() && config.Bison.ConstraintStr == "" {
+	// If Bison is not defined at all (empty constraint), skip it
+	if config.Bison.ConstraintStr == "" {
 		return domain.Dependency{}
 	}
 	version := config.Bison.GetRecommended()

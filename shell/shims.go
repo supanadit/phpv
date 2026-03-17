@@ -32,11 +32,17 @@ if [ -z "${PHPV_VERSION:-}" ]; then
 fi
 
 VERSION_DIR="${PHPV_ROOT}/versions/${PHPV_VERSION}"
+DEPS_DIR="${PHPV_ROOT}/dependencies/${PHPV_VERSION}"
 BINARY="${VERSION_DIR}/bin/{{.Binary}}"
 
 if [ ! -x "$BINARY" ]; then
   echo "phpv: version ${PHPV_VERSION} is not installed" >&2
   exit 1
+fi
+
+# Set library path for dynamically linked dependencies
+if [ -d "${DEPS_DIR}/lib" ]; then
+  export LD_LIBRARY_PATH="${DEPS_DIR}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 fi
 
 exec "$BINARY" "$@"
@@ -111,14 +117,20 @@ if [ -z "${PHPV_VERSION:-}" ]; then
 fi
 
 VERSION_DIR="${PHPV_ROOT}/versions/${PHPV_VERSION}"
+DEPS_DIR="${PHPV_ROOT}/dependencies/${PHPV_VERSION}"
 BINARY="${VERSION_DIR}/bin/%s"
 
-	if [ ! -x "$BINARY" ]; then
-	  echo "phpv: version ${PHPV_VERSION} is not installed" >&2
-	  exit 1
-	fi
+if [ ! -x "$BINARY" ]; then
+  echo "phpv: version ${PHPV_VERSION} is not installed" >&2
+  exit 1
+fi
 
-	exec "$BINARY" "$@"
+# Set library path for dynamically linked dependencies
+if [ -d "${DEPS_DIR}/lib" ]; then
+  export LD_LIBRARY_PATH="${DEPS_DIR}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+fi
+
+exec "$BINARY" "$@"
 `, binary)
 
 	if _, err := f.WriteString(shimContent); err != nil {

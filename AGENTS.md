@@ -6,10 +6,10 @@ PHPV is a sophisticated PHP version manager written in Go, similar to NVM (Node)
 
 ### Key Differentiators
 
-- **Multi-compiler support**: LLVM, GCC, Zig Compiler, Docker-isolated builds (statically linked)
+- **Multi-compiler support**: LLVM, GCC, Zig Compiler, Docker-isolated builds (dynamically linked)
 - **Automatic dependency management**: Downloads and builds all required dependencies per PHP version
 - **Version-specific LLVM toolchain**: Different LLVM versions for different PHP versions (PHP 8.3+ uses LLVM 21.1.6, 8.0-8.2 uses 18.1.8, 5.x/7.x uses 15.0.6)
-- **Static linking**: Produces portable, statically-linked PHP binaries
+- **Dynamic linking**: Produces dynamically-linked PHP binaries with proper dependency management
 - **User-space installation**: No root privileges required
 
 ## Architecture
@@ -268,7 +268,7 @@ When adding compiler support:
 
 3. **LLVM Version Mapping**: PHP versions map to specific LLVM versions for compatibility. Always check `domain/llvm.go` when adding new PHP versions.
 
-4. **Static Linking**: All builds use `--enable-static --disable-shared` for portability.
+4. **Dynamic Linking**: All builds use `--enable-shared --disable-static` for flexibility.
 
 5. **Error Propagation**: Errors are wrapped with context at each layer. When debugging, trace through the error chain.
 

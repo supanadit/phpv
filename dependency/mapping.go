@@ -744,8 +744,8 @@ func newM4Dependency(config PHPVersionConfig) domain.Dependency {
 		Version:     version,
 		DownloadURL: getURL(&urlConfig, version, override),
 		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
-			"--disable-shared",
-			"--enable-static",
+			"--enable-shared",
+			"--disable-static",
 		}),
 	}
 }
@@ -760,8 +760,8 @@ func newAutoconfDependency(config PHPVersionConfig) domain.Dependency {
 		Version:     version,
 		DownloadURL: getURL(&urlConfig, version, override),
 		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
-			"--disable-shared",
-			"--enable-static",
+			"--enable-shared",
+			"--disable-static",
 		}),
 		Dependencies: []string{"m4", "perl"},
 	}
@@ -777,8 +777,8 @@ func newAutomakeDependency(config PHPVersionConfig) domain.Dependency {
 		Version:     version,
 		DownloadURL: getURL(&urlConfig, version, override),
 		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
-			"--disable-shared",
-			"--enable-static",
+			"--enable-shared",
+			"--disable-static",
 		}),
 		Dependencies: []string{"autoconf"},
 	}
@@ -794,8 +794,8 @@ func newLibtoolDependency(config PHPVersionConfig) domain.Dependency {
 		Version:     version,
 		DownloadURL: getURL(&urlConfig, version, override),
 		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
-			"--disable-shared",
-			"--enable-static",
+			"--enable-shared",
+			"--disable-static",
 		}),
 		Dependencies: []string{"m4"},
 	}
@@ -815,8 +815,8 @@ func newFlexDependency(config PHPVersionConfig) domain.Dependency {
 		Version:     version,
 		DownloadURL: getURL(&urlConfig, version, override),
 		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
-			"--disable-shared",
-			"--enable-static",
+			"--enable-shared",
+			"--disable-static",
 		}),
 		Dependencies: []string{"m4"},
 	}
@@ -836,8 +836,8 @@ func newBisonDependency(config PHPVersionConfig) domain.Dependency {
 		Version:     version,
 		DownloadURL: getURL(&urlConfig, version, override),
 		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
-			"--disable-shared",
-			"--enable-static",
+			"--enable-shared",
+			"--disable-static",
 		}),
 		Dependencies: []string{"m4"},
 	}
@@ -857,8 +857,8 @@ func newRe2cDependency(config PHPVersionConfig) domain.Dependency {
 		Version:     version,
 		DownloadURL: getURL(&urlConfig, version, override),
 		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
-			"--disable-shared",
-			"--enable-static",
+			"--enable-shared",
+			"--disable-static",
 		}),
 		Dependencies: []string{"autoconf", "automake", "libtool"},
 	}
@@ -871,7 +871,7 @@ func newZlibDependency(config PHPVersionConfig) domain.Dependency {
 
 	defaultFlags := []string{
 		"-DCMAKE_INSTALL_PREFIX=%s",
-		"-DBUILD_SHARED_LIBS=OFF",
+		"-DBUILD_SHARED_LIBS=ON",
 	}
 
 	return domain.Dependency{
@@ -909,8 +909,8 @@ func newLibxml2Dependency(config PHPVersionConfig) domain.Dependency {
 			"--without-ftp",
 			"--without-modules",
 			"--without-lzma",
-			"--disable-shared",
-			"--enable-static",
+			"--enable-shared",
+			"--disable-static",
 		}),
 		Dependencies: []string{"zlib"},
 	}
@@ -926,7 +926,7 @@ func newOpenSSLDependency(config PHPVersionConfig) domain.Dependency {
 	override := config.OpenSSLEverride
 
 	flags := []string{
-		"no-shared",
+		"shared",
 		"no-tests",
 		"no-asm",
 	}
@@ -963,8 +963,8 @@ func newCurlDependency(config PHPVersionConfig) domain.Dependency {
 		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
 			"--with-openssl",
 			"--with-zlib",
-			"--disable-shared",
-			"--enable-static",
+			"--enable-shared",
+			"--disable-static",
 			"--without-libssh2",
 			"--without-nghttp2",
 			"--without-libidn2",
@@ -989,8 +989,8 @@ func newOnigurumaDependency(config PHPVersionConfig) domain.Dependency {
 		Version:     version,
 		DownloadURL: getURL(&urlConfig, version, override),
 		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
-			"--disable-shared",
-			"--enable-static",
+			"--enable-shared",
+			"--disable-static",
 		}),
 	}
 }

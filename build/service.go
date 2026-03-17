@@ -179,8 +179,8 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	// Base configure arguments
 	configureArgs := []string{
 		fmt.Sprintf("--prefix=%s", installDir),
-		"--enable-static",
-		"--disable-shared",
+		"--disable-static",
+		"--enable-shared",
 		"--disable-all",
 		"--enable-cli",
 		"--enable-phar",

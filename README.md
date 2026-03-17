@@ -137,7 +137,7 @@ The architecture is intentionally layered, following clean/hexagonal architectur
 | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | **Different PHP versions need different compiler versions** | Automatic LLVM toolchain download per major PHP version (8.3+: LLVM 21, 8.0-8.2: LLVM 18, etc.) |
 | **Dependency version conflicts**                            | Isolated dependency builds per PHP version in `~/.phpv/dependencies/`                           |
-| **"Works on my machine" syndrome**                          | Statically-linked builds with `--enable-static --disable-shared` (In Progress)                  |
+| **"Works on my machine" syndrome**                          | Dynamically-linked builds with `--enable-shared --disable-static` (In Progress)                  |
 | **Custom compilers (Zig, custom GCC)**                      | Full toolchain override via `PHPV_TOOLCHAIN_*` environment variables                            |
 | **PECL extensions**                                         | _[Planned]_ Per-version extension management with automatic dependency resolution               |
 
@@ -214,7 +214,7 @@ PHPV is built on these principles:
 
 1. **Complexity should be handled, not hidden** — Users shouldn't need to understand LLVM versions, dependency chains, or static linking. But the tool should handle them correctly.
 2. **User-space is sovereign** — Root access is for system administrators. Developer tools should never require `sudo`.
-3. **Portability over convenience** — A static binary that works everywhere beats a shared library build that's faster to compile but fragile.
+3. **Portability over convenience** — A dynamically-linked binary with proper dependency management beats a fragile static build that's hard to maintain.
 4. **Day-one support matters** — PHP releases should be available immediately, not months later through package managers.
 5. **Real architecture scales** — Go over bash. Clean architecture over quick scripts. Long-term maintainability over temporary fixes.
 

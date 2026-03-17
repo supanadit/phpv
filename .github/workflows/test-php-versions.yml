@@ -63,7 +63,10 @@ jobs:
             git \
             wget \
             curl \
-            xz-utils
+            xz-utils \
+            libgdbm-dev \
+            libdb-dev \
+            libreadline-dev
 
       - name: Build phpv binary
         run: |
@@ -84,7 +87,7 @@ jobs:
         timeout-minutes: 30
         run: |
           echo "Downloading PHP ${{ matrix.php-version }} source..."
-          phpv download ${{ matrix.php-version }} -q
+          phpv download ${{ matrix.php-version }} -V
         env:
           PHPV_ROOT: ${{ env.PHPV_ROOT }}
 
@@ -92,7 +95,7 @@ jobs:
         timeout-minutes: 60
         run: |
           echo "Building PHP ${{ matrix.php-version }}..."
-          phpv build ${{ matrix.php-version }} -q
+          phpv build ${{ matrix.php-version }} -V
         env:
           PHPV_ROOT: ${{ env.PHPV_ROOT }}
 

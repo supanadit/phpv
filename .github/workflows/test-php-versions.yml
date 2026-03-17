@@ -80,10 +80,12 @@ jobs:
       - name: Fix libtinfo for LLVM
         run: |
           # LLVM 18.1.8 needs libtinfo.so.5 but Ubuntu 24.04 has libtinfo.so.6
-          # Create a symlink if needed
-          if [ -f /usr/lib/x86_64-linux-gnu/libtinfo.so.6 ] && [ ! -f /usr/lib/x86_64-linux-gnu/libtinfo.so.5 ]; then
-            sudo ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5
-          fi
+          # Try to install libtinfo5 package (may require universe repo)
+          sudo apt-get update
+          sudo apt-get install -y software-properties-common || true
+          sudo add-apt-repository -y universe || true
+          sudo apt-get update
+          sudo apt-get install -y libtinfo5 || true
 
       - name: Build phpv binary
         run: |

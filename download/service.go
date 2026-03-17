@@ -71,45 +71,17 @@ func (s *Service) GetDownloadSource() domain.DownloadSource {
 func (s *Service) BuildDownloadURL(version domain.Version) string {
 	versionStr := fmt.Sprintf("%d.%d.%d", version.Major, version.Minor, version.Patch)
 
-	// For PHP 4.x and 5.x <= 5.4, use official source because:
-	// - GitHub archive is incomplete (missing Zend directory for PHP 4.x)
-	// - PHP 5.4 and earlier have configure generated with old autoconf that works
-	if version.Major == 4 || (version.Major == 5 && version.Minor <= 4) {
-		return fmt.Sprintf("https://www.php.net/distributions/php-%s.tar.gz", versionStr)
-	}
-
-	source := s.GetDownloadSource()
-
-	switch source.Type {
-	case domain.SourceTypeOfficial:
-		return fmt.Sprintf("https://www.php.net/distributions/php-%s.tar.gz", versionStr)
-	default:
-		// GitHub
-		return fmt.Sprintf("https://github.com/php/php-src/archive/refs/tags/php-%s.tar.gz", versionStr)
-	}
+	// Always try php.net first for all versions
+	// Older versions (5.3 and earlier, 4.x) will return 404 and fallback to museum
+	return fmt.Sprintf("https://www.php.net/distributions/php-%s.tar.gz", versionStr)
 }
 
 // getCachedArchivePath returns the cache path for a PHP version archive
 func (s *Service) getCachedArchivePath(version domain.Version) string {
 	versionStr := fmt.Sprintf("%d.%d.%d", version.Major, version.Minor, version.Patch)
 
-	// For PHP 4.x and 5.x <= 5.4, always use official format
-	if version.Major == 4 || (version.Major == 5 && version.Minor <= 4) {
-		return filepath.Join(s.GetCacheDir(), fmt.Sprintf("php-%s.tar.gz", versionStr))
-	}
-
-	source := s.GetDownloadSource()
-
-	var filename string
-	switch source.Type {
-	case domain.SourceTypeOfficial:
-		filename = fmt.Sprintf("php-%s.tar.gz", versionStr)
-	default:
-		// GitHub
-		filename = fmt.Sprintf("php-%s-github.tar.gz", versionStr)
-	}
-
-	return filepath.Join(s.GetCacheDir(), filename)
+	// Always use standard php naming for cache
+	return filepath.Join(s.GetCacheDir(), fmt.Sprintf("php-%s.tar.gz", versionStr))
 }
 
 // Download downloads and extracts the PHP source code
@@ -135,12 +107,23 @@ func (s *Service) Download(ctx context.Context, version domain.Version) error {
 
 	// Check if already cached
 	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
-		// Download to cache
+		// Try primary URL first (php.net), then fallback to museum.php.net for old versions
 		downloadURL := s.BuildDownloadURL(version)
 		ui.PrintInfo(fmt.Sprintf("Downloading PHP %s from %s...", versionStr, downloadURL))
 
 		if err := s.downloadToCache(ctx, downloadURL, cachePath); err != nil {
-			return fmt.Errorf("failed to download: %w", err)
+			// Check if it's a 404 and we should try museum.php.net
+			if strings.Contains(err.Error(), "HTTP 404") {
+				museumURL := s.buildMuseumURL(version)
+				ui.PrintInfo(fmt.Sprintf("php.net returned 404, trying museum.php.net..."))
+				ui.PrintInfo(fmt.Sprintf("Downloading PHP %s from %s...", versionStr, museumURL))
+
+				if museumErr := s.downloadToCache(ctx, museumURL, cachePath); museumErr != nil {
+					return fmt.Errorf("failed to download (tried php.net and museum.php.net): php.net: %w, museum: %w", err, museumErr)
+				}
+			} else {
+				return fmt.Errorf("failed to download: %w", err)
+			}
 		}
 		ui.PrintSuccess(fmt.Sprintf("Downloaded and cached: %s", filepath.Base(cachePath)))
 	} else {
@@ -155,6 +138,16 @@ func (s *Service) Download(ctx context.Context, version domain.Version) error {
 
 	ui.PrintSuccess(fmt.Sprintf("Successfully downloaded PHP %s to %s", versionStr, targetDir))
 	return nil
+}
+
+// buildMuseumURL returns the museum.php.net URL for old PHP versions
+func (s *Service) buildMuseumURL(version domain.Version) string {
+	versionStr := fmt.Sprintf("%d.%d.%d", version.Major, version.Minor, version.Patch)
+
+	if version.Major == 4 {
+		return fmt.Sprintf("https://museum.php.net/php4/php-%s.tar.gz", versionStr)
+	}
+	return fmt.Sprintf("https://museum.php.net/php5/php-%s.tar.gz", versionStr)
 }
 
 // downloadToCache downloads a file to the cache directory

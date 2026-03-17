@@ -109,6 +109,14 @@ var urlConfigs = map[string]DependencyURLConfig{
 				URLTemplate: "https://mirror.freedif.org/GNU/bison/bison-%s.tar.gz",
 				Extension:   ".tar.gz",
 			},
+			"2.4.1": {
+				URLTemplate: "https://mirror.freedif.org/GNU/bison/bison-%s.tar.gz",
+				Extension:   ".tar.gz",
+			},
+			"2.6.4": {
+				URLTemplate: "https://mirror.freedif.org/GNU/bison/bison-%s.tar.xz",
+				Extension:   ".tar.xz",
+			},
 		},
 	},
 	"re2c": {
@@ -166,6 +174,10 @@ var urlConfigs = map[string]DependencyURLConfig{
 			Extension:   ".tar.gz",
 		},
 		Exact: map[string]DependencyPattern{
+			"1.0.2u": {
+				URLTemplate: "https://www.openssl.org/source/openssl-1.0.2u.tar.gz",
+				Extension:   ".tar.gz",
+			},
 			"1.0.1u": {
 				URLTemplate: "https://www.openssl.org/source/openssl-1.0.1u.tar.gz",
 				Extension:   ".tar.gz",
@@ -437,11 +449,11 @@ var versionRegistry = map[string]PHPVersionConfig{
 		Libtool:    parseDepSpec("1.5.26", false),
 		Re2c:       parseDepSpec("0.16", false),
 		Flex:       parseDepSpec("", true),
-		Bison:      parseDepSpec("", true),
+		Bison:      parseDepSpec("2.4.1", false),
 		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
 		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
 		Libxml2Dir: "2.9",
-		OpenSSL:    parseDepSpec("1.0.1u|>=1.0.0,<1.1.0", false),
+		OpenSSL:    parseDepSpec("1.0.2u|>=1.0.2,<1.0.3", false),
 		Curl:       parseDepSpec("7.20.0|>=7.20.0,<7.21.0", false),
 		Oniguruma:  parseDepSpec("5.9.6|~5.9.0", false),
 	},
@@ -684,7 +696,7 @@ func newLLVMDependency(llvmVersion domain.LLVMVersion) domain.Dependency {
 	}
 }
 
-func newCMakeDependency(config PHPVersionConfig) domain.Dependency {
+func newCMakeDependency(_ PHPVersionConfig) domain.Dependency {
 	version := "3.30.0"
 
 	return domain.Dependency{
@@ -896,16 +908,19 @@ func newOpenSSLDependency(config PHPVersionConfig) domain.Dependency {
 	urlConfig := urlConfigs["openssl"]
 	override := config.OpenSSLEverride
 
+	flags := []string{
+		"no-shared",
+		"no-tests",
+		"no-asm",
+	}
+
 	return domain.Dependency{
-		Name:        "openssl",
-		Version:     version,
-		DownloadURL: getURL(&urlConfig, version, override),
-		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, []string{
-			"no-shared",
-			"no-tests",
-		}),
-		BuildCommands: getBuildCommands(&urlConfig, version, override, []string{"./config"}),
-		Dependencies:  []string{"perl"},
+		Name:           "openssl",
+		Version:        version,
+		DownloadURL:    getURL(&urlConfig, version, override),
+		ConfigureFlags: getConfigureFlags(&urlConfig, version, override, flags),
+		BuildCommands:  getBuildCommands(&urlConfig, version, override, []string{"./config"}),
+		Dependencies:   []string{"perl"},
 	}
 }
 

@@ -113,55 +113,6 @@ func (s *Service) isSystemDependencyAvailable(depName string) bool {
 	return false
 }
 
-// checkSystemDependency checks a single system dependency and logs the result
-func (s *Service) checkSystemDependency(depName string) domain.SystemDepCheckResult {
-	if s.phpVersion == nil {
-		return domain.SystemDepCheckResult{Name: depName, CanUse: false}
-	}
-	return domain.CheckSystemDependency(depName, *s.phpVersion)
-}
-
-// checkSystemPkgConfig checks if a system library is available via pkg-config
-func (s *Service) checkSystemPkgConfig(depName string) bool {
-	// Map dependency names to pkg-config names
-	pkgConfigMap := map[string]string{
-		"zlib":         "zlib",
-		"libxml2":      "libxml-2.0",
-		"openssl":      "openssl",
-		"curl":         "libcurl",
-		"oniguruma":    "oniguruma",
-		"libzip":       "libzip",
-		"brotli":       "libbrotlidec",
-		"lz4":          "liblz4",
-		"zstd":         "libzstd",
-		"icu-uc":       "icu-i18n",
-		"sqlite3":      "sqlite3",
-		"libedit":      "libedit",
-		"libmemcached": "libmemcached",
-		"libavif":      "libavif",
-		"libwebp":      "libwebp",
-		"libjpeg":      "libjpeg",
-		"libpng":       "libpng",
-		"freetype":     "freetype2",
-		"gmp":          "gmp",
-		"libxslt":      "libxslt",
-		"libgd":        "gd",
-	}
-
-	pkgName, ok := pkgConfigMap[depName]
-	if !ok {
-		return false
-	}
-
-	// Check if pkg-config can find it
-	cmd := exec.Command("pkg-config", "--exists", pkgName)
-	if err := cmd.Run(); err == nil {
-		fmt.Printf("→ Using system %s\n", depName)
-		return true
-	}
-	return false
-}
-
 // GetSystemDependencyPath returns the system library path for a dependency
 func (s *Service) GetSystemDependencyPath(depName string) (string, string, string, bool) {
 	// Map dependency names to pkg-config names and default paths

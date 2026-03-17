@@ -659,14 +659,14 @@ func getURL(config *DependencyURLConfig, version string, override *DependencyPat
 	return config.buildURL(version)
 }
 
-func getConfigureFlags(config *DependencyURLConfig, version string, override *DependencyPattern, defaults []string) []string {
+func getConfigureFlags(_ *DependencyURLConfig, _ string, override *DependencyPattern, defaults []string) []string {
 	if override != nil && len(override.ConfigureFlags) > 0 {
 		return override.ConfigureFlags
 	}
 	return defaults
 }
 
-func getBuildCommands(config *DependencyURLConfig, version string, override *DependencyPattern, defaults []string) []string {
+func getBuildCommands(_ *DependencyURLConfig, _ string, override *DependencyPattern, defaults []string) []string {
 	if override != nil && len(override.BuildCommands) > 0 {
 		return override.BuildCommands
 	}

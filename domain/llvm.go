@@ -24,20 +24,20 @@ func GetLLVMVersionForPHP(phpVersion Version) LLVMVersion {
 		}
 	}
 
-	// PHP 5.3+ and 7.x - Use LLVM 15
-	if (phpVersion.Major == 5 && phpVersion.Minor >= 3) || phpVersion.Major == 7 {
-		return LLVMVersion{
-			Version:     "15.0.6",
-			DownloadURL: "https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/clang+llvm-15.0.6-x86_64-linux-gnu-ubuntu-18.04.tar.xz",
-		}
-	}
-
 	// PHP 5.2 and earlier, and PHP 4.x - Use LLVM 8.0 (Ubuntu 14.04 era) for better compatibility
 	// Modern LLVM have issues with old configure scripts and legacy C code
 	if phpVersion.Major == 4 || (phpVersion.Major == 5 && phpVersion.Minor <= 2) {
 		return LLVMVersion{
 			Version:     "8.0.0",
 			DownloadURL: "https://releases.llvm.org/8.0.0/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz",
+		}
+	}
+
+	// PHP 5.3 and 7.x - Use LLVM 15
+	if (phpVersion.Major == 5 && phpVersion.Minor >= 3) || phpVersion.Major == 7 {
+		return LLVMVersion{
+			Version:     "15.0.6",
+			DownloadURL: "https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/clang+llvm-15.0.6-x86_64-linux-gnu-ubuntu-18.04.tar.xz",
 		}
 	}
 

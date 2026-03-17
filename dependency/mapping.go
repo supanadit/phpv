@@ -497,36 +497,35 @@ var versionRegistry = map[string]PHPVersionConfig{
 		Oniguruma:  parseDepSpec("5.9.6|~5.9.0", false),
 	},
 	"5.1": {
-		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
-		M4:         parseDepSpec("1.4.19", false),
-		Autoconf:   parseDepSpec("2.69", false),
-		Automake:   parseDepSpec("1.15", false),
-		Libtool:    parseDepSpec("1.5.26", false),
-		Re2c:       parseDepSpec("1.3", false),
-		Flex:       parseDepSpec("2.6.4", false),
-		Bison:      parseDepSpec("3.0", false),
-		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
-		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
-		Libxml2Dir: "2.9",
-		OpenSSL:    parseDepSpec("1.0.2u|>=1.0.2,<1.0.3", false),
-		Curl:       parseDepSpec("7.12.1|>=7.12.0,<7.13.0", false),
-		Oniguruma:  parseDepSpec("5.9.6|~5.9.0", false),
+		Perl:      parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
+		M4:        parseDepSpec("1.4.19", false),
+		Autoconf:  parseDepSpec("2.59", false),
+		Automake:  parseDepSpec("1.9.6", false),
+		Libtool:   parseDepSpec("1.5.26", false),
+		Re2c:      parseDepSpec("", false),
+		Flex:      parseDepSpec("", false),
+		Bison:     parseDepSpec("2.4.1", false),
+		Zlib:      parseDepSpec("1.3.1|>=1.2.0", false),
+		Libxml2:   parseDepSpec("", false),
+		OpenSSL:   parseDepSpec("1.0.2u|>=1.0.2,<1.0.3", false),
+		Curl:      parseDepSpec("7.20.0|>=7.20.0,<7.21.0", false),
+		Oniguruma: parseDepSpec("", false),
 	},
 	"5.0": {
 		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
 		M4:         parseDepSpec("1.4.19", false),
-		Autoconf:   parseDepSpec("2.69", false),
-		Automake:   parseDepSpec("1.15", false),
+		Autoconf:   parseDepSpec("2.59", false),
+		Automake:   parseDepSpec("1.9.6", false),
 		Libtool:    parseDepSpec("1.5.26", false),
-		Re2c:       parseDepSpec("1.3", false),
+		Re2c:       parseDepSpec("", false),
 		Flex:       parseDepSpec("2.6.4", false),
-		Bison:      parseDepSpec("3.0", false),
+		Bison:      parseDepSpec("2.4.1", false),
 		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
 		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
 		Libxml2Dir: "2.9",
-		OpenSSL:    parseDepSpec("0.9.8zh|>=0.9.8,<1.0.0", false),
-		Curl:       parseDepSpec("7.12.0|>=7.12.0,<7.13.0", false),
-		Oniguruma:  parseDepSpec("5.9.6|~5.9.0", false),
+		OpenSSL:    parseDepSpec("", false),
+		Curl:       parseDepSpec("", false),
+		Oniguruma:  parseDepSpec("", false),
 	},
 	"4.4": {
 		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
@@ -886,6 +885,10 @@ func newZlibDependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newLibxml2Dependency(config PHPVersionConfig) domain.Dependency {
+	// If Libxml2 is not defined at all (empty constraint), skip it
+	if config.Libxml2.ConstraintStr == "" {
+		return domain.Dependency{}
+	}
 	version := config.Libxml2.GetRecommended()
 	dirVersion := config.Libxml2Dir
 	urlConfig := urlConfigs["libxml2"]
@@ -915,6 +918,10 @@ func newLibxml2Dependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newOpenSSLDependency(config PHPVersionConfig) domain.Dependency {
+	// If OpenSSL is not defined at all (empty constraint), skip it
+	if config.OpenSSL.ConstraintStr == "" {
+		return domain.Dependency{}
+	}
 	version := config.OpenSSL.GetRecommended()
 	urlConfig := urlConfigs["openssl"]
 	override := config.OpenSSLEverride
@@ -936,6 +943,10 @@ func newOpenSSLDependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newCurlDependency(config PHPVersionConfig) domain.Dependency {
+	// If Curl is not defined at all (empty constraint), skip it
+	if config.Curl.ConstraintStr == "" {
+		return domain.Dependency{}
+	}
 	version := config.Curl.GetRecommended()
 	urlConfig := urlConfigs["curl"]
 	override := config.CurlOverride
@@ -966,6 +977,10 @@ func newCurlDependency(config PHPVersionConfig) domain.Dependency {
 }
 
 func newOnigurumaDependency(config PHPVersionConfig) domain.Dependency {
+	// If Oniguruma is not defined at all (empty constraint), skip it
+	if config.Oniguruma.ConstraintStr == "" {
+		return domain.Dependency{}
+	}
 	version := config.Oniguruma.GetRecommended()
 	urlConfig := urlConfigs["oniguruma"]
 	override := config.OnigurumaOverride

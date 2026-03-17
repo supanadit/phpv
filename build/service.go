@@ -129,11 +129,14 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	env := s.depService.GetPHPEnvironment(version)
 
 	// Step 2: Run buildconf (if it exists)
-	// For old PHP versions (5.3, 5.2), we need to patch buildcheck.sh to bypass autoconf version check
-	// and use the built autoconf 2.59
+	// For old PHP versions (5.2 and earlier), skip buildconf entirely - the configure script is already present
+	// and regenerating it causes compatibility issues with modern shells
 	buildconfPath := filepath.Join(sourceDir, "buildconf")
-	skipBuildconf := version.Major == 5 && version.Minor <= 3
-	if _, err := os.Stat(buildconfPath); err == nil {
+	skipBuildconf := version.Major == 5 && version.Minor <= 2
+	if skipBuildconf {
+		ui.PrintProcessingStep(2, 6, "Skipping buildconf (using pre-generated configure)...")
+		ui.StopProcessingStep()
+	} else if _, err := os.Stat(buildconfPath); err == nil {
 		ui.PrintProcessingStep(2, 6, "Running buildconf...")
 
 		// Set up PATH with version-specific autoconf first
@@ -181,7 +184,6 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 		"--disable-all",
 		"--enable-cli",
 		"--enable-phar",
-		"--enable-mbstring",
 		"--enable-ctype",
 		"--enable-tokenizer",
 		"--enable-xml",
@@ -196,6 +198,31 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	case 5:
 		// PHP 5.x requires libxml to be explicitly enabled
 		configureArgs = append(configureArgs, "--enable-libxml")
+
+		// PHP 5.3+ has mbstring, but 5.2 and earlier have issues with bundled oniguruma
+		if version.Minor >= 3 {
+			configureArgs = append(configureArgs, "--enable-mbstring")
+		}
+
+		// PHP 5.2 and earlier have configure script compatibility issues with modern shells
+		// and libxml2 API changes - disable problematic extensions
+		if version.Minor <= 2 {
+			// PHP 5.2 and earlier: disable DOM/SimpleXML extensions (libxml2 API incompatibility)
+			// Disable filter extension (requires PCRE)
+			configureArgs = append(configureArgs, "--without-pcre-regex")
+			configureArgs = append(configureArgs, "--enable-ftp")
+			configureArgs = append(configureArgs, "--enable-zlib")
+			configureArgs = append(configureArgs, "--with-curl")
+		}
+
+		// PHP 5.1 and 5.0: use system libxml2 since older versions need autoconf 2.63+ which conflicts with PHP's autoconf 2.59
+		// Also disable OpenSSL, Curl and Mbstring extensions since they are incompatible with modern compilers/versions
+		if version.Minor <= 1 {
+			configureArgs = append(configureArgs, "--with-libxml")
+			configureArgs = append(configureArgs, "--without-openssl")
+			configureArgs = append(configureArgs, "--without-curl")
+			configureArgs = append(configureArgs, "--without-mbstring")
+		}
 	case 7:
 		// PHP 7.x specific flags
 		// Note: PHP 7.4+ has libxml and hash built-in, only needed for 7.0-7.3

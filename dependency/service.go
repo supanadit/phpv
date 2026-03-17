@@ -1336,8 +1336,8 @@ func (s *Service) GetPHPConfigureFlags(phpVersion domain.Version) []string {
 			}
 		case "openssl":
 			// PHP 4's OpenSSL extension is incompatible with modern OpenSSL
-			// Skip adding OpenSSL support for PHP 4
-			if isPHP4 {
+			// Skip adding OpenSSL support for PHP 4 and PHP 5.1/5.0
+			if isPHP4 || (phpVersion.Major == 5 && phpVersion.Minor <= 1) {
 				continue
 			}
 			if isPHP7Old {
@@ -1348,7 +1348,12 @@ func (s *Service) GetPHPConfigureFlags(phpVersion domain.Version) []string {
 				flags = append(flags, fmt.Sprintf("--with-openssl=%s", depDir))
 			}
 		case "curl":
-			// All versions use --with-curl
+			// PHP 5.1/5.0 and PHP 4 Curl extension is incompatible with modern libcurl
+			// Skip adding Curl support for PHP 5.1/5.0 and PHP 4
+			if isPHP4 || (phpVersion.Major == 5 && phpVersion.Minor <= 1) {
+				continue
+			}
+			// All other versions use --with-curl
 			flags = append(flags, fmt.Sprintf("--with-curl=%s", depDir))
 		case "zlib":
 			if isPHP4 || isPHP7Old {

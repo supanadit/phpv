@@ -80,11 +80,11 @@ jobs:
       - name: Fix libtinfo for LLVM
         run: |
           # LLVM 8.0.0 and 18.1.8 need libtinfo.so.5 but Ubuntu 24.04 has only libtinfo.so.6
-          # Download and install libtinfo5 from Ubuntu 22.04 (last version that has it)
+          # Download and install libtinfo5 from Ubuntu 22.04 (Jammy)
           
           # Download libtinfo5 and its dependencies from Ubuntu 22.04
-          wget -q http://archive.ubuntu.com/ubuntu/pool/main/n/ncurses/libtinfo5_6.2-0ubuntu2.1_amd64.deb -O /tmp/libtinfo5.deb
-          wget -q http://archive.ubuntu.com/ubuntu/pool/main/n/ncurses/libncurses6_6.2-0ubuntu2.1_amd64.deb -O /tmp/libncurses6.deb
+          wget -q http://security.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2ubuntu0.1_amd64.deb -O /tmp/libtinfo5.deb
+          wget -q http://security.ubuntu.com/ubuntu/pool/universe/n/ncurses/libncurses6_6.3-2ubuntu0.1_amd64.deb -O /tmp/libncurses6.deb
           
           # Install the packages
           sudo dpkg -i /tmp/libtinfo5.deb /tmp/libncurses6.deb || sudo apt-get install -f -y

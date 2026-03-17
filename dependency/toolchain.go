@@ -277,7 +277,27 @@ func (s *ToolchainService) GetZigToolchainConfig() *domain.ToolchainConfig {
 	}
 
 	installDir := s.GetZigInstallDir()
-	binDir := filepath.Join(installDir, "bin")
+	// Zig binary is directly in installDir, not in bin/ subdirectory
+	binDir := installDir
+
+	// Ensure lightweight wrappers exist to satisfy CMake when using Zig
+	// These wrappers point to the Zig binary with the appropriate sub-command,
+	// allowing CMake to invoke a compiler wrapper like zcc/zcpp.
+	_ = ensureZigWrappers(binDir, installDir)
+
+	// Add system library paths for Zig dynamic linking
+	systemLibPaths := domain.GetSystemLibPaths()
+	var ldFlags []string
+	ldFlags = append(ldFlags, "-target x86_64-linux-gnu")
+
+	for _, libPath := range systemLibPaths {
+		ldFlags = append(ldFlags, "-L"+libPath)
+		// Add rpath for runtime library discovery
+		if libPath != "/usr/lib" && libPath != "/usr/lib64" {
+			// Only add rpath for non-standard paths; /usr/lib is handled by ld.so.conf
+			ldFlags = append(ldFlags, "-Wl,-rpath,"+libPath)
+		}
+	}
 
 	return &domain.ToolchainConfig{
 		CC:   "zig cc -target x86_64-linux-gnu",
@@ -289,10 +309,32 @@ func (s *ToolchainService) GetZigToolchainConfig() *domain.ToolchainConfig {
 		CPPFlags: []string{
 			"-target x86_64-linux-gnu",
 		},
-		LDFlags: []string{
-			"-target x86_64-linux-gnu",
-		},
+		LDFlags: ldFlags,
 	}
+}
+
+// ensureZigWrappers ensures small wrapper scripts exist to adapt Zig's
+// multi-part launcher for use as C/C++ compilers via CMake.
+// It creates zcc and zcpp wrappers in the Zig install directory that call
+// zig cc/c++ with a fixed target, delegating all further flags/args.
+func ensureZigWrappers(binDir, zigInstallDir string) error {
+	zigPath := filepath.Join(zigInstallDir, "zig")
+	// wrappers live next to the Zig install dir
+	zcc := filepath.Join(zigInstallDir, "zcc")
+	zcpp := filepath.Join(zigInstallDir, "zcpp")
+
+	// Content for wrappers
+	contentZcc := "#!/bin/sh\nexec \"" + zigPath + "\" cc -target x86_64-linux-gnu \"$@\"\n"
+	contentZcpp := "#!/bin/sh\nexec \"" + zigPath + "\" c++ -target x86_64-linux-gnu \"$@\"\n"
+
+	// Write wrappers if not present or different
+	if err := os.WriteFile(zcc, []byte(contentZcc), 0755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(zcpp, []byte(contentZcpp), 0755); err != nil {
+		return err
+	}
+	return nil
 }
 
 // CreateZigWrappers creates wrapper scripts for Zig tools in ~/.phpv/bin/

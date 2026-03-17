@@ -33,9 +33,8 @@ func GetZigVersion() ZigVersion {
 	}
 }
 
-// UseLLVM returns true if the user wants to use LLVM instead of system GCC
+// UseLLVM returns true if the user wants to use LLVM instead of system GCC/Zig
 func UseLLVM() bool {
-	// Check environment variable: PHPV_USE_LLVM=1
 	val := viper.GetString("PHPV_USE_LLVM")
 	if val == "" {
 		val = os.Getenv("PHPV_USE_LLVM")
@@ -43,19 +42,8 @@ func UseLLVM() bool {
 	return strings.ToLower(val) == "1" || strings.ToLower(val) == "true"
 }
 
-// ShouldUseLLVMToolchain returns true if we should use LLVM for building
-// This is true only when PHPV_USE_LLVM=1 is explicitly set
-// Note: Zig is now the default for PHP 8.0-8.2 (replaces LLVM to avoid libtinfo issues)
-// But we use system GCC for PHP build itself (simpler, works everywhere)
-func ShouldUseLLVMToolchain(phpVersion Version) bool {
-	// Only use LLVM if explicitly requested via PHPV_USE_LLVM=1
-	// For PHP 8.0-8.2, we use system GCC instead of LLVM to avoid libtinfo issues
-	return UseLLVM()
-}
-
 // UseZig returns true if the user wants to use Zig instead of LLVM/GCC
 func UseZig() bool {
-	// Check environment variable: PHPV_USE_ZIG=1
 	val := viper.GetString("PHPV_USE_ZIG")
 	if val == "" {
 		val = os.Getenv("PHPV_USE_ZIG")
@@ -63,25 +51,74 @@ func UseZig() bool {
 	return strings.ToLower(val) == "1" || strings.ToLower(val) == "true"
 }
 
+// UseGCC returns true if the user wants to use system GCC instead of Zig/LLVM
+func UseGCC() bool {
+	val := viper.GetString("PHPV_USE_GCC")
+	if val == "" {
+		val = os.Getenv("PHPV_USE_GCC")
+	}
+	return strings.ToLower(val) == "1" || strings.ToLower(val) == "true"
+}
+
 // ShouldUseZigToolchain returns true if we should use Zig for building
-// This is true only when PHPV_USE_ZIG=1 is explicitly set
-// Note: By default, PHP 8.0-8.2 now uses system GCC (no LLVM) to avoid libtinfo issues
+// For PHP < 8.1 (4.x, 5.x, 7.x, 8.0): DEFAULT - use Zig to avoid LLVM libtinfo issues
+// For PHP >= 8.1: only if PHPV_USE_ZIG=1
 func ShouldUseZigToolchain(phpVersion Version) bool {
-	// Only use Zig if explicitly requested
-	// Default behavior is now to use system GCC for PHP 8.0-8.2 to avoid LLVM/libtinfo issues
-	return UseZig()
+	// If user explicitly wants LLVM, don't use Zig
+	if UseLLVM() {
+		return false
+	}
+	// If user explicitly wants GCC, don't use Zig
+	if UseGCC() {
+		return false
+	}
+	// If user explicitly wants Zig, use it
+	if UseZig() {
+		return true
+	}
+	// DEFAULT: Use Zig for PHP < 8.1 (4.x, 5.x, 7.x, 8.0)
+	if phpVersion.Major < 8 || (phpVersion.Major == 8 && phpVersion.Minor < 1) {
+		return true
+	}
+	return false
+}
+
+// ShouldUseLLVMToolchain returns true if we should use LLVM for building
+// Only when PHPV_USE_LLVM=1 is explicitly set
+func ShouldUseLLVMToolchain(phpVersion Version) bool {
+	return UseLLVM()
 }
 
 // GetCompilerType returns which compiler to use: "zig", "llvm", or "system"
 func GetCompilerType(phpVersion Version) string {
-	// Priority: Zig (explicit) > LLVM (explicit) > system GCC (default)
-	if UseZig() {
-		return "zig"
-	}
+	// Priority: LLVM (explicit) > Zig (explicit or default for <8.1) > system GCC
 	if UseLLVM() {
 		return "llvm"
 	}
+	if ShouldUseZigToolchain(phpVersion) {
+		return "zig"
+	}
 	return "system"
+}
+
+// GetSystemLibPaths returns common system library paths for dynamic linking
+func GetSystemLibPaths() []string {
+	paths := []string{
+		"/usr/lib",
+		"/usr/lib64",
+		"/usr/lib/x86_64-linux-gnu",
+		"/usr/local/lib",
+		"/lib/x86_64-linux-gnu",
+		"/lib64",
+	}
+
+	var existingPaths []string
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			existingPaths = append(existingPaths, p)
+		}
+	}
+	return existingPaths
 }
 
 // IsEmpty returns true when no overrides are defined.

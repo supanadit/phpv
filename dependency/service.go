@@ -123,8 +123,12 @@ func (s *Service) isSystemDependencyAvailable(depName string) bool {
 		return result.CanUse
 	}
 
-	// For library dependencies, only use system deps for PHP 8.3+ (or when not using LLVM)
+	// For library dependencies, only use system deps for PHP 8.3+ (or when not using LLVM or Zig)
 	if s.phpVersion == nil {
+		return false
+	}
+	// Don't use system libraries when using Zig - they may be ABI incompatible
+	if domain.ShouldUseZigToolchain(*s.phpVersion) {
 		return false
 	}
 	if !domain.ShouldUseLLVMToolchain(*s.phpVersion) {
@@ -196,16 +200,19 @@ func (s *Service) BuildDependencies(ctx context.Context, phpVersion domain.Versi
 		s.checkAndReportSystemDeps(phpVersion)
 	}
 
-	// First, ensure Zig is installed if explicitly requested
+	// First, ensure Zig is installed if needed (default for PHP < 8.1)
 	if useZig {
-		ui.PrintInfo("Using Zig compiler (PHPV_USE_ZIG=1)")
+		if domain.UseZig() {
+			ui.PrintInfo("Using Zig compiler (PHPV_USE_ZIG=1)")
+		} else {
+			ui.PrintInfo("Using Zig compiler (default for PHP < 8.1)")
+		}
 		if err := s.toolchainService.DownloadAndInstallZig(ctx); err != nil {
 			return fmt.Errorf("failed to install Zig: %w", err)
 		}
-		// Update toolchain configuration to use Zig
-		if s.toolchain == nil || s.toolchain.IsEmpty() {
-			s.toolchain = s.toolchainService.GetZigToolchainConfig()
-		}
+		// When using Zig, always set the Zig toolchain config (overriding any custom config)
+		// to ensure Zig is used correctly
+		s.toolchain = s.toolchainService.GetZigToolchainConfig()
 	}
 
 	// First, ensure LLVM is installed if needed (for PHP < 8.3 or PHPV_USE_LLVM=1)
@@ -527,7 +534,7 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 						// Use per-version autoconf for regenerating configure
 						autoconfBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "autoconf"), "bin")
 						depsBin := s.getDependencyBinPath(phpVersion)
-						env = setOrReplaceEnv(env, "PATH", autoconfBin+":"+depsBin+":"+getEnvValue(env, "PATH"))
+						env = prependOrSetEnv(env, "PATH", autoconfBin+":"+depsBin, ":")
 						env = setOrReplaceEnv(env, "AUTOCONF", filepath.Join(autoconfBin, "autoconf"))
 						env = setOrReplaceEnv(env, "AUTOMAKE", filepath.Join(autoconfBin, "automake"))
 						env = setOrReplaceEnv(env, "ACLOCAL", filepath.Join(autoconfBin, "aclocal"))
@@ -573,7 +580,7 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 					// Use per-version autoconf for regenerating configure
 					autoconfBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "autoconf"), "bin")
 					depsBin := s.getDependencyBinPath(phpVersion)
-					env = setOrReplaceEnv(env, "PATH", autoconfBin+":"+depsBin+":"+getEnvValue(env, "PATH"))
+					env = prependOrSetEnv(env, "PATH", autoconfBin+":"+depsBin, ":")
 					env = setOrReplaceEnv(env, "AUTOCONF", filepath.Join(autoconfBin, "autoconf"))
 					env = setOrReplaceEnv(env, "AUTOMAKE", filepath.Join(autoconfBin, "automake"))
 					env = setOrReplaceEnv(env, "ACLOCAL", filepath.Join(autoconfBin, "aclocal"))
@@ -624,6 +631,18 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 		for i, arg := range configureArgs {
 			configureArgs[i] = strings.ReplaceAll(arg, "%s", installDir)
 		}
+		// When using Zig, pass compiler via CMake variables instead of CC env var
+		// because CMake doesn't handle "zig cc -target ..." properly
+		// Use semicolon syntax to tell CMake the compiler is "zig" with initial arg "cc"
+		if s.phpVersion != nil && domain.ShouldUseZigToolchain(*s.phpVersion) {
+			zigInstallDir := s.toolchainService.GetZigInstallDir()
+			zigPath := filepath.Join(zigInstallDir, "zig")
+			// Use semicolon syntax: executable;initial_arg
+			configureArgs = append(configureArgs, "-DCMAKE_C_COMPILER="+zigPath+";cc")
+			configureArgs = append(configureArgs, "-DCMAKE_C_FLAGS=-target x86_64-linux-gnu")
+			configureArgs = append(configureArgs, "-DCMAKE_CXX_COMPILER="+zigPath+";c++")
+			configureArgs = append(configureArgs, "-DCMAKE_CXX_FLAGS=-target x86_64-linux-gnu")
+		}
 	}
 
 	fmt.Printf("Configuring %s...\n", dep.Name)
@@ -651,11 +670,30 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Dependency) []string {
 	env := s.getCleanBaseEnv()
 
-	// Use LLVM toolchain or system GCC based on PHP version
+	// Use LLVM toolchain, Zig, or system GCC based on PHP version
 	env = s.applyCompilerEnv(env)
 
-	// Check if using system dependencies
-	useSystemDeps := !domain.ShouldUseLLVMToolchain(phpVersion)
+	// When using Zig, ensure Zig is in PATH for CMake builds
+	if s.phpVersion != nil && domain.ShouldUseZigToolchain(*s.phpVersion) {
+		zigInstallDir := s.toolchainService.GetZigInstallDir()
+		zigBinDir := filepath.Join(zigInstallDir, "bin")
+		// Check if zig is directly in installDir or in bin/
+		var zigPath string
+		if _, err := os.Stat(filepath.Join(zigInstallDir, "zig")); err == nil {
+			zigPath = zigInstallDir
+			fmt.Printf("[DEBUG] Found zig in installDir: %s\n", zigInstallDir)
+		} else if _, err := os.Stat(filepath.Join(zigBinDir, "zig")); err == nil {
+			zigPath = zigBinDir
+			fmt.Printf("[DEBUG] Found zig in binDir: %s\n", zigBinDir)
+		}
+		if zigPath != "" {
+			env = prependOrSetEnv(env, "PATH", zigPath, ":")
+			fmt.Printf("[DEBUG] PATH after adding zig: %s\n", getEnvValue(env, "PATH"))
+		}
+	}
+
+	// Check if using system dependencies (not when using LLVM or Zig)
+	useSystemDeps := !domain.ShouldUseLLVMToolchain(phpVersion) && !domain.ShouldUseZigToolchain(phpVersion)
 
 	// Get system PATH first - we want system tools to take precedence
 	systemPath := "/usr/local/bin:/usr/bin:/bin"
@@ -820,7 +858,7 @@ func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Depende
 		}
 	}
 
-	env = setOrReplaceEnv(env, "PATH", systemPath)
+	env = prependOrSetEnv(env, "PATH", systemPath, ":")
 
 	if os.Getenv("PHPV_DEBUG") == "1" {
 		fmt.Printf("[DEBUG] Environment for %s %s:\n", dep.Name, dep.Version)
@@ -869,6 +907,7 @@ func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Depende
 	for _, depName := range dep.Dependencies {
 		depInstallDir := s.GetDependencyInstallDir(phpVersion, depName)
 		pkgConfigPath = append(pkgConfigPath, filepath.Join(depInstallDir, "lib", "pkgconfig"))
+		// Add -L for build time
 		ldflags = append(ldflags, fmt.Sprintf("-L%s/lib", depInstallDir))
 		cppflags = append(cppflags, fmt.Sprintf("-I%s/include", depInstallDir))
 
@@ -885,13 +924,13 @@ func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Depende
 		env = setOrReplaceEnv(env, "PKG_CONFIG_PATH", strings.Join(pkgConfigPath, ":"))
 	}
 	if len(ldflags) > 0 {
-		env = setOrReplaceEnv(env, "LDFLAGS", strings.Join(ldflags, " "))
+		env = appendOrSetEnv(env, "LDFLAGS", strings.Join(ldflags, " "), " ")
 	}
 	if len(cppflags) > 0 {
-		env = setOrReplaceEnv(env, "CPPFLAGS", strings.Join(cppflags, " "))
+		env = appendOrSetEnv(env, "CPPFLAGS", strings.Join(cppflags, " "), " ")
 	}
 	if len(cflags) > 0 {
-		env = setOrReplaceEnv(env, "CFLAGS", strings.Join(cflags, " "))
+		env = appendOrSetEnv(env, "CFLAGS", strings.Join(cflags, " "), " ")
 	}
 
 	return env
@@ -1036,14 +1075,11 @@ func (s *Service) applyCompilerEnv(env []string) []string {
 	// Use Zig compiler if requested
 	if useZig {
 		zigInstallDir := s.toolchainService.GetZigInstallDir()
-		zigBinDir := filepath.Join(zigInstallDir, "bin")
 
-		// Also get phpv bin directory for wrappers
-		phpvRoot := filepath.Dir(s.toolchainService.GetToolchainDir())
-		phpvBinDir := filepath.Join(phpvRoot, "bin")
-
-		cc := fmt.Sprintf("zig cc -target x86_64-linux-gnu")
-		cxx := fmt.Sprintf("zig c++ -target x86_64-linux-gnu")
+		// Use wrapper scripts (zcc/zcpp) that work with autotools configure
+		// These wrappers call "zig cc -target ..." properly
+		cc := filepath.Join(zigInstallDir, "zcc")
+		cxx := filepath.Join(zigInstallDir, "zcpp")
 
 		env = setOrReplaceEnv(env, "CC", cc)
 		env = setOrReplaceEnv(env, "CXX", cxx)
@@ -1051,29 +1087,29 @@ func (s *Service) applyCompilerEnv(env []string) []string {
 		env = setOrReplaceEnv(env, "RANLIB", "zig ranlib")
 		env = setOrReplaceEnv(env, "NM", "zig nm")
 
-		// Add Zig directory and phpv bin directory to PATH
-		// Priority: phpv bin (wrappers) > zig bin (if exists) > zig install dir > system
-		// Check both zig binary location: in bin/ subdir or directly in install dir
-		pathToAdd := phpvBinDir
-		if _, err := os.Stat(filepath.Join(zigBinDir, "zig")); err == nil {
-			pathToAdd = zigBinDir + ":" + pathToAdd
-		} else if _, err := os.Stat(filepath.Join(zigInstallDir, "zig")); err == nil {
-			pathToAdd = zigInstallDir + ":" + pathToAdd
-		}
-		currentPath := getEnvValue(env, "PATH")
-		if currentPath != "" {
-			env = setOrReplaceEnv(env, "PATH", pathToAdd+":"+currentPath)
-		} else {
-			env = setOrReplaceEnv(env, "PATH", pathToAdd)
-		}
+		// Add Zig install directory to PATH (for zig toolchain tools)
+		env = prependOrSetEnv(env, "PATH", zigInstallDir, ":")
 
-		// Add target flag to CFLAGS and CXXFLAGS
-		currentCflags := getEnvValue(env, "CFLAGS")
-		env = setOrReplaceEnv(env, "CFLAGS", "-target x86_64-linux-gnu "+currentCflags)
-		currentCppflags := getEnvValue(env, "CPPFLAGS")
-		env = setOrReplaceEnv(env, "CPPFLAGS", "-target x86_64-linux-gnu "+currentCppflags)
+		// Note: Don't add -target to CFLAGS - it's already in CC/CXX commands
+		// zig cc -target x86_64-linux-gnu handles cross-compilation correctly
+
+		// Add system library paths for Zig dynamic linking
+		// Create proper -L and -Wl,-rpath flags for each system library path
+		systemLibPaths := domain.GetSystemLibPaths()
+		var ldFlags []string
+		for _, libPath := range systemLibPaths {
+			ldFlags = append(ldFlags, "-L"+libPath)
+			// Add rpath for runtime library discovery
+			if libPath != "/usr/lib" && libPath != "/usr/lib64" {
+				// Only add rpath for non-standard paths; /usr/lib is handled by ld.so.conf
+				ldFlags = append(ldFlags, "-Wl,-rpath,"+libPath)
+			}
+		}
 		currentLdflags := getEnvValue(env, "LDFLAGS")
-		env = setOrReplaceEnv(env, "LDFLAGS", "-target x86_64-linux-gnu "+currentLdflags)
+		if currentLdflags != "" {
+			currentLdflags = currentLdflags + " "
+		}
+		env = setOrReplaceEnv(env, "LDFLAGS", currentLdflags+strings.Join(ldFlags, " "))
 
 		return env
 	}
@@ -1099,12 +1135,7 @@ func (s *Service) applyCompilerEnv(env []string) []string {
 		env = setOrReplaceEnv(env, "LD", ld)
 
 		// Add LLVM bin directory to PATH
-		currentPath := getEnvValue(env, "PATH")
-		if currentPath != "" {
-			env = setOrReplaceEnv(env, "PATH", llvmBinDir+":"+currentPath)
-		} else {
-			env = setOrReplaceEnv(env, "PATH", llvmBinDir)
-		}
+		env = prependOrSetEnv(env, "PATH", llvmBinDir, ":")
 		return env
 	}
 
@@ -1507,9 +1538,15 @@ func (s *Service) getSystemDepConfigureFlag(depName string, phpVersion domain.Ve
 		if phpVersion.Major >= 8 && phpVersion.Minor >= 5 {
 			return []string{}
 		}
-		if isPHP8Plus {
+		// PHP 8.0 removed oniguruma support entirely
+		if phpVersion.Major == 8 && phpVersion.Minor == 0 {
+			return []string{}
+		}
+		// PHP 8.1+ uses --with-oniguruma
+		if phpVersion.Major >= 8 && phpVersion.Minor >= 1 {
 			return []string{"--with-oniguruma"}
 		}
+		// PHP 7.x uses --with-onig
 		return []string{"--with-onig"}
 	case "libzip":
 		return []string{"--with-libzip"}
@@ -1638,43 +1675,43 @@ func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
 		env = setOrReplaceEnv(env, "PKG_CONFIG_PATH", strings.Join(pkgConfigPath, ":"))
 	}
 	if len(ldflags) > 0 {
-		env = setOrReplaceEnv(env, "LDFLAGS", strings.Join(ldflags, " "))
+		env = appendOrSetEnv(env, "LDFLAGS", strings.Join(ldflags, " "), " ")
 	}
 	if len(cppflags) > 0 {
-		env = setOrReplaceEnv(env, "CPPFLAGS", strings.Join(cppflags, " "))
+		env = appendOrSetEnv(env, "CPPFLAGS", strings.Join(cppflags, " "), " ")
 	}
 	if len(cflags) > 0 {
-		env = setOrReplaceEnv(env, "CFLAGS", strings.Join(cflags, " "))
+		env = appendOrSetEnv(env, "CFLAGS", strings.Join(cflags, " "), " ")
 	}
 
 	// Add re2c to PATH if available
 	re2cBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "re2c"), "bin")
 	if _, err := os.Stat(filepath.Join(re2cBin, "re2c")); err == nil {
-		env = setOrReplaceEnv(env, "PATH", re2cBin+":"+getEnvValue(env, "PATH"))
+		env = prependOrSetEnv(env, "PATH", re2cBin, ":")
 	}
 
 	// Add autoconf to PATH if available
 	autoconfBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "autoconf"), "bin")
 	if _, err := os.Stat(filepath.Join(autoconfBin, "autoconf")); err == nil {
-		env = setOrReplaceEnv(env, "PATH", autoconfBin+":"+getEnvValue(env, "PATH"))
+		env = prependOrSetEnv(env, "PATH", autoconfBin, ":")
 	}
 
 	// Add automake to PATH if available
 	automakeBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "automake"), "bin")
 	if _, err := os.Stat(filepath.Join(automakeBin, "automake")); err == nil {
-		env = setOrReplaceEnv(env, "PATH", automakeBin+":"+getEnvValue(env, "PATH"))
+		env = prependOrSetEnv(env, "PATH", automakeBin, ":")
 	}
 
 	// Add libtool to PATH if available
 	libtoolBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "libtool"), "bin")
 	if _, err := os.Stat(filepath.Join(libtoolBin, "libtool")); err == nil {
-		env = setOrReplaceEnv(env, "PATH", libtoolBin+":"+getEnvValue(env, "PATH"))
+		env = prependOrSetEnv(env, "PATH", libtoolBin, ":")
 	}
 
 	// Add m4 to PATH if available (bison depends on it)
 	m4Bin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "m4"), "bin")
 	if _, err := os.Stat(filepath.Join(m4Bin, "m4")); err == nil {
-		env = setOrReplaceEnv(env, "PATH", m4Bin+":"+getEnvValue(env, "PATH"))
+		env = prependOrSetEnv(env, "PATH", m4Bin, ":")
 	}
 
 	// For PHP 5+, add bison and flex to PATH for parser regeneration
@@ -1682,12 +1719,12 @@ func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
 	if phpVersion.Major >= 5 {
 		bisonBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "bison"), "bin")
 		if _, err := os.Stat(filepath.Join(bisonBin, "bison")); err == nil {
-			env = setOrReplaceEnv(env, "PATH", bisonBin+":"+getEnvValue(env, "PATH"))
+			env = prependOrSetEnv(env, "PATH", bisonBin, ":")
 		}
 
 		flexBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "flex"), "bin")
 		if _, err := os.Stat(filepath.Join(flexBin, "flex")); err == nil {
-			env = setOrReplaceEnv(env, "PATH", flexBin+":"+getEnvValue(env, "PATH"))
+			env = prependOrSetEnv(env, "PATH", flexBin, ":")
 		}
 	}
 
@@ -1753,4 +1790,36 @@ func (s *Service) Clean(phpVersion domain.Version, depName string) error {
 
 	fmt.Printf("✓ Cleaned dependency '%s' for PHP %s\n", depName, versionStr)
 	return nil
+}
+
+// appendOrSetEnv appends a value to an environment variable if it already exists,
+// or sets it if it doesn't.
+func appendOrSetEnv(env []string, key, value, sep string) []string {
+	return appendOrPrependOrSetEnv(env, key, value, sep, false)
+}
+
+// prependOrSetEnv prepends a value to an environment variable if it already exists,
+// or sets it if it doesn't.
+func prependOrSetEnv(env []string, key, value, sep string) []string {
+	return appendOrPrependOrSetEnv(env, key, value, sep, true)
+}
+
+func appendOrPrependOrSetEnv(env []string, key, value, sep string, prepend bool) []string {
+	prefix := key + "="
+	for i, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			current := strings.TrimPrefix(entry, prefix)
+			if current != "" {
+				if prepend {
+					env[i] = prefix + value + sep + current
+				} else {
+					env[i] = prefix + current + sep + value
+				}
+			} else {
+				env[i] = prefix + value
+			}
+			return env
+		}
+	}
+	return append(env, prefix+value)
 }

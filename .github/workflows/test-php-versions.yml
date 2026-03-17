@@ -40,6 +40,14 @@ jobs:
         with:
           go-version: '1.22'
 
+      - name: Cache phpv downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.phpv/cache
+          key: phpv-cache-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            phpv-cache-
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -66,7 +74,8 @@ jobs:
             xz-utils \
             libgdbm-dev \
             libdb-dev \
-            libreadline-dev
+            libreadline-dev \
+            libtinfo5
 
       - name: Build phpv binary
         run: |

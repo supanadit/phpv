@@ -181,6 +181,10 @@ var urlConfigs = map[string]DependencyURLConfig{
 			Extension:   ".tar.gz",
 		},
 		Exact: map[string]DependencyPattern{
+			"1.1.1w": {
+				URLTemplate: "https://www.openssl.org/source/openssl-1.1.1w.tar.gz",
+				Extension:   ".tar.gz",
+			},
 			"1.0.2u": {
 				URLTemplate: "https://www.openssl.org/source/openssl-1.0.2u.tar.gz",
 				Extension:   ".tar.gz",

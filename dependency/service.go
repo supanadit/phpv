@@ -51,6 +51,11 @@ func (s *Service) GetDependenciesDir(phpVersion domain.Version) string {
 	return filepath.Join(s.phpvRoot, "dependencies", versionStr)
 }
 
+// GetToolchainDir returns the toolchain directory
+func (s *Service) GetToolchainDir() string {
+	return s.toolchainService.GetToolchainDir()
+}
+
 // GetDependencyInstallDir returns the install directory for a specific dependency
 func (s *Service) GetDependencyInstallDir(phpVersion domain.Version, depName string) string {
 	return filepath.Join(s.GetDependenciesDir(phpVersion), depName)
@@ -101,7 +106,24 @@ func (s *Service) IsDependencyBuilt(phpVersion domain.Version, dep domain.Depend
 // isSystemDependencyAvailable checks if a system dependency is available
 // This is used for PHP 8.3+ which can use system libraries
 func (s *Service) isSystemDependencyAvailable(depName string) bool {
-	// Only use system deps for PHP 8.3+ (or when not using LLVM)
+	// Special case: build tools like perl, m4, autoconf, etc. can use system versions
+	// even when using LLVM, since they don't need to match the compiler
+	buildTools := []string{"perl", "m4", "autoconf", "automake", "libtool", "re2c", "flex", "bison"}
+	isBuildTool := false
+	for _, tool := range buildTools {
+		if depName == tool {
+			isBuildTool = true
+			break
+		}
+	}
+
+	// If it's a build tool, check system availability regardless of compiler
+	if isBuildTool && s.phpVersion != nil {
+		result := domain.CheckSystemDependency(depName, *s.phpVersion)
+		return result.CanUse
+	}
+
+	// For library dependencies, only use system deps for PHP 8.3+ (or when not using LLVM)
 	if s.phpVersion == nil {
 		return false
 	}
@@ -174,7 +196,7 @@ func (s *Service) BuildDependencies(ctx context.Context, phpVersion domain.Versi
 		s.checkAndReportSystemDeps(phpVersion)
 	}
 
-	// First, ensure Zig is installed if requested
+	// First, ensure Zig is installed if explicitly requested
 	if useZig {
 		ui.PrintInfo("Using Zig compiler (PHPV_USE_ZIG=1)")
 		if err := s.toolchainService.DownloadAndInstallZig(ctx); err != nil {
@@ -723,17 +745,36 @@ func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Depende
 			}
 		}
 	} else {
-		// Using LLVM - add all built tool paths
+		// Using LLVM - add tool paths, preferring system versions where possible
+		// Check system perl first - use system perl if available (it's just a build tool)
+		perlResult := domain.CheckSystemDependency("perl", phpVersion)
+		if perlResult.CanUse {
+			// Use system perl - create wrapper at expected location for autoconf compatibility
+			perlBinDir := filepath.Join(s.GetDependencyInstallDir(phpVersion, "perl"), "bin")
+			if err := os.MkdirAll(perlBinDir, 0755); err == nil {
+				perlWrapperPath := filepath.Join(perlBinDir, "perl")
+				// Only create wrapper if it doesn't exist
+				if _, err := os.Stat(perlWrapperPath); os.IsNotExist(err) {
+					wrapperContent := "#!/bin/bash\nexec /usr/bin/perl \"$@\"\n"
+					if err := os.WriteFile(perlWrapperPath, []byte(wrapperContent), 0755); err == nil {
+						fmt.Printf("→ Created perl wrapper for system perl compatibility\n")
+					}
+				}
+			}
+			// Add perl wrapper to PATH so autoconf finds it
+			systemPath = perlBinDir + ":" + systemPath
+		} else {
+			// Add perl to PATH if available (fallback)
+			perlBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "perl"), "bin")
+			if _, err := os.Stat(filepath.Join(perlBin, "perl")); err == nil {
+				systemPath = perlBin + ":" + systemPath
+			}
+		}
+
 		// Add cmake to PATH if available
 		cmakeBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "cmake"), "bin")
 		if _, err := os.Stat(filepath.Join(cmakeBin, "cmake")); err == nil {
 			systemPath = cmakeBin + ":" + systemPath
-		}
-
-		// Add perl to PATH if available
-		perlBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "perl"), "bin")
-		if _, err := os.Stat(filepath.Join(perlBin, "perl")); err == nil {
-			systemPath = perlBin + ":" + systemPath
 		}
 
 		// Add m4 to PATH if available
@@ -742,7 +783,7 @@ func (s *Service) buildEnvironment(phpVersion domain.Version, dep domain.Depende
 			systemPath = m4Bin + ":" + systemPath
 		}
 
-		// Add autoconf to PATH if available
+		// Keep built autoconf - some deps need specific versions
 		autoconfBin := filepath.Join(s.GetDependencyInstallDir(phpVersion, "autoconf"), "bin")
 		if _, err := os.Stat(filepath.Join(autoconfBin, "autoconf")); err == nil {
 			systemPath = autoconfBin + ":" + systemPath
@@ -997,6 +1038,10 @@ func (s *Service) applyCompilerEnv(env []string) []string {
 		zigInstallDir := s.toolchainService.GetZigInstallDir()
 		zigBinDir := filepath.Join(zigInstallDir, "bin")
 
+		// Also get phpv bin directory for wrappers
+		phpvRoot := filepath.Dir(s.toolchainService.GetToolchainDir())
+		phpvBinDir := filepath.Join(phpvRoot, "bin")
+
 		cc := fmt.Sprintf("zig cc -target x86_64-linux-gnu")
 		cxx := fmt.Sprintf("zig c++ -target x86_64-linux-gnu")
 
@@ -1006,12 +1051,20 @@ func (s *Service) applyCompilerEnv(env []string) []string {
 		env = setOrReplaceEnv(env, "RANLIB", "zig ranlib")
 		env = setOrReplaceEnv(env, "NM", "zig nm")
 
-		// Add Zig bin directory to PATH
+		// Add Zig directory and phpv bin directory to PATH
+		// Priority: phpv bin (wrappers) > zig bin (if exists) > zig install dir > system
+		// Check both zig binary location: in bin/ subdir or directly in install dir
+		pathToAdd := phpvBinDir
+		if _, err := os.Stat(filepath.Join(zigBinDir, "zig")); err == nil {
+			pathToAdd = zigBinDir + ":" + pathToAdd
+		} else if _, err := os.Stat(filepath.Join(zigInstallDir, "zig")); err == nil {
+			pathToAdd = zigInstallDir + ":" + pathToAdd
+		}
 		currentPath := getEnvValue(env, "PATH")
 		if currentPath != "" {
-			env = setOrReplaceEnv(env, "PATH", zigBinDir+":"+currentPath)
+			env = setOrReplaceEnv(env, "PATH", pathToAdd+":"+currentPath)
 		} else {
-			env = setOrReplaceEnv(env, "PATH", zigBinDir)
+			env = setOrReplaceEnv(env, "PATH", pathToAdd)
 		}
 
 		// Add target flag to CFLAGS and CXXFLAGS
@@ -1493,7 +1546,8 @@ func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
 	depsDir := s.GetDependenciesDir(phpVersion)
 
 	// Check if we should use system dependencies (for PHP 8.3+)
-	useSystemDeps := domain.ShouldUseLLVMToolchain(phpVersion) == false
+	// Don't use system deps if using LLVM or Zig - we build our own dependencies
+	useSystemDeps := !domain.ShouldUseLLVMToolchain(phpVersion) && !domain.ShouldUseZigToolchain(phpVersion)
 
 	var pkgConfigPath []string
 	var ldflags []string

@@ -242,6 +242,12 @@ func (s *ToolchainService) DownloadAndInstallZig(ctx context.Context) error {
 		return fmt.Errorf("Zig installation verification failed: zig not found at %s", zigPath)
 	}
 
+	// Create wrapper scripts for PATH persistence
+	if err := s.CreateZigWrappers(); err != nil {
+		fmt.Printf("⚠ Warning: Failed to create Zig wrappers: %v\n", err)
+		// Non-fatal, continue anyway
+	}
+
 	fmt.Printf("✓ Zig %s installed successfully\n", zigConfig.Version)
 	return nil
 }
@@ -287,4 +293,48 @@ func (s *ToolchainService) GetZigToolchainConfig() *domain.ToolchainConfig {
 			"-target x86_64-linux-gnu",
 		},
 	}
+}
+
+// CreateZigWrappers creates wrapper scripts for Zig tools in ~/.phpv/bin/
+// This ensures Zig is accessible regardless of PATH manipulation during builds
+func (s *ToolchainService) CreateZigWrappers() error {
+	installDir := s.GetZigInstallDir()
+	zigPath := filepath.Join(installDir, "zig")
+
+	if _, err := os.Stat(zigPath); os.IsNotExist(err) {
+		return fmt.Errorf("Zig not installed, cannot create wrappers")
+	}
+
+	// Get phpv bin directory (from ToolchainService)
+	// We need to find the phpv root - it's the parent of toolchains directory
+	phpvRoot := filepath.Dir(s.GetToolchainDir())
+	binDir := filepath.Join(phpvRoot, "bin")
+
+	// Create bin directory if it doesn't exist
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		return fmt.Errorf("failed to create bin directory: %w", err)
+	}
+
+	// Create wrappers for Zig tools
+	wrappers := []string{"zig", "zigcc", "zigc++"}
+	// Map to actual commands
+	commands := map[string]string{
+		"zig":    "zig",
+		"zigcc":  "zig cc -target x86_64-linux-gnu",
+		"zigc++": "zig c++ -target x86_64-linux-gnu",
+	}
+
+	for _, wrapper := range wrappers {
+		wrapperPath := filepath.Join(binDir, wrapper)
+		cmd := commands[wrapper]
+
+		// Create wrapper script
+		content := fmt.Sprintf("#!/bin/bash\nexec %s \"$@\"\n", cmd)
+		if err := os.WriteFile(wrapperPath, []byte(content), 0755); err != nil {
+			return fmt.Errorf("failed to create wrapper %s: %w", wrapperPath, err)
+		}
+	}
+
+	fmt.Printf("✓ Created Zig wrapper scripts in %s\n", binDir)
+	return nil
 }

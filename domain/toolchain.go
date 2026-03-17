@@ -44,18 +44,13 @@ func UseLLVM() bool {
 }
 
 // ShouldUseLLVMToolchain returns true if we should use LLVM for building
-// This is true for PHP versions < 8.3 OR when PHPV_USE_LLVM=1
+// This is true only when PHPV_USE_LLVM=1 is explicitly set
+// Note: Zig is now the default for PHP 8.0-8.2 (replaces LLVM to avoid libtinfo issues)
+// But we use system GCC for PHP build itself (simpler, works everywhere)
 func ShouldUseLLVMToolchain(phpVersion Version) bool {
-	// If user explicitly wants LLVM, use it
-	if UseLLVM() {
-		return true
-	}
-	// For PHP 8.3+, use system GCC by default
-	if phpVersion.Major == 8 && phpVersion.Minor >= 3 {
-		return false
-	}
-	// For older PHP versions, use LLVM
-	return true
+	// Only use LLVM if explicitly requested via PHPV_USE_LLVM=1
+	// For PHP 8.0-8.2, we use system GCC instead of LLVM to avoid libtinfo issues
+	return UseLLVM()
 }
 
 // UseZig returns true if the user wants to use Zig instead of LLVM/GCC
@@ -69,21 +64,21 @@ func UseZig() bool {
 }
 
 // ShouldUseZigToolchain returns true if we should use Zig for building
-// This is true when PHPV_USE_ZIG=1
+// This is true only when PHPV_USE_ZIG=1 is explicitly set
+// Note: By default, PHP 8.0-8.2 now uses system GCC (no LLVM) to avoid libtinfo issues
 func ShouldUseZigToolchain(phpVersion Version) bool {
-	// If user explicitly wants Zig, use it
-	if UseZig() {
-		return true
-	}
-	return false
+	// Only use Zig if explicitly requested
+	// Default behavior is now to use system GCC for PHP 8.0-8.2 to avoid LLVM/libtinfo issues
+	return UseZig()
 }
 
 // GetCompilerType returns which compiler to use: "zig", "llvm", or "system"
 func GetCompilerType(phpVersion Version) string {
+	// Priority: Zig (explicit) > LLVM (explicit) > system GCC (default)
 	if UseZig() {
 		return "zig"
 	}
-	if ShouldUseLLVMToolchain(phpVersion) {
+	if UseLLVM() {
 		return "llvm"
 	}
 	return "system"

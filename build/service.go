@@ -142,7 +142,8 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 		// Set up PATH with version-specific autoconf first
 		autoconfBin := filepath.Join(s.depService.GetDependencyInstallDir(version, "autoconf"), "bin")
 		env = s.addToPathEnv(env, autoconfBin)
-		env = s.setEnvVar(env, "PATH", autoconfBin+":"+os.Getenv("PATH"))
+		// Use the current env's PATH, not os.Getenv
+		env = s.setEnvVar(env, "PATH", autoconfBin+":"+s.getEnvVar(env, "PATH"))
 
 		if skipBuildconf {
 			// Patch buildcheck.sh to bypass autoconf version check
@@ -326,14 +327,20 @@ func (s *Service) compilerDisplayName(version domain.Version) string {
 		return s.toolchain.CC
 	}
 
-	// Check if we should use LLVM or system GCC
+	// Check if we should use Zig (explicit opt-in)
+	if domain.ShouldUseZigToolchain(version) {
+		zigVersion := domain.GetZigVersion()
+		return fmt.Sprintf("Zig %s (zig cc)", zigVersion.Version)
+	}
+
+	// Check if we should use LLVM (explicit opt-in with PHPV_USE_LLVM=1)
 	if domain.ShouldUseLLVMToolchain(version) {
 		// Get LLVM version for this PHP version
 		llvmVersion := domain.GetLLVMVersionForPHP(version)
 		return fmt.Sprintf("LLVM %s (clang)", llvmVersion.Version)
 	}
 
-	// Use system GCC
+	// Default: Use system GCC (works on all systems, no libtinfo issues)
 	return "System GCC (gcc)"
 }
 
@@ -347,7 +354,12 @@ func (s *Service) getCompilerBinary(version domain.Version) string {
 		}
 	}
 
-	// Check if we should use LLVM or system GCC
+	// Check if we should use Zig (explicit opt-in with PHPV_USE_ZIG=1)
+	if domain.ShouldUseZigToolchain(version) {
+		return "zig"
+	}
+
+	// Check if we should use LLVM (explicit opt-in with PHPV_USE_LLVM=1)
 	if domain.ShouldUseLLVMToolchain(version) {
 		// Use LLVM from dependencies
 		llvmVersion := domain.GetLLVMVersionForPHP(version)
@@ -360,7 +372,7 @@ func (s *Service) getCompilerBinary(version domain.Version) string {
 		return llvmBin
 	}
 
-	// Use system GCC
+	// Default: Use system GCC
 	return "gcc"
 }
 
@@ -432,6 +444,16 @@ func (s *Service) setEnvVar(env []string, key, value string) []string {
 		}
 	}
 	return append(env, prefix+value)
+}
+
+func (s *Service) getEnvVar(env []string, key string) string {
+	prefix := key + "="
+	for _, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			return strings.TrimPrefix(e, prefix)
+		}
+	}
+	return ""
 }
 
 // cleanSourceDir removes old build artifacts from the source directory

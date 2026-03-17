@@ -317,12 +317,12 @@ func (s *ToolchainService) GetZigToolchainConfig() *domain.ToolchainConfig {
 	}
 
 	return &domain.ToolchainConfig{
-		CC:   filepath.Join(binDir, "zcc"),
-		CXX:  filepath.Join(binDir, "zcpp"),
-		Path: []string{binDir},
-		CFlags: cFlags,
+		CC:       filepath.Join(binDir, "zcc"),
+		CXX:      filepath.Join(binDir, "zcpp"),
+		Path:     []string{binDir},
+		CFlags:   cFlags,
 		CPPFlags: cFlags,
-		LDFlags: ldFlags,
+		LDFlags:  ldFlags,
 	}
 }
 
@@ -341,6 +341,8 @@ func ensureZigWrappers(binDir, zigInstallDir string) error {
 	// We add -fno-sanitize=undefined and -fno-sanitize-trap=undefined because PHP uses some pointer arithmetic that Zig's default UBSan considers invalid
 	// We add -D_GNU_SOURCE and -D_DEFAULT_SOURCE to ensure consistent glibc feature selection
 	// We use -fuse-ld=/usr/bin/ld to force using host linker instead of Zig's internal LLD
+	// Note: commonFlags contains Zig-specific options including -target which
+	// is not understood by gcc. Keep it confined to Zig wrappers only.
 	commonFlags := "-target x86_64-linux-gnu -Wl,--undefined-version -rtlib=compiler-rt -static-libgcc -fno-sanitize=undefined -fno-sanitize-trap=undefined -fno-stack-check -D_GNU_SOURCE -D_DEFAULT_SOURCE -fuse-ld=/usr/bin/ld"
 	contentZcc := "#!/bin/sh\nexec \"" + zigPath + "\" cc " + commonFlags + " \"$@\"\n"
 	contentZcpp := "#!/bin/sh\nexec \"" + zigPath + "\" c++ " + commonFlags + " \"$@\"\n"

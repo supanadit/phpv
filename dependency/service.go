@@ -437,7 +437,13 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 		env = setOrReplaceEnv(env, "NM", "nm")
 		// Ensure dynamic linker finds system libs first
 		env = prependOrSetEnv(env, "PATH", "/usr/bin:/usr/local/bin", ":")
-		fmt.Printf("→ Forcing system C toolchain for OpenSSL build: CC=%s\n", cc)
+		// Remove any Zig-specific flags that may have been added earlier
+		// (e.g. -target x86_64-linux-gnu, -rtlib=compiler-rt, -static-libgcc)
+		env = setOrReplaceEnv(env, "CFLAGS", "-fPIC -O2")
+		env = setOrReplaceEnv(env, "CPPFLAGS", "")
+		env = setOrReplaceEnv(env, "LDFLAGS", "")
+
+		fmt.Printf("→ Forcing system C toolchain for OpenSSL build: CC=%s (cleared Zig flags)\n", cc)
 	}
 
 	// Clean any previous build artifacts to avoid automake regeneration issues

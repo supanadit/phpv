@@ -71,8 +71,10 @@ func (s *Service) GetDownloadSource() domain.DownloadSource {
 func (s *Service) BuildDownloadURL(version domain.Version) string {
 	versionStr := fmt.Sprintf("%d.%d.%d", version.Major, version.Minor, version.Patch)
 
-	// For PHP 4.x, always use official source because GitHub archive is incomplete (missing Zend directory)
-	if version.Major == 4 {
+	// For PHP 4.x and 5.x <= 5.4, use official source because:
+	// - GitHub archive is incomplete (missing Zend directory for PHP 4.x)
+	// - PHP 5.4 and earlier have configure generated with old autoconf that works
+	if version.Major == 4 || (version.Major == 5 && version.Minor <= 4) {
 		return fmt.Sprintf("https://www.php.net/distributions/php-%s.tar.gz", versionStr)
 	}
 
@@ -91,8 +93,8 @@ func (s *Service) BuildDownloadURL(version domain.Version) string {
 func (s *Service) getCachedArchivePath(version domain.Version) string {
 	versionStr := fmt.Sprintf("%d.%d.%d", version.Major, version.Minor, version.Patch)
 
-	// For PHP 4.x, always use official format (no "-github" suffix)
-	if version.Major == 4 {
+	// For PHP 4.x and 5.x <= 5.4, always use official format
+	if version.Major == 4 || (version.Major == 5 && version.Minor <= 4) {
 		return filepath.Join(s.GetCacheDir(), fmt.Sprintf("php-%s.tar.gz", versionStr))
 	}
 
@@ -232,12 +234,13 @@ func (s *Service) extractTarGz(r io.Reader, destDir, versionStr string) error {
 			return err
 		}
 
-		// Strip the first directory component and replace with version string
+		// Strip the first directory component (e.g., php-5.3.29) and use version string as directory
 		parts := strings.SplitN(header.Name, "/", 2)
 		if len(parts) < 2 {
 			continue
 		}
 
+		// Use versionStr (e.g., "5.3.29") as the directory name
 		target := filepath.Join(destDir, versionStr, parts[1])
 
 		switch header.Typeflag {

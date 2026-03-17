@@ -129,20 +129,43 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 	env := s.depService.GetPHPEnvironment(version)
 
 	// Step 2: Run buildconf (if it exists)
+	// For old PHP versions (5.3, 5.2), we need to patch buildcheck.sh to bypass autoconf version check
+	// and use the built autoconf 2.59
 	buildconfPath := filepath.Join(sourceDir, "buildconf")
+	skipBuildconf := version.Major == 5 && version.Minor <= 3
 	if _, err := os.Stat(buildconfPath); err == nil {
 		ui.PrintProcessingStep(2, 6, "Running buildconf...")
-		// Use per-version autoconf for PHP buildconf
+
+		// Set up PATH with version-specific autoconf first
 		autoconfBin := filepath.Join(s.depService.GetDependencyInstallDir(version, "autoconf"), "bin")
-		if _, err := os.Stat(filepath.Join(autoconfBin, "autoconf")); err == nil {
-			env = s.addToPathEnv(env, autoconfBin)
-			env = s.setEnvVar(env, "AUTOCONF", filepath.Join(autoconfBin, "autoconf"))
-			env = s.setEnvVar(env, "AUTOHEADER", filepath.Join(autoconfBin, "autoheader"))
-			env = s.setEnvVar(env, "AUTOMAKE", filepath.Join(autoconfBin, "automake"))
-			env = s.setEnvVar(env, "ACLOCAL", filepath.Join(autoconfBin, "aclocal"))
-		}
-		if err := util.RunCommand(ctx, sourceDir, env, "./buildconf", "--force"); err != nil {
-			return fmt.Errorf("buildconf failed: %w", err)
+		env = s.addToPathEnv(env, autoconfBin)
+		env = s.setEnvVar(env, "PATH", autoconfBin+":"+os.Getenv("PATH"))
+
+		if skipBuildconf {
+			// Patch buildcheck.sh to bypass autoconf version check
+			buildcheckPath := filepath.Join(sourceDir, "build", "buildcheck.sh")
+			if data, err := os.ReadFile(buildcheckPath); err == nil {
+				// Replace the version check that fails for autoconf > 2.59
+				patched := strings.Replace(string(data),
+					`if test "$1" = "2" -a "$2" -gt "59"; then`,
+					`if test "$1" = "2" -a "$2" -gt "99"; then`, 1)
+				os.WriteFile(buildcheckPath, []byte(patched), 0755)
+			}
+
+			// Run buildconf with --force
+			if err := util.RunCommand(ctx, sourceDir, env, "./buildconf", "--force"); err != nil {
+				return fmt.Errorf("buildconf failed: %w", err)
+			}
+		} else {
+			if _, err := os.Stat(filepath.Join(autoconfBin, "autoconf")); err == nil {
+				env = s.setEnvVar(env, "AUTOCONF", filepath.Join(autoconfBin, "autoconf"))
+				env = s.setEnvVar(env, "AUTOHEADER", filepath.Join(autoconfBin, "autoheader"))
+				env = s.setEnvVar(env, "AUTOMAKE", filepath.Join(autoconfBin, "automake"))
+				env = s.setEnvVar(env, "ACLOCAL", filepath.Join(autoconfBin, "aclocal"))
+			}
+			if err := util.RunCommand(ctx, sourceDir, env, "./buildconf", "--force"); err != nil {
+				return fmt.Errorf("buildconf failed: %w", err)
+			}
 		}
 		ui.StopProcessingStep()
 	}

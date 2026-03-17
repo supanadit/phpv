@@ -289,6 +289,15 @@ func (s *ToolchainService) GetZigToolchainConfig() *domain.ToolchainConfig {
 	systemLibPaths := domain.GetSystemLibPaths()
 	var ldFlags []string
 	ldFlags = append(ldFlags, "-target x86_64-linux-gnu")
+	// Use --undefined-version to allow version scripts to reference missing symbols
+	// (common in libxml2 when features like FTP/HTTP are disabled)
+	ldFlags = append(ldFlags, "-Wl,--undefined-version")
+	// Use compiler-rt to resolve built-in symbols (like __extenddftf2)
+	ldFlags = append(ldFlags, "-rtlib=compiler-rt")
+	// Force static linking of compiler runtime to avoid symbol lookup errors in the resulting binary
+	ldFlags = append(ldFlags, "-static-libgcc")
+	// Allow undefined symbols in shared libraries (needed for some complex dependency chains)
+	ldFlags = append(ldFlags, "-Wl,--allow-shlib-undefined")
 
 	for _, libPath := range systemLibPaths {
 		ldFlags = append(ldFlags, "-L"+libPath)
@@ -299,16 +308,20 @@ func (s *ToolchainService) GetZigToolchainConfig() *domain.ToolchainConfig {
 		}
 	}
 
+	// Add system include paths for Zig
+	systemIncludePaths := domain.GetSystemIncludePaths()
+	var cFlags []string
+	cFlags = append(cFlags, "-target x86_64-linux-gnu")
+	for _, incPath := range systemIncludePaths {
+		cFlags = append(cFlags, "-I"+incPath)
+	}
+
 	return &domain.ToolchainConfig{
-		CC:   "zig cc -target x86_64-linux-gnu",
-		CXX:  "zig c++ -target x86_64-linux-gnu",
+		CC:   filepath.Join(binDir, "zcc"),
+		CXX:  filepath.Join(binDir, "zcpp"),
 		Path: []string{binDir},
-		CFlags: []string{
-			"-target x86_64-linux-gnu",
-		},
-		CPPFlags: []string{
-			"-target x86_64-linux-gnu",
-		},
+		CFlags: cFlags,
+		CPPFlags: cFlags,
 		LDFlags: ldFlags,
 	}
 }
@@ -324,8 +337,13 @@ func ensureZigWrappers(binDir, zigInstallDir string) error {
 	zcpp := filepath.Join(zigInstallDir, "zcpp")
 
 	// Content for wrappers
-	contentZcc := "#!/bin/sh\nexec \"" + zigPath + "\" cc -target x86_64-linux-gnu \"$@\"\n"
-	contentZcpp := "#!/bin/sh\nexec \"" + zigPath + "\" c++ -target x86_64-linux-gnu \"$@\"\n"
+	// We add -rtlib=compiler-rt -static-libgcc to ensure compiler runtime symbols are included
+	// We add -fno-sanitize=undefined and -fno-sanitize-trap=undefined because PHP uses some pointer arithmetic that Zig's default UBSan considers invalid
+	// We add -D_GNU_SOURCE and -D_DEFAULT_SOURCE to ensure consistent glibc feature selection
+	// We use -fuse-ld=/usr/bin/ld to force using host linker instead of Zig's internal LLD
+	commonFlags := "-target x86_64-linux-gnu -Wl,--undefined-version -rtlib=compiler-rt -static-libgcc -fno-sanitize=undefined -fno-sanitize-trap=undefined -fno-stack-check -D_GNU_SOURCE -D_DEFAULT_SOURCE -fuse-ld=/usr/bin/ld"
+	contentZcc := "#!/bin/sh\nexec \"" + zigPath + "\" cc " + commonFlags + " \"$@\"\n"
+	contentZcpp := "#!/bin/sh\nexec \"" + zigPath + "\" c++ " + commonFlags + " \"$@\"\n"
 
 	// Write wrappers if not present or different
 	if err := os.WriteFile(zcc, []byte(contentZcc), 0755); err != nil {

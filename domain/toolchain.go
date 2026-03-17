@@ -64,6 +64,10 @@ func UseGCC() bool {
 // For PHP < 8.1 (4.x, 5.x, 7.x, 8.0): DEFAULT - use Zig to avoid LLVM libtinfo issues
 // For PHP >= 8.1: only if PHPV_USE_ZIG=1
 func ShouldUseZigToolchain(phpVersion Version) bool {
+	// If user explicitly wants Zig, use it (highest priority override)
+	if UseZig() {
+		return true
+	}
 	// If user explicitly wants LLVM, don't use Zig
 	if UseLLVM() {
 		return false
@@ -71,10 +75,6 @@ func ShouldUseZigToolchain(phpVersion Version) bool {
 	// If user explicitly wants GCC, don't use Zig
 	if UseGCC() {
 		return false
-	}
-	// If user explicitly wants Zig, use it
-	if UseZig() {
-		return true
 	}
 	// DEFAULT: Use Zig for PHP < 8.1 (4.x, 5.x, 7.x, 8.0)
 	if phpVersion.Major < 8 || (phpVersion.Major == 8 && phpVersion.Minor < 1) {
@@ -110,6 +110,23 @@ func GetSystemLibPaths() []string {
 		"/usr/local/lib",
 		"/lib/x86_64-linux-gnu",
 		"/lib64",
+	}
+
+	var existingPaths []string
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			existingPaths = append(existingPaths, p)
+		}
+	}
+	return existingPaths
+}
+
+// GetSystemIncludePaths returns common system include paths
+func GetSystemIncludePaths() []string {
+	paths := []string{
+		"/usr/include",
+		"/usr/local/include",
+		"/usr/include/x86_64-linux-gnu",
 	}
 
 	var existingPaths []string

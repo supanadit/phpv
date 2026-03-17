@@ -350,9 +350,9 @@ var versionRegistry = map[string]PHPVersionConfig{
 		Zlib:       parseDepSpec("1.3.1", false),
 		Libxml2:    parseDepSpec("2.11.7|~2.11.0", false),
 		Libxml2Dir: "2.11",
-		OpenSSL:    parseDepSpec("3.0.14|>=3.0.0,<3.1.0", false),
-		Curl:       parseDepSpec("8.10.1|>=8.0.0", false),
-		Oniguruma:  parseDepSpec("6.9.9|~6.9.0", false),
+		OpenSSL:    parseDepSpec("1.1.1w|>=1.1.0,<1.2.0", false),
+		Curl:       parseDepSpec("7.88.1|>=7.0.0", false),
+		Oniguruma:  parseDepSpec("6.9.8|~6.9.0", false),
 	},
 	"7.4": {
 		Perl:       parseDepSpec("5.32.1|>=5.32.0,<5.33.0", false),
@@ -361,7 +361,7 @@ var versionRegistry = map[string]PHPVersionConfig{
 		Automake:   parseDepSpec("1.15.1", false),
 		Libtool:    parseDepSpec("2.4.6", false),
 		Re2c:       parseDepSpec("1.3", false),
-		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
 		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
 		Libxml2Dir: "2.9",
 		OpenSSL:    parseDepSpec("1.1.1w|>=1.1.0,<1.2.0", false),
@@ -375,7 +375,7 @@ var versionRegistry = map[string]PHPVersionConfig{
 		Automake:   parseDepSpec("1.15.1", false),
 		Libtool:    parseDepSpec("2.4.6", false),
 		Re2c:       parseDepSpec("1.3", false),
-		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
 		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
 		Libxml2Dir: "2.9",
 		OpenSSL:    parseDepSpec("1.1.1w|>=1.1.0,<1.2.0", false),
@@ -389,7 +389,7 @@ var versionRegistry = map[string]PHPVersionConfig{
 		Automake:   parseDepSpec("1.15.1", false),
 		Libtool:    parseDepSpec("2.4.6", false),
 		Re2c:       parseDepSpec("1.3", false),
-		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
 		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
 		Libxml2Dir: "2.9",
 		OpenSSL:    parseDepSpec("1.1.1w|>=1.1.0,<1.2.0", false),
@@ -403,7 +403,7 @@ var versionRegistry = map[string]PHPVersionConfig{
 		Automake:   parseDepSpec("1.15.1", false),
 		Libtool:    parseDepSpec("2.4.6", false),
 		Re2c:       parseDepSpec("1.3", false),
-		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
 		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
 		Libxml2Dir: "2.9",
 		OpenSSL:    parseDepSpec("1.1.1w|>=1.1.0,<1.2.0", false),
@@ -417,7 +417,7 @@ var versionRegistry = map[string]PHPVersionConfig{
 		Automake:   parseDepSpec("1.15.1", false),
 		Libtool:    parseDepSpec("2.4.6", false),
 		Re2c:       parseDepSpec("1.3", false),
-		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
 		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
 		Libxml2Dir: "2.9",
 		OpenSSL:    parseDepSpec("1.1.1w|>=1.1.0,<1.2.0", false),
@@ -524,7 +524,7 @@ var versionRegistry = map[string]PHPVersionConfig{
 		Re2c:       parseDepSpec("", false),
 		Flex:       parseDepSpec("2.6.4", false),
 		Bison:      parseDepSpec("2.4.1", false),
-		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
 		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
 		Libxml2Dir: "2.9",
 		OpenSSL:    parseDepSpec("", false),
@@ -555,7 +555,7 @@ var versionRegistry = map[string]PHPVersionConfig{
 		Re2c:       parseDepSpec("0.14", false),
 		Flex:       parseDepSpec("", true),
 		Bison:      parseDepSpec("", true),
-		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
 		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
 		Libxml2Dir: "2.9",
 		OpenSSL:    parseDepSpec("0.9.8zh|>=0.9.8,<1.0.0", false),
@@ -571,7 +571,7 @@ var versionRegistry = map[string]PHPVersionConfig{
 		Re2c:       parseDepSpec("0.14", false),
 		Flex:       parseDepSpec("", true),
 		Bison:      parseDepSpec("", true),
-		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
 		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
 		Libxml2Dir: "2.9",
 		OpenSSL:    parseDepSpec("0.9.8zh|>=0.9.8,<1.0.0", false),
@@ -587,7 +587,7 @@ var versionRegistry = map[string]PHPVersionConfig{
 		Re2c:       parseDepSpec("0.14", false),
 		Flex:       parseDepSpec("", true),
 		Bison:      parseDepSpec("", true),
-		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
 		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
 		Libxml2Dir: "2.9",
 		OpenSSL:    parseDepSpec("0.9.8zh|>=0.9.8,<1.0.0", false),
@@ -603,7 +603,7 @@ var versionRegistry = map[string]PHPVersionConfig{
 		Re2c:       parseDepSpec("0.14", false),
 		Flex:       parseDepSpec("", true),
 		Bison:      parseDepSpec("", true),
-		Zlib:       parseDepSpec("1.2.13|>=1.2.0,<1.3.0", false),
+		Zlib:       parseDepSpec("1.3.1|>=1.2.0", false),
 		Libxml2:    parseDepSpec("2.9.14|~2.9.0", false),
 		Libxml2Dir: "2.9",
 		OpenSSL:    parseDepSpec("0.9.8zh|>=0.9.8,<1.0.0", false),
@@ -615,6 +615,8 @@ var versionRegistry = map[string]PHPVersionConfig{
 func GetDependenciesForVersion(version domain.Version) []domain.Dependency {
 	llvmVersion := domain.GetLLVMVersionForPHP(version)
 	config := getConfigForVersion(version)
+
+	useZig := domain.ShouldUseZigToolchain(version)
 
 	deps := []domain.Dependency{
 		newLLVMDependency(llvmVersion),
@@ -637,6 +639,10 @@ func GetDependenciesForVersion(version domain.Version) []domain.Dependency {
 	var filtered []domain.Dependency
 	for _, dep := range deps {
 		if dep.Name != "" {
+			// Skip LLVM if using Zig
+			if dep.Name == "llvm" && useZig {
+				continue
+			}
 			filtered = append(filtered, dep)
 		}
 	}

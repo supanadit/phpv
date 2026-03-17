@@ -413,6 +413,33 @@ func (s *Service) BuildDependency(ctx context.Context, phpVersion domain.Version
 	// Prepare environment with dependency paths
 	env := s.buildEnvironment(phpVersion, dep)
 
+	// Special-case OpenSSL: building OpenSSL with Zig's zcc can produce
+	// unresolved libc symbol versions (e.g. __isoc23_strtol) because Zig's
+	// driver may emit references that don't match the system glibc/ld.
+	// Force the use of the system C toolchain for OpenSSL to avoid those
+	// ABI/symbol mismatches.
+	if dep.Name == "openssl" {
+		// Prefer user-specified PHPV_TOOLCHAIN_CC/CXX if present, otherwise
+		// fall back to system gcc/g++.
+		cc := os.Getenv("PHPV_TOOLCHAIN_CC")
+		cxx := os.Getenv("PHPV_TOOLCHAIN_CXX")
+		if cc == "" {
+			cc = "gcc"
+		}
+		if cxx == "" {
+			cxx = "g++"
+		}
+		env = setOrReplaceEnv(env, "CC", cc)
+		env = setOrReplaceEnv(env, "CXX", cxx)
+		// Use system binutils for archiving/linker helpers.
+		env = setOrReplaceEnv(env, "AR", "ar")
+		env = setOrReplaceEnv(env, "RANLIB", "ranlib")
+		env = setOrReplaceEnv(env, "NM", "nm")
+		// Ensure dynamic linker finds system libs first
+		env = prependOrSetEnv(env, "PATH", "/usr/bin:/usr/local/bin", ":")
+		fmt.Printf("→ Forcing system C toolchain for OpenSSL build: CC=%s\n", cc)
+	}
+
 	// Clean any previous build artifacts to avoid automake regeneration issues
 	makefilePath := filepath.Join(sourceDir, "Makefile")
 	configurePath := filepath.Join(sourceDir, "configure")
@@ -1105,11 +1132,21 @@ func (s *Service) applyCompilerEnv(env []string) []string {
 				ldFlags = append(ldFlags, "-Wl,-rpath,"+libPath)
 			}
 		}
-		currentLdflags := getEnvValue(env, "LDFLAGS")
-		if currentLdflags != "" {
-			currentLdflags = currentLdflags + " "
+		if len(ldFlags) > 0 {
+			env = appendOrSetEnv(env, "LDFLAGS", strings.Join(ldFlags, " "), " ")
 		}
-		env = setOrReplaceEnv(env, "LDFLAGS", currentLdflags+strings.Join(ldFlags, " "))
+
+		// Add system include paths for Zig
+		systemIncludePaths := domain.GetSystemIncludePaths()
+		var cFlags []string
+		for _, incPath := range systemIncludePaths {
+			cFlags = append(cFlags, "-I"+incPath)
+		}
+
+		if len(cFlags) > 0 {
+			env = appendOrSetEnv(env, "CFLAGS", strings.Join(cFlags, " "), " ")
+			env = appendOrSetEnv(env, "CPPFLAGS", strings.Join(cFlags, " "), " ")
+		}
 
 		return env
 	}
@@ -1637,8 +1674,16 @@ func (s *Service) GetPHPEnvironment(phpVersion domain.Version) []string {
 
 		depDir := filepath.Join(depsDir, dep.Name)
 		pkgConfigPath = append(pkgConfigPath, filepath.Join(depDir, "lib", "pkgconfig"))
-		ldflags = append(ldflags, fmt.Sprintf("-L%s/lib", depDir))
-		cppflags = append(cppflags, fmt.Sprintf("-I%s/include", depDir))
+
+		depLibDir := filepath.Join(depDir, "lib")
+		if stat, err := os.Stat(depLibDir); err == nil && stat.IsDir() {
+			ldflags = append(ldflags, fmt.Sprintf("-L%s", depLibDir))
+		}
+
+		depIncDir := filepath.Join(depDir, "include")
+		if stat, err := os.Stat(depIncDir); err == nil && stat.IsDir() {
+			cppflags = append(cppflags, fmt.Sprintf("-I%s", depIncDir))
+		}
 	}
 
 	env = s.applyCompilerEnv(env)

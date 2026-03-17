@@ -1364,7 +1364,11 @@ func (s *Service) GetPHPConfigureFlags(phpVersion domain.Version) []string {
 				flags = append(flags, fmt.Sprintf("--with-zlib=%s", depDir))
 			}
 		case "oniguruma":
-			// PHP 4 uses --with-onig, PHP 5+ uses --with-onig
+			// PHP 4 doesn't have oniguruma extension, skip it
+			if isPHP4 {
+				continue
+			}
+			// PHP 5+ uses --with-onig
 			flags = append(flags, fmt.Sprintf("--with-onig=%s", depDir))
 		}
 	}

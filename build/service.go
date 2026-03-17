@@ -242,9 +242,12 @@ func (s *Service) Build(ctx context.Context, version domain.Version) error {
 		configureArgs = append(configureArgs, "--without-pcre-regex")
 		configureArgs = append(configureArgs, "--enable-ftp")
 		configureArgs = append(configureArgs, "--enable-zlib")
-		configureArgs = append(configureArgs, "--with-curl")
-		// Note: OpenSSL is skipped because PHP 4's OpenSSL extension is
-		// incompatible with modern OpenSSL versions
+		// PHP 4's OpenSSL extension is incompatible with modern OpenSSL versions
+		configureArgs = append(configureArgs, "--without-openssl")
+		// PHP 4 doesn't have oniguruma extension
+		configureArgs = append(configureArgs, "--without-oniguruma")
+		// PHP 4's Curl extension has issues with modern libcurl
+		configureArgs = append(configureArgs, "--without-curl")
 	}
 
 	// Add dependency-specific configure flags

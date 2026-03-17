@@ -165,16 +165,29 @@ func (s *Service) BuildDependencies(ctx context.Context, phpVersion domain.Versi
 
 	ui.PrintSection(fmt.Sprintf("Building Dependencies for PHP %d.%d.%d", phpVersion.Major, phpVersion.Minor, phpVersion.Patch))
 
-	// Check if we should use LLVM or system toolchain
+	// Check if we should use Zig, LLVM, or system toolchain
+	useZig := domain.ShouldUseZigToolchain(phpVersion)
 	useLLVM := domain.ShouldUseLLVMToolchain(phpVersion)
 
 	// Check and report system dependencies for PHP 8.3+
-	if !useLLVM {
+	if !useLLVM && !useZig {
 		s.checkAndReportSystemDeps(phpVersion)
 	}
 
+	// First, ensure Zig is installed if requested
+	if useZig {
+		ui.PrintInfo("Using Zig compiler (PHPV_USE_ZIG=1)")
+		if err := s.toolchainService.DownloadAndInstallZig(ctx); err != nil {
+			return fmt.Errorf("failed to install Zig: %w", err)
+		}
+		// Update toolchain configuration to use Zig
+		if s.toolchain == nil || s.toolchain.IsEmpty() {
+			s.toolchain = s.toolchainService.GetZigToolchainConfig()
+		}
+	}
+
 	// First, ensure LLVM is installed if needed (for PHP < 8.3 or PHPV_USE_LLVM=1)
-	if useLLVM {
+	if useLLVM && !useZig {
 		for _, dep := range deps {
 			if dep.Name == "llvm" {
 				if err := s.toolchainService.DownloadAndInstallLLVM(ctx, phpVersion); err != nil {
@@ -187,7 +200,7 @@ func (s *Service) BuildDependencies(ctx context.Context, phpVersion domain.Versi
 				break
 			}
 		}
-	} else {
+	} else if !useZig {
 		ui.PrintInfo("Using system GCC (no LLVM needed)")
 	}
 
@@ -950,7 +963,8 @@ func (s *Service) getDependencyBinPath(phpVersion domain.Version) string {
 }
 
 func (s *Service) applyCompilerEnv(env []string) []string {
-	// Check if we should use LLVM or system GCC
+	// Check if we should use Zig, LLVM or system GCC
+	useZig := s.phpVersion != nil && domain.ShouldUseZigToolchain(*s.phpVersion)
 	useLLVM := s.phpVersion != nil && domain.ShouldUseLLVMToolchain(*s.phpVersion)
 
 	// Use custom toolchain if provided
@@ -966,8 +980,8 @@ func (s *Service) applyCompilerEnv(env []string) []string {
 		return env
 	}
 
-	// Use system GCC if not using LLVM
-	if !useLLVM {
+	// Use system GCC if not using LLVM or Zig
+	if !useLLVM && !useZig {
 		env = setOrReplaceEnv(env, "CC", "gcc")
 		env = setOrReplaceEnv(env, "CXX", "g++")
 		// Use system ar, ranlib, nm
@@ -975,6 +989,39 @@ func (s *Service) applyCompilerEnv(env []string) []string {
 		env = setOrReplaceEnv(env, "RANLIB", "ranlib")
 		env = setOrReplaceEnv(env, "NM", "nm")
 		env = setOrReplaceEnv(env, "LD", "ld")
+		return env
+	}
+
+	// Use Zig compiler if requested
+	if useZig {
+		zigInstallDir := s.toolchainService.GetZigInstallDir()
+		zigBinDir := filepath.Join(zigInstallDir, "bin")
+
+		cc := fmt.Sprintf("zig cc -target x86_64-linux-gnu")
+		cxx := fmt.Sprintf("zig c++ -target x86_64-linux-gnu")
+
+		env = setOrReplaceEnv(env, "CC", cc)
+		env = setOrReplaceEnv(env, "CXX", cxx)
+		env = setOrReplaceEnv(env, "AR", "zig ar")
+		env = setOrReplaceEnv(env, "RANLIB", "zig ranlib")
+		env = setOrReplaceEnv(env, "NM", "zig nm")
+
+		// Add Zig bin directory to PATH
+		currentPath := getEnvValue(env, "PATH")
+		if currentPath != "" {
+			env = setOrReplaceEnv(env, "PATH", zigBinDir+":"+currentPath)
+		} else {
+			env = setOrReplaceEnv(env, "PATH", zigBinDir)
+		}
+
+		// Add target flag to CFLAGS and CXXFLAGS
+		currentCflags := getEnvValue(env, "CFLAGS")
+		env = setOrReplaceEnv(env, "CFLAGS", "-target x86_64-linux-gnu "+currentCflags)
+		currentCppflags := getEnvValue(env, "CPPFLAGS")
+		env = setOrReplaceEnv(env, "CPPFLAGS", "-target x86_64-linux-gnu "+currentCppflags)
+		currentLdflags := getEnvValue(env, "LDFLAGS")
+		env = setOrReplaceEnv(env, "LDFLAGS", "-target x86_64-linux-gnu "+currentLdflags)
+
 		return env
 	}
 

@@ -19,6 +19,20 @@ type ToolchainConfig struct {
 	LDFlags  []string
 }
 
+// ZigVersion represents a Zig compiler version
+type ZigVersion struct {
+	Version     string
+	DownloadURL string
+}
+
+// GetZigVersion returns the appropriate Zig version
+func GetZigVersion() ZigVersion {
+	return ZigVersion{
+		Version:     "0.14.0",
+		DownloadURL: "https://ziglang.org/download/0.14.0/zig-linux-x86_64-0.14.0.tar.xz",
+	}
+}
+
 // UseLLVM returns true if the user wants to use LLVM instead of system GCC
 func UseLLVM() bool {
 	// Check environment variable: PHPV_USE_LLVM=1
@@ -42,6 +56,37 @@ func ShouldUseLLVMToolchain(phpVersion Version) bool {
 	}
 	// For older PHP versions, use LLVM
 	return true
+}
+
+// UseZig returns true if the user wants to use Zig instead of LLVM/GCC
+func UseZig() bool {
+	// Check environment variable: PHPV_USE_ZIG=1
+	val := viper.GetString("PHPV_USE_ZIG")
+	if val == "" {
+		val = os.Getenv("PHPV_USE_ZIG")
+	}
+	return strings.ToLower(val) == "1" || strings.ToLower(val) == "true"
+}
+
+// ShouldUseZigToolchain returns true if we should use Zig for building
+// This is true when PHPV_USE_ZIG=1
+func ShouldUseZigToolchain(phpVersion Version) bool {
+	// If user explicitly wants Zig, use it
+	if UseZig() {
+		return true
+	}
+	return false
+}
+
+// GetCompilerType returns which compiler to use: "zig", "llvm", or "system"
+func GetCompilerType(phpVersion Version) string {
+	if UseZig() {
+		return "zig"
+	}
+	if ShouldUseLLVMToolchain(phpVersion) {
+		return "llvm"
+	}
+	return "system"
 }
 
 // IsEmpty returns true when no overrides are defined.

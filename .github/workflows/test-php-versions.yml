@@ -75,30 +75,8 @@ jobs:
             libgdbm-dev \
             libdb-dev \
             libreadline-dev \
-            libncurses-dev
-
-      - name: Fix libtinfo for LLVM
-        run: |
-          # LLVM 8.0.0 and 18.1.8 need libtinfo.so.5 but Ubuntu 24.04 has only libtinfo.so.6
-          # Add Ubuntu 22.04 (jammy) repository temporarily to get libtinfo5
-          
-          echo "Adding Ubuntu 22.04 repository..."
-          echo "deb http://archive.ubuntu.com/ubuntu jammy main universe" | sudo tee /etc/apt/sources.list.d/jammy.list
-          sudo apt-get update -qq
-          
-          echo "Installing libtinfo5..."
-          sudo apt-get install -y -qq libtinfo5 || true
-          
-          # Verify installation
-          if [ -f /usr/lib/x86_64-linux-gnu/libtinfo.so.5 ]; then
-            ls -la /usr/lib/x86_64-linux-gnu/libtinfo*
-            echo "✓ libtinfo5 installed successfully"
-          else
-            echo "⚠ libtinfo5 not found, trying fallback..."
-            # Fallback: create symlink from libtinfo6
-            sudo ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5
-            ls -la /usr/lib/x86_64-linux-gnu/libtinfo*
-          fi
+            libncurses-dev \
+            perl
 
       - name: Build phpv binary
         run: |

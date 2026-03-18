@@ -159,8 +159,14 @@ func commonPrefix(files []*zip.File) string {
 	return prefix
 }
 
+type tarEntry struct {
+	header *tar.Header
+	data   []byte
+}
+
 func extractTar(tr *tar.Reader, destination string, stripPrefix bool) (int, error) {
-	var headers []*tar.Header
+	var entries []tarEntry
+
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -169,28 +175,34 @@ func extractTar(tr *tar.Reader, destination string, stripPrefix bool) (int, erro
 		if err != nil {
 			return 0, fmt.Errorf("failed to read tar header: %w", err)
 		}
-		headers = append(headers, header)
+
+		data := make([]byte, header.Size)
+		_, err = io.ReadFull(tr, data)
+		if err != nil && err != io.ErrUnexpectedEOF {
+			return 0, fmt.Errorf("failed to read tar data: %w", err)
+		}
+
+		entries = append(entries, tarEntry{header: header, data: data})
 	}
 
-	if len(headers) == 0 {
+	if len(entries) == 0 {
 		return 0, nil
 	}
 
 	prefix := ""
 	if stripPrefix {
-		prefix = topLevelPrefix(headers)
+		prefix = topLevelPrefixFromEntries(entries)
 	}
 
 	extracted := 0
-
-	for _, header := range headers {
-		name := strings.TrimPrefix(header.Name, prefix)
+	for _, e := range entries {
+		name := strings.TrimPrefix(e.header.Name, prefix)
 		if name == "" {
 			continue
 		}
 
 		path := filepath.Join(destination, name)
-		if header.FileInfo().IsDir() {
+		if e.header.FileInfo().IsDir() {
 			if err := os.MkdirAll(path, 0o755); err != nil {
 				return extracted, err
 			}
@@ -206,7 +218,7 @@ func extractTar(tr *tar.Reader, destination string, stripPrefix bool) (int, erro
 			return extracted, err
 		}
 
-		_, err = io.Copy(f, &headerReader{header: header, r: tr})
+		_, err = f.Write(e.data)
 		f.Close()
 		if err != nil {
 			return extracted, err
@@ -216,36 +228,17 @@ func extractTar(tr *tar.Reader, destination string, stripPrefix bool) (int, erro
 	return extracted, nil
 }
 
-type headerReader struct {
-	header *tar.Header
-	r      *tar.Reader
-	read   int64
-}
-
-func (hr *headerReader) Read(p []byte) (n int, err error) {
-	if hr.read >= hr.header.Size {
-		return 0, io.EOF
-	}
-	remaining := hr.header.Size - hr.read
-	if int64(len(p)) > remaining {
-		p = p[:remaining]
-	}
-	n, err = hr.r.Read(p)
-	hr.read += int64(n)
-	return n, err
-}
-
-func topLevelPrefix(headers []*tar.Header) string {
-	if len(headers) == 0 {
+func topLevelPrefixFromEntries(entries []tarEntry) string {
+	if len(entries) == 0 {
 		return ""
 	}
-	parts := strings.SplitN(headers[0].Name, "/", 2)
+	parts := strings.SplitN(entries[0].header.Name, "/", 2)
 	if len(parts) < 2 {
 		return ""
 	}
 	prefix := parts[0]
-	for _, h := range headers[1:] {
-		if !strings.HasPrefix(h.Name, prefix+"/") {
+	for _, e := range entries[1:] {
+		if !strings.HasPrefix(e.header.Name, prefix+"/") {
 			return ""
 		}
 	}

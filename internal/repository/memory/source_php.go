@@ -7,15 +7,15 @@ import (
 	"github.com/supanadit/phpv/domain"
 )
 
-type SourceRepository struct {
+type PHPRepository struct {
 	// In Memory doesn't receive any external input
 }
 
-func NewSourceRepository() *SourceRepository {
-	return &SourceRepository{}
+func NewPHPRepository() *PHPRepository {
+	return &PHPRepository{}
 }
 
-func (r *SourceRepository) GetVersions() ([]domain.Source, error) {
+func (r *PHPRepository) GetVersions() ([]domain.Source, error) {
 	// TODO: Add RCx, beta, alpha versions
 	versions := r.generateRangeVersions(8, 5, 0, 4)
 	versions = append(
@@ -113,7 +113,7 @@ func (r *SourceRepository) GetVersions() ([]domain.Source, error) {
 	return versions, nil
 }
 
-func (r *SourceRepository) generateRangeVersions(major, minor, startPatch, endPatch int) []domain.Source {
+func (r *PHPRepository) generateRangeVersions(major, minor, startPatch, endPatch int) []domain.Source {
 	count := endPatch - startPatch + 1
 	versions := make([]domain.Source, 0, count)
 	for patch := startPatch; patch <= endPatch; patch++ {
@@ -126,7 +126,7 @@ func (r *SourceRepository) generateRangeVersions(major, minor, startPatch, endPa
 	return versions
 }
 
-func (r *SourceRepository) buildDownloadURL(major, minor, patch int) string {
+func (r *PHPRepository) buildDownloadURL(major, minor, patch int) string {
 	// TODO: Adding Checksum for download
 	// TODO: Adding fallback logic ( Maybe not here but still we need this features )
 	versionStr := fmt.Sprintf("%d.%d.%d", major, minor, patch)

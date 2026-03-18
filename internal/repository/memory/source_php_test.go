@@ -5,7 +5,7 @@ import (
 )
 
 func TestNewSourceRepository(t *testing.T) {
-	repo := NewSourceRepository()
+	repo := NewPHPRepository()
 
 	if repo == nil {
 		t.Error("expected repository to not be nil")
@@ -13,7 +13,7 @@ func TestNewSourceRepository(t *testing.T) {
 }
 
 func TestSourceRepository_GetVersions(t *testing.T) {
-	repo := NewSourceRepository()
+	repo := NewPHPRepository()
 	versions, err := repo.GetVersions()
 
 	if err != nil {
@@ -26,7 +26,7 @@ func TestSourceRepository_GetVersions(t *testing.T) {
 }
 
 func TestSourceRepository_GetVersions_FirstVersion(t *testing.T) {
-	repo := NewSourceRepository()
+	repo := NewPHPRepository()
 	versions, err := repo.GetVersions()
 
 	if err != nil {
@@ -52,7 +52,7 @@ func TestSourceRepository_GetVersions_FirstVersion(t *testing.T) {
 }
 
 func TestSourceRepository_GetVersions_VersionFormat(t *testing.T) {
-	repo := NewSourceRepository()
+	repo := NewPHPRepository()
 	versions, err := repo.GetVersions()
 
 	if err != nil {
@@ -73,7 +73,7 @@ func TestSourceRepository_GetVersions_VersionFormat(t *testing.T) {
 }
 
 func TestSourceRepository_GetVersions_SortedDescending(t *testing.T) {
-	repo := NewSourceRepository()
+	repo := NewPHPRepository()
 	versions, err := repo.GetVersions()
 
 	if err != nil {
@@ -96,7 +96,7 @@ func TestSourceRepository_GetVersions_SortedDescending(t *testing.T) {
 }
 
 func TestSourceRepository_generateRangeVersions(t *testing.T) {
-	repo := NewSourceRepository()
+	repo := NewPHPRepository()
 	versions := repo.generateRangeVersions(8, 2, 0, 2)
 
 	if len(versions) != 3 {
@@ -117,7 +117,7 @@ func TestSourceRepository_generateRangeVersions(t *testing.T) {
 }
 
 func TestSourceRepository_buildDownloadURL_PHP4(t *testing.T) {
-	repo := NewSourceRepository()
+	repo := NewPHPRepository()
 	url := repo.buildDownloadURL(4, 4, 0)
 
 	expected := "https://museum.php.net/php4/php-4.4.0.tar.gz"
@@ -127,7 +127,7 @@ func TestSourceRepository_buildDownloadURL_PHP4(t *testing.T) {
 }
 
 func TestSourceRepository_buildDownloadURL_PHP5(t *testing.T) {
-	repo := NewSourceRepository()
+	repo := NewPHPRepository()
 	url := repo.buildDownloadURL(5, 2, 0)
 
 	expected := "https://museum.php.net/php5/php-5.2.0.tar.gz"
@@ -137,7 +137,7 @@ func TestSourceRepository_buildDownloadURL_PHP5(t *testing.T) {
 }
 
 func TestSourceRepository_buildDownloadURL_PHP5_3(t *testing.T) {
-	repo := NewSourceRepository()
+	repo := NewPHPRepository()
 	url := repo.buildDownloadURL(5, 3, 0)
 
 	expected := "https://www.php.net/distributions/php-5.3.0.tar.gz"
@@ -147,7 +147,7 @@ func TestSourceRepository_buildDownloadURL_PHP5_3(t *testing.T) {
 }
 
 func TestSourceRepository_buildDownloadURL_PHP8(t *testing.T) {
-	repo := NewSourceRepository()
+	repo := NewPHPRepository()
 	url := repo.buildDownloadURL(8, 2, 0)
 
 	expected := "https://www.php.net/distributions/php-8.2.0.tar.gz"

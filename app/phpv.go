@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	sourcePHPRepo := memory.NewSourceRepository()
+	sourcePHPRepo := memory.NewPHPRepository()
 	sourcePHPSvc := source.NewService(sourcePHPRepo)
 	if phps, err := sourcePHPSvc.GetVersions(); err == nil {
 		for _, php := range phps {

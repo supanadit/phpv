@@ -10,15 +10,16 @@ type FileInfo struct {
 }
 
 type Download struct {
-	ID          string
-	URL         string
-	Destination string
-	FilePath    string
-	Status      string
-	Size        int64
-	Checksum    string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID             string
+	URL            string
+	Destination    string
+	FilePath       string
+	Status         string
+	Size           int64
+	DownloadedSize int64
+	Checksum       string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 const (
@@ -28,4 +29,5 @@ const (
 	DownloadStatusFailed       = "failed"
 	DownloadStatusNotFound     = "not_found"
 	DownloadStatusUnauthorized = "unauthorized"
+	DownloadStatusPartial      = "partial"
 )

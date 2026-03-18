@@ -90,9 +90,31 @@ func (r *DownloadRepository) Download(url, destination string) (*domain.Download
 		return nil, fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
+	var downloadedSize int64
+	var file *os.File
+
+	stat, err := os.Stat(destination)
+	if err == nil && stat.Size() > 0 {
+		downloadedSize = stat.Size()
+		file, err = os.OpenFile(destination, os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open file for append: %w", err)
+		}
+	} else {
+		file, err = os.Create(destination)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create file: %w", err)
+		}
+	}
+	defer file.Close()
+
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if downloadedSize > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", downloadedSize))
 	}
 
 	resp, err := r.client.Do(req)
@@ -101,7 +123,22 @@ func (r *DownloadRepository) Download(url, destination string) (*domain.Download
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		if downloadedSize > 0 {
+			if err := file.Truncate(0); err != nil {
+				return nil, fmt.Errorf("failed to truncate file: %w", err)
+			}
+			if _, err := file.Seek(0, 0); err != nil {
+				return nil, fmt.Errorf("failed to seek file: %w", err)
+			}
+			downloadedSize = 0
+		}
+	case http.StatusPartialContent:
+		if downloadedSize == 0 {
+			return nil, fmt.Errorf("server returned partial content but no existing file found")
+		}
+	default:
 		return &domain.Download{
 			ID:          generateID(),
 			URL:         url,
@@ -110,31 +147,39 @@ func (r *DownloadRepository) Download(url, destination string) (*domain.Download
 		}, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	file, err := os.Create(destination)
+	written, err := io.Copy(file, resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create file: %w", err)
+		now := time.Now()
+		return &domain.Download{
+			ID:             generateID(),
+			URL:            url,
+			Destination:    destination,
+			FilePath:       destination,
+			Status:         domain.DownloadStatusPartial,
+			Size:           fileInfo.Size,
+			DownloadedSize: downloadedSize + written,
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		}, fmt.Errorf("failed to write file: %w", err)
 	}
-	defer file.Close()
 
-	_, err = io.Copy(file, resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write file: %w", err)
-	}
+	downloadedSize += written
 
-	stat, err := os.Stat(destination)
+	stat, err = os.Stat(destination)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get file info: %w", err)
 	}
 
 	now := time.Now()
 	return &domain.Download{
-		ID:          generateID(),
-		URL:         url,
-		Destination: destination,
-		FilePath:    destination,
-		Status:      domain.DownloadStatusCompleted,
-		Size:        stat.Size(),
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:             generateID(),
+		URL:            url,
+		Destination:    destination,
+		FilePath:       destination,
+		Status:         domain.DownloadStatusCompleted,
+		Size:           fileInfo.Size,
+		DownloadedSize: downloadedSize,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}, nil
 }

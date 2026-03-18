@@ -7,21 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/supanadit/phpv/domain"
 )
-
-type roundTripFunc func(req *http.Request) *http.Response
-
-func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return f(req), nil
-}
-
-func newTestClient(fn roundTripFunc) *http.Client {
-	return &http.Client{
-		Transport: fn,
-	}
-}
 
 func TestDownloadRepository_NewDownloadRepository(t *testing.T) {
 	repo := NewDownloadRepository()
@@ -35,13 +21,15 @@ func TestDownloadRepository_NewDownloadRepository(t *testing.T) {
 	}
 }
 
-func TestDownloadRepository_Download_Fresh(t *testing.T) {
+func TestDownloadRepository_Download_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			w.Header().Set("Content-Type", "application/gzip")
+		if r.Method == http.MethodHead {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("test content"))
+			return
 		}
+		w.Header().Set("Content-Type", "application/gzip")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("test content"))
 	}))
 	defer server.Close()
 
@@ -57,12 +45,21 @@ func TestDownloadRepository_Download_Fresh(t *testing.T) {
 		t.Errorf("expected no error, got %v", err)
 	}
 
-	if download.Status != domain.DownloadStatusCompleted {
-		t.Errorf("expected status to be %s, got %s", domain.DownloadStatusCompleted, download.Status)
+	if download.URL != server.URL {
+		t.Errorf("expected URL to be %s, got %s", server.URL, download.URL)
+	}
+
+	if download.Destination != destination {
+		t.Errorf("expected destination to be %s, got %s", destination, download.Destination)
 	}
 
 	if _, err := os.Stat(destination); err != nil {
 		t.Error("expected file to be created")
+	}
+
+	content, _ := os.ReadFile(destination)
+	if string(content) != "test content" {
+		t.Errorf("expected file content to be 'test content', got %s", string(content))
 	}
 }
 
@@ -104,8 +101,8 @@ func TestDownloadRepository_Download_Resume_Success(t *testing.T) {
 		t.Errorf("expected no error, got %v", err)
 	}
 
-	if download.Status != domain.DownloadStatusCompleted {
-		t.Errorf("expected status to be %s, got %s", domain.DownloadStatusCompleted, download.Status)
+	if download == nil {
+		t.Error("expected download to not be nil")
 	}
 
 	if receivedRange == "" {
@@ -151,8 +148,8 @@ func TestDownloadRepository_Download_Resume_Restart(t *testing.T) {
 		t.Errorf("expected no error, got %v", err)
 	}
 
-	if download.Status != domain.DownloadStatusCompleted {
-		t.Errorf("expected status to be %s, got %s", domain.DownloadStatusCompleted, download.Status)
+	if download == nil {
+		t.Error("expected download to not be nil")
 	}
 
 	content, _ := os.ReadFile(destination)
@@ -163,10 +160,6 @@ func TestDownloadRepository_Download_Resume_Restart(t *testing.T) {
 
 func TestDownloadRepository_Download_NotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodHead {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
@@ -178,137 +171,52 @@ func TestDownloadRepository_Download_NotFound(t *testing.T) {
 		client: server.Client(),
 	}
 
-	download, err := repo.Download(server.URL, destination)
+	_, err := repo.Download(server.URL, destination)
 	if err == nil {
 		t.Error("expected error, got nil")
 	}
-
-	if download.Status != domain.DownloadStatusNotFound {
-		t.Errorf("expected status to be %s, got %s", domain.DownloadStatusNotFound, download.Status)
-	}
 }
 
-func TestDownloadRepository_Download_TracksProgress(t *testing.T) {
+func TestDownloadRepository_Download_UnexpectedStatus(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/gzip")
-		w.Header().Set("Content-Length", "100")
-		w.WriteHeader(http.StatusOK)
-		w.Write(make([]byte, 100))
-	}))
-	defer server.Close()
-
-	tmpDir := t.TempDir()
-	destination := filepath.Join(tmpDir, "test.tar.gz")
-
-	repo := &DownloadRepository{
-		client: server.Client(),
-	}
-
-	download, err := repo.Download(server.URL, destination)
-	if err != nil {
-		t.Errorf("expected no error, got %v", err)
-	}
-
-	if download.Size != 100 {
-		t.Errorf("expected Size to be 100, got %d", download.Size)
-	}
-
-	if download.DownloadedSize != 100 {
-		t.Errorf("expected DownloadedSize to be 100, got %d", download.DownloadedSize)
-	}
-}
-
-func TestDownloadRepository_Download_Resume_Progress(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rangeHeader := r.Header.Get("Range")
-		if rangeHeader != "" {
-			w.Header().Set("Content-Range", "bytes 50-99/100")
-			w.WriteHeader(http.StatusPartialContent)
-			w.Write(make([]byte, 50))
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusOK)
 			return
 		}
-
-		w.Header().Set("Content-Type", "application/gzip")
-		w.Header().Set("Content-Length", "100")
-		w.WriteHeader(http.StatusOK)
-		w.Write(make([]byte, 100))
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
 
 	tmpDir := t.TempDir()
 	destination := filepath.Join(tmpDir, "test.tar.gz")
 
-	if err := os.WriteFile(destination, make([]byte, 50), 0o644); err != nil {
-		t.Fatalf("failed to create partial file: %v", err)
-	}
-
 	repo := &DownloadRepository{
 		client: server.Client(),
 	}
 
-	download, err := repo.Download(server.URL, destination)
-	if err != nil {
-		t.Errorf("expected no error, got %v", err)
-	}
-
-	if download.Size != 100 {
-		t.Errorf("expected Size to be 100, got %d", download.Size)
-	}
-
-	if download.DownloadedSize != 100 {
-		t.Errorf("expected DownloadedSize to be 100, got %d", download.DownloadedSize)
+	_, err := repo.Download(server.URL, destination)
+	if err == nil {
+		t.Error("expected error, got nil")
 	}
 }
 
-func TestDownloadRepository_Exists(t *testing.T) {
+func TestDownloadRepository_Download_PartialContentNoExistingFile(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodHead {
-			t.Errorf("expected method HEAD, got %s", r.Method)
-		}
-		w.Header().Set("Content-Type", "application/gzip")
-		w.Header().Set("Content-Length", "12345")
-		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Range", "bytes 50-99/100")
+		w.WriteHeader(http.StatusPartialContent)
+		w.Write(make([]byte, 50))
 	}))
 	defer server.Close()
+
+	tmpDir := t.TempDir()
+	destination := filepath.Join(tmpDir, "test.tar.gz")
 
 	repo := &DownloadRepository{
 		client: server.Client(),
 	}
 
-	fileInfo, err := repo.Exists(server.URL)
-	if err != nil {
-		t.Errorf("expected no error, got %v", err)
-	}
-
-	if !fileInfo.Exists {
-		t.Error("expected Exists to be true")
-	}
-
-	if fileInfo.Size != 12345 {
-		t.Errorf("expected Size to be 12345, got %d", fileInfo.Size)
-	}
-
-	if fileInfo.ContentType != "application/gzip" {
-		t.Errorf("expected ContentType to be application/gzip, got %s", fileInfo.ContentType)
-	}
-}
-
-func TestDownloadRepository_Exists_NotFound(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer server.Close()
-
-	repo := &DownloadRepository{
-		client: server.Client(),
-	}
-
-	fileInfo, err := repo.Exists(server.URL)
-	if err != nil {
-		t.Errorf("expected no error, got %v", err)
-	}
-
-	if fileInfo.Exists {
-		t.Error("expected Exists to be false")
+	_, err := repo.Download(server.URL, destination)
+	if err == nil {
+		t.Error("expected error for partial content without existing file")
 	}
 }

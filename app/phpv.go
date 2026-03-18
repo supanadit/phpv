@@ -19,9 +19,8 @@ func main() {
 	}
 	downloadHTTPRepo := http.NewDownloadRepository()
 	downloadHTTPSvc := download.NewService(downloadHTTPRepo)
-	df, de := downloadHTTPSvc.Download("https://museum.php.net/php4/php-4.4.0.tar.gz", "/home/supanadit/.phpv/cache/php-4.4.0.tar.gz")
-	if de != nil {
-		panic(de)
+	if _, err := downloadHTTPSvc.Download("https://museum.php.net/php4/php-4.4.0.tar.gz", "/home/supanadit/.phpv/cache/php-4.4.0.tar.gz"); err != nil {
+		panic(err)
 	}
-	fmt.Println(df.Status)
+	fmt.Println("Download completed")
 }

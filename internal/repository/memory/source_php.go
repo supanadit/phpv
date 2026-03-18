@@ -127,6 +127,8 @@ func (r *SourceRepository) generateRangeVersions(major, minor, startPatch, endPa
 }
 
 func (r *SourceRepository) buildDownloadURL(major, minor, patch int) string {
+	// TODO: Adding Checksum for download
+	// TODO: Adding fallback logic ( Maybe not here but still we need this features )
 	versionStr := fmt.Sprintf("%d.%d.%d", major, minor, patch)
 
 	if major == 4 {

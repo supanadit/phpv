@@ -1,20 +1,21 @@
 package memory
 
 import (
-	"context"
+	"fmt"
 	"sort"
 
 	"github.com/supanadit/phpv/domain"
 )
 
-type VersionRepository struct {
+type SourceRepository struct {
+	// In Memory doesn't receive any external input
 }
 
-func NewVersionRepository() *VersionRepository {
-	return &VersionRepository{}
+func NewSourceRepository() *SourceRepository {
+	return &SourceRepository{}
 }
 
-func (r *VersionRepository) GetVersions(ctx context.Context) ([]domain.Version, error) {
+func (r *SourceRepository) GetVersions() ([]domain.Source, error) {
 	// TODO: Add RCx, beta, alpha versions
 	versions := r.generateRangeVersions(8, 5, 0, 4)
 	versions = append(
@@ -107,26 +108,32 @@ func (r *VersionRepository) GetVersions(ctx context.Context) ([]domain.Version, 
 	)
 	// Sort versions descending
 	sort.Slice(versions, func(i, j int) bool {
-		if versions[i].Major != versions[j].Major {
-			return versions[i].Major > versions[j].Major
-		}
-		if versions[i].Minor != versions[j].Minor {
-			return versions[i].Minor > versions[j].Minor
-		}
-		return versions[i].Patch > versions[j].Patch
+		return versions[i].Version > versions[j].Version
 	})
 	return versions, nil
 }
 
-func (r *VersionRepository) generateRangeVersions(major, minor, startPatch, endPatch int) []domain.Version {
+func (r *SourceRepository) generateRangeVersions(major, minor, startPatch, endPatch int) []domain.Source {
 	count := endPatch - startPatch + 1
-	versions := make([]domain.Version, 0, count)
+	versions := make([]domain.Source, 0, count)
 	for patch := startPatch; patch <= endPatch; patch++ {
-		versions = append(versions, domain.Version{
-			Major: major,
-			Minor: minor,
-			Patch: patch,
+		versions = append(versions, domain.Source{
+			Name:    "php",
+			Version: fmt.Sprintf("%d.%d.%d", major, minor, patch),
+			URL:     r.buildDownloadURL(major, minor, patch),
 		})
 	}
 	return versions
+}
+
+func (r *SourceRepository) buildDownloadURL(major, minor, patch int) string {
+	versionStr := fmt.Sprintf("%d.%d.%d", major, minor, patch)
+
+	if major == 4 {
+		return fmt.Sprintf("https://museum.php.net/php4/php-%s.tar.gz", versionStr)
+	}
+	if major == 5 && minor <= 2 {
+		return fmt.Sprintf("https://museum.php.net/php5/php-%s.tar.gz", versionStr)
+	}
+	return fmt.Sprintf("https://www.php.net/distributions/php-%s.tar.gz", versionStr)
 }

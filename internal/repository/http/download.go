@@ -165,7 +165,7 @@ func (r *DownloadRepository) Download(url, destination string) (*domain.Download
 
 	downloadedSize += written
 
-	stat, err = os.Stat(destination)
+	_, err = os.Stat(destination)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get file info: %w", err)
 	}

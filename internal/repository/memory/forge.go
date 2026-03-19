@@ -16,23 +16,23 @@ import (
 	"github.com/supanadit/phpv/unload"
 )
 
-type ForgePHP struct {
+type ForgeRepository struct {
 	downloadRepository download.DownloadRepository
 	unloadRepository   unload.UnloadRepository
 }
 
-func NewForgePHP() *ForgePHP {
-	return &ForgePHP{
+func NewForgeRepository() *ForgeRepository {
+	return &ForgeRepository{
 		downloadRepository: http.NewDownloadRepository(),
 		unloadRepository:   disk.NewUnloadRepository(),
 	}
 }
 
-func (r *ForgePHP) Build(version string) (domain.Forge, error) {
-	sourcePHPRepo := NewSourceRepository()
-	sourcePHPSvc := source.NewService(sourcePHPRepo)
+func (r *ForgeRepository) Build(version string) (domain.Forge, error) {
+	sourceRepository := NewSourceRepository()
+	sourceService := source.NewService(sourceRepository)
 
-	phps, err := sourcePHPSvc.GetVersions()
+	phps, err := sourceService.GetVersions()
 	if err != nil {
 		panic(err)
 	}
@@ -41,7 +41,7 @@ func (r *ForgePHP) Build(version string) (domain.Forge, error) {
 	}
 
 	downloadHTTPSvc := download.NewService(r.downloadRepository)
-	// unloadSvc := unload.NewService(r.unloadRepository)
+	unloadSvc := unload.NewService(r.unloadRepository)
 
 	url := fmt.Sprintf("https://www.php.net/distributions/php-%s.tar.gz", version)
 	cacheDir := filepath.Join(viper.GetString("PHPV_ROOT"), "cache")
@@ -63,7 +63,6 @@ func (r *ForgePHP) Build(version string) (domain.Forge, error) {
 	}
 
 	if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
-		unloadSvc := unload.NewService(r.unloadRepository)
 		result, err := unloadSvc.Unpack(cachePath, sourcePath)
 		if err != nil {
 			panic(err)

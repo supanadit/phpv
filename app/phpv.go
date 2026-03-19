@@ -20,7 +20,7 @@ func main() {
 	}
 	viper.SetDefault("PHPV_ROOT", filepath.Join(homeDir, ".phpv"))
 
-	repo := memory.NewForgePHP()
+	repo := memory.NewForgeRepository()
 	svc := forge.NewService(repo)
 
 	svc.Build("8.5.4")

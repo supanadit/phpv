@@ -17,7 +17,6 @@ import (
 
 var (
 	ErrUnknownFormat = errors.New("unknown archive format")
-	ErrExtractFailed = errors.New("failed to extract archive")
 )
 
 type UnloadRepository struct{}

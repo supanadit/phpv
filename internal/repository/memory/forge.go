@@ -36,9 +36,6 @@ func (r *ForgeRepository) Build(version string) (domain.Forge, error) {
 	if err != nil {
 		panic(err)
 	}
-	for _, php := range phps {
-		fmt.Println(php.URL)
-	}
 
 	downloadHTTPSvc := download.NewService(r.downloadRepository)
 	unloadSvc := unload.NewService(r.unloadRepository)
@@ -77,14 +74,19 @@ func (r *ForgeRepository) Build(version string) (domain.Forge, error) {
 			panic(err)
 		}
 
-		// Find the extracted folder and move it to sourceDir
 		entries, _ := os.ReadDir(sourcePath)
-		extractedFolder := filepath.Join(sourcePath, entries[0].Name())
-		os.Rename(extractedFolder, sourceDir)
+		if len(entries) == 1 && entries[0].IsDir() {
+			extractedFolder := filepath.Join(sourcePath, entries[0].Name())
+			files, _ := os.ReadDir(extractedFolder)
+			for _, f := range files {
+				os.Rename(filepath.Join(extractedFolder, f.Name()), filepath.Join(sourcePath, f.Name()))
+			}
+			os.RemoveAll(extractedFolder)
+		}
 
-		fmt.Printf("Extracted %d files to: %s\n", result.Extracted, sourceDir)
+		fmt.Printf("Extracted %d files to: %s\n", result.Extracted, sourcePath)
 	} else {
-		fmt.Println("Using cached source:", sourceDir)
+		fmt.Println("Using cached source:", sourcePath)
 	}
 
 	versionsDir := filepath.Join(viper.GetString("PHPV_ROOT"), "versions")
@@ -98,23 +100,15 @@ func (r *ForgeRepository) Build(version string) (domain.Forge, error) {
 		log.Fatal(err)
 	}
 
-	//// TODO: We need to know wether it's already configured or not. Multiple time running waste time
-	//// Configure Process
-	//// 1. Define the command (e.g., ./configure)
-	//configure := exec.Command("./configure", fmt.Sprintf("--prefix=%s", versionsPath))
-	//
-	//// 2. Set the working directory
-	//configure.Dir = sourcePath
-	//
-	//// 4. Pipe output so you can see the build progress
-	//configure.Stdout = os.Stdout
-	//configure.Stderr = os.Stderr
-	//
-	//// 5. Run it
-	//fmt.Println("Starting configure...")
-	//if err := configure.Run(); err != nil {
-	//	fmt.Printf("Error: %s\n", err)
-	//}
+	configure := exec.Command("./configure", fmt.Sprintf("--prefix=%s", versionsPath))
+	configure.Dir = sourcePath
+	configure.Stdout = os.Stdout
+	configure.Stderr = os.Stderr
+
+	fmt.Println("Starting configure...")
+	if err := configure.Run(); err != nil {
+		return domain.Forge{}, fmt.Errorf("configure failed: %w", err)
+	}
 
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "build")).Run()
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "ext")).Run()

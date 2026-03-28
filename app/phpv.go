@@ -24,5 +24,6 @@ func main() {
 	svc := forge.NewService(repo)
 
 	// svc.Build(domain.ForgeConfig{Name: "php", Version: "8.5.4"})
-	svc.Build(domain.ForgeConfig{Name: "php", Version: "7.4.33"})
+	// svc.Build(domain.ForgeConfig{Name: "php", Version: "7.4.33"})
+	svc.Build(domain.ForgeConfig{Name: "php", Version: "8.0.0"})
 }

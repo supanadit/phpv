@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/domain"
@@ -29,7 +30,7 @@ func NewForgeRepository() *BuildRepository {
 
 func (r *BuildRepository) Build(config domain.ForgeConfig) (domain.Forge, error) {
 	if config.Jobs == 0 {
-		config.Jobs = 16
+		config.Jobs = runtime.NumCPU()
 	}
 
 	url, err := r.resolveURL(config)

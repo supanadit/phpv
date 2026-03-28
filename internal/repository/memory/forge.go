@@ -55,15 +55,17 @@ func (r *BuildRepository) Build(config domain.ForgeConfig) (domain.Forge, error)
 
 	r.chmodBuildScripts(sourcePath)
 
-	if err := r.configure(sourcePath, prefix, config.ConfigureFlags); err != nil {
+	env := r.buildEnv(config.Env)
+
+	if err := r.configure(sourcePath, prefix, config.ConfigureFlags, env); err != nil {
 		return domain.Forge{}, err
 	}
 
-	if err := r.make(sourcePath, config.Jobs); err != nil {
+	if err := r.make(sourcePath, config.Jobs, env); err != nil {
 		return domain.Forge{}, err
 	}
 
-	if err := r.makeInstall(sourcePath, config.Jobs); err != nil {
+	if err := r.makeInstall(sourcePath, config.Jobs, env); err != nil {
 		return domain.Forge{}, err
 	}
 
@@ -160,7 +162,18 @@ func (r *BuildRepository) chmodBuildScripts(sourcePath string) {
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "ext")).Run()
 }
 
-func (r *BuildRepository) configure(sourcePath, prefix string, flags []string) error {
+func (r *BuildRepository) buildEnv(env map[string]string) []string {
+	if env == nil {
+		return nil
+	}
+	e := make([]string, 0, len(env))
+	for k, v := range env {
+		e = append(e, fmt.Sprintf("%s=%s", k, v))
+	}
+	return e
+}
+
+func (r *BuildRepository) configure(sourcePath, prefix string, flags []string, env []string) error {
 	if err := os.Chmod(filepath.Join(sourcePath, "configure"), 0o755); err != nil {
 		return err
 	}
@@ -172,6 +185,7 @@ func (r *BuildRepository) configure(sourcePath, prefix string, flags []string) e
 	configure.Dir = sourcePath
 	configure.Stdout = os.Stdout
 	configure.Stderr = os.Stderr
+	configure.Env = env
 
 	fmt.Println("Starting configure...")
 	if err := configure.Run(); err != nil {
@@ -181,13 +195,14 @@ func (r *BuildRepository) configure(sourcePath, prefix string, flags []string) e
 	return nil
 }
 
-func (r *BuildRepository) make(sourcePath string, jobs int) error {
+func (r *BuildRepository) make(sourcePath string, jobs int, env []string) error {
 	fmt.Println("Path Version", sourcePath)
 
 	mk := exec.Command("/usr/bin/make", fmt.Sprintf("-j%d", jobs))
 	mk.Dir = sourcePath
 	mk.Stdout = os.Stdout
 	mk.Stderr = os.Stderr
+	mk.Env = env
 
 	fmt.Println("Starting make...")
 	if err := mk.Run(); err != nil {
@@ -197,11 +212,12 @@ func (r *BuildRepository) make(sourcePath string, jobs int) error {
 	return nil
 }
 
-func (r *BuildRepository) makeInstall(sourcePath string, jobs int) error {
+func (r *BuildRepository) makeInstall(sourcePath string, jobs int, env []string) error {
 	mk := exec.Command("/usr/bin/make", fmt.Sprintf("-j%d", jobs), "install")
 	mk.Dir = sourcePath
 	mk.Stdout = os.Stdout
 	mk.Stderr = os.Stderr
+	mk.Env = env
 
 	fmt.Println("Starting make install...")
 	if err := mk.Run(); err != nil {

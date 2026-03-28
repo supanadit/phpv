@@ -5,5 +5,6 @@ type ForgeConfig struct {
 	Version        string
 	Prefix         string
 	ConfigureFlags []string
+	Env            map[string]string
 	Jobs           int
 }

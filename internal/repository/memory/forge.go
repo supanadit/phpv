@@ -2,7 +2,6 @@ package memory
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,62 +15,126 @@ import (
 	"github.com/supanadit/phpv/unload"
 )
 
-type ForgeRepository struct {
+type BuildRepository struct {
 	downloadRepository download.DownloadRepository
 	unloadRepository   unload.UnloadRepository
 }
 
-func NewForgeRepository() *ForgeRepository {
-	return &ForgeRepository{
+func NewForgeRepository() *BuildRepository {
+	return &BuildRepository{
 		downloadRepository: http.NewDownloadRepository(),
 		unloadRepository:   disk.NewUnloadRepository(),
 	}
 }
 
-func (r *ForgeRepository) Build(version string) (domain.Forge, error) {
+func (r *BuildRepository) Build(config domain.ForgeConfig) (domain.Forge, error) {
+	if config.Jobs == 0 {
+		config.Jobs = 16
+	}
+
+	url, err := r.resolveURL(config)
+	if err != nil {
+		return domain.Forge{}, err
+	}
+
+	cachePath := r.getCachePath(config.Name, config.Version)
+	if err := r.download(url, cachePath); err != nil {
+		return domain.Forge{}, err
+	}
+
+	sourcePath := r.getSourcePath(config.Name, config.Version)
+	_, err = r.extract(cachePath, sourcePath)
+	if err != nil {
+		return domain.Forge{}, err
+	}
+
+	prefix := config.Prefix
+	if prefix == "" {
+		prefix = r.getVersionsPath(config.Version)
+	}
+
+	r.chmodBuildScripts(sourcePath)
+
+	if err := r.configure(sourcePath, prefix, config.ConfigureFlags); err != nil {
+		return domain.Forge{}, err
+	}
+
+	if err := r.make(sourcePath, config.Jobs); err != nil {
+		return domain.Forge{}, err
+	}
+
+	if err := r.makeInstall(sourcePath, config.Jobs); err != nil {
+		return domain.Forge{}, err
+	}
+
+	return domain.Forge{Prefix: prefix}, nil
+}
+
+func (r *BuildRepository) resolveURL(config domain.ForgeConfig) (string, error) {
 	sourceRepository := NewSourceRepository()
 	sourceService := source.NewService(sourceRepository)
 
 	phps, err := sourceService.GetVersions()
 	if err != nil {
-		panic(err)
+		return "", err
 	}
 
-	downloadHTTPSvc := download.NewService(r.downloadRepository)
-	unloadSvc := unload.NewService(r.unloadRepository)
-
-	var url string
 	for _, src := range phps {
-		if src.Name == "php" && src.Version == version {
-			url = src.URL
-			break
+		if src.Name == config.Name && src.Version == config.Version {
+			return src.URL, nil
 		}
 	}
-	if url == "" {
-		return domain.Forge{}, fmt.Errorf("source not found for version %s", version)
-	}
-	cacheDir := filepath.Join(viper.GetString("PHPV_ROOT"), "cache")
-	cachePath := filepath.Join(cacheDir, fmt.Sprintf("php-%s.tar.gz", version))
-	sourceDir := filepath.Join(viper.GetString("PHPV_ROOT"), "sources")
-	sourcePath := filepath.Join(sourceDir, version)
 
+	return "", fmt.Errorf("source not found for %s version %s", config.Name, config.Version)
+}
+
+func (r *BuildRepository) getCachePath(name, version string) string {
+	cacheDir := filepath.Join(viper.GetString("PHPV_ROOT"), "cache")
+	return filepath.Join(cacheDir, fmt.Sprintf("%s-%s.tar.gz", name, version))
+}
+
+func (r *BuildRepository) getSourcePath(name, version string) string {
+	sourceDir := filepath.Join(viper.GetString("PHPV_ROOT"), "sources")
+	return filepath.Join(sourceDir, name, version)
+}
+
+func (r *BuildRepository) getVersionsPath(version string) string {
+	versionsDir := filepath.Join(viper.GetString("PHPV_ROOT"), "versions")
+	return filepath.Join(versionsDir, version)
+}
+
+func (r *BuildRepository) download(url, cachePath string) error {
+	downloadHTTPSvc := download.NewService(r.downloadRepository)
+
+	cacheDir := filepath.Dir(cachePath)
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-		panic(err)
+		return err
 	}
 
 	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
 		if _, err := downloadHTTPSvc.Download(url, cachePath); err != nil {
-			panic(err)
+			return err
 		}
 		fmt.Println("Download completed:", cachePath)
 	} else {
 		fmt.Println("Using cached:", cachePath)
 	}
 
+	return nil
+}
+
+func (r *BuildRepository) extract(cachePath, sourcePath string) (*domain.Unload, error) {
+	unloadSvc := unload.NewService(r.unloadRepository)
+
 	if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
+		sourceDir := filepath.Dir(sourcePath)
+		if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+			return nil, err
+		}
+
 		result, err := unloadSvc.Unpack(cachePath, sourcePath)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 
 		entries, _ := os.ReadDir(sourcePath)
@@ -89,64 +152,61 @@ func (r *ForgeRepository) Build(version string) (domain.Forge, error) {
 		fmt.Println("Using cached source:", sourcePath)
 	}
 
-	versionsDir := filepath.Join(viper.GetString("PHPV_ROOT"), "versions")
-	versionsPath := filepath.Join(versionsDir, version)
-	if err := os.MkdirAll(versionsDir, 0o755); err != nil {
-		panic(err)
+	return nil, nil
+}
+
+func (r *BuildRepository) chmodBuildScripts(sourcePath string) {
+	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "build")).Run()
+	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "ext")).Run()
+}
+
+func (r *BuildRepository) configure(sourcePath, prefix string, flags []string) error {
+	if err := os.Chmod(filepath.Join(sourcePath, "configure"), 0o755); err != nil {
+		return err
 	}
 
-	err = os.Chmod(filepath.Join(sourcePath, "configure"), 0o755)
-	if err != nil {
-		log.Fatal(err)
-	}
+	args := []string{fmt.Sprintf("--prefix=%s", prefix)}
+	args = append(args, flags...)
 
-	configure := exec.Command("./configure", fmt.Sprintf("--prefix=%s", versionsPath))
+	configure := exec.Command("./configure", args...)
 	configure.Dir = sourcePath
 	configure.Stdout = os.Stdout
 	configure.Stderr = os.Stderr
 
 	fmt.Println("Starting configure...")
 	if err := configure.Run(); err != nil {
-		return domain.Forge{}, fmt.Errorf("configure failed: %w", err)
+		return fmt.Errorf("configure failed: %w", err)
 	}
 
-	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "build")).Run()
-	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "ext")).Run()
+	return nil
+}
 
-	fmt.Println("Path Version", versionsPath)
-	// Make Process
-	// 1. Define the command (e.g., ./configure)
-	mk1 := exec.Command("/usr/bin/make", "-j16")
+func (r *BuildRepository) make(sourcePath string, jobs int) error {
+	fmt.Println("Path Version", sourcePath)
 
-	// 2. Set the working directory
-	mk1.Dir = sourcePath
+	mk := exec.Command("/usr/bin/make", fmt.Sprintf("-j%d", jobs))
+	mk.Dir = sourcePath
+	mk.Stdout = os.Stdout
+	mk.Stderr = os.Stderr
 
-	// 4. Pipe output so you can see the build progress
-	mk1.Stdout = os.Stdout
-	mk1.Stderr = os.Stderr
-
-	// 5. Run it
 	fmt.Println("Starting make...")
-	if err := mk1.Run(); err != nil {
-		fmt.Printf("Error: %s\n", err)
+	if err := mk.Run(); err != nil {
+		return fmt.Errorf("make failed: %w", err)
 	}
 
-	// Make Install
-	// 1. Define the command (e.g., ./configure)
-	mk2 := exec.Command("/usr/bin/make", "-j16", "install")
+	return nil
+}
 
-	// 2. Set the working directory
-	mk2.Dir = sourcePath
+func (r *BuildRepository) makeInstall(sourcePath string, jobs int) error {
+	mk := exec.Command("/usr/bin/make", fmt.Sprintf("-j%d", jobs), "install")
+	mk.Dir = sourcePath
+	mk.Stdout = os.Stdout
+	mk.Stderr = os.Stderr
 
-	// 4. Pipe output so you can see the build progress
-	mk2.Stdout = os.Stdout
-	mk2.Stderr = os.Stderr
-
-	// 5. Run it
 	fmt.Println("Starting make install...")
-	if err := mk2.Run(); err != nil {
-		fmt.Printf("Error: %s\n", err)
+	if err := mk.Run(); err != nil {
+		return fmt.Errorf("make install failed: %w", err)
 	}
 
-	return domain.Forge{Prefix: versionsPath}, nil
+	return nil
 }

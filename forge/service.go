@@ -3,7 +3,7 @@ package forge
 import "github.com/supanadit/phpv/domain"
 
 type ForgeRepository interface {
-	Build(version string) (domain.Forge, error)
+	Build(config domain.ForgeConfig) (domain.Forge, error)
 }
 
 type Service struct {
@@ -16,6 +16,6 @@ func NewService(forgeRepository ForgeRepository) *Service {
 	}
 }
 
-func (s *Service) Build(version string) (domain.Forge, error) {
-	return s.forgeRepository.Build(version)
+func (s *Service) Build(config domain.ForgeConfig) (domain.Forge, error) {
+	return s.forgeRepository.Build(config)
 }

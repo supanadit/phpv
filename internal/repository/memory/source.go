@@ -258,28 +258,23 @@ func (r *SourceRepository) GetVersions() ([]domain.Source, error) {
 	return versions, nil
 }
 
-func (r *SourceRepository) buildDownloadURL(major, minor, patch int) string {
-	// TODO: Adding Checksum for download
-	// TODO: Adding fallback logic ( Maybe not here but still we need this features )
-	versionStr := fmt.Sprintf("%d.%d.%d", major, minor, patch)
-
-	if major == 4 {
-		return fmt.Sprintf("https://museum.php.net/php4/php-%s.tar.gz", versionStr)
-	}
-	if major == 5 && minor <= 2 {
-		return fmt.Sprintf("https://museum.php.net/php5/php-%s.tar.gz", versionStr)
-	}
-	return fmt.Sprintf("https://www.php.net/distributions/php-%s.tar.gz", versionStr)
-}
-
 func (r *SourceRepository) generateRangeVersions(major, minor, startPatch, endPatch int) []domain.Source {
 	count := endPatch - startPatch + 1
 	versions := make([]domain.Source, 0, count)
 	for patch := startPatch; patch <= endPatch; patch++ {
+		versionStr := fmt.Sprintf("%d.%d.%d", major, minor, patch)
+		var url string
+		if major == 4 {
+			url = fmt.Sprintf("https://museum.php.net/php4/php-%s.tar.gz", versionStr)
+		} else if major == 5 && minor <= 2 {
+			url = fmt.Sprintf("https://museum.php.net/php5/php-%s.tar.gz", versionStr)
+		} else {
+			url = fmt.Sprintf("https://www.php.net/distributions/php-%s.tar.gz", versionStr)
+		}
 		versions = append(versions, domain.Source{
 			Name:    "php",
-			Version: fmt.Sprintf("%d.%d.%d", major, minor, patch),
-			URL:     r.buildDownloadURL(major, minor, patch),
+			Version: versionStr,
+			URL:     url,
 		})
 	}
 	return versions

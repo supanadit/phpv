@@ -43,7 +43,16 @@ func (r *ForgeRepository) Build(version string) (domain.Forge, error) {
 	downloadHTTPSvc := download.NewService(r.downloadRepository)
 	unloadSvc := unload.NewService(r.unloadRepository)
 
-	url := fmt.Sprintf("https://www.php.net/distributions/php-%s.tar.gz", version)
+	var url string
+	for _, src := range phps {
+		if src.Name == "php" && src.Version == version {
+			url = src.URL
+			break
+		}
+	}
+	if url == "" {
+		return domain.Forge{}, fmt.Errorf("source not found for version %s", version)
+	}
 	cacheDir := filepath.Join(viper.GetString("PHPV_ROOT"), "cache")
 	cachePath := filepath.Join(cacheDir, fmt.Sprintf("php-%s.tar.gz", version))
 	sourceDir := filepath.Join(viper.GetString("PHPV_ROOT"), "sources")

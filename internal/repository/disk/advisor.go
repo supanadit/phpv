@@ -2,6 +2,7 @@ package disk
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -41,8 +42,34 @@ func (e *defaultExecutor) PkgConfig(pkg string) (string, string, error) {
 }
 
 func (e *defaultExecutor) PkgConfigExists(pkg string) bool {
-	err := exec.Command("pkg-config", "--exists", pkg).Run()
-	return err == nil
+	env := os.Environ()
+	pkgConfigPath := os.Getenv("PKG_CONFIG_PATH")
+	standardPaths := []string{
+		"/usr/lib/pkgconfig",
+		"/usr/lib/x86_64-linux-gnu/pkgconfig",
+		"/usr/share/pkgconfig",
+		"/usr/local/lib/pkgconfig",
+		"/usr/local/share/pkgconfig",
+	}
+	for _, p := range standardPaths {
+		if pkgConfigPath == "" {
+			pkgConfigPath = p
+		} else {
+			pkgConfigPath = p + ":" + pkgConfigPath
+		}
+	}
+	for i, v := range env {
+		if strings.HasPrefix(v, "PKG_CONFIG_PATH=") {
+			env[i] = "PKG_CONFIG_PATH=" + pkgConfigPath
+			break
+		}
+	}
+	if !strings.Contains(strings.Join(env, ""), "PKG_CONFIG_PATH") {
+		env = append(env, "PKG_CONFIG_PATH="+pkgConfigPath)
+	}
+	cmd := exec.Command("pkg-config", "--exists", pkg)
+	cmd.Env = env
+	return cmd.Run() == nil
 }
 
 type AdvisorRepository struct {
@@ -59,6 +86,14 @@ var (
 		"curl":      "libcurl",
 		"zlib":      "zlib",
 		"oniguruma": "oniguruma",
+	}
+
+	installSuggestions = map[string]string{
+		"libxml2":   "sudo apt install libxml2-dev  # or: sudo dnf install libxml2-devel",
+		"openssl":   "sudo apt install libssl-dev  # or: sudo dnf install openssl-devel",
+		"curl":      "sudo apt install libcurl4-openssl-dev  # or: sudo dnf install libcurl-devel",
+		"zlib":      "sudo apt install zlib1g-dev  # or: sudo dnf install zlib-devel",
+		"oniguruma": "sudo apt install libonig-dev  # or: sudo dnf install oniguruma-devel",
 	}
 )
 
@@ -81,6 +116,13 @@ func (r *AdvisorRepository) Check(name string, version string) (domain.AdvisorCh
 	action, url, sourceType := determineActionAndURL(state, systemAvailable, r.patternRegistry, name, version)
 	message := buildMessage(name, version, state, action)
 
+	suggestion := ""
+	if !systemAvailable {
+		if sug, ok := installSuggestions[name]; ok {
+			suggestion = sug
+		}
+	}
+
 	return domain.AdvisorCheck{
 		Name:            name,
 		Version:         version,
@@ -91,6 +133,7 @@ func (r *AdvisorRepository) Check(name string, version string) (domain.AdvisorCh
 		Message:         message,
 		URL:             url,
 		SourceType:      sourceType,
+		Suggestion:      suggestion,
 	}, nil
 }
 

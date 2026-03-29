@@ -38,8 +38,11 @@ func (r *flagResolverRepo) GetPHPConfigureFlags(phpVersion string, extensions []
 		"--with-openssl",
 		"--with-curl",
 		"--with-zlib",
-		"--with-libxml2",
-		"--with-onig",
+		"--enable-mbstring",
+	}
+
+	if v.Major >= 7 {
+		flags = append(flags, "--with-libxml")
 	}
 
 	if v.Major >= 8 {

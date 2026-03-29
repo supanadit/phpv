@@ -33,7 +33,8 @@ func (r *ForgeRepository) ensureSource(name, version, url string) error {
 		return err
 	}
 
-	cachePath := silo.GetArchivePath(name, version)
+	filename := filepath.Base(url)
+	cachePath := filepath.Join(silo.Root, "cache", name, version, filename)
 
 	cacheExists, _ := afero.Exists(r.fs, cachePath)
 	if !cacheExists {

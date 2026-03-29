@@ -38,6 +38,7 @@ type AdvisorCheck struct {
 	Message         string
 	URL             string
 	SourceType      string
+	Suggestion      string
 }
 
 func (c AdvisorCheck) String() string {

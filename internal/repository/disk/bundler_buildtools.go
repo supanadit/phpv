@@ -32,7 +32,7 @@ func (s *bundlerRepository) ensureBuildTools() error {
 			continue
 		}
 
-		if err := s.installBuildTool(tool.pkg, tool.ver, true); err != nil {
+		if err := s.installBuildTool(tool.pkg, tool.ver, false); err != nil {
 			return fmt.Errorf("failed to install build tool %s@%s: %w", tool.pkg, tool.ver, err)
 		}
 	}

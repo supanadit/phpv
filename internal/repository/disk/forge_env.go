@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/domain"
@@ -23,6 +24,25 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 		}
 	}
 
+	pkgConfigPaths := []string{
+		"/usr/lib/pkgconfig",
+		"/usr/lib/x86_64-linux-gnu/pkgconfig",
+		"/usr/share/pkgconfig",
+		"/usr/local/lib/pkgconfig",
+		"/usr/local/share/pkgconfig",
+	}
+	for i, v := range env {
+		if strings.HasPrefix(v, "PKG_CONFIG_PATH=") {
+			existing := strings.TrimPrefix(v, "PKG_CONFIG_PATH=")
+			pkgConfigPaths = append(pkgConfigPaths, strings.Split(existing, ":")...)
+			env[i] = "PKG_CONFIG_PATH=" + strings.Join(pkgConfigPaths, ":")
+			break
+		}
+	}
+	if !hasEnvVar(env, "PKG_CONFIG_PATH") {
+		env = append(env, "PKG_CONFIG_PATH="+strings.Join(pkgConfigPaths, ":"))
+	}
+
 	for _, v := range config.CPPFLAGS {
 		env = append(env, "CPPFLAGS="+v)
 	}
@@ -37,6 +57,15 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 	}
 
 	return env
+}
+
+func hasEnvVar(env []string, prefix string) bool {
+	for _, v := range env {
+		if strings.HasPrefix(v, prefix+"=") {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *ForgeRepository) buildToolsBinPath(buildToolsPath string) string {
@@ -73,4 +102,19 @@ func (r *ForgeRepository) buildToolsBinPath(buildToolsPath string) string {
 func (r *ForgeRepository) chmodBuildScripts(sourcePath string) {
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "build")).Run()
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "ext")).Run()
+}
+
+func (r *ForgeRepository) touchAutotools(sourcePath string) {
+	autotoolsFiles := []string{
+		"aclocal.m4",
+		"Makefile.in",
+		"configure",
+		"config.h.in",
+	}
+	for _, f := range autotoolsFiles {
+		file := filepath.Join(sourcePath, f)
+		if _, err := os.Stat(file); err == nil {
+			os.Chtimes(file, time.Now(), time.Now())
+		}
+	}
 }

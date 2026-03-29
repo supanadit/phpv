@@ -19,6 +19,8 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 		return domain.Forge{}, fmt.Errorf("failed to chmod configure: %w", err)
 	}
 
+	r.touchAutotools(sourcePath)
+
 	if config.Name == "m4" {
 		autoreconf := exec.Command("autoreconf", "-fi")
 		autoreconf.Dir = sourcePath

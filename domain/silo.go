@@ -1,5 +1,61 @@
 package domain
 
-// silo is actually just cache manager with fancy name
+import (
+	"path/filepath"
+)
+
 type Silo struct {
+	Root string
+}
+
+func (s Silo) RootPath() string {
+	return s.Root
+}
+
+func (s Silo) CachePath() string {
+	return filepath.Join(s.Root, "cache")
+}
+
+func (s Silo) SourcePath() string {
+	return filepath.Join(s.Root, "sources")
+}
+
+func (s Silo) VersionPath() string {
+	return filepath.Join(s.Root, "versions")
+}
+
+func (s Silo) BinPath() string {
+	return filepath.Join(s.Root, "bin")
+}
+
+func (s Silo) ArchiveKey(pkg, ver string) string {
+	return filepath.Join("cache", pkg, ver, "archive")
+}
+
+func (s Silo) SourceKey(pkg, ver string) string {
+	return filepath.Join("sources", pkg, ver)
+}
+
+func (s Silo) VersionKey(pkg, ver string) string {
+	return filepath.Join("versions", pkg, ver)
+}
+
+func (s Silo) SourceDirKey(pkg, ver string) string {
+	return filepath.Join("sources", pkg, ver, "src")
+}
+
+func (s Silo) GetArchivePath(pkg, ver string) string {
+	return filepath.Join(s.Root, s.ArchiveKey(pkg, ver))
+}
+
+func (s Silo) GetSourcePath(pkg, ver string) string {
+	return filepath.Join(s.Root, s.SourceKey(pkg, ver))
+}
+
+func (s Silo) GetVersionPath(pkg, ver string) string {
+	return filepath.Join(s.Root, s.VersionKey(pkg, ver))
+}
+
+func (s Silo) GetSourceDirPath(pkg, ver string) string {
+	return filepath.Join(s.Root, s.SourceDirKey(pkg, ver))
 }

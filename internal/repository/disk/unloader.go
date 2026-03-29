@@ -7,10 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/domain"
 	"github.com/ulikunitz/xz"
 )
@@ -19,13 +19,30 @@ var (
 	ErrUnknownFormat = errors.New("unknown archive format")
 )
 
-type UnloadRepository struct{}
+type UnloadRepository struct {
+	fs afero.Fs
+}
 
 func NewUnloadRepository() *UnloadRepository {
-	return &UnloadRepository{}
+	return &UnloadRepository{
+		fs: afero.NewOsFs(),
+	}
+}
+
+func NewUnloadRepositoryWithFs(fs afero.Fs) *UnloadRepository {
+	return &UnloadRepository{
+		fs: fs,
+	}
+}
+
+func (r *UnloadRepository) ensureFs() {
+	if r.fs == nil {
+		r.fs = afero.NewOsFs()
+	}
 }
 
 func (r *UnloadRepository) Unpack(source, destination string) (*domain.Unload, error) {
+	r.ensureFs()
 	hasTrailingSlash := strings.HasSuffix(source, "/")
 	format := detectFormat(source)
 	if format == "" {
@@ -34,7 +51,7 @@ func (r *UnloadRepository) Unpack(source, destination string) (*domain.Unload, e
 
 	source = strings.TrimRight(source, "/")
 
-	if err := os.MkdirAll(destination, 0o755); err != nil {
+	if err := r.fs.MkdirAll(destination, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
@@ -44,11 +61,11 @@ func (r *UnloadRepository) Unpack(source, destination string) (*domain.Unload, e
 
 	switch format {
 	case domain.UnloadFormatTarGz:
-		extracted, err = unpackTarGz(source, destination, stripPrefix)
+		extracted, err = r.unpackTarGz(source, destination, stripPrefix)
 	case domain.UnloadFormatTarXz:
-		extracted, err = unpackTarXz(source, destination, stripPrefix)
+		extracted, err = r.unpackTarXz(source, destination, stripPrefix)
 	case domain.UnloadFormatZip:
-		extracted, err = unpackZip(source, destination, stripPrefix)
+		extracted, err = r.unpackZip(source, destination, stripPrefix)
 	default:
 		return nil, ErrUnknownFormat
 	}
@@ -79,43 +96,56 @@ func detectFormat(source string) string {
 	return ""
 }
 
-func unpackTarGz(source, destination string, stripPrefix bool) (int, error) {
-	f, err := os.Open(source)
+func (r *UnloadRepository) unpackTarGz(source, destination string, stripPrefix bool) (int, error) {
+	f, err := r.fs.Open(source)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open archive: %w", err)
 	}
-	defer f.Close()
 
 	gr, err := gzip.NewReader(f)
 	if err != nil {
+		f.Close()
 		return 0, fmt.Errorf("failed to create gzip reader: %w", err)
 	}
-	defer gr.Close()
+	defer func() {
+		gr.Close()
+		f.Close()
+	}()
 
-	return extractTar(tar.NewReader(gr), destination, stripPrefix)
+	return r.extractTar(tar.NewReader(gr), destination, stripPrefix)
 }
 
-func unpackTarXz(source, destination string, stripPrefix bool) (int, error) {
-	f, err := os.Open(source)
+func (r *UnloadRepository) unpackTarXz(source, destination string, stripPrefix bool) (int, error) {
+	f, err := r.fs.Open(source)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open archive: %w", err)
 	}
-	defer f.Close()
 
 	xr, err := xz.NewReader(f)
 	if err != nil {
+		f.Close()
 		return 0, fmt.Errorf("failed to create xz reader: %w", err)
 	}
 
-	return extractTar(tar.NewReader(xr), destination, stripPrefix)
+	return r.extractTar(tar.NewReader(xr), destination, stripPrefix)
 }
 
-func unpackZip(source, destination string, stripPrefix bool) (int, error) {
-	zr, err := zip.OpenReader(source)
+func (r *UnloadRepository) unpackZip(source, destination string, stripPrefix bool) (int, error) {
+	f, err := r.fs.Open(source)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open zip archive: %w", err)
 	}
-	defer zr.Close()
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		return 0, fmt.Errorf("failed to stat zip archive: %w", err)
+	}
+
+	zr, err := zip.NewReader(f, stat.Size())
+	if err != nil {
+		return 0, fmt.Errorf("failed to open zip archive: %w", err)
+	}
 
 	prefix := ""
 	if stripPrefix {
@@ -129,10 +159,10 @@ func unpackZip(source, destination string, stripPrefix bool) (int, error) {
 			continue
 		}
 		if file.FileInfo().IsDir() {
-			os.MkdirAll(filepath.Join(destination, name), 0o755)
+			r.fs.MkdirAll(filepath.Join(destination, name), 0o755)
 			continue
 		}
-		if err := extractZipFile(file, name, destination); err != nil {
+		if err := r.extractZipFile(file, name, destination); err != nil {
 			return extracted, err
 		}
 		extracted++
@@ -163,7 +193,7 @@ type tarEntry struct {
 	data   []byte
 }
 
-func extractTar(tr *tar.Reader, destination string, stripPrefix bool) (int, error) {
+func (r *UnloadRepository) extractTar(tr *tar.Reader, destination string, stripPrefix bool) (int, error) {
 	var entries []tarEntry
 
 	for {
@@ -202,17 +232,17 @@ func extractTar(tr *tar.Reader, destination string, stripPrefix bool) (int, erro
 
 		path := filepath.Join(destination, name)
 		if e.header.FileInfo().IsDir() {
-			if err := os.MkdirAll(path, 0o755); err != nil {
+			if err := r.fs.MkdirAll(path, 0o755); err != nil {
 				return extracted, err
 			}
 			continue
 		}
 
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		if err := r.fs.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return extracted, err
 		}
 
-		f, err := os.Create(path)
+		f, err := r.fs.Create(path)
 		if err != nil {
 			return extracted, err
 		}
@@ -244,7 +274,7 @@ func topLevelPrefixFromEntries(entries []tarEntry) string {
 	return prefix
 }
 
-func extractZipFile(file *zip.File, name, destination string) error {
+func (r *UnloadRepository) extractZipFile(file *zip.File, name, destination string) error {
 	path := filepath.Join(destination, name)
 
 	rc, err := file.Open()
@@ -254,14 +284,14 @@ func extractZipFile(file *zip.File, name, destination string) error {
 	defer rc.Close()
 
 	if file.FileInfo().IsDir() {
-		return os.MkdirAll(path, 0o755)
+		return r.fs.MkdirAll(path, 0o755)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := r.fs.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 
-	f, err := os.Create(path)
+	f, err := r.fs.Create(path)
 	if err != nil {
 		return err
 	}

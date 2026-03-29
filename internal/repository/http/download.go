@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/domain"
 )
 
 type DownloadRepository struct {
 	client *http.Client
+	fs     afero.Fs
 }
 
 func NewDownloadRepository() *DownloadRepository {
@@ -20,6 +22,22 @@ func NewDownloadRepository() *DownloadRepository {
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		fs: afero.NewOsFs(),
+	}
+}
+
+func NewDownloadRepositoryWithFs(fs afero.Fs) *DownloadRepository {
+	return &DownloadRepository{
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+		fs: fs,
+	}
+}
+
+func (r *DownloadRepository) ensureFs() {
+	if r.fs == nil {
+		r.fs = afero.NewOsFs()
 	}
 }
 
@@ -43,26 +61,29 @@ func (r *DownloadRepository) exists(url string) error {
 }
 
 func (r *DownloadRepository) Download(url, destination string) (*domain.Download, error) {
+	r.ensureFs()
+
 	if err := r.exists(url); err != nil {
 		return nil, err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+	dir := filepath.Dir(destination)
+	if err := r.fs.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
 	var downloadedSize int64
-	var file *os.File
+	var file afero.File
 
-	stat, err := os.Stat(destination)
+	stat, err := r.fs.Stat(destination)
 	if err == nil && stat.Size() > 0 {
 		downloadedSize = stat.Size()
-		file, err = os.OpenFile(destination, os.O_APPEND|os.O_WRONLY, 0o644)
+		file, err = r.fs.OpenFile(destination, os.O_APPEND|os.O_WRONLY, 0o644)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open file for append: %w", err)
 		}
 	} else {
-		file, err = os.Create(destination)
+		file, err = r.fs.Create(destination)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create file: %w", err)
 		}

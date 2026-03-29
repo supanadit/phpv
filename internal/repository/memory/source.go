@@ -27,6 +27,30 @@ func (r *SourceRepository) buildSource(name, version, sourceType string) domain.
 	return domain.Source{Name: name, Version: version, URL: url, Type: sourceType}
 }
 
+func (r *SourceRepository) GetSources(name, version string) ([]domain.Source, error) {
+	v := pattern.ParseVersion(version)
+	patterns, err := r.patternRegistry.MatchPatterns(name, v)
+	if err != nil {
+		return nil, err
+	}
+	var sources []domain.Source
+	for _, p := range patterns {
+		url, err := pattern.BuildURL(p, v)
+		if err != nil {
+			continue
+		}
+		sources = append(sources, domain.Source{
+			Name:    name,
+			Version: version,
+			URL:     url,
+			Type:    p.Type,
+			OS:      p.OS,
+			Arch:    p.Arch,
+		})
+	}
+	return sources, nil
+}
+
 func (r *SourceRepository) buildRangeVersions(major, minor, startPatch, endPatch int, name string, sourceType string) []domain.Source {
 	versions := make([]domain.Source, 0, endPatch-startPatch+1)
 	for patch := startPatch; patch <= endPatch; patch++ {

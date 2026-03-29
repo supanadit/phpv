@@ -4,6 +4,7 @@ import "github.com/supanadit/phpv/domain"
 
 type SourceRepository interface {
 	GetVersions() ([]domain.Source, error)
+	GetSources(name, version string) ([]domain.Source, error)
 }
 
 type Service struct {
@@ -18,4 +19,8 @@ func NewService(sourceRepository SourceRepository) *Service {
 
 func (s *Service) GetVersions() ([]domain.Source, error) {
 	return s.sourceRepository.GetVersions()
+}
+
+func (s *Service) GetSources(name, version string) ([]domain.Source, error) {
+	return s.sourceRepository.GetSources(name, version)
 }

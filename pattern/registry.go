@@ -26,16 +26,28 @@ func (r *PatternRegistry) RegisterPatterns(patterns []domain.URLPattern) {
 }
 
 func (r *PatternRegistry) MatchPattern(name string, v *domain.Version) (domain.URLPattern, error) {
+	patterns, err := r.MatchPatterns(name, v)
+	if err != nil {
+		return domain.URLPattern{}, err
+	}
+	if len(patterns) == 0 {
+		return domain.URLPattern{}, fmt.Errorf("no matching URL pattern for %s@%s", name, v.Raw)
+	}
+	return patterns[0], nil
+}
+
+func (r *PatternRegistry) MatchPatterns(name string, v *domain.Version) ([]domain.URLPattern, error) {
 	patterns, ok := r.index[name]
 	if !ok {
-		return domain.URLPattern{}, fmt.Errorf("no URL pattern found for %s", name)
+		return nil, fmt.Errorf("no URL pattern found for %s", name)
 	}
+	var matches []domain.URLPattern
 	for _, p := range patterns {
 		if p.Constraint(v) {
-			return p, nil
+			matches = append(matches, p)
 		}
 	}
-	return domain.URLPattern{}, fmt.Errorf("no matching URL pattern for %s@%s", name, v.Raw)
+	return matches, nil
 }
 
 func (r *PatternRegistry) MatchPatternByType(name, sourceType, targetOS, targetArch string, v *domain.Version) (domain.URLPattern, error) {

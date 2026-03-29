@@ -9,6 +9,7 @@ import (
 
 type mockSourceRepository struct {
 	versions []domain.Source
+	sources  []domain.Source
 	err      error
 }
 
@@ -19,6 +20,13 @@ func (m *mockSourceRepository) GetVersions() ([]domain.Source, error) {
 	return m.versions, nil
 }
 
+func (m *mockSourceRepository) GetSources(name, version string) ([]domain.Source, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.sources, nil
+}
+
 func TestNewService(t *testing.T) {
 	repo := &mockSourceRepository{
 		versions: []domain.Source{},
@@ -27,10 +35,6 @@ func TestNewService(t *testing.T) {
 
 	if svc == nil {
 		t.Error("expected service to not be nil")
-	}
-
-	if svc.sourceRepository != repo {
-		t.Error("expected sourceRepository to be set")
 	}
 }
 

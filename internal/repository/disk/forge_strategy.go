@@ -33,6 +33,8 @@ func (r *ForgeRepository) BuildWithStrategy(config domain.ForgeConfig, strategy 
 		return domain.Forge{}, err
 	}
 
+	fmt.Printf("Compiling %s %s...\n", config.Name, config.Version)
+
 	silo, err := r.siloRepo.GetSilo()
 	if err != nil {
 		return domain.Forge{}, err

@@ -169,12 +169,37 @@ var DefaultURLPatterns = []domain.URLPattern{
 		Name:       "openssl",
 		Type:       domain.SourceTypeSource,
 		Constraint: func(v *domain.Version) bool { return v.Major == 1 && v.Minor >= 1 },
-		Template:   "https://github.com/openssl/openssl/releases/download/openssl-{version}/openssl-{version}.tar.gz",
+		Template:   "https://www.openssl.org/source/openssl-{version}.tar.gz",
 	},
 	{
 		Name:       "openssl",
 		Type:       domain.SourceTypeSource,
 		Constraint: func(v *domain.Version) bool { return v.Major < 1 || (v.Major == 1 && v.Minor < 1) },
 		Template:   "https://www.openssl.org/source/openssl-{version}.tar.gz",
+	},
+
+	{
+		Name:       "zig",
+		Type:       domain.SourceTypeBinary,
+		OS:         domain.OSLinux,
+		Arch:       domain.ArchX86_64,
+		Constraint: func(v *domain.Version) bool { return v.Major == 0 && v.Minor >= 13 },
+		Template:   "https://ziglang.org/download/{version}/zig-linux-x86_64-{version}.tar.xz",
+	},
+	{
+		Name:       "zig",
+		Type:       domain.SourceTypeBinary,
+		OS:         domain.OSDarwin,
+		Arch:       domain.ArchX86_64,
+		Constraint: func(v *domain.Version) bool { return v.Major == 0 && v.Minor >= 13 },
+		Template:   "https://ziglang.org/download/{version}/zig-macos-x86_64-{version}.tar.xz",
+	},
+	{
+		Name:       "zig",
+		Type:       domain.SourceTypeBinary,
+		OS:         domain.OSDarwin,
+		Arch:       domain.ArchArm64,
+		Constraint: func(v *domain.Version) bool { return v.Major == 0 && v.Minor >= 13 },
+		Template:   "https://ziglang.org/download/{version}/zig-macos-aarch64-{version}.tar.xz",
 	},
 }

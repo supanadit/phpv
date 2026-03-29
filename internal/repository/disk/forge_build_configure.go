@@ -12,8 +12,14 @@ import (
 
 func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config domain.ForgeConfig, env []string) (domain.Forge, error) {
 	configurePath := filepath.Join(sourcePath, "configure")
+	useConfigure := true
+
 	if _, err := os.Stat(configurePath); os.IsNotExist(err) {
-		return domain.Forge{}, fmt.Errorf("configure script not found at %s", configurePath)
+		configurePath = filepath.Join(sourcePath, "Configure")
+		if _, err := os.Stat(configurePath); os.IsNotExist(err) {
+			return domain.Forge{}, fmt.Errorf("configure script not found at %s (or Configure)", filepath.Join(sourcePath, "configure"))
+		}
+		useConfigure = false
 	}
 
 	if err := os.Chmod(configurePath, 0o755); err != nil {
@@ -45,7 +51,13 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 	args := []string{fmt.Sprintf("--prefix=%s", prefix)}
 	args = append(args, config.ConfigureFlags...)
 
-	configure := exec.Command("./configure", args...)
+	var configure *exec.Cmd
+	configureArgs := append([]string{configurePath}, args...)
+	if useConfigure {
+		configure = exec.Command("./configure", configureArgs...)
+	} else {
+		configure = exec.Command("perl", configureArgs...)
+	}
 	configure.Dir = sourcePath
 	configure.Env = env
 	configure.Stdout = stdout

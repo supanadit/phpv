@@ -9,19 +9,95 @@ import (
 	"github.com/supanadit/phpv/internal/utils"
 )
 
-func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, contextMsg string, isBuildTool bool) error {
+func (s *bundlerRepository) needsAlternativeCC(phpVersion string, forceCompiler string) bool {
+	if forceCompiler == "zig" {
+		return true
+	}
+	if forceCompiler != "" && forceCompiler != "gcc" {
+		return false
+	}
+	v := utils.ParseVersion(phpVersion)
+	if v.Major < 8 {
+		return true
+	}
+	if v.Major == 8 && v.Minor == 1 && v.Patch < 33 {
+		return true
+	}
+	if v.Major == 8 && v.Minor == 0 {
+		return true
+	}
+	return false
+}
+
+func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompiler string) (cc string, cflags []string, cxx string, err error) {
+	if !s.needsAlternativeCC(phpVersion, forceCompiler) {
+		return "", []string{}, "", nil
+	}
+	zigVersion := "0.14.0"
+	v := utils.ParseVersion(phpVersion)
+	if v.Major < 7 {
+		zigVersion = "0.13.0"
+	}
+	zigBinary := filepath.Join(s.silo.Root, "build-tools", "zig", zigVersion, "zig")
+
+	if _, err := os.Stat(zigBinary); os.IsNotExist(err) {
+		fmt.Printf("Installing zig@%s (required for PHP %s)...\n", zigVersion, phpVersion)
+		if err := s.installBuildTool("zig", zigVersion); err != nil {
+			return "", nil, "", fmt.Errorf("failed to install zig: %w", err)
+		}
+		zigBinary = filepath.Join(s.silo.Root, "build-tools", "zig", zigVersion, "zig")
+	}
+
+	return zigBinary + " cc", []string{"-fPIC", "-Wno-error", "-fuse-ld=gold"}, "zig c++", nil
+}
+
+func (s *bundlerRepository) installBuildTool(name, version string) error {
+	url, err := s.patternRegistry.BuildURLByType(name, version, domain.SourceTypeBinary)
+	if err != nil {
+		return err
+	}
+
+	archive := archivePathFromURL(s.silo.Root, name, version, url)
+	if _, err := s.downloadSvc.Download(url, archive); err != nil {
+		return fmt.Errorf("failed to download %s@%s: %w", name, version, err)
+	}
+
+	installPath := filepath.Join(s.silo.Root, "build-tools", name, version)
+	if err := os.MkdirAll(installPath, 0755); err != nil {
+		return fmt.Errorf("failed to create directory for %s@%s: %w", name, version, err)
+	}
+
+	if _, err := s.unloadSvc.Unpack(archive, installPath); err != nil {
+		return fmt.Errorf("failed to extract %s@%s: %w", name, version, err)
+	}
+
+	if name == "zig" {
+		zigBinary := filepath.Join(installPath, "zig")
+		if err := os.Chmod(zigBinary, 0755); err != nil {
+			return fmt.Errorf("failed to chmod zig binary: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, contextMsg string, isBuildTool bool, forceCompiler string) error {
 	check, err := s.advisorSvc.Check(name, version, phpVersion)
 	if err != nil {
 		return err
 	}
 
-	if check.SystemAvailable {
+	if check.SystemAvailable && !mustBuildFromSource(name, phpVersion) {
 		if isBuildTool {
 			fmt.Printf("  ✓ %s@%s (system)%s\n", name, version, contextMsg)
 		} else {
 			fmt.Printf("✓ %s@%s at %s%s\n", name, version, check.SystemPath, contextMsg)
 		}
 		return nil
+	}
+
+	if check.SystemAvailable && mustBuildFromSource(name, phpVersion) {
+		fmt.Printf("System %s available but PHP %s requires building from source\n", name, phpVersion)
 	}
 
 	switch check.Action {
@@ -37,7 +113,7 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		archive := archivePathFromURL(s.silo.Root, name, version, url)
 		if _, err := s.downloadSvc.Download(url, archive); err != nil {
 			fmt.Printf("  Binary download failed, falling back to source build\n")
-			return s.buildFromSourceOrSystem(name, version, phpVersion, ldPath, cppFlags, ldFlags, check.Suggestion)
+			return s.buildFromSourceOrSystem(name, version, phpVersion, ldPath, cppFlags, ldFlags, check.Suggestion, forceCompiler)
 		}
 		fallthrough
 	case "extract":
@@ -51,7 +127,7 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		}
 		fallthrough
 	case "build", "rebuild":
-		err := s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags)
+		err := s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, forceCompiler)
 		if err != nil {
 			fmt.Printf("✗ Failed to build %s@%s: %v\n", name, version, err)
 			if check.Suggestion != "" {
@@ -79,7 +155,7 @@ func (s *bundlerRepository) findCachedArchive(pkg, ver string) string {
 	return filepath.Join(cacheDir, "archive")
 }
 
-func (s *bundlerRepository) buildFromSource(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string) error {
+func (s *bundlerRepository) buildFromSource(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, forceCompiler string) error {
 	sources, err := s.sourceSvc.GetSources(name, version)
 	if err != nil {
 		return fmt.Errorf("failed to get sources for %s@%s: %w", name, version, err)
@@ -101,7 +177,7 @@ func (s *bundlerRepository) buildFromSource(name, version, phpVersion string, ld
 			continue
 		}
 
-		return s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags)
+		return s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, forceCompiler)
 	}
 
 	if lastErr != nil {
@@ -110,8 +186,8 @@ func (s *bundlerRepository) buildFromSource(name, version, phpVersion string, ld
 	return nil
 }
 
-func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, suggestion string) error {
-	err := s.buildFromSource(name, version, phpVersion, ldPath, cppFlags, ldFlags)
+func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, suggestion string, forceCompiler string) error {
+	err := s.buildFromSource(name, version, phpVersion, ldPath, cppFlags, ldFlags, forceCompiler)
 	if err == nil {
 		return nil
 	}
@@ -133,8 +209,13 @@ func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion st
 	return err
 }
 
-func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string) error {
+func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, forceCompiler string) error {
 	installDir := utils.DependencyPath(s.silo, phpVersion, name, version)
+
+	cc, cflags, cxx, err := s.getCompilerForVersion(phpVersion, forceCompiler)
+	if err != nil {
+		return err
+	}
 
 	config := domain.ForgeConfig{
 		Name:            name,
@@ -145,9 +226,12 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 		LDFLAGS:         ldFlags,
 		LD_LIBRARY_PATH: ldPath,
 		ConfigureFlags:  s.forgeSvc.GetConfigureFlags(name),
+		CC:              cc,
+		CFLAGS:          cflags,
+		CXX:             cxx,
 		Verbose:         s.verbose,
 	}
 
-	_, err := s.forgeSvc.Build(config)
+	_, err = s.forgeSvc.Build(config)
 	return err
 }

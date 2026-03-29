@@ -31,6 +31,7 @@ var buildTools = map[string]bool{
 	"bison":    true,
 	"flex":     true,
 	"re2c":     true,
+	"zig":      true,
 }
 
 func isLibraryDependency(name string) bool {
@@ -85,15 +86,15 @@ func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo dom
 	}
 }
 
-func (s *bundlerRepository) Install(version string) (domain.Forge, error) {
+func (s *bundlerRepository) Install(version string, compiler string) (domain.Forge, error) {
 	exactVersion, err := s.resolvePHPVersion(version)
 	if err != nil {
 		return domain.Forge{}, fmt.Errorf("failed to resolve version %q: %w", version, err)
 	}
-	return s.Orchestrate("php", exactVersion)
+	return s.Orchestrate("php", exactVersion, compiler)
 }
 
-func (s *bundlerRepository) Orchestrate(name, exactVersion string) (domain.Forge, error) {
+func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler string) (domain.Forge, error) {
 	graph, err := s.assemblerSvc.GetGraph(name, exactVersion)
 	if err != nil {
 		return domain.Forge{}, fmt.Errorf("failed to resolve dependency graph: %w", err)
@@ -126,7 +127,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string) (domain.Forge
 		if dep.For != "" && dep.For != name {
 			contextMsg = fmt.Sprintf(" (for %s)", dep.For)
 		}
-		if err := s.buildPackage(dep.Package, dep.Version, exactVersion, ldLibraryPath, cppFlags, ldFlags, contextMsg, buildTools[dep.Package]); err != nil {
+		if err := s.buildPackage(dep.Package, dep.Version, exactVersion, ldLibraryPath, cppFlags, ldFlags, contextMsg, buildTools[dep.Package], forceCompiler); err != nil {
 			return domain.Forge{}, fmt.Errorf("failed to build %s@%s: %w", dep.Package, dep.Version, err)
 		}
 		if !buildTools[dep.Package] {
@@ -137,7 +138,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string) (domain.Forge
 		}
 	}
 
-	if err := s.buildPHP(name, exactVersion, ldLibraryPath, cppFlags, ldFlags); err != nil {
+	if err := s.buildPHP(name, exactVersion, ldLibraryPath, cppFlags, ldFlags, forceCompiler); err != nil {
 		return domain.Forge{}, fmt.Errorf("failed to build PHP: %w", err)
 	}
 

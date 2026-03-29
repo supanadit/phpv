@@ -8,7 +8,7 @@ import (
 	"github.com/supanadit/phpv/internal/utils"
 )
 
-func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldFlags []string) error {
+func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldFlags []string, forceCompiler string) error {
 	check, err := s.advisorSvc.Check(name, version, "")
 	if err != nil {
 		return err
@@ -24,6 +24,11 @@ func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldF
 	installDir := utils.PHPOutputPath(s.silo, version)
 	configureFlags := s.forgeSvc.GetPHPConfigureFlags(version, nil)
 
+	cc, cflags, cxx, err := s.getCompilerForVersion(version, forceCompiler)
+	if err != nil {
+		return err
+	}
+
 	config := domain.ForgeConfig{
 		Name:            name,
 		Version:         version,
@@ -33,6 +38,9 @@ func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldF
 		LDFLAGS:         ldFlags,
 		LD_LIBRARY_PATH: ldPath,
 		ConfigureFlags:  configureFlags,
+		CC:              cc,
+		CFLAGS:          cflags,
+		CXX:             cxx,
 		Verbose:         s.verbose,
 	}
 

@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/advisor"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/pattern"
 )
 
@@ -113,7 +114,7 @@ func NewAdvisorRepository() advisor.AdvisorRepository {
 func (r *AdvisorRepository) Check(name string, version string, phpVersion string) (domain.AdvisorCheck, error) {
 	state := determineState(r.fs, r.root, name, version, phpVersion)
 	systemAvailable, systemPath := r.checkSystemPackage(name)
-	action, url, sourceType := determineActionAndURL(state, systemAvailable, r.patternRegistry, name, version)
+	action, url, sourceType := determineActionAndURL(state, systemAvailable, r.patternRegistry, name, version, phpVersion)
 	message := buildMessage(name, version, state, action)
 
 	suggestion := ""
@@ -234,10 +235,39 @@ func determineState(fs afero.Fs, root, name, version, phpVersion string) domain.
 	return domain.StateUnknown
 }
 
-func determineActionAndURL(state domain.PackageState, systemAvailable bool, registry *pattern.PatternRegistry, name, version string) (string, string, string) {
+func mustBuildFromSource(name, phpVersion string) bool {
+	if phpVersion == "" {
+		return false
+	}
+	v := utils.ParseVersion(phpVersion)
+
+	switch name {
+	case "openssl":
+		if v.Major < 8 {
+			return true
+		}
+		if v.Major == 8 && v.Minor == 0 {
+			return true
+		}
+		if v.Major == 8 && v.Minor == 1 && v.Patch < 33 {
+			return true
+		}
+	case "libxml2":
+		if v.Major < 8 {
+			return true
+		}
+	case "curl":
+		if v.Major < 8 {
+			return true
+		}
+	}
+	return false
+}
+
+func determineActionAndURL(state domain.PackageState, systemAvailable bool, registry *pattern.PatternRegistry, name, version, phpVersion string) (string, string, string) {
 	switch state {
 	case domain.StateSourceMissing:
-		if systemAvailable {
+		if systemAvailable && !mustBuildFromSource(name, phpVersion) {
 			return "skip", "", domain.SourceTypeBinary
 		}
 		url, err := registry.BuildURLByType(name, version, domain.SourceTypeBinary)

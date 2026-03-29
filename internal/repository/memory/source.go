@@ -173,6 +173,9 @@ func (r *SourceRepository) GetVersions() ([]domain.Source, error) {
 	versions = append(versions, r.buildSource("openssl", "1.0.1u", sourceType))
 	versions = append(versions, r.buildSource("openssl", "0.9.8zh", sourceType))
 
+	versions = append(versions, r.buildSource("zig", "0.14.0", binaryType))
+	versions = append(versions, r.buildSource("zig", "0.13.0", binaryType))
+
 	sort.Slice(versions, func(i, j int) bool {
 		return versions[i].Version > versions[j].Version
 	})

@@ -52,6 +52,18 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 	if len(config.LD_LIBRARY_PATH) > 0 {
 		env = append(env, "LD_LIBRARY_PATH="+strings.Join(config.LD_LIBRARY_PATH, ":"))
 	}
+	if config.CC != "" {
+		env = append(env, "CC="+config.CC)
+	}
+	if len(config.CFLAGS) > 0 {
+		env = append(env, "CFLAGS="+strings.Join(config.CFLAGS, " "))
+	}
+	if config.CXX != "" {
+		env = append(env, "CXX="+config.CXX)
+	}
+	if len(config.CXXFLAGS) > 0 {
+		env = append(env, "CXXFLAGS="+strings.Join(config.CXXFLAGS, " "))
+	}
 	for k, v := range config.Env {
 		env = append(env, k+"="+v)
 	}

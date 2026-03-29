@@ -477,6 +477,11 @@ func registerPackages(svc *assembler.AssemblerService) {
 			},
 			Constraints: []domain.VersionConstraint{},
 		},
+		{
+			Package:     "zig",
+			Default:     []domain.Dependency{},
+			Constraints: []domain.VersionConstraint{},
+		},
 	}
 
 	for _, pkg := range packages {

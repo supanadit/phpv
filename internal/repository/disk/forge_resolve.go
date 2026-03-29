@@ -55,20 +55,30 @@ func (r *ForgeRepository) ensureSource(name, version, url string) error {
 
 	sourceDir := utils.GetSourceDirPath(silo, name, version)
 	sourceExists, _ := afero.Exists(r.fs, sourceDir)
-	if !sourceExists {
-		sourceBaseDir := filepath.Dir(sourceDir)
-		if err := r.fs.MkdirAll(sourceBaseDir, 0o755); err != nil {
-			return fmt.Errorf("failed to create source directory: %w", err)
-		}
 
-		unloadSvc := unload.NewService(r.unloadRepo)
-		if _, err := unloadSvc.Unpack(cachePath, sourceDir); err != nil {
-			return fmt.Errorf("failed to extract %s: %w", cachePath, err)
-		}
-
+	needsFlatten := false
+	var extractedFolderName string
+	if sourceExists {
 		entries, _ := afero.ReadDir(r.fs, sourceDir)
-		if len(entries) == 1 && entries[0].IsDir() {
-			extractedFolder := filepath.Join(sourceDir, entries[0].Name())
+		for _, e := range entries {
+			if e.IsDir() {
+				needsFlatten = true
+				extractedFolderName = e.Name()
+				break
+			}
+		}
+	}
+
+	if !sourceExists || needsFlatten {
+		if !sourceExists {
+			sourceBaseDir := filepath.Dir(sourceDir)
+			if err := r.fs.MkdirAll(sourceBaseDir, 0o755); err != nil {
+				return fmt.Errorf("failed to create source directory: %w", err)
+			}
+		}
+
+		if needsFlatten {
+			extractedFolder := filepath.Join(sourceDir, extractedFolderName)
 			extractedEntries, _ := afero.ReadDir(r.fs, extractedFolder)
 			for _, f := range extractedEntries {
 				src := filepath.Join(extractedFolder, f.Name())
@@ -78,8 +88,31 @@ func (r *ForgeRepository) ensureSource(name, version, url string) error {
 				}
 			}
 			r.fs.Remove(extractedFolder)
+			fmt.Printf("Flattened to: %s\n", sourceDir)
+		} else {
+			unloadSvc := unload.NewService(r.unloadRepo)
+			if _, err := unloadSvc.Unpack(cachePath, sourceDir); err != nil {
+				return fmt.Errorf("failed to extract %s: %w", cachePath, err)
+			}
+
+			entries, _ := afero.ReadDir(r.fs, sourceDir)
+			for _, e := range entries {
+				if e.IsDir() {
+					extractedFolder := filepath.Join(sourceDir, e.Name())
+					extractedEntries, _ := afero.ReadDir(r.fs, extractedFolder)
+					for _, f := range extractedEntries {
+						src := filepath.Join(extractedFolder, f.Name())
+						dst := filepath.Join(sourceDir, f.Name())
+						if err := r.fs.Rename(src, dst); err != nil {
+							return fmt.Errorf("failed to move extracted files: %w", err)
+						}
+					}
+					r.fs.Remove(extractedFolder)
+					break
+				}
+			}
+			fmt.Printf("Extracted to: %s\n", sourceDir)
 		}
-		fmt.Printf("Extracted to: %s\n", sourceDir)
 	} else {
 		fmt.Println("Using cached source:", sourceDir)
 	}

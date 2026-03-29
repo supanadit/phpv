@@ -36,8 +36,8 @@ func NewHandler(
 	}
 }
 
-func (h *TerminalHandler) Install(version string, verbose bool) (domain.Forge, error) {
-	return h.BundlerRepo.Install(version)
+func (h *TerminalHandler) Install(version string, compiler string, verbose bool) (domain.Forge, error) {
+	return h.BundlerRepo.Install(version, compiler)
 }
 
 func (h *TerminalHandler) Use(constraint string) (*UseResult, error) {

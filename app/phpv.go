@@ -262,7 +262,8 @@ func run(
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			verbose, _ := cmd.Flags().GetBool("verbose")
-			forge, err := handler.Install(args[0], verbose)
+			compiler, _ := cmd.Flags().GetString("compiler")
+			forge, err := handler.Install(args[0], compiler, verbose)
 			if err != nil {
 				return err
 			}
@@ -271,6 +272,7 @@ func run(
 		},
 	}
 	installCmd.Flags().BoolP("verbose", "v", false, "Enable verbose output")
+	installCmd.Flags().String("compiler", "", "Force a specific compiler (e.g., zig, gcc)")
 
 	useCmd := &cobra.Command{
 		Use:   "use <version>",

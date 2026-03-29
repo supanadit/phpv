@@ -11,8 +11,8 @@ import (
 )
 
 type BundlerRepository interface {
-	Install(version string) (domain.Forge, error)
-	Orchestrate(name, exactVersion string) (domain.Forge, error)
+	Install(version string, compiler string) (domain.Forge, error)
+	Orchestrate(name, exactVersion string, compiler string) (domain.Forge, error)
 }
 
 type BundlerServiceConfig struct {

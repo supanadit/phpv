@@ -59,3 +59,31 @@ func (s Silo) GetVersionPath(pkg, ver string) string {
 func (s Silo) GetSourceDirPath(pkg, ver string) string {
 	return filepath.Join(s.Root, s.SourceDirKey(pkg, ver))
 }
+
+func (s Silo) PHPVersionPath(phpVersion string) string {
+	return filepath.Join(s.Root, "versions", phpVersion)
+}
+
+func (s Silo) PHPOutputPath(phpVersion string) string {
+	return filepath.Join(s.PHPVersionPath(phpVersion), "output")
+}
+
+func (s Silo) DependencyPath(phpVersion, pkg, ver string) string {
+	return filepath.Join(s.PHPVersionPath(phpVersion), "dependency", pkg, ver)
+}
+
+func (s Silo) DependencyRootPath(phpVersion string) string {
+	return filepath.Join(s.PHPVersionPath(phpVersion), "dependency")
+}
+
+func (s Silo) BuildToolsPath() string {
+	return filepath.Join(s.Root, "build-tools")
+}
+
+func (s Silo) BuildToolPath(pkg, ver string) string {
+	return filepath.Join(s.BuildToolsPath(), pkg, ver)
+}
+
+func (s Silo) BuildToolBinPath(pkg, ver string) string {
+	return filepath.Join(s.BuildToolPath(pkg, ver), "bin")
+}

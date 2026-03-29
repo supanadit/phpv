@@ -1,10 +1,23 @@
 package domain
 
+type BuildStrategy string
+
+const (
+	StrategyCMake         BuildStrategy = "cmake"
+	StrategyConfigureMake BuildStrategy = "configure_make"
+	StrategyMakeOnly      BuildStrategy = "make_only"
+	StrategyAutogen       BuildStrategy = "autogen"
+)
+
 type ForgeConfig struct {
-	Name           string
-	Version        string
-	Prefix         string
-	ConfigureFlags []string
-	Env            map[string]string
-	Jobs           int
+	Name            string
+	Version         string
+	Prefix          string
+	ConfigureFlags  []string
+	Env             map[string]string
+	Jobs            int
+	Strategy        BuildStrategy
+	CPPFLAGS        []string
+	LDFLAGS         []string
+	LD_LIBRARY_PATH []string
 }

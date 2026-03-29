@@ -72,21 +72,29 @@ func (r *DownloadRepository) Download(url, destination string) (*domain.Download
 		return nil, fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
+	supportResume := r.checkResumeSupport(url)
+
 	var downloadedSize int64
 	var file afero.File
 
 	stat, err := r.fs.Stat(destination)
-	if err == nil && stat.Size() > 0 {
+	if err == nil && stat.Size() > 0 && supportResume {
 		downloadedSize = stat.Size()
 		file, err = r.fs.OpenFile(destination, os.O_APPEND|os.O_WRONLY, 0o644)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open file for append: %w", err)
 		}
 	} else {
+		if err == nil && stat.Size() > 0 {
+			if err := r.fs.Remove(destination); err != nil {
+				return nil, fmt.Errorf("failed to remove incomplete file: %w", err)
+			}
+		}
 		file, err = r.fs.Create(destination)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create file: %w", err)
 		}
+		downloadedSize = 0
 	}
 	defer file.Close()
 
@@ -119,6 +127,10 @@ func (r *DownloadRepository) Download(url, destination string) (*domain.Download
 		if downloadedSize == 0 {
 			return nil, fmt.Errorf("server returned partial content but no existing file found")
 		}
+	case http.StatusRequestedRangeNotSatisfiable:
+		file.Close()
+		r.fs.Remove(destination)
+		return r.Download(url, destination)
 	default:
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
@@ -131,4 +143,23 @@ func (r *DownloadRepository) Download(url, destination string) (*domain.Download
 		URL:         url,
 		Destination: destination,
 	}, nil
+}
+
+func (r *DownloadRepository) checkResumeSupport(url string) bool {
+	req, err := http.NewRequest(http.MethodHead, url, nil)
+	if err != nil {
+		return false
+	}
+
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+
+	return resp.Header.Get("Accept-Ranges") == "bytes"
 }

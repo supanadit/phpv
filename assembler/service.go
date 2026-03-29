@@ -16,11 +16,19 @@ type AssemblerRepository interface {
 
 type AssemblerService struct {
 	packages map[string]domain.Package
+	repo     AssemblerRepository
 }
 
 func NewAssemblerService() *AssemblerService {
 	return &AssemblerService{
 		packages: make(map[string]domain.Package),
+	}
+}
+
+func NewAssemblerServiceWithRepo(repo AssemblerRepository) *AssemblerService {
+	return &AssemblerService{
+		packages: make(map[string]domain.Package),
+		repo:     repo,
 	}
 }
 
@@ -52,6 +60,10 @@ func (s *AssemblerService) GetDependencies(packageName string, version string) (
 }
 
 func (s *AssemblerService) GetGraph(packageName string, version string) (domain.DependencyGraph, error) {
+	if s.repo != nil {
+		return s.repo.GetGraph(packageName, version)
+	}
+
 	visited := make(map[string]bool)
 
 	var resolve func(name string, ver string) (domain.DependencyGraph, error)

@@ -2,12 +2,31 @@
 
 phpv is a PHP Version Manager written in Go. It downloads, compiles, and manages multiple PHP versions from source on the same system, similar to phpbrew or nvm.
 
+## Project Status: IN DEVELOPMENT
+
+**Current Focus:** Bundler implementation - orchestrating the complete PHP build workflow
+
+### What's Working
+- fx dependency injection wiring in `app/phpv.go`
+- Bundler orchestration service (`bundler/service.go`)
+- Multi-strategy build support in forge (configure/make, cmake, make-only, autogen)
+- System package detection for executables (m4, autoconf, automake, libtool, openssl, etc.)
+- Multi-mirror fallback for downloads (libxml2 has 3 mirrors defined)
+- HTTP download with resume support
+- Dependency graph resolution via assembler
+
+### Known Issues / In Progress
+- **libxml2 system detection**: libxml2 is a library (not executable), so `which libxml2` fails. Need to detect via `pkg-config` or check for library files in standard paths
+- **libxml2 download fails**: gnome.org returns redirect/HTML instead of tar.xz. Multi-mirror fallback implemented but all mirrors may fail
+- **System fallback for libraries**: When download/build fails, the system fallback only works for executables. Need to extend to support library detection
+
 ## Project Structure
 
-- `app/` - Main entry point (phpv.go)
-- `domain/` - Domain entities (Forge, Source, Version, Download, URLPattern, Silo, Dependency, DependencyGraph, Package, VersionConstraint)
+- `app/` - Main entry point (phpv.go) with fx wiring
+- `domain/` - Domain entities (Forge, Source, Version, Download, URLPattern, Silo, Dependency, DependencyGraph, Package, VersionConstraint, Bundler types)
+- `bundler/` - **NEW** - Mastermind orchestrator service (installs PHP and all dependencies)
 - `assembler/` - Assembler service - dependency graph resolution
-- `forge/` - Build service - orchestrates PHP compilation from source
+- `forge/` - Build service - orchestrates PHP compilation from source (multi-strategy support)
 - `download/` - Download service - HTTP downloads with resume support
 - `source/` - Source version management - retrieves available PHP versions
 - `unload/` - Archive extraction service (tar.gz, tar.xz, zip)
@@ -15,13 +34,14 @@ phpv is a PHP Version Manager written in Go. It downloads, compiles, and manages
 - `advisor/` - Advisory service (determines system vs build-from-source)
 - `internal/utils/` - Utility functions (constraint matching, version parsing)
 - `internal/repository/` - Data access implementations
-  - `memory/` - In-memory repository (orchestrates the full build process)
-  - `disk/` - Archive extraction implementation
+  - `memory/` - In-memory repository (package definitions, source data)
+  - `disk/` - Disk-based implementations (forge, bundler, advisor, silo, unloader)
   - `http/` - HTTP download implementation
 
 ## Key Technologies
 
 - Go 1.25.3
+- uber-go/fx for dependency injection
 - Dependencies: viper (config), afero (filesystem abstraction), xz (compression), mapstructure, go-toml
 
 ## Architecture
@@ -30,7 +50,7 @@ Follow Clean Architecture / Hexagonal Architecture patterns:
 
 - `domain/` layer has NO business logic - pure data types only
 - `internal/utils/` contains pure utility functions (no external dependencies)
-- Service layers (`forge/`, `assembler/`, `download/`, `source/`, `unload/`) contain business logic
+- Service layers (`forge/`, `assembler/`, `download/`, `source/`, `unload/`, `bundler/`) contain business logic
 - Repository implementations in `internal/repository/`
 
 ### Layer Responsibilities
@@ -39,35 +59,47 @@ Follow Clean Architecture / Hexagonal Architecture patterns:
 |-------|---------|----------|
 | `domain/` | Pure data types, no logic | `Dependency`, `Package`, `Version` structs |
 | `internal/utils/` | Pure utility functions | `MatchVersionRange()` |
+| `bundler/` | Orchestrator service | `BundlerService.Install()`, `buildPackage()`, `buildFromSourceOrSystem()` |
 | `assembler/` | Service + interface | `AssemblerService`, `AssemblerRepository` |
-| `internal/repository/` | Data access implementations | `memory/assembler.go`, `http/assembler.go` |
+| `forge/` | Build service | `ForgeService`, multi-strategy `BuildWithStrategy()` |
+| `internal/repository/` | Data access implementations | `disk/forge.go`, `http/download.go` |
 
 ### Data Flow
 
 ```
-ForgeConfig{Name: "php", Version: "8.3.0"}
+bundler.Install("8.4.0")
        ↓
-AssemblerService.GetGraph("php", "8.3.0")  →  full transitive dependency graph
+resolvePHPVersion("8.4.0") → "8.4.19" (latest 8.4.y)
        ↓
-Advisor.Check(package)  →  system package or build from source?
+ensureBuildTools() → install m4, autoconf, automake, libtool, perl, bison, flex if not system-available
        ↓
-Forge.Build(package)  →  builds each package in topological order
+assembler.GetGraph("php", "8.4.19") → full transitive dependency graph
+       ↓
+For each dependency (in order):
+  advisor.Check() → system available or build-from-source?
+  buildPackage() → download → extract → compile OR use system package
+       ↓
+buildPHP() → configure → make → make install
+       ↓
+Forge{Prefix: "...", Env: {"LD_LIBRARY_PATH": "..."}}
 ```
 
 ### Domain Entities
 
-- `Forge` - Represents a built PHP installation
-- `ForgeConfig` - Configuration for building PHP (name, version, configure flags)
+- `Forge` - Represents a built PHP installation (Prefix path, Env map)
+- `ForgeConfig` - Configuration for building (name, version, prefix, strategy, CPPFLAGS, LDFLAGS, LD_LIBRARY_PATH, ConfigureFlags)
+- `BundlerConfig` - Configuration for bundler service (repositories, silo, jobs)
 - `Source` - A software source with name, version, and download URL
 - `Version` - Parsed version (major, minor, patch, suffix)
 - `URLPattern` - Pattern template for generating download URLs
 - `Download` - Download record with URL and destination
 - `Unload` - Unpacking result (source, destination, extracted count)
-- `Silo` - Cache manager
+- `Silo` - Cache manager with path methods for PHPV_ROOT structure
 - `Dependency` - A package dependency (Name, Version, Constraint, Optional)
 - `DependencyGraph` - Collection of resolved dependencies with build order
-- `Package` - A package definition with name, source URL, and dependencies
+- `Package` - A package definition with name, constraints, and dependencies
 - `VersionConstraint` - Version requirement string (e.g., `">=3.0.0,<4.0.0"`)
+- `AdvisorCheck` - Result of system package check (State, Action, SystemAvailable, SystemPath, Message)
 
 ## Code Standards
 
@@ -94,18 +126,13 @@ The `domain/` package MUST contain ONLY pure data types with NO business logic:
 ```go
 // ✅ CORRECT - Domain entity is pure data
 type Dependency struct {
-    Name      string
-    Version   string
+    Name       string
+    Version    string
     Constraint string
-    Optional  bool
+    Optional   bool
 }
 
 // ❌ WRONG - Domain entity with business logic
-type Dependency struct {
-    Name      string
-    Version   string
-}
-
 func (d Dependency) Matches(version string) bool {
     // BUSINESS LOGIC IN DOMAIN - FORBIDDEN
 }
@@ -113,7 +140,7 @@ func (d Dependency) Matches(version string) bool {
 
 Business logic belongs in:
 - `internal/utils/` - Pure utility functions
-- Service packages (`assembler/`, `forge/`, etc.)
+- Service packages (`assembler/`, `forge/`, `bundler/`, etc.)
 
 ### Interface Pattern
 
@@ -122,6 +149,7 @@ Each service defines its repository interface in the service package:
 ```go
 type ForgeRepository interface {
     Build(config domain.ForgeConfig) (domain.Forge, error)
+    BuildWithStrategy(config domain.ForgeConfig, strategy domain.BuildStrategy) (domain.Forge, error)
 }
 ```
 
@@ -139,7 +167,8 @@ type AssemblerRepository interface {
 }
 
 type AssemblerService struct {
-    repo AssemblerRepository
+    packages map[string]domain.Package
+    repo     AssemblerRepository  // optional delegate
 }
 ```
 
@@ -153,7 +182,39 @@ The `memory/` repository contains predefined package dependencies for:
 - PHP (5.6 through 8.4)
 - OpenSSL 1.1.x (for PHP 7.x) and 3.x (for PHP 8.x)
 - Build tools: autoconf, automake, bison, flex, libtool, m4, perl, re2c
-- Libraries: libxml2, oniguruma, zlib
+- Libraries: libxml2, oniguruma, zlib, curl
+
+### Bundler Orchestration
+
+The `bundler/` package is the "mastermind" that orchestrates the complete build workflow:
+
+```go
+type BundlerService struct {
+    assemblerSvc    *assembler.AssemblerService
+    advisorSvc      *advisor.Service
+    forgeSvc        *forge.Service
+    downloadSvc     *download.Service
+    unloadSvc       *unload.Service
+    sourceSvc       *source.Service
+    patternRegistry *pattern.PatternRegistry
+    silo            *domain.Silo
+    fs              afero.Fs
+    jobs            int
+}
+
+func (s *BundlerService) Install(version string) (domain.Forge, error)
+func (s *BundlerService) Orchestrate(name, exactVersion string) (domain.Forge, error)
+func (s *BundlerService) buildPackage(name, version, phpVersion string, ...) error
+func (s *BundlerService) buildFromSource(name, version, phpVersion string, ...) error
+func (s *BundlerService) buildFromSourceOrSystem(name, version, phpVersion string, ...) error
+```
+
+Key behaviors:
+- Version resolution: `"8"` → latest 8.x.y, `"8.4"` → latest 8.4.y, `"8.4.3"` → exact
+- System package detection for executables via `which` command
+- Multi-mirror fallback for downloads (e.g., libxml2 has 3 mirrors)
+- System fallback when all mirrors fail (if `advisor.Check().SystemAvailable == true`)
+- Failed build steps halt entirely (no continue-on-error)
 
 ### URL Pattern Registry
 
@@ -164,14 +225,38 @@ The `pattern/` package provides URL templates for downloading software:
 - cmake, curl, flex, libtool, libxml2, m4
 - oniguruma, openssl (1.x and 3.x)
 
+Special handling for libxml2 (has multiple mirrors defined in `getSourceURLs()`):
+- Primary: `https://download.gnome.org/sources/libxml2/{major}.{minor}/libxml2-{version}.tar.xz`
+- Fallback 1: `https://ftp.linux.org.au/pub/gnome.org/sources/libxml2/...`
+- Fallback 2: `https://mirror.freedif.org/GNOME/sources/libxml2/...`
+
+### Build Strategies
+
+The forge service supports multiple build strategies (via `domain.BuildStrategy`):
+
+| Strategy | Packages | Method |
+|----------|----------|--------|
+| `StrategyCMake` | cmake | cmake → make → make install |
+| `StrategyConfigureMake` | openssl, php, libxml2, oniguruma, curl | ./configure → make → make install |
+| `StrategyMakeOnly` | zlib, m4, autoconf, automake, bison, flex, libtool, perl | make → make install |
+| `StrategyAutogen` | autoreconf packages | ./autogen.sh → ./configure → make → make install |
+
 ## Build Commands
 
 ```bash
 # Build binary
 go build -o phpv ./app/phpv.go
 
-# Build with version flag
-go build -ldflags "-X github.com/supanadit/phpv/domain.AppVersion=v1.0.0" -o phpv ./app/phpv.go
+# Run (silent fx logs)
+go run app/phpv.go
+
+# Run with verbose fx logs
+go run app/phpv.go -x
+
+# Run with specific PHP version
+go run app/phpv.go 8.4.0
+go run app/phpv.go 8.4
+go run app/phpv.go 8
 
 # Run all tests
 go test ./...
@@ -182,14 +267,8 @@ go test -cover ./...
 # Run tests for specific package
 go test -v ./domain/...
 
-# Run specific test
-go test -v ./domain/... -run TestVersion
-
-# Run go fmt
-go fmt ./...
-
-# Run go vet
-go vet ./...
+# Run go fmt and vet
+go fmt ./... && go vet ./...
 ```
 
 ## Configuration
@@ -197,6 +276,7 @@ go vet ./...
 - Default root directory: `$HOME/.phpv`
 - Environment variable: `PHPV_ROOT`
 - Viper is used for configuration management with automatic env reading
+- fx provides dependency injection with `-x` flag for verbose logging
 
 ## Testing
 
@@ -215,36 +295,75 @@ Use standard `go test` commands to run tests.
 
 ```
 $PHPV_ROOT/
-├── bin/          # Shim binaries (php, php-cgi, phpize, etc.)
-├── cache/        # Downloaded archives
-├── sources/      # Extracted source code
-└── versions/     # Installed PHP versions
+├── bin/              # Shim binaries (php, php-cgi, phpize, etc.)
+├── build-tools/      # Shared build tools (m4, autoconf, etc.) across PHP versions
+│   └── {pkg}/{ver}/
+├── cache/            # Downloaded archives
+│   └── {pkg}-{ver}.tar.{gz|xz}
+├── sources/          # Extracted source code
+│   └── {pkg}/{ver}/
+└── versions/         # Installed PHP versions
+    └── {php-version}/
+        ├── dependency/  # Isolated dependencies for this PHP version
+        │   └── {pkg}/{ver}/
+        └── output/      # PHP installation prefix
 ```
+
+## fx Wiring (app/phpv.go)
+
+The main entry point uses uber-go/fx for dependency injection:
+
+```go
+opts := []fx.Option{
+    fx.WithLogger(func() fxevent.Logger { return &silentLogger{} }),  // or fxevent.DefaultLogger for -x
+    fx.Provide(
+        NewSiloRepository,       // *disk.SiloRepository
+        NewSourceRepository,      // source.SourceRepository (memory)
+        NewDownloadRepository,     // download.DownloadRepository (http)
+        NewUnloadRepository,      // unload.UnloadRepository (disk)
+        NewAdvisorRepository,     // advisor.AdvisorRepository (disk)
+        NewAssemblerRepository,   // assembler.AssemblerRepository (memory)
+        NewForgeRepository,       // forge.ForgeRepository (disk)
+        NewBundlerServiceConfig,  // bundler.BundlerServiceConfig
+    ),
+    fx.Invoke(run),
+}
+```
+
+The `NewBundlerServiceConfig` function constructs `BundlerServiceConfig` using repository interfaces, and `disk.NewBundlerRepository()` creates the actual `BundlerService` which wires up all services internally.
 
 ## Common Development Tasks
 
 ### Adding a new URL pattern
 
-1. Add the pattern to `pattern/registry.go` or create a new patterns file
+1. Add the pattern to `pattern/defaults.go` or `pattern/registry.go`
 2. Follow the existing pattern structure with Constraint and Template
 3. Test with a specific version
-
-### Adding a new domain entity
-
-1. Create type in `domain/` package
-2. Add repository interface to relevant service package
-3. Implement in `internal/repository/<type>/`
-
-### Adding a new archive format support
-
-1. Add extraction logic to `internal/repository/disk/`
-2. Update `Unload` type if needed
-3. Add tests for the new format
 
 ### Adding a new package to assembler
 
 1. Add package data to `internal/repository/memory/assembler.go`
-2. Follow the existing structure with Name, Version, URL, and Dependencies
+2. Follow the existing structure with Package, Default, and Constraints
 3. Use version constraint format: `"recommendation|constraint"`
 4. Mark optional dependencies with `Optional: true`
-5. Add tests for transitive dependency resolution
+
+### Adding multi-mirror support for a package
+
+1. Add `case` in `bundler/service.go:getSourceURLs()` method
+2. Return slice of URLs in priority order
+3. Update `buildFromSource()` to iterate through URLs
+
+### Adding system detection for a library
+
+1. Update `internal/repository/disk/advisor.go:checkSystemPackage()`
+2. Currently uses `which` command - for libraries, use `pkg-config` or check standard paths
+3. Examples:
+   - libxml2: check `/usr/include/libxml2/` or `pkg-config --exists libxml-2.0`
+   - openssl: check `/usr/include/openssl/` or `pkg-config --exists openssl`
+
+### Debugging
+
+Use `-x` flag to see full fx dependency graph:
+```bash
+go run app/phpv.go -x
+```

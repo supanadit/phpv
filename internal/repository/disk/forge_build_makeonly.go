@@ -2,6 +2,7 @@ package disk
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
@@ -15,13 +16,21 @@ func (r *ForgeRepository) buildMakeOnly(sourcePath, prefix string, config domain
 		jobs = runtime.NumCPU()
 	}
 
+	var stdout, stderr io.Writer = os.Stdout, os.Stderr
+	if !config.Verbose {
+		stdout = io.Discard
+		stderr = io.Discard
+	}
+
 	mk := exec.Command("make", fmt.Sprintf("-j%d", jobs))
 	mk.Dir = sourcePath
 	mk.Env = env
-	mk.Stdout = os.Stdout
-	mk.Stderr = os.Stderr
+	mk.Stdout = stdout
+	mk.Stderr = stderr
 
-	fmt.Println("Running make for", config.Name)
+	if config.Verbose {
+		fmt.Println("Running make for", config.Name)
+	}
 	if err := mk.Run(); err != nil {
 		return domain.Forge{}, fmt.Errorf("make failed: %w", err)
 	}
@@ -29,10 +38,12 @@ func (r *ForgeRepository) buildMakeOnly(sourcePath, prefix string, config domain
 	mkInstall := exec.Command("make", "install")
 	mkInstall.Dir = sourcePath
 	mkInstall.Env = env
-	mkInstall.Stdout = os.Stdout
-	mkInstall.Stderr = os.Stderr
+	mkInstall.Stdout = stdout
+	mkInstall.Stderr = stderr
 
-	fmt.Println("Running make install for", config.Name)
+	if config.Verbose {
+		fmt.Println("Running make install for", config.Name)
+	}
 	if err := mkInstall.Run(); err != nil {
 		return domain.Forge{}, fmt.Errorf("make install failed: %w", err)
 	}

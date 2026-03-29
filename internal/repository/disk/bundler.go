@@ -33,6 +33,7 @@ type bundlerRepository struct {
 	silo            *domain.Silo
 	fs              afero.Fs
 	jobs            int
+	verbose         bool
 }
 
 func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo domain.FlagResolverRepository) bundler.BundlerRepository {
@@ -64,6 +65,7 @@ func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo dom
 		silo:            cfg.Silo,
 		fs:              afero.NewOsFs(),
 		jobs:            jobs,
+		verbose:         cfg.Verbose,
 	}
 }
 

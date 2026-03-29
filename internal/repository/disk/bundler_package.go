@@ -15,21 +15,23 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 	}
 
 	if check.SystemAvailable {
-		fmt.Printf("Using system %s@%s at %s\n", name, version, check.SystemPath)
+		fmt.Printf("✓ Using system %s@%s at %s (skipped build)\n", name, version, check.SystemPath)
 		return nil
 	}
 
 	switch check.Action {
 	case "skip":
+		fmt.Printf("✓ %s@%s already installed\n", name, version)
 		return nil
 	case "download":
+		fmt.Printf("Installing %s@%s...\n", name, version)
 		url, err := s.patternRegistry.BuildURLByType(name, version, check.SourceType)
 		if err != nil {
 			return err
 		}
 		archive := archivePathFromURL(s.silo.Root, name, version, url)
 		if _, err := s.downloadSvc.Download(url, archive); err != nil {
-			fmt.Printf("Binary download failed for %s@%s, falling back to source build\n", name, version)
+			fmt.Printf("  Binary download failed, falling back to source build\n")
 			return s.buildFromSourceOrSystem(name, version, phpVersion, ldPath, cppFlags, ldFlags, check.Suggestion)
 		}
 		fallthrough
@@ -45,10 +47,15 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		fallthrough
 	case "build", "rebuild":
 		err := s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags)
-		if err != nil && check.Suggestion != "" {
-			fmt.Printf("\n💡 Tip: Install system package to avoid building from source:\n   %s\n\n", check.Suggestion)
+		if err != nil {
+			fmt.Printf("✗ Failed to build %s@%s: %v\n", name, version, err)
+			if check.Suggestion != "" {
+				fmt.Printf("\n💡 Tip: Install system package to avoid building from source:\n   %s\n\n", check.Suggestion)
+			}
+			return err
 		}
-		return err
+		fmt.Printf("✓ Successfully installed %s@%s\n", name, version)
+		return nil
 	}
 	return fmt.Errorf("unknown action %q for %s@%s", check.Action, name, version)
 }
@@ -133,6 +140,7 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 		LDFLAGS:         ldFlags,
 		LD_LIBRARY_PATH: ldPath,
 		ConfigureFlags:  s.forgeSvc.GetConfigureFlags(name),
+		Verbose:         s.verbose,
 	}
 
 	_, err := s.forgeSvc.Build(config)

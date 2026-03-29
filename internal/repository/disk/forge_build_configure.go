@@ -2,6 +2,7 @@ package disk
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,13 +22,21 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 
 	r.touchAutotools(sourcePath)
 
+	var stdout, stderr io.Writer = os.Stdout, os.Stderr
+	if !config.Verbose {
+		stdout = io.Discard
+		stderr = io.Discard
+	}
+
 	if config.Name == "m4" {
 		autoreconf := exec.Command("autoreconf", "-fi")
 		autoreconf.Dir = sourcePath
 		autoreconf.Env = env
-		autoreconf.Stdout = os.Stdout
-		autoreconf.Stderr = os.Stderr
-		fmt.Println("Running autoreconf for m4")
+		autoreconf.Stdout = stdout
+		autoreconf.Stderr = stderr
+		if config.Verbose {
+			fmt.Println("Running autoreconf for m4")
+		}
 		if err := autoreconf.Run(); err != nil {
 			return domain.Forge{}, fmt.Errorf("autoreconf failed: %w", err)
 		}
@@ -39,19 +48,21 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 	configure := exec.Command("./configure", args...)
 	configure.Dir = sourcePath
 	configure.Env = env
-	configure.Stdout = os.Stdout
-	configure.Stderr = os.Stderr
+	configure.Stdout = stdout
+	configure.Stderr = stderr
 
-	fmt.Println("Running configure for", config.Name)
+	if config.Verbose {
+		fmt.Println("Running configure for", config.Name)
+	}
 	if err := configure.Run(); err != nil {
 		return domain.Forge{}, fmt.Errorf("configure failed: %w", err)
 	}
 
-	if err := r.makeWithName(sourcePath, config.Jobs, env, config.Name); err != nil {
+	if err := r.makeWithName(sourcePath, config.Jobs, env, config.Name, config.Verbose); err != nil {
 		return domain.Forge{}, err
 	}
 
-	if err := r.makeInstall(sourcePath, config.Jobs, env); err != nil {
+	if err := r.makeInstall(sourcePath, config.Jobs, env, config.Verbose); err != nil {
 		return domain.Forge{}, err
 	}
 

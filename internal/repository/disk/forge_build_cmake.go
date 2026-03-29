@@ -2,6 +2,7 @@ package disk
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +22,12 @@ func (r *ForgeRepository) buildCMake(sourcePath, prefix string, config domain.Fo
 		jobs = runtime.NumCPU()
 	}
 
+	var stdout, stderr io.Writer = os.Stdout, os.Stderr
+	if !config.Verbose {
+		stdout = io.Discard
+		stderr = io.Discard
+	}
+
 	cmakeArgs := []string{
 		"-DCMAKE_INSTALL_PREFIX=" + prefix,
 		sourcePath,
@@ -29,10 +36,12 @@ func (r *ForgeRepository) buildCMake(sourcePath, prefix string, config domain.Fo
 	cmakeCmd := exec.Command("cmake", cmakeArgs...)
 	cmakeCmd.Dir = buildDir
 	cmakeCmd.Env = env
-	cmakeCmd.Stdout = os.Stdout
-	cmakeCmd.Stderr = os.Stderr
+	cmakeCmd.Stdout = stdout
+	cmakeCmd.Stderr = stderr
 
-	fmt.Println("Running cmake for", config.Name)
+	if config.Verbose {
+		fmt.Println("Running cmake for", config.Name)
+	}
 	if err := cmakeCmd.Run(); err != nil {
 		return domain.Forge{}, fmt.Errorf("cmake failed: %w", err)
 	}
@@ -40,10 +49,12 @@ func (r *ForgeRepository) buildCMake(sourcePath, prefix string, config domain.Fo
 	mk := exec.Command("make", fmt.Sprintf("-j%d", jobs))
 	mk.Dir = buildDir
 	mk.Env = env
-	mk.Stdout = os.Stdout
-	mk.Stderr = os.Stderr
+	mk.Stdout = stdout
+	mk.Stderr = stderr
 
-	fmt.Println("Running make for", config.Name)
+	if config.Verbose {
+		fmt.Println("Running make for", config.Name)
+	}
 	if err := mk.Run(); err != nil {
 		return domain.Forge{}, fmt.Errorf("make failed: %w", err)
 	}
@@ -51,10 +62,12 @@ func (r *ForgeRepository) buildCMake(sourcePath, prefix string, config domain.Fo
 	mkInstall := exec.Command("make", "install")
 	mkInstall.Dir = buildDir
 	mkInstall.Env = env
-	mkInstall.Stdout = os.Stdout
-	mkInstall.Stderr = os.Stderr
+	mkInstall.Stdout = stdout
+	mkInstall.Stderr = stderr
 
-	fmt.Println("Running make install for", config.Name)
+	if config.Verbose {
+		fmt.Println("Running make install for", config.Name)
+	}
 	if err := mkInstall.Run(); err != nil {
 		return domain.Forge{}, fmt.Errorf("make install failed: %w", err)
 	}

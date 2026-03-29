@@ -27,8 +27,11 @@ type silentLogger struct{}
 
 func (s *silentLogger) LogEvent(event fxevent.Event) {}
 
+type verboseKey struct{}
+
 func main() {
 	debugMode := flag.Bool("x", false, "verbose fx logging")
+	flag.Bool("v", false, "verbose output (show compile logs)")
 	flag.Parse()
 
 	viper.AutomaticEnv()
@@ -149,6 +152,14 @@ func NewBundlerServiceConfig(
 		return bundler.BundlerServiceConfig{}, err
 	}
 
+	verbose := false
+	for _, arg := range os.Args[1:] {
+		if arg == "-v" || arg == "--verbose" {
+			verbose = true
+			break
+		}
+	}
+
 	return bundler.BundlerServiceConfig{
 		Assembler: asm,
 		Advisor:   adv,
@@ -157,6 +168,7 @@ func NewBundlerServiceConfig(
 		Unload:    ul,
 		Source:    src,
 		Silo:      silo,
+		Verbose:   verbose,
 	}, nil
 }
 
@@ -176,11 +188,11 @@ func run(
 	bundlerSvc := bundlerRepo
 
 	version := "8.4.0"
-	if len(os.Args) > 1 {
-		version = os.Args[1]
+	args := flag.Args()
+	if len(args) > 0 {
+		version = args[0]
 	}
 
-	fmt.Printf("Installing PHP %s...\n", version)
 	forge, err := bundlerSvc.Install(version)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -188,11 +200,13 @@ func run(
 		return
 	}
 
-	fmt.Printf("\n✅ PHP installed successfully!\n")
-	fmt.Printf("   Prefix: %s\n", forge.Prefix)
-	for k, v := range forge.Env {
-		fmt.Printf("   %s: %s\n", k, v)
-	}
+	fmt.Println()
+	fmt.Println("╔══════════════════════════════════════════════════════════════╗")
+	fmt.Println("║                    PHP Installation Summary                   ║")
+	fmt.Println("╠══════════════════════════════════════════════════════════════╣")
+	fmt.Printf("║  Version: %-50s ║\n", version)
+	fmt.Printf("║  Binary:  %-50s ║\n", forge.Prefix+"/bin/php")
+	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
 
 	shutdowner.Shutdown()
 }

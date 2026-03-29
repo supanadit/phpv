@@ -24,4 +24,5 @@ type BundlerServiceConfig struct {
 	Source    source.SourceRepository
 	Silo      *domain.Silo
 	Jobs      int
+	Verbose   bool
 }

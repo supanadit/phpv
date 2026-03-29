@@ -20,4 +20,5 @@ type ForgeConfig struct {
 	CPPFLAGS        []string
 	LDFLAGS         []string
 	LD_LIBRARY_PATH []string
+	Verbose         bool
 }

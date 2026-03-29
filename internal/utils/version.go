@@ -95,7 +95,7 @@ func FilterVersionsByConstraint(versions []string, constraint string) []string {
 		if pv.Major != major {
 			continue
 		}
-		if minor > 0 && pv.Minor != minor {
+		if pv.Minor != minor {
 			continue
 		}
 		if patch >= 0 && pv.Patch != patch {

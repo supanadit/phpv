@@ -186,7 +186,7 @@ func (s *bundlerRepository) resolvePHPVersion(constraint string) (string, error)
 		if v.Major != major {
 			continue
 		}
-		if minor > 0 && v.Minor != minor {
+		if v.Minor != minor {
 			continue
 		}
 		if patch >= 0 && v.Patch != patch {

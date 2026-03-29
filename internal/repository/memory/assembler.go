@@ -30,7 +30,7 @@ func registerPackages(svc *assembler.AssemblerService) {
 				{
 					VersionRange: ">=8.0.0 <8.2.0",
 					Dependencies: []domain.Dependency{
-						{Name: "openssl", Version: "3.0.14|>=3.0.0,<3.1.0"},
+						{Name: "openssl", Version: "1.1.1w|>=1.1.0,<1.2.0"},
 						{Name: "libxml2", Version: "2.11.7|~2.11.0"},
 						{Name: "zlib", Version: "1.3.1|>=1.3.0"},
 						{Name: "oniguruma", Version: "6.9.9|~6.9.0"},

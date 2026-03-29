@@ -57,7 +57,8 @@ func (r *ForgeRepository) ensureSource(name, version, url string) error {
 	sourceExists, _ := afero.Exists(r.fs, sourceDir)
 
 	needsFlatten := false
-	var extractedFolderName string
+	extractedFolderName := ""
+
 	if sourceExists {
 		entries, _ := afero.ReadDir(r.fs, sourceDir)
 		for _, e := range entries {
@@ -77,19 +78,24 @@ func (r *ForgeRepository) ensureSource(name, version, url string) error {
 			}
 		}
 
+		extractedFolder := ""
 		if needsFlatten {
-			extractedFolder := filepath.Join(sourceDir, extractedFolderName)
-			extractedEntries, _ := afero.ReadDir(r.fs, extractedFolder)
-			for _, f := range extractedEntries {
-				src := filepath.Join(extractedFolder, f.Name())
-				dst := filepath.Join(sourceDir, f.Name())
-				if err := r.fs.Rename(src, dst); err != nil {
-					return fmt.Errorf("failed to move extracted files: %w", err)
-				}
+			extractedFolder = filepath.Join(sourceDir, extractedFolderName)
+		}
+
+		if needsFlatten && !r.isProperlyFlattened(sourceDir, extractedFolder) {
+			if err := r.fs.RemoveAll(sourceDir); err != nil {
+				return fmt.Errorf("failed to clean up incomplete source directory: %w", err)
 			}
-			r.fs.Remove(extractedFolder)
-			fmt.Printf("Flattened to: %s\n", sourceDir)
-		} else {
+			sourceExists = false
+			needsFlatten = false
+			extractedFolderName = ""
+			if err := r.fs.MkdirAll(sourceDir, 0o755); err != nil {
+				return fmt.Errorf("failed to create source directory: %w", err)
+			}
+		}
+
+		if !needsFlatten || extractedFolder == "" {
 			unloadSvc := unload.NewService(r.unloadRepo)
 			if _, err := unloadSvc.Unpack(cachePath, sourceDir); err != nil {
 				return fmt.Errorf("failed to extract %s: %w", cachePath, err)
@@ -98,20 +104,18 @@ func (r *ForgeRepository) ensureSource(name, version, url string) error {
 			entries, _ := afero.ReadDir(r.fs, sourceDir)
 			for _, e := range entries {
 				if e.IsDir() {
-					extractedFolder := filepath.Join(sourceDir, e.Name())
-					extractedEntries, _ := afero.ReadDir(r.fs, extractedFolder)
-					for _, f := range extractedEntries {
-						src := filepath.Join(extractedFolder, f.Name())
-						dst := filepath.Join(sourceDir, f.Name())
-						if err := r.fs.Rename(src, dst); err != nil {
-							return fmt.Errorf("failed to move extracted files: %w", err)
-						}
-					}
-					r.fs.Remove(extractedFolder)
+					extractedFolder = filepath.Join(sourceDir, e.Name())
+					extractedFolderName = e.Name()
 					break
 				}
 			}
-			fmt.Printf("Extracted to: %s\n", sourceDir)
+			fmt.Printf("Extattened to: %s\n", sourceDir)
+		}
+
+		if extractedFolder != "" && extractedFolderName != "" {
+			if err := r.flattenSource(sourceDir, extractedFolder, extractedFolderName); err != nil {
+				return fmt.Errorf("failed to flatten source: %w", err)
+			}
 		}
 	} else {
 		fmt.Println("Using cached source:", sourceDir)
@@ -120,8 +124,72 @@ func (r *ForgeRepository) ensureSource(name, version, url string) error {
 	return nil
 }
 
+func (r *ForgeRepository) isProperlyFlattened(sourceDir, extractedFolder string) bool {
+	if extractedFolder == "" {
+		return true
+	}
+	extractedEntries, err := afero.ReadDir(r.fs, extractedFolder)
+	if err != nil {
+		return false
+	}
+	for _, e := range extractedEntries {
+		dstPath := filepath.Join(sourceDir, e.Name())
+		if _, err := r.fs.Stat(dstPath); err == nil {
+			return false
+		}
+	}
+	return true
+}
+
+func (r *ForgeRepository) flattenSource(sourceDir, extractedFolder, extractedFolderName string) error {
+	extractedEntries, _ := afero.ReadDir(r.fs, extractedFolder)
+	for _, f := range extractedEntries {
+		src := filepath.Join(extractedFolder, f.Name())
+		dst := filepath.Join(sourceDir, f.Name())
+		dstInfo, dstErr := r.fs.Stat(dst)
+		if f.IsDir() && dstErr == nil && dstInfo.IsDir() {
+			if err := r.mergeDirectories(src, dst); err != nil {
+				return fmt.Errorf("failed to merge directory %s: %w", f.Name(), err)
+			}
+		} else if err := r.fs.Rename(src, dst); err != nil {
+			return fmt.Errorf("failed to move extracted files: %w", err)
+		}
+	}
+	r.fs.Remove(extractedFolder)
+	fmt.Printf("Flattened to: %s\n", sourceDir)
+	return nil
+}
+
 func (r *ForgeRepository) ensureFs() {
 	if r.fs == nil {
 		r.fs = afero.NewOsFs()
 	}
+}
+
+func (r *ForgeRepository) mergeDirectories(src, dst string) error {
+	entries, err := afero.ReadDir(r.fs, src)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		srcPath := filepath.Join(src, e.Name())
+		dstPath := filepath.Join(dst, e.Name())
+		if e.IsDir() {
+			dstInfo, dstErr := r.fs.Stat(dstPath)
+			if dstErr == nil && dstInfo.IsDir() {
+				if err := r.mergeDirectories(srcPath, dstPath); err != nil {
+					return err
+				}
+			} else {
+				if err := r.fs.Rename(srcPath, dstPath); err != nil {
+					return err
+				}
+			}
+		} else {
+			if err := r.fs.Rename(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+	}
+	return r.fs.Remove(src)
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/utils"
 )
 
 func (r *ForgeRepository) detectStrategy(name, version string) domain.BuildStrategy {
@@ -40,10 +41,10 @@ func (r *ForgeRepository) BuildWithStrategy(config domain.ForgeConfig, strategy 
 		return domain.Forge{}, err
 	}
 
-	sourceDir := silo.GetSourceDirPath(config.Name, config.Version)
+	sourceDir := utils.GetSourceDirPath(silo, config.Name, config.Version)
 	installDir := config.Prefix
 	if installDir == "" {
-		installDir = silo.GetVersionPath(config.Name, config.Version)
+		installDir = utils.GetVersionPath(silo, config.Name, config.Version)
 	}
 
 	r.ensureFs()

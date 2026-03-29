@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/utils"
 )
 
 func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldFlags []string) error {
@@ -14,13 +15,13 @@ func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldF
 	}
 
 	if check.Action == "skip" {
-		fmt.Printf("✓ PHP %s is already installed at %s\n", version, s.silo.PHPOutputPath(version))
+		fmt.Printf("✓ PHP %s is already installed at %s\n", version, utils.PHPOutputPath(s.silo, version))
 		return nil
 	}
 
 	fmt.Printf("Building PHP %s...\n", version)
 
-	installDir := s.silo.PHPOutputPath(version)
+	installDir := utils.PHPOutputPath(s.silo, version)
 	configureFlags := s.forgeSvc.GetPHPConfigureFlags(version, nil)
 
 	config := domain.ForgeConfig{
@@ -46,5 +47,5 @@ func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldF
 }
 
 func (s *bundlerRepository) siloPHPOutputPath(version string) string {
-	return filepath.Join(s.silo.PHPOutputPath(version), "lib")
+	return filepath.Join(utils.PHPOutputPath(s.silo, version), "lib")
 }

@@ -2,7 +2,7 @@ package memory
 
 import (
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/pattern"
+	"github.com/supanadit/phpv/internal/utils"
 )
 
 func NewFlagResolverRepository() domain.FlagResolverRepository {
@@ -30,7 +30,7 @@ func (r *flagResolverRepo) GetConfigureFlags(name string) []string {
 }
 
 func (r *flagResolverRepo) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
-	v := pattern.ParseVersion(phpVersion)
+	v := utils.ParseVersion(phpVersion)
 
 	flags := []string{
 		"--disable-all",

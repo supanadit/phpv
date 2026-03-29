@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/utils"
 )
 
 var (
@@ -45,10 +46,10 @@ func (r *SiloRepository) GetSilo() (*domain.Silo, error) {
 
 func (r *SiloRepository) EnsurePaths() error {
 	paths := []string{
-		r.silo.CachePath(),
-		r.silo.SourcePath(),
-		r.silo.VersionPath(),
-		r.silo.BinPath(),
+		utils.CachePath(r.silo),
+		utils.SourcePath(r.silo),
+		utils.VersionPath(r.silo),
+		utils.BinPath(r.silo),
 	}
 
 	for _, path := range paths {
@@ -71,24 +72,24 @@ func (r *SiloRepository) validateInput(pkg, ver string) error {
 }
 
 func (r *SiloRepository) getSourceFilePath(pkg, ver string) string {
-	return filepath.Join(r.silo.GetSourcePath(pkg, ver), "source.tar.gz")
+	return filepath.Join(utils.GetSourcePath(r.silo, pkg, ver), "source.tar.gz")
 }
 
 func (r *SiloRepository) getVersionFilePath(pkg, ver string) string {
-	return filepath.Join(r.silo.GetVersionPath(pkg, ver), "version.tar.gz")
+	return filepath.Join(utils.GetVersionPath(r.silo, pkg, ver), "version.tar.gz")
 }
 
 func (r *SiloRepository) ArchiveExists(pkg, ver string) bool {
 	if err := r.validateInput(pkg, ver); err != nil {
 		return false
 	}
-	path := r.silo.GetArchivePath(pkg, ver)
+	path := utils.GetArchivePath(r.silo, pkg, ver)
 	exists, _ := afero.Exists(r.fs, path)
 	return exists
 }
 
 func (r *SiloRepository) GetArchivePath(pkg, ver string) string {
-	return r.silo.GetArchivePath(pkg, ver)
+	return utils.GetArchivePath(r.silo, pkg, ver)
 }
 
 func (r *SiloRepository) StoreArchive(pkg, ver string, data io.Reader) error {
@@ -96,7 +97,7 @@ func (r *SiloRepository) StoreArchive(pkg, ver string, data io.Reader) error {
 		return err
 	}
 
-	path := r.silo.GetArchivePath(pkg, ver)
+	path := utils.GetArchivePath(r.silo, pkg, ver)
 	dir := filepath.Dir(path)
 
 	if err := r.fs.MkdirAll(dir, 0o755); err != nil {
@@ -121,7 +122,7 @@ func (r *SiloRepository) RetrieveArchive(pkg, ver string) (io.ReadCloser, error)
 		return nil, err
 	}
 
-	path := r.silo.GetArchivePath(pkg, ver)
+	path := utils.GetArchivePath(r.silo, pkg, ver)
 	if exists, _ := afero.Exists(r.fs, path); !exists {
 		return nil, fmt.Errorf("archive not found: %w", ErrNotFound)
 	}
@@ -134,7 +135,7 @@ func (r *SiloRepository) RemoveArchive(pkg, ver string) error {
 		return err
 	}
 
-	path := r.silo.GetArchivePath(pkg, ver)
+	path := utils.GetArchivePath(r.silo, pkg, ver)
 	if exists, _ := afero.Exists(r.fs, path); !exists {
 		return nil
 	}
@@ -143,7 +144,7 @@ func (r *SiloRepository) RemoveArchive(pkg, ver string) error {
 }
 
 func (r *SiloRepository) ListArchives() []string {
-	return r.listItems(r.silo.CachePath())
+	return r.listItems(utils.CachePath(r.silo))
 }
 
 func (r *SiloRepository) SourceExists(pkg, ver string) bool {
@@ -156,7 +157,7 @@ func (r *SiloRepository) SourceExists(pkg, ver string) bool {
 }
 
 func (r *SiloRepository) GetSourcePath(pkg, ver string) string {
-	return r.silo.GetSourcePath(pkg, ver)
+	return utils.GetSourcePath(r.silo, pkg, ver)
 }
 
 func (r *SiloRepository) StoreSource(pkg, ver string, data io.Reader) error {
@@ -164,7 +165,7 @@ func (r *SiloRepository) StoreSource(pkg, ver string, data io.Reader) error {
 		return err
 	}
 
-	path := r.silo.GetSourcePath(pkg, ver)
+	path := utils.GetSourcePath(r.silo, pkg, ver)
 
 	if err := r.fs.MkdirAll(path, 0o755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", path, err)
@@ -202,7 +203,7 @@ func (r *SiloRepository) RemoveSource(pkg, ver string) error {
 		return err
 	}
 
-	path := r.silo.GetSourcePath(pkg, ver)
+	path := utils.GetSourcePath(r.silo, pkg, ver)
 	if exists, _ := afero.Exists(r.fs, path); !exists {
 		return nil
 	}
@@ -211,7 +212,7 @@ func (r *SiloRepository) RemoveSource(pkg, ver string) error {
 }
 
 func (r *SiloRepository) ListSources() []string {
-	return r.listItems(r.silo.SourcePath())
+	return r.listItems(utils.SourcePath(r.silo))
 }
 
 func (r *SiloRepository) VersionExists(pkg, ver string) bool {
@@ -224,7 +225,7 @@ func (r *SiloRepository) VersionExists(pkg, ver string) bool {
 }
 
 func (r *SiloRepository) GetVersionPath(pkg, ver string) string {
-	return r.silo.GetVersionPath(pkg, ver)
+	return utils.GetVersionPath(r.silo, pkg, ver)
 }
 
 func (r *SiloRepository) StoreVersion(pkg, ver string, data io.Reader) error {
@@ -232,7 +233,7 @@ func (r *SiloRepository) StoreVersion(pkg, ver string, data io.Reader) error {
 		return err
 	}
 
-	path := r.silo.GetVersionPath(pkg, ver)
+	path := utils.GetVersionPath(r.silo, pkg, ver)
 
 	if err := r.fs.MkdirAll(path, 0o755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", path, err)
@@ -270,7 +271,7 @@ func (r *SiloRepository) RemoveVersion(pkg, ver string) error {
 		return err
 	}
 
-	path := r.silo.GetVersionPath(pkg, ver)
+	path := utils.GetVersionPath(r.silo, pkg, ver)
 	if exists, _ := afero.Exists(r.fs, path); !exists {
 		return nil
 	}
@@ -279,7 +280,7 @@ func (r *SiloRepository) RemoveVersion(pkg, ver string) error {
 }
 
 func (r *SiloRepository) ListVersions() []string {
-	return r.listItems(r.silo.VersionPath())
+	return r.listItems(utils.VersionPath(r.silo))
 }
 
 func (r *SiloRepository) FullClean(pkg, ver string) error {
@@ -302,9 +303,9 @@ func (r *SiloRepository) FullClean(pkg, ver string) error {
 
 func (r *SiloRepository) CleanAll() error {
 	paths := []string{
-		r.silo.CachePath(),
-		r.silo.SourcePath(),
-		r.silo.VersionPath(),
+		utils.CachePath(r.silo),
+		utils.SourcePath(r.silo),
+		utils.VersionPath(r.silo),
 	}
 
 	for _, path := range paths {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/utils"
 )
 
 func TestSiloRepository_GetSilo(t *testing.T) {
@@ -427,19 +428,19 @@ func TestDomain_SiloPathMethods(t *testing.T) {
 		got      string
 		expected string
 	}{
-		{"RootPath", silo.RootPath(), "/home/user/.phpv"},
-		{"CachePath", silo.CachePath(), "/home/user/.phpv/cache"},
-		{"SourcePath", silo.SourcePath(), "/home/user/.phpv/sources"},
-		{"VersionPath", silo.VersionPath(), "/home/user/.phpv/versions"},
-		{"BinPath", silo.BinPath(), "/home/user/.phpv/bin"},
-		{"ArchiveKey", silo.ArchiveKey("php", "8.3.0"), "cache/php/8.3.0/archive"},
-		{"SourceKey", silo.SourceKey("php", "8.3.0"), "sources/php/8.3.0"},
-		{"VersionKey", silo.VersionKey("php", "8.3.0"), "versions/php/8.3.0"},
-		{"SourceDirKey", silo.SourceDirKey("php", "8.3.0"), "sources/php/8.3.0/src"},
-		{"GetArchivePath", silo.GetArchivePath("php", "8.3.0"), "/home/user/.phpv/cache/php/8.3.0/archive"},
-		{"GetSourcePath", silo.GetSourcePath("php", "8.3.0"), "/home/user/.phpv/sources/php/8.3.0"},
-		{"GetVersionPath", silo.GetVersionPath("php", "8.3.0"), "/home/user/.phpv/versions/php/8.3.0"},
-		{"GetSourceDirPath", silo.GetSourceDirPath("php", "8.3.0"), "/home/user/.phpv/sources/php/8.3.0/src"},
+		{"RootPath", utils.RootPath(&silo), "/home/user/.phpv"},
+		{"CachePath", utils.CachePath(&silo), "/home/user/.phpv/cache"},
+		{"SourcePath", utils.SourcePath(&silo), "/home/user/.phpv/sources"},
+		{"VersionPath", utils.VersionPath(&silo), "/home/user/.phpv/versions"},
+		{"BinPath", utils.BinPath(&silo), "/home/user/.phpv/bin"},
+		{"ArchiveKey", utils.ArchiveKey("php", "8.3.0"), "cache/php/8.3.0/archive"},
+		{"SourceKey", utils.SourceKey("php", "8.3.0"), "sources/php/8.3.0"},
+		{"VersionKey", utils.VersionKey("php", "8.3.0"), "versions/php/8.3.0"},
+		{"SourceDirKey", utils.SourceDirKey("php", "8.3.0"), "sources/php/8.3.0/src"},
+		{"GetArchivePath", utils.GetArchivePath(&silo, "php", "8.3.0"), "/home/user/.phpv/cache/php/8.3.0/archive"},
+		{"GetSourcePath", utils.GetSourcePath(&silo, "php", "8.3.0"), "/home/user/.phpv/sources/php/8.3.0"},
+		{"GetVersionPath", utils.GetVersionPath(&silo, "php", "8.3.0"), "/home/user/.phpv/versions/php/8.3.0"},
+		{"GetSourceDirPath", utils.GetSourceDirPath(&silo, "php", "8.3.0"), "/home/user/.phpv/sources/php/8.3.0/src"},
 	}
 
 	for _, tt := range tests {

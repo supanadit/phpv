@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/pattern"
 )
 
@@ -21,14 +22,14 @@ func NewSourceRepository() *SourceRepository {
 }
 
 func (r *SourceRepository) buildSource(name, version, sourceType string) domain.Source {
-	v := pattern.ParseVersion(version)
+	v := utils.ParseVersion(version)
 	urlPattern, _ := r.patternRegistry.MatchPattern(name, v)
 	url, _ := pattern.BuildURL(urlPattern, v)
 	return domain.Source{Name: name, Version: version, URL: url, Type: sourceType}
 }
 
 func (r *SourceRepository) GetSources(name, version string) ([]domain.Source, error) {
-	v := pattern.ParseVersion(version)
+	v := utils.ParseVersion(version)
 	patterns, err := r.patternRegistry.MatchPatterns(name, v)
 	if err != nil {
 		return nil, err

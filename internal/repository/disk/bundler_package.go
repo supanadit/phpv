@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/utils"
 )
 
 func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, contextMsg string, isBuildTool bool) error {
@@ -44,7 +45,7 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		if archive == "" {
 			return fmt.Errorf("no cached archive for %s@%s", name, version)
 		}
-		dest := s.silo.GetSourceDirPath(name, version)
+		dest := utils.GetSourceDirPath(s.silo, name, version)
 		if _, err := s.unloadSvc.Unpack(archive, dest); err != nil {
 			return err
 		}
@@ -93,7 +94,7 @@ func (s *bundlerRepository) buildFromSource(name, version, phpVersion string, ld
 			continue
 		}
 
-		sourceDir := s.silo.GetSourceDirPath(name, version)
+		sourceDir := utils.GetSourceDirPath(s.silo, name, version)
 		if _, err := s.unloadSvc.Unpack(archive, sourceDir); err != nil {
 			lastErr = err
 			fmt.Printf("Extraction failed for %s@%s, trying next mirror...\n", name, version)
@@ -133,7 +134,7 @@ func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion st
 }
 
 func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string) error {
-	installDir := s.silo.DependencyPath(phpVersion, name, version)
+	installDir := utils.DependencyPath(s.silo, phpVersion, name, version)
 
 	config := domain.ForgeConfig{
 		Name:            name,

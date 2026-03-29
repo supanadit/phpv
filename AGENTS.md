@@ -8,23 +8,24 @@ phpv is a PHP Version Manager written in Go. It downloads, compiles, and manages
 
 ### What's Working
 - fx dependency injection wiring in `app/phpv.go`
-- Bundler orchestration service (`bundler/service.go`)
+- Bundler orchestration service (interface in `bundler/service.go`, implementation in `internal/repository/disk/bundler*.go`)
 - Multi-strategy build support in forge (configure/make, cmake, make-only, autogen)
-- System package detection for executables (m4, autoconf, automake, libtool, openssl, etc.)
-- Multi-mirror fallback for downloads (libxml2 has 3 mirrors defined)
+- System package detection for executables via `which` and libraries via `pkg-config`/header checks
 - HTTP download with resume support
 - Dependency graph resolution via assembler
 
 ### Known Issues / In Progress
-- **libxml2 system detection**: libxml2 is a library (not executable), so `which libxml2` fails. Need to detect via `pkg-config` or check for library files in standard paths
-- **libxml2 download fails**: gnome.org returns redirect/HTML instead of tar.xz. Multi-mirror fallback implemented but all mirrors may fail
-- **System fallback for libraries**: When download/build fails, the system fallback only works for executables. Need to extend to support library detection
+- **libxml2 download fails**: gnome.org may return redirect/HTML instead of tar.xz
+- **System fallback for libraries**: When download/build fails, system fallback uses pkg-config/header detection
+
+### Planned Features
+- **Multi-platform URL patterns**: Different download URLs per OS (Linux, macOS, Windows) for packages like PHP. Currently only Linux is supported.
 
 ## Project Structure
 
 - `app/` - Main entry point (phpv.go) with fx wiring
 - `domain/` - Domain entities (Forge, Source, Version, Download, URLPattern, Silo, Dependency, DependencyGraph, Package, VersionConstraint, Bundler types)
-- `bundler/` - **NEW** - Mastermind orchestrator service (installs PHP and all dependencies)
+- `bundler/` - BundlerRepository interface and BundlerServiceConfig
 - `assembler/` - Assembler service - dependency graph resolution
 - `forge/` - Build service - orchestrates PHP compilation from source (multi-strategy support)
 - `download/` - Download service - HTTP downloads with resume support
@@ -32,6 +33,8 @@ phpv is a PHP Version Manager written in Go. It downloads, compiles, and manages
 - `unload/` - Archive extraction service (tar.gz, tar.xz, zip)
 - `pattern/` - URL pattern registry - maps package names/versions to download URLs
 - `advisor/` - Advisory service (determines system vs build-from-source)
+- `flagresolver/` - Configure flag resolver service
+- `silo/` - Silo repository service
 - `internal/utils/` - Utility functions (constraint matching, version parsing)
 - `internal/repository/` - Data access implementations
   - `memory/` - In-memory repository (package definitions, source data)
@@ -48,7 +51,7 @@ phpv is a PHP Version Manager written in Go. It downloads, compiles, and manages
 
 Follow Clean Architecture / Hexagonal Architecture patterns:
 
-- `domain/` layer has NO business logic - pure data types only
+- `domain/` layer has NO business logic - pure data types only (exception: `Silo` struct has path methods for PHPV_ROOT structure)
 - `internal/utils/` contains pure utility functions (no external dependencies)
 - Service layers (`forge/`, `assembler/`, `download/`, `source/`, `unload/`, `bundler/`) contain business logic
 - Repository implementations in `internal/repository/`
@@ -56,10 +59,10 @@ Follow Clean Architecture / Hexagonal Architecture patterns:
 ### Layer Responsibilities
 
 | Layer | Purpose | Examples |
-|-------|---------|----------|
+|-------|---------|---------|
 | `domain/` | Pure data types, no logic | `Dependency`, `Package`, `Version` structs |
 | `internal/utils/` | Pure utility functions | `MatchVersionRange()` |
-| `bundler/` | Orchestrator service | `BundlerService.Install()`, `buildPackage()`, `buildFromSourceOrSystem()` |
+| `bundler/` | Orchestrator service (interface) | `BundlerService.Install()`, `Orchestrate()` |
 | `assembler/` | Service + interface | `AssemblerService`, `AssemblerRepository` |
 | `forge/` | Build service | `ForgeService`, multi-strategy `BuildWithStrategy()` |
 | `internal/repository/` | Data access implementations | `disk/forge.go`, `http/download.go` |
@@ -70,8 +73,6 @@ Follow Clean Architecture / Hexagonal Architecture patterns:
 bundler.Install("8.4.0")
        ↓
 resolvePHPVersion("8.4.0") → "8.4.19" (latest 8.4.y)
-       ↓
-ensureBuildTools() → install m4, autoconf, automake, libtool, perl, bison, flex if not system-available
        ↓
 assembler.GetGraph("php", "8.4.19") → full transitive dependency graph
        ↓
@@ -100,6 +101,7 @@ Forge{Prefix: "...", Env: {"LD_LIBRARY_PATH": "..."}}
 - `Package` - A package definition with name, constraints, and dependencies
 - `VersionConstraint` - Version requirement string (e.g., `">=3.0.0,<4.0.0"`)
 - `AdvisorCheck` - Result of system package check (State, Action, SystemAvailable, SystemPath, Message)
+- `FlagResolverRepository` - Interface for resolving configure flags
 
 ## Code Standards
 
@@ -137,6 +139,8 @@ func (d Dependency) Matches(version string) bool {
     // BUSINESS LOGIC IN DOMAIN - FORBIDDEN
 }
 ```
+
+Exception: `Silo` struct contains path methods (`RootPath()`, `CachePath()`, etc.) for PHPV_ROOT structure.
 
 Business logic belongs in:
 - `internal/utils/` - Pure utility functions
@@ -186,34 +190,31 @@ The `memory/` repository contains predefined package dependencies for:
 
 ### Bundler Orchestration
 
-The `bundler/` package is the "mastermind" that orchestrates the complete build workflow:
+The `bundler/` package provides the interface; implementation is in `internal/repository/disk/bundler*.go`:
 
 ```go
-type BundlerService struct {
-    assemblerSvc    *assembler.AssemblerService
-    advisorSvc      *advisor.Service
-    forgeSvc        *forge.Service
-    downloadSvc     *download.Service
-    unloadSvc       *unload.Service
-    sourceSvc       *source.Service
-    patternRegistry *pattern.PatternRegistry
-    silo            *domain.Silo
-    fs              afero.Fs
-    jobs            int
+type BundlerRepository interface {
+    Install(version string) (domain.Forge, error)
+    Orchestrate(name, exactVersion string) (domain.Forge, error)
 }
 
-func (s *BundlerService) Install(version string) (domain.Forge, error)
-func (s *BundlerService) Orchestrate(name, exactVersion string) (domain.Forge, error)
-func (s *BundlerService) buildPackage(name, version, phpVersion string, ...) error
-func (s *BundlerService) buildFromSource(name, version, phpVersion string, ...) error
-func (s *BundlerService) buildFromSourceOrSystem(name, version, phpVersion string, ...) error
+type BundlerServiceConfig struct {
+    Assembler assembler.AssemblerRepository
+    Advisor   advisor.AdvisorRepository
+    Forge     forge.ForgeRepository
+    Download  download.DownloadRepository
+    Unload    unload.UnloadRepository
+    Source    source.SourceRepository
+    Silo      *domain.Silo
+    Jobs      int
+    Verbose   bool
+}
 ```
 
 Key behaviors:
 - Version resolution: `"8"` → latest 8.x.y, `"8.4"` → latest 8.4.y, `"8.4.3"` → exact
 - System package detection for executables via `which` command
-- Multi-mirror fallback for downloads (e.g., libxml2 has 3 mirrors)
-- System fallback when all mirrors fail (if `advisor.Check().SystemAvailable == true`)
+- System library detection via `pkg-config` and header file checks
 - Failed build steps halt entirely (no continue-on-error)
 
 ### URL Pattern Registry
@@ -224,11 +225,6 @@ The `pattern/` package provides URL templates for downloading software:
 - zlib, re2c, perl, autoconf, automake, bison
 - cmake, curl, flex, libtool, libxml2, m4
 - oniguruma, openssl (1.x and 3.x)
-
-Special handling for libxml2 (has multiple mirrors defined in `getSourceURLs()`):
-- Primary: `https://download.gnome.org/sources/libxml2/{major}.{minor}/libxml2-{version}.tar.xz`
-- Fallback 1: `https://ftp.linux.org.au/pub/gnome.org/sources/libxml2/...`
-- Fallback 2: `https://mirror.freedif.org/GNOME/sources/libxml2/...`
 
 ### Build Strategies
 
@@ -324,13 +320,28 @@ opts := []fx.Option{
         NewAdvisorRepository,     // advisor.AdvisorRepository (disk)
         NewAssemblerRepository,   // assembler.AssemblerRepository (memory)
         NewForgeRepository,       // forge.ForgeRepository (disk)
+        NewFlagResolverRepository, // domain.FlagResolverRepository (memory)
         NewBundlerServiceConfig,  // bundler.BundlerServiceConfig
     ),
     fx.Invoke(run),
 }
 ```
 
-The `NewBundlerServiceConfig` function constructs `BundlerServiceConfig` using repository interfaces, and `disk.NewBundlerRepository()` creates the actual `BundlerService` which wires up all services internally.
+The `BundlerService` is created manually in the `run()` function using `disk.NewBundlerRepository()`, not through fx injection.
+
+## Repository Implementations
+
+| Repository | Interface Location | Implementation Location |
+|------------|-------------------|------------------------|
+| `SiloRepository` | `silo/service.go` | `internal/repository/disk/` |
+| `SourceRepository` | `source/service.go` | `internal/repository/memory/` |
+| `DownloadRepository` | `download/service.go` | `internal/repository/http/` |
+| `UnloadRepository` | `unload/service.go` | `internal/repository/disk/` |
+| `AdvisorRepository` | `advisor/service.go` | `internal/repository/disk/` |
+| `AssemblerRepository` | `assembler/service.go` | `internal/repository/memory/` |
+| `ForgeRepository` | `forge/service.go` | `internal/repository/disk/` |
+| `BundlerRepository` | `bundler/service.go` | `internal/repository/disk/` |
+| `FlagResolverRepository` | `domain/flagresolver.go` | `internal/repository/memory/` |
 
 ## Common Development Tasks
 
@@ -347,17 +358,20 @@ The `NewBundlerServiceConfig` function constructs `BundlerServiceConfig` using r
 3. Use version constraint format: `"recommendation|constraint"`
 4. Mark optional dependencies with `Optional: true`
 
-### Adding multi-mirror support for a package
+### Adding multi-platform URL support
 
-1. Add `case` in `bundler/service.go:getSourceURLs()` method
-2. Return slice of URLs in priority order
-3. Update `buildFromSource()` to iterate through URLs
+When adding support for a new platform (Linux, macOS, Windows):
+
+1. Add new URL patterns for the package in `pattern/defaults.go` with platform-specific constraints
+2. Update `pattern/registry.go` to detect OS and return appropriate URL patterns
+3. Update `bundler/` package to handle platform-specific build requirements if needed
 
 ### Adding system detection for a library
 
-1. Update `internal/repository/disk/advisor.go:checkSystemPackage()`
-2. Currently uses `which` command - for libraries, use `pkg-config` or check standard paths
-3. Examples:
+1. Update `internal/repository/disk/advisor.go:checkSystemLibrary()`
+2. Uses `pkg-config` for library detection
+3. Uses header file checks for additional validation
+4. Examples:
    - libxml2: check `/usr/include/libxml2/` or `pkg-config --exists libxml-2.0`
    - openssl: check `/usr/include/openssl/` or `pkg-config --exists openssl`
 

@@ -16,6 +16,7 @@ import (
 	"github.com/supanadit/phpv/download"
 	"github.com/supanadit/phpv/flagresolver"
 	"github.com/supanadit/phpv/forge"
+	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/pattern"
 	"github.com/supanadit/phpv/source"
 	"github.com/supanadit/phpv/unload"
@@ -129,7 +130,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string) (domain.Forge
 			return domain.Forge{}, fmt.Errorf("failed to build %s@%s: %w", dep.Package, dep.Version, err)
 		}
 		if !buildTools[dep.Package] {
-			depPath := s.silo.DependencyPath(exactVersion, dep.Package, dep.Version)
+			depPath := utils.DependencyPath(s.silo, exactVersion, dep.Package, dep.Version)
 			ldLibraryPath = append(ldLibraryPath, filepath.Join(depPath, "lib"))
 			cppFlags = append(cppFlags, fmt.Sprintf("-I%s/include", depPath))
 			ldFlags = append(ldFlags, fmt.Sprintf("-L%s/lib", depPath))
@@ -140,7 +141,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string) (domain.Forge
 		return domain.Forge{}, fmt.Errorf("failed to build PHP: %w", err)
 	}
 
-	outputPath := s.silo.PHPOutputPath(exactVersion)
+	outputPath := utils.PHPOutputPath(s.silo, exactVersion)
 	ldLibraryPath = append(ldLibraryPath, filepath.Join(outputPath, "lib"))
 
 	return domain.Forge{
@@ -181,7 +182,7 @@ func (s *bundlerRepository) resolvePHPVersion(constraint string) (string, error)
 
 	var candidates []domain.Source
 	for _, src := range phpSources {
-		v := pattern.ParseVersion(src.Version)
+		v := utils.ParseVersion(src.Version)
 		if v.Major != major {
 			continue
 		}
@@ -199,8 +200,8 @@ func (s *bundlerRepository) resolvePHPVersion(constraint string) (string, error)
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
-		vi := pattern.ParseVersion(candidates[i].Version)
-		vj := pattern.ParseVersion(candidates[j].Version)
+		vi := utils.ParseVersion(candidates[i].Version)
+		vj := utils.ParseVersion(candidates[j].Version)
 		if vi.Major != vj.Major {
 			return vi.Major > vj.Major
 		}

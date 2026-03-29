@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/download"
+	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/source"
 	"github.com/supanadit/phpv/unload"
 )
@@ -52,7 +53,7 @@ func (r *ForgeRepository) ensureSource(name, version, url string) error {
 		fmt.Println("Using cached:", cachePath)
 	}
 
-	sourceDir := silo.GetSourceDirPath(name, version)
+	sourceDir := utils.GetSourceDirPath(silo, name, version)
 	sourceExists, _ := afero.Exists(r.fs, sourceDir)
 	if !sourceExists {
 		sourceBaseDir := filepath.Dir(sourceDir)

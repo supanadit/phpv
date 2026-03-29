@@ -246,14 +246,6 @@ func run(
 	bundlerRepo := disk.NewBundlerRepository(cfg, flagResolverRepo)
 	handler := terminal.NewHandler(bundlerRepo, sil, src)
 
-	var verbose bool
-	for _, arg := range os.Args[1:] {
-		if arg == "-v" || arg == "--verbose" {
-			verbose = true
-			break
-		}
-	}
-
 	rootCmd := &cobra.Command{
 		Use:   "phpv",
 		Short: "PHP Version Manager",
@@ -269,6 +261,7 @@ func run(
 		Long:  `Install the latest PHP version matching the given version constraint. Examples: phpv install 8.5, phpv install 8.4, phpv install 8`,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			verbose, _ := cmd.Flags().GetBool("verbose")
 			forge, err := handler.Install(args[0], verbose)
 			if err != nil {
 				return err
@@ -277,6 +270,7 @@ func run(
 			return nil
 		},
 	}
+	installCmd.Flags().BoolP("verbose", "v", false, "Enable verbose output")
 
 	useCmd := &cobra.Command{
 		Use:   "use <version>",

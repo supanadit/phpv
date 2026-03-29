@@ -14,6 +14,7 @@ import (
 	"github.com/supanadit/phpv/bundler"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/download"
+	"github.com/supanadit/phpv/flagresolver"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/pattern"
 	"github.com/supanadit/phpv/source"
@@ -28,12 +29,13 @@ type bundlerRepository struct {
 	unloadSvc       *unload.Service
 	sourceSvc       *source.Service
 	patternRegistry *pattern.PatternRegistry
+	flagResolverSvc *flagresolver.Service
 	silo            *domain.Silo
 	fs              afero.Fs
 	jobs            int
 }
 
-func NewBundlerRepository(cfg bundler.BundlerServiceConfig) bundler.BundlerRepository {
+func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo domain.FlagResolverRepository) bundler.BundlerRepository {
 	registry := pattern.NewPatternRegistry()
 	registry.RegisterPatterns(pattern.DefaultURLPatterns)
 
@@ -44,7 +46,8 @@ func NewBundlerRepository(cfg bundler.BundlerServiceConfig) bundler.BundlerRepos
 
 	assemblerSvc := assembler.NewAssemblerServiceWithRepo(cfg.Assembler)
 	advisorSvc := advisor.NewAdvisorService(cfg.Advisor)
-	forgeSvc := forge.NewService(cfg.Forge)
+	flagResolverSvc := flagresolver.NewService(flagResolverRepo)
+	forgeSvc := forge.NewService(cfg.Forge, flagResolverSvc)
 	downloadSvc := download.NewService(cfg.Download)
 	unloadSvc := unload.NewService(cfg.Unload)
 	sourceSvc := source.NewService(cfg.Source)
@@ -57,6 +60,7 @@ func NewBundlerRepository(cfg bundler.BundlerServiceConfig) bundler.BundlerRepos
 		unloadSvc:       unloadSvc,
 		sourceSvc:       sourceSvc,
 		patternRegistry: registry,
+		flagResolverSvc: flagResolverSvc,
 		silo:            cfg.Silo,
 		fs:              afero.NewOsFs(),
 		jobs:            jobs,

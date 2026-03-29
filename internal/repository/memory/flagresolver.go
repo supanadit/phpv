@@ -1,10 +1,17 @@
-package disk
+package memory
 
 import (
+	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/pattern"
 )
 
-func (r *ForgeRepository) GetConfigureFlags(name string) []string {
+func NewFlagResolverRepository() domain.FlagResolverRepository {
+	return &flagResolverRepo{}
+}
+
+type flagResolverRepo struct{}
+
+func (r *flagResolverRepo) GetConfigureFlags(name string) []string {
 	switch name {
 	case "m4":
 		return []string{"--disable-maintainer-mode"}
@@ -22,7 +29,7 @@ func (r *ForgeRepository) GetConfigureFlags(name string) []string {
 	return nil
 }
 
-func (r *ForgeRepository) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
+func (r *flagResolverRepo) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
 	v := pattern.ParseVersion(phpVersion)
 
 	flags := []string{

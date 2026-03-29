@@ -11,6 +11,7 @@ import (
 	"github.com/supanadit/phpv/advisor"
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/bundler"
+	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/download"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/internal/repository/disk"
@@ -46,6 +47,7 @@ func main() {
 			NewAdvisorRepository,
 			NewAssemblerRepository,
 			NewForgeRepository,
+			NewFlagResolverRepository,
 			NewBundlerServiceConfig,
 		),
 		fx.Invoke(run),
@@ -125,6 +127,10 @@ func NewAssemblerRepository() assembler.AssemblerRepository {
 	return memory.NewMemoryAssemblerRepository()
 }
 
+func NewFlagResolverRepository() domain.FlagResolverRepository {
+	return memory.NewFlagResolverRepository()
+}
+
 func NewForgeRepository(dl download.DownloadRepository, ul unload.UnloadRepository, sil *disk.SiloRepository, src source.SourceRepository) forge.ForgeRepository {
 	return disk.NewForgeRepository(dl, ul, sil, src)
 }
@@ -158,6 +164,7 @@ func run(
 	lifecycle fx.Lifecycle,
 	sil *disk.SiloRepository,
 	cfg bundler.BundlerServiceConfig,
+	flagResolverRepo domain.FlagResolverRepository,
 ) {
 	lifecycle.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
@@ -165,7 +172,7 @@ func run(
 				return fmt.Errorf("failed to ensure paths: %w", err)
 			}
 
-			bundlerRepo := disk.NewBundlerRepository(cfg)
+			bundlerRepo := disk.NewBundlerRepository(cfg, flagResolverRepo)
 			bundlerSvc := bundlerRepo
 
 			version := "8.4.0"

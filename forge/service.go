@@ -1,21 +1,24 @@
 package forge
 
-import "github.com/supanadit/phpv/domain"
+import (
+	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/flagresolver"
+)
 
 type ForgeRepository interface {
 	Build(config domain.ForgeConfig) (domain.Forge, error)
 	BuildWithStrategy(config domain.ForgeConfig, strategy domain.BuildStrategy) (domain.Forge, error)
-	GetConfigureFlags(name string) []string
-	GetPHPConfigureFlags(phpVersion string, extensions []string) []string
 }
 
 type Service struct {
 	forgeRepository ForgeRepository
+	flagResolver    *flagresolver.Service
 }
 
-func NewService(forgeRepository ForgeRepository) *Service {
+func NewService(forgeRepository ForgeRepository, flagResolver *flagresolver.Service) *Service {
 	return &Service{
 		forgeRepository: forgeRepository,
+		flagResolver:    flagResolver,
 	}
 }
 
@@ -28,19 +31,9 @@ func (s *Service) BuildWithStrategy(config domain.ForgeConfig, strategy domain.B
 }
 
 func (s *Service) GetConfigureFlags(name string) []string {
-	if repo, ok := s.forgeRepository.(interface {
-		GetConfigureFlags(string) []string
-	}); ok {
-		return repo.GetConfigureFlags(name)
-	}
-	return nil
+	return s.flagResolver.GetConfigureFlags(name)
 }
 
 func (s *Service) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
-	if repo, ok := s.forgeRepository.(interface {
-		GetPHPConfigureFlags(string, []string) []string
-	}); ok {
-		return repo.GetPHPConfigureFlags(phpVersion, extensions)
-	}
-	return nil
+	return s.flagResolver.GetPHPConfigureFlags(phpVersion, extensions)
 }

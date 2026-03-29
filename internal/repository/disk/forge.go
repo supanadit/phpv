@@ -26,6 +26,14 @@ func NewForgeRepository(downloadRepo download.DownloadRepository, unloadRepo unl
 	}
 }
 
+func (r *ForgeRepository) GetConfigureFlags(name string) []string {
+	return nil
+}
+
+func (r *ForgeRepository) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
+	return nil
+}
+
 func (r *ForgeRepository) Build(config domain.ForgeConfig) (domain.Forge, error) {
 	strategy := r.detectStrategy(config.Name, config.Version)
 	return r.BuildWithStrategy(config, strategy)

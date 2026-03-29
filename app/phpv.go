@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/advisor"
 	"github.com/supanadit/phpv/assembler"
@@ -18,6 +19,8 @@ import (
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/internal/repository/http"
 	"github.com/supanadit/phpv/internal/repository/memory"
+	"github.com/supanadit/phpv/internal/terminal"
+	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/source"
 	"github.com/supanadit/phpv/unload"
 	"go.uber.org/fx"
@@ -27,8 +30,6 @@ import (
 type silentLogger struct{}
 
 func (s *silentLogger) LogEvent(event fxevent.Event) {}
-
-type verboseKey struct{}
 
 const (
 	minBoxWidth = 64
@@ -53,11 +54,47 @@ func printBox(width int, lines []string) {
 	fmt.Println(bottom)
 }
 
-func main() {
-	debugMode := flag.Bool("x", false, "verbose fx logging")
-	flag.Bool("v", false, "verbose output (show compile logs)")
-	flag.Parse()
+func printInstallSummary(version string, forge domain.Forge) {
+	binaryPath := filepath.Join(forge.Prefix, "bin", "php")
 
+	labelVersion := "Version:"
+	labelBinary := "Binary:"
+
+	contentWidth := minBoxWidth - 2
+
+	headerWidth := len(labelVersion) + 1 + len(version)
+	binaryWidth := len(labelBinary) + 1 + len(binaryPath)
+
+	boxWidth := minBoxWidth
+	if binaryWidth > contentWidth {
+		boxWidth = binaryWidth + 2
+		contentWidth = boxWidth - 2
+	}
+	if headerWidth > contentWidth {
+		boxWidth = headerWidth + 2
+		contentWidth = boxWidth - 2
+	}
+
+	displayBinaryPath := binaryPath
+	availableBinaryContent := contentWidth - len(labelBinary) - 1
+	if len(binaryPath) > availableBinaryContent {
+		displayBinaryPath = "..." + binaryPath[len(binaryPath)-availableBinaryContent+3:]
+	}
+
+	header := "                    PHP Installation Summary"
+	versionContent := fmt.Sprintf("%s %s", labelVersion, version)
+	binaryContent := fmt.Sprintf("%s %s", labelBinary, displayBinaryPath)
+
+	fmt.Println()
+	printBox(boxWidth, []string{
+		"",
+		header,
+		versionContent,
+		binaryContent,
+	})
+}
+
+func main() {
 	viper.AutomaticEnv()
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -66,6 +103,7 @@ func main() {
 	viper.SetDefault("PHPV_ROOT", filepath.Join(homeDir, ".phpv"))
 
 	opts := []fx.Option{
+		fx.WithLogger(func() fxevent.Logger { return &silentLogger{} }),
 		fx.Provide(
 			NewSiloRepository,
 			NewSourceRepository,
@@ -78,10 +116,6 @@ func main() {
 			NewBundlerServiceConfig,
 		),
 		fx.Invoke(run),
-	}
-
-	if !*debugMode {
-		opts = append(opts, fx.WithLogger(func() fxevent.Logger { return &silentLogger{} }))
 	}
 
 	app := fx.New(opts...)
@@ -201,6 +235,7 @@ func run(
 	sil *disk.SiloRepository,
 	cfg bundler.BundlerServiceConfig,
 	flagResolverRepo domain.FlagResolverRepository,
+	src source.SourceRepository,
 ) {
 	if err := sil.EnsurePaths(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -209,58 +244,160 @@ func run(
 	}
 
 	bundlerRepo := disk.NewBundlerRepository(cfg, flagResolverRepo)
-	bundlerSvc := bundlerRepo
+	handler := terminal.NewHandler(bundlerRepo, sil, src)
 
-	version := "8.4.0"
-	args := flag.Args()
-	if len(args) > 0 {
-		version = args[0]
+	var verbose bool
+	for _, arg := range os.Args[1:] {
+		if arg == "-v" || arg == "--verbose" {
+			verbose = true
+			break
+		}
 	}
 
-	forge, err := bundlerSvc.Install(version)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	rootCmd := &cobra.Command{
+		Use:   "phpv",
+		Short: "PHP Version Manager",
+		Long:  `A PHP Version Manager for building and managing multiple PHP versions from source.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			cmd.Help()
+		},
+	}
+
+	installCmd := &cobra.Command{
+		Use:   "install <version>",
+		Short: "Install a PHP version",
+		Long:  `Install the latest PHP version matching the given version constraint. Examples: phpv install 8.5, phpv install 8.4, phpv install 8`,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			forge, err := handler.Install(args[0], verbose)
+			if err != nil {
+				return err
+			}
+			printInstallSummary(args[0], forge)
+			return nil
+		},
+	}
+
+	useCmd := &cobra.Command{
+		Use:   "use <version>",
+		Short: "Switch to a PHP version in current shell",
+		Long:  `Generate shims for the specified PHP version and print PATH instructions.`,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := handler.Use(args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Switched to PHP %s\n", result.ExactVersion)
+			fmt.Printf("Add to PATH: export PATH=%s:$PATH\n", result.ShimPath)
+			fmt.Println("Or restart your shell to use the shims")
+			return nil
+		},
+	}
+
+	defaultCmd := &cobra.Command{
+		Use:   "default <version>",
+		Short: "Set default PHP version",
+		Long:  `Set the specified PHP version as the default version.`,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			err := handler.SetDefault(args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Printf("PHP %s is now the default\n", args[0])
+			return nil
+		},
+	}
+
+	versionsCmd := &cobra.Command{
+		Use:   "versions",
+		Short: "List installed PHP versions",
+		Long:  `List all PHP versions that are currently installed.`,
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			versions, err := handler.ListInstalled()
+			if err != nil {
+				return err
+			}
+			if len(versions) == 0 {
+				fmt.Println("No PHP versions installed")
+				return nil
+			}
+			currentDefault, _ := handler.GetDefault()
+			fmt.Println("Installed PHP versions:")
+			for _, v := range versions {
+				if v == currentDefault {
+					fmt.Printf("  * %s (default)\n", v)
+				} else {
+					fmt.Printf("    %s\n", v)
+				}
+			}
+			return nil
+		},
+	}
+
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List available PHP versions",
+		Long:  `List all PHP versions available to install from remote sources.`,
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			sources, err := handler.ListAvailable()
+			if err != nil {
+				return err
+			}
+			if len(sources) == 0 {
+				fmt.Println("No PHP versions available")
+				return nil
+			}
+			var phpVersions []string
+			for _, src := range sources {
+				phpVersions = append(phpVersions, src.Version)
+			}
+			sort.Slice(phpVersions, func(i, j int) bool {
+				vi := utils.ParseVersion(phpVersions[i])
+				vj := utils.ParseVersion(phpVersions[j])
+				return utils.CompareVersions(vi, vj) > 0
+			})
+			fmt.Println("Available PHP versions:")
+			for _, v := range phpVersions {
+				fmt.Printf("  %s\n", v)
+			}
+			return nil
+		},
+	}
+
+	whichCmd := &cobra.Command{
+		Use:   "which",
+		Short: "Show path to current PHP",
+		Long:  `Print the full path to the currently active PHP binary.`,
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			phpPath, err := handler.Which()
+			if err != nil {
+				return err
+			}
+			if phpPath == "" {
+				fmt.Println("No default PHP version set")
+				return nil
+			}
+			fmt.Println(phpPath)
+			return nil
+		},
+	}
+
+	rootCmd.AddCommand(installCmd)
+	rootCmd.AddCommand(useCmd)
+	rootCmd.AddCommand(defaultCmd)
+	rootCmd.AddCommand(versionsCmd)
+	rootCmd.AddCommand(listCmd)
+	rootCmd.AddCommand(whichCmd)
+
+	if err := rootCmd.Execute(); err != nil {
 		shutdowner.Shutdown(fx.ExitCode(1))
 		return
 	}
-
-	binaryPath := forge.Prefix + "/bin/php"
-	header := "                    PHP Installation Summary"
-	labelVersion := "Version:"
-	labelBinary := "Binary:"
-
-	boxWidth := minBoxWidth
-
-	contentWidth := boxWidth - 2
-
-	headerWidth := len(labelVersion) + 1 + len(version)
-	binaryWidth := len(labelBinary) + 1 + len(binaryPath)
-
-	if binaryWidth > contentWidth {
-		boxWidth = binaryWidth + 2
-		contentWidth = boxWidth - 2
-	}
-	if headerWidth > contentWidth {
-		boxWidth = headerWidth + 2
-		contentWidth = boxWidth - 2
-	}
-
-	displayBinaryPath := binaryPath
-	availableBinaryContent := contentWidth - len(labelBinary) - 1
-	if len(binaryPath) > availableBinaryContent {
-		displayBinaryPath = "..." + binaryPath[len(binaryPath)-availableBinaryContent+3:]
-	}
-
-	versionContent := fmt.Sprintf("%s %s", labelVersion, version)
-	binaryContent := fmt.Sprintf("%s %s", labelBinary, displayBinaryPath)
-
-	fmt.Println()
-	printBox(boxWidth, []string{
-		"",
-		header,
-		versionContent,
-		binaryContent,
-	})
 
 	shutdowner.Shutdown()
 }

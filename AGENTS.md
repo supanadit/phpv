@@ -4,7 +4,7 @@ phpv is a PHP Version Manager written in Go. It downloads, compiles, and manages
 
 ## Project Status: IN DEVELOPMENT
 
-**Current Focus:** Bundler implementation - orchestrating the complete PHP build workflow
+**Current Focus:** Terminal interface - CLI commands for user interaction
 
 ### What's Working
 - fx dependency injection wiring in `app/phpv.go`
@@ -13,6 +13,7 @@ phpv is a PHP Version Manager written in Go. It downloads, compiles, and manages
 - System package detection for executables via `which` and libraries via `pkg-config`/header checks
 - HTTP download with resume support
 - Dependency graph resolution via assembler
+- **Terminal interface with cobra CLI** (`internal/terminal/`)
 
 ### Known Issues / In Progress
 - **libxml2 download fails**: gnome.org may return redirect/HTML instead of tar.xz
@@ -23,7 +24,7 @@ phpv is a PHP Version Manager written in Go. It downloads, compiles, and manages
 
 ## Project Structure
 
-- `app/` - Main entry point (phpv.go) with fx wiring
+- `app/` - Main entry point (phpv.go) with fx wiring and cobra CLI delivery layer
 - `domain/` - Domain entities (Forge, Source, Version, Download, URLPattern, Silo, Dependency, DependencyGraph, Package, VersionConstraint, Bundler types)
 - `bundler/` - BundlerRepository interface and BundlerServiceConfig
 - `assembler/` - Assembler service - dependency graph resolution
@@ -35,6 +36,10 @@ phpv is a PHP Version Manager written in Go. It downloads, compiles, and manages
 - `advisor/` - Advisory service (determines system vs build-from-source)
 - `flagresolver/` - Configure flag resolver service
 - `silo/` - Silo repository service
+- `internal/terminal/` - Terminal usecase layer (business logic, no UI)
+  - `service.go` - TerminalService interface
+  - `handler.go` - TerminalService implementation
+- `shim/` - Shim script generator for PHP binaries
 - `internal/utils/` - Utility functions (constraint matching, version parsing)
 - `internal/repository/` - Data access implementations
   - `memory/` - In-memory repository (package definitions, source data)
@@ -45,34 +50,44 @@ phpv is a PHP Version Manager written in Go. It downloads, compiles, and manages
 
 - Go 1.25.3
 - uber-go/fx for dependency injection
+- spf13/cobra for CLI command handling
 - Dependencies: viper (config), afero (filesystem abstraction), xz (compression), mapstructure, go-toml
 
 ## Architecture
 
-Follow Clean Architecture / Hexagonal Architecture patterns:
+Follow Clean Architecture / Hexagonal Architecture patterns with three main layers:
 
-- `domain/` layer has NO business logic - pure data types only (exception: `Silo` struct has path methods for PHPV_ROOT structure)
-- `internal/utils/` contains pure utility functions (no external dependencies)
-- Service layers (`forge/`, `assembler/`, `download/`, `source/`, `unload/`, `bundler/`) contain business logic
-- Repository implementations in `internal/repository/`
+| Layer | Package | Responsibility |
+|-------|---------|----------------|
+| **Repository** | `internal/repository/*` | Data access implementations |
+| **Usecase** | `internal/terminal/*` | Business logic (no UI) |
+| **Delivery** | `app/*` | CLI commands + UI output |
 
 ### Layer Responsibilities
 
 | Layer | Purpose | Examples |
-|-------|---------|---------|
+|-------|---------|----------|
 | `domain/` | Pure data types, no logic | `Dependency`, `Package`, `Version` structs |
-| `internal/utils/` | Pure utility functions | `MatchVersionRange()` |
+| `internal/utils/` | Pure utility functions | `ParseVersion()`, `SortVersions()`, `MatchVersionRange()` |
+| `internal/repository/` | Data access implementations | `disk/silo.go`, `http/download.go` |
 | `bundler/` | Orchestrator service (interface) | `BundlerService.Install()`, `Orchestrate()` |
 | `assembler/` | Service + interface | `AssemblerService`, `AssemblerRepository` |
 | `forge/` | Build service | `ForgeService`, multi-strategy `BuildWithStrategy()` |
-| `internal/repository/` | Data access implementations | `disk/forge.go`, `http/download.go` |
+| `internal/terminal/` | Usecase layer (business logic only) | `TerminalHandler.Install()`, `Use()`, `ListInstalled()` |
+| `app/` | Delivery layer (UI + CLI) | Cobra commands, `fmt.Print*`, `printBox()` |
 
 ### Data Flow
 
 ```
-bundler.Install("8.4.0")
+CLI Command (e.g., "phpv install 8.4")
        ↓
-resolvePHPVersion("8.4.0") → "8.4.19" (latest 8.4.y)
+app/phpv.go (Delivery layer - cobra command)
+       ↓
+terminal.Handler.Install() (Usecase layer - business logic)
+       ↓
+bundlerRepo.Install() → bundler.Install()
+       ↓
+resolvePHPVersion("8.4") → "8.4.19" (latest 8.4.y)
        ↓
 assembler.GetGraph("php", "8.4.19") → full transitive dependency graph
        ↓
@@ -83,25 +98,9 @@ For each dependency (in order):
 buildPHP() → configure → make → make install
        ↓
 Forge{Prefix: "...", Env: {"LD_LIBRARY_PATH": "..."}}
+       ↓
+app/phpv.go prints UI output
 ```
-
-### Domain Entities
-
-- `Forge` - Represents a built PHP installation (Prefix path, Env map)
-- `ForgeConfig` - Configuration for building (name, version, prefix, strategy, CPPFLAGS, LDFLAGS, LD_LIBRARY_PATH, ConfigureFlags)
-- `BundlerConfig` - Configuration for bundler service (repositories, silo, jobs)
-- `Source` - A software source with name, version, and download URL
-- `Version` - Parsed version (major, minor, patch, suffix)
-- `URLPattern` - Pattern template for generating download URLs
-- `Download` - Download record with URL and destination
-- `Unload` - Unpacking result (source, destination, extracted count)
-- `Silo` - Cache manager with path methods for PHPV_ROOT structure
-- `Dependency` - A package dependency (Name, Version, Constraint, Optional)
-- `DependencyGraph` - Collection of resolved dependencies with build order
-- `Package` - A package definition with name, constraints, and dependencies
-- `VersionConstraint` - Version requirement string (e.g., `">=3.0.0,<4.0.0"`)
-- `AdvisorCheck` - Result of system package check (State, Action, SystemAvailable, SystemPath, Message)
-- `FlagResolverRepository` - Interface for resolving configure flags
 
 ## Code Standards
 
@@ -145,6 +144,7 @@ Exception: `Silo` struct contains path methods (`RootPath()`, `CachePath()`, etc
 Business logic belongs in:
 - `internal/utils/` - Pure utility functions
 - Service packages (`assembler/`, `forge/`, `bundler/`, etc.)
+- `internal/terminal/` - Usecase layer (NO UI logic)
 
 ### Interface Pattern
 
@@ -183,7 +183,7 @@ Key features:
 - Version constraint format: `"recommendation|constraint"` (e.g., `"3.3.2|>=3.0.0,<4.0.0"`)
 
 The `memory/` repository contains predefined package dependencies for:
-- PHP (5.6 through 8.4)
+- PHP (5.6 through 8.5)
 - OpenSSL 1.1.x (for PHP 7.x) and 3.x (for PHP 8.x)
 - Build tools: autoconf, automake, bison, flex, libtool, m4, perl, re2c
 - Libraries: libxml2, oniguruma, zlib, curl
@@ -217,6 +217,30 @@ Key behaviors:
 - System library detection via `pkg-config` and header file checks
 - Failed build steps halt entirely (no continue-on-error)
 
+### Terminal Interface
+
+The `internal/terminal/` package provides the usecase layer for CLI commands. It contains **business logic only, NO UI output**.
+
+```go
+type TerminalService interface {
+    Install(version string, verbose bool) (domain.Forge, error)
+    Use(constraint string) (*UseResult, error)
+    SetDefault(constraint string) error
+    GetDefault() (string, error)
+    ListInstalled() ([]string, error)
+    ListAvailable() ([]domain.Source, error)
+    Which() (string, error)
+}
+
+type TerminalHandler struct {
+    BundlerRepo bundler.BundlerRepository
+    Silo        *disk.SiloRepository
+    Source      source.SourceRepository
+}
+```
+
+**Important**: All `fmt.Print*` statements belong in `app/phpv.go` (Delivery layer), NOT in `internal/terminal/` (Usecase layer).
+
 ### URL Pattern Registry
 
 The `pattern/` package provides URL templates for downloading software:
@@ -237,22 +261,37 @@ The forge service supports multiple build strategies (via `domain.BuildStrategy`
 | `StrategyMakeOnly` | zlib, m4, autoconf, automake, bison, flex, libtool, perl | make → make install |
 | `StrategyAutogen` | autoreconf packages | ./autogen.sh → ./configure → make → make install |
 
+## CLI Commands
+
+```bash
+phpv install <version>   # Install PHP version (e.g., 8.5, 8.4, 8.4.0)
+phpv use <version>       # Generate shims for PHP version
+phpv default <version>   # Set default PHP version
+phpv versions            # List installed PHP versions
+phpv list                # List available PHP versions from source
+phpv which               # Show path to current (default) PHP
+```
+
+### Use Command and Shim System
+
+The `use` command generates shim scripts in `$PHPV_ROOT/bin/`:
+
+- Shim scripts wrap PHP binaries and set environment variables
+- Supported shims: `php`, `phpize`, `php-config`, `php-cgi`
+- After running `phpv use <version>`, add `$PHPV_ROOT/bin` to your PATH
+
 ## Build Commands
 
 ```bash
 # Build binary
 go build -o phpv ./app/phpv.go
 
-# Run (silent fx logs)
-go run app/phpv.go
-
-# Run with verbose fx logs
-go run app/phpv.go -x
-
-# Run with specific PHP version
-go run app/phpv.go 8.4.0
-go run app/phpv.go 8.4
-go run app/phpv.go 8
+# Run CLI
+./phpv install 8.4
+./phpv use 8.4
+./phpv versions
+./phpv list
+./phpv which
 
 # Run all tests
 go test ./...
@@ -296,6 +335,7 @@ $PHPV_ROOT/
 │   └── {pkg}/{ver}/
 ├── cache/            # Downloaded archives
 │   └── {pkg}-{ver}.tar.{gz|xz}
+├── default           # Default PHP version file
 ├── sources/          # Extracted source code
 │   └── {pkg}/{ver}/
 └── versions/         # Installed PHP versions
@@ -315,7 +355,7 @@ opts := []fx.Option{
     fx.Provide(
         NewSiloRepository,       // *disk.SiloRepository
         NewSourceRepository,      // source.SourceRepository (memory)
-        NewDownloadRepository,     // download.DownloadRepository (http)
+        NewDownloadRepository,    // download.DownloadRepository (http)
         NewUnloadRepository,      // unload.UnloadRepository (disk)
         NewAdvisorRepository,     // advisor.AdvisorRepository (disk)
         NewAssemblerRepository,   // assembler.AssemblerRepository (memory)
@@ -327,7 +367,7 @@ opts := []fx.Option{
 }
 ```
 
-The `BundlerService` is created manually in the `run()` function using `disk.NewBundlerRepository()`, not through fx injection.
+The `BundlerRepository` and `TerminalHandler` are created manually in the `run()` function, not through fx injection.
 
 ## Repository Implementations
 
@@ -342,8 +382,37 @@ The `BundlerService` is created manually in the `run()` function using `disk.New
 | `ForgeRepository` | `forge/service.go` | `internal/repository/disk/` |
 | `BundlerRepository` | `bundler/service.go` | `internal/repository/disk/` |
 | `FlagResolverRepository` | `domain/flagresolver.go` | `internal/repository/memory/` |
+| `TerminalService` | `internal/terminal/service.go` | `internal/terminal/handler.go` |
 
 ## Common Development Tasks
+
+### Adding a new CLI command
+
+1. Add method to `internal/terminal/service.go` (usecase interface)
+2. Implement method in `internal/terminal/handler.go` (business logic only, NO `fmt.Print*`)
+3. Add cobra command to `app/phpv.go` in `run()` function (UI output + call handler)
+
+Example:
+```go
+// internal/terminal/handler.go (usecase - business logic only)
+func (h *TerminalHandler) NewCommand() (Result, error) {
+    // business logic here
+    return result, nil  // Return data, don't print
+}
+
+// app/phpv.go (delivery - UI output)
+newCmd := &cobra.Command{
+    Use:   "new",
+    RunE: func(cmd *cobra.Command, args []string) error {
+        result, err := handler.NewCommand()
+        if err != nil {
+            return err
+        }
+        fmt.Println(result)  // UI output here
+        return nil
+    },
+}
+```
 
 ### Adding a new URL pattern
 

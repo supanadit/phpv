@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/advisor"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/pattern"
 )
 
 type defaultExecutor struct{}
@@ -23,25 +24,29 @@ func (e *defaultExecutor) Which(cmd string) (string, error) {
 }
 
 type AdvisorRepository struct {
-	fs   afero.Fs
-	root string
-	exec *defaultExecutor
+	fs              afero.Fs
+	root            string
+	exec            *defaultExecutor
+	patternRegistry *pattern.PatternRegistry
 }
 
 func NewAdvisorRepository() advisor.AdvisorRepository {
 	fs := afero.NewOsFs()
 	root := viper.GetString("PHPV_ROOT")
+	registry := pattern.NewPatternRegistry()
+	registry.RegisterPatterns(pattern.DefaultURLPatterns)
 	return &AdvisorRepository{
-		fs:   fs,
-		root: root,
-		exec: &defaultExecutor{},
+		fs:              fs,
+		root:            root,
+		exec:            &defaultExecutor{},
+		patternRegistry: registry,
 	}
 }
 
 func (r *AdvisorRepository) Check(name string, version string) (domain.AdvisorCheck, error) {
 	state := determineState(r.fs, r.root, name, version)
-	action := determineAction(state)
 	systemAvailable, systemPath := r.checkSystemPackage(name)
+	action, url, sourceType := determineActionAndURL(state, systemAvailable, r.patternRegistry, name, version)
 	message := buildMessage(name, version, state, action)
 
 	return domain.AdvisorCheck{
@@ -52,6 +57,8 @@ func (r *AdvisorRepository) Check(name string, version string) (domain.AdvisorCh
 		SystemAvailable: systemAvailable,
 		SystemPath:      systemPath,
 		Message:         message,
+		URL:             url,
+		SourceType:      sourceType,
 	}, nil
 }
 
@@ -95,20 +102,31 @@ func determineState(fs afero.Fs, root, name, version string) domain.PackageState
 	return domain.StateUnknown
 }
 
-func determineAction(state domain.PackageState) string {
+func determineActionAndURL(state domain.PackageState, systemAvailable bool, registry *pattern.PatternRegistry, name, version string) (string, string, string) {
 	switch state {
 	case domain.StateSourceMissing:
-		return "download"
+		if systemAvailable {
+			return "skip", "", domain.SourceTypeBinary
+		}
+		url, err := registry.BuildURLByType(name, version, domain.SourceTypeBinary)
+		if err == nil {
+			return "download", url, domain.SourceTypeBinary
+		}
+		url, err = registry.BuildURLByType(name, version, domain.SourceTypeSource)
+		if err == nil {
+			return "download", url, domain.SourceTypeSource
+		}
+		return "unknown", "", ""
 	case domain.StateSourceDownloaded:
-		return "extract"
+		return "extract", "", ""
 	case domain.StateSourceExtracted:
-		return "build"
+		return "build", "", ""
 	case domain.StateSourceMissingBuilt:
-		return "rebuild"
+		return "rebuild", "", ""
 	case domain.StateBuilt:
-		return "skip"
+		return "skip", "", ""
 	default:
-		return "unknown"
+		return "unknown", "", ""
 	}
 }
 

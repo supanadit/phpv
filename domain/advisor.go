@@ -36,6 +36,8 @@ type AdvisorCheck struct {
 	SystemAvailable bool
 	SystemPath      string
 	Message         string
+	URL             string
+	SourceType      string
 }
 
 func (c AdvisorCheck) String() string {

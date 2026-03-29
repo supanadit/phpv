@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/domain"
 )
 
@@ -35,6 +36,72 @@ func (r *PatternRegistry) MatchPattern(name string, v *domain.Version) (domain.U
 		}
 	}
 	return domain.URLPattern{}, fmt.Errorf("no matching URL pattern for %s@%s", name, v.Raw)
+}
+
+func (r *PatternRegistry) MatchPatternByType(name, sourceType, targetOS, targetArch string, v *domain.Version) (domain.URLPattern, error) {
+	patterns, ok := r.index[name]
+	if !ok {
+		return domain.URLPattern{}, fmt.Errorf("no URL pattern found for %s", name)
+	}
+
+	var bestMatch domain.URLPattern
+	var exactMatch domain.URLPattern
+	var fallbackMatch domain.URLPattern
+
+	for _, p := range patterns {
+		if p.Type != sourceType {
+			continue
+		}
+		if !p.Constraint(v) {
+			continue
+		}
+
+		if p.OS == "" && p.Arch == "" {
+			fallbackMatch = p
+			continue
+		}
+
+		if p.OS == targetOS && p.Arch == targetArch {
+			exactMatch = p
+			break
+		}
+
+		if p.OS == targetOS && p.Arch == "" {
+			bestMatch = p
+		}
+	}
+
+	if exactMatch.Name != "" {
+		return exactMatch, nil
+	}
+	if bestMatch.Name != "" {
+		return bestMatch, nil
+	}
+	if fallbackMatch.Name != "" {
+		return fallbackMatch, nil
+	}
+
+	return domain.URLPattern{}, fmt.Errorf("no matching URL pattern for %s@%s type=%s os=%s arch=%s", name, v.Raw, sourceType, targetOS, targetArch)
+}
+
+func (r *PatternRegistry) BuildURLByType(name, version, sourceType string) (string, error) {
+	targetOS := viper.GetString("PHPV_TARGET_OS")
+	targetArch := viper.GetString("PHPV_TARGET_ARCH")
+
+	if targetOS == "" {
+		targetOS = "linux"
+	}
+	if targetArch == "" {
+		targetArch = "x86_64"
+	}
+
+	v := ParseVersion(version)
+	pattern, err := r.MatchPatternByType(name, sourceType, targetOS, targetArch, v)
+	if err != nil {
+		return "", err
+	}
+
+	return BuildURL(pattern, v)
 }
 
 var versionRegex = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)([a-z]*)$`)

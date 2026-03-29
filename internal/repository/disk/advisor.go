@@ -23,12 +23,44 @@ func (e *defaultExecutor) Which(cmd string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+func (e *defaultExecutor) PkgConfig(pkg string) (string, string, error) {
+	out, err := exec.Command("pkg-config", "--libs", "--cflags", pkg).Output()
+	if err != nil {
+		return "", "", err
+	}
+	parts := strings.SplitN(strings.TrimSpace(string(out)), " ", 2)
+	cflags := ""
+	ldflags := ""
+	if len(parts) >= 1 {
+		ldflags = parts[0]
+	}
+	if len(parts) >= 2 {
+		cflags = parts[1]
+	}
+	return cflags, ldflags, nil
+}
+
+func (e *defaultExecutor) PkgConfigExists(pkg string) bool {
+	err := exec.Command("pkg-config", "--exists", pkg).Run()
+	return err == nil
+}
+
 type AdvisorRepository struct {
 	fs              afero.Fs
 	root            string
 	exec            *defaultExecutor
 	patternRegistry *pattern.PatternRegistry
 }
+
+var (
+	libraryPackages = map[string]string{
+		"libxml2":    "libxml-2.0",
+		"openssl":    "openssl",
+		"curl":       "libcurl",
+		"zlib":       "zlib",
+		"oniguruma":  "oniguruma",
+	}
+)
 
 func NewAdvisorRepository() advisor.AdvisorRepository {
 	fs := afero.NewOsFs()
@@ -63,11 +95,55 @@ func (r *AdvisorRepository) Check(name string, version string) (domain.AdvisorCh
 }
 
 func (r *AdvisorRepository) checkSystemPackage(name string) (bool, string) {
+	if pkgConfigName, isLib := libraryPackages[name]; isLib {
+		return r.checkSystemLibrary(name, pkgConfigName)
+	}
+	return r.checkSystemExecutable(name)
+}
+
+func (r *AdvisorRepository) checkSystemExecutable(name string) (bool, string) {
 	path, err := r.exec.Which(name)
 	if err != nil {
 		return false, ""
 	}
 	return true, path
+}
+
+func (r *AdvisorRepository) checkSystemLibrary(name, pkgConfigName string) (bool, string) {
+	if r.exec.PkgConfigExists(pkgConfigName) {
+		return true, "pkg-config:" + pkgConfigName
+	}
+	if r.checkHeaderExists(name) {
+		return true, "headers:" + name
+	}
+	return false, ""
+}
+
+func (r *AdvisorRepository) checkHeaderExists(name string) bool {
+	headerPaths := map[string][]string{
+		"libxml2":   {"/usr/include/libxml2/libxml/parser.h", "/usr/include/libxml2/libxml/xmlversion.h"},
+		"openssl":   {"/usr/include/openssl/ssl.h"},
+		"curl":      {"/usr/include/curl/curl.h"},
+		"zlib":      {"/usr/include/zlib.h"},
+		"oniguruma": {"/usr/include/oniguruma/onigmo.h", "/usr/include/oniguruma/oniguruma.h"},
+	}
+
+	paths, ok := headerPaths[name]
+	if !ok {
+		return false
+	}
+
+	for _, path := range paths {
+		if r.exec.PathExists(path) {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *defaultExecutor) PathExists(path string) bool {
+	_, err := exec.Command("test", "-f", path).CombinedOutput()
+	return err == nil
 }
 
 func determineState(fs afero.Fs, root, name, version string) domain.PackageState {

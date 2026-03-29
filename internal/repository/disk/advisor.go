@@ -110,8 +110,8 @@ func NewAdvisorRepository() advisor.AdvisorRepository {
 	}
 }
 
-func (r *AdvisorRepository) Check(name string, version string) (domain.AdvisorCheck, error) {
-	state := determineState(r.fs, r.root, name, version)
+func (r *AdvisorRepository) Check(name string, version string, phpVersion string) (domain.AdvisorCheck, error) {
+	state := determineState(r.fs, r.root, name, version, phpVersion)
 	systemAvailable, systemPath := r.checkSystemPackage(name)
 	action, url, sourceType := determineActionAndURL(state, systemAvailable, r.patternRegistry, name, version)
 	message := buildMessage(name, version, state, action)
@@ -126,6 +126,7 @@ func (r *AdvisorRepository) Check(name string, version string) (domain.AdvisorCh
 	return domain.AdvisorCheck{
 		Name:            name,
 		Version:         version,
+		PHPVersion:      phpVersion,
 		State:           state,
 		Action:          action,
 		SystemAvailable: systemAvailable,
@@ -189,16 +190,25 @@ func (e *defaultExecutor) PathExists(path string) bool {
 	return err == nil
 }
 
-func determineState(fs afero.Fs, root, name, version string) domain.PackageState {
+func determineState(fs afero.Fs, root, name, version, phpVersion string) domain.PackageState {
 	cacheDir := filepath.Join(root, "cache", name, version)
 	cacheExists := false
 	if entries, err := afero.ReadDir(fs, cacheDir); err == nil && len(entries) > 0 {
 		cacheExists = true
 	}
-	sourcePath := filepath.Join(root, "sources", name, version)
-	versionPath := filepath.Join(root, "versions", name, version)
 
+	sourcePath := filepath.Join(root, "sources", name, version)
 	sourceExists, _ := afero.Exists(fs, sourcePath)
+
+	var versionPath string
+	if name == "php" {
+		versionPath = filepath.Join(root, "versions", version, "output")
+	} else if phpVersion != "" {
+		versionPath = filepath.Join(root, "versions", phpVersion, "dependency", name, version)
+	} else {
+		versionPath = filepath.Join(root, "versions", name, version)
+	}
+
 	versionExists, _ := afero.Exists(fs, versionPath)
 
 	if versionExists && !cacheExists && !sourceExists {

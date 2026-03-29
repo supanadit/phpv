@@ -42,7 +42,7 @@ func (s *bundlerRepository) ensureBuildTools() error {
 
 func (s *bundlerRepository) installBuildTool(pkg, version string, forceSource bool) error {
 	if !forceSource {
-		check, err := s.advisorSvc.Check(pkg, version)
+		check, err := s.advisorSvc.Check(pkg, version, "")
 		if err != nil {
 			return err
 		}

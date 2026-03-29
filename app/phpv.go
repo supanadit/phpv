@@ -161,41 +161,38 @@ func NewBundlerServiceConfig(
 }
 
 func run(
-	lifecycle fx.Lifecycle,
+	shutdowner fx.Shutdowner,
 	sil *disk.SiloRepository,
 	cfg bundler.BundlerServiceConfig,
 	flagResolverRepo domain.FlagResolverRepository,
 ) {
-	lifecycle.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
-			if err := sil.EnsurePaths(); err != nil {
-				return fmt.Errorf("failed to ensure paths: %w", err)
-			}
+	if err := sil.EnsurePaths(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		shutdowner.Shutdown(fx.ExitCode(1))
+		return
+	}
 
-			bundlerRepo := disk.NewBundlerRepository(cfg, flagResolverRepo)
-			bundlerSvc := bundlerRepo
+	bundlerRepo := disk.NewBundlerRepository(cfg, flagResolverRepo)
+	bundlerSvc := bundlerRepo
 
-			version := "8.4.0"
-			if len(os.Args) > 1 {
-				version = os.Args[1]
-			}
+	version := "8.4.0"
+	if len(os.Args) > 1 {
+		version = os.Args[1]
+	}
 
-			fmt.Printf("Installing PHP %s...\n", version)
-			forge, err := bundlerSvc.Install(version)
-			if err != nil {
-				return fmt.Errorf("failed to install PHP %s: %w", version, err)
-			}
+	fmt.Printf("Installing PHP %s...\n", version)
+	forge, err := bundlerSvc.Install(version)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		shutdowner.Shutdown(fx.ExitCode(1))
+		return
+	}
 
-			fmt.Printf("\n✅ PHP installed successfully!\n")
-			fmt.Printf("   Prefix: %s\n", forge.Prefix)
-			for k, v := range forge.Env {
-				fmt.Printf("   %s: %s\n", k, v)
-			}
+	fmt.Printf("\n✅ PHP installed successfully!\n")
+	fmt.Printf("   Prefix: %s\n", forge.Prefix)
+	for k, v := range forge.Env {
+		fmt.Printf("   %s: %s\n", k, v)
+	}
 
-			return nil
-		},
-		OnStop: func(ctx context.Context) error {
-			return nil
-		},
-	})
+	shutdowner.Shutdown()
 }

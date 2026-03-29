@@ -31,6 +31,7 @@ func (s PackageState) String() string {
 type AdvisorCheck struct {
 	Name            string
 	Version         string
+	PHPVersion      string
 	State           PackageState
 	Action          string
 	SystemAvailable bool

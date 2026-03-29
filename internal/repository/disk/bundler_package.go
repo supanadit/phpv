@@ -9,7 +9,7 @@ import (
 )
 
 func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string) error {
-	check, err := s.advisorSvc.Check(name, version)
+	check, err := s.advisorSvc.Check(name, version, phpVersion)
 	if err != nil {
 		return err
 	}
@@ -104,7 +104,7 @@ func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion st
 		return nil
 	}
 
-	check, checkErr := s.advisorSvc.Check(name, version)
+	check, checkErr := s.advisorSvc.Check(name, version, phpVersion)
 	if checkErr != nil {
 		return fmt.Errorf("download failed: %w, system check also failed: %v", err, checkErr)
 	}

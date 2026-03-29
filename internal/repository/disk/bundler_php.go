@@ -1,12 +1,23 @@
 package disk
 
 import (
+	"fmt"
 	"path/filepath"
 
 	"github.com/supanadit/phpv/domain"
 )
 
 func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldFlags []string) error {
+	check, err := s.advisorSvc.Check(name, version, "")
+	if err != nil {
+		return err
+	}
+
+	if check.Action == "skip" {
+		fmt.Printf("PHP %s is already built at %s\n", version, s.silo.PHPOutputPath(version))
+		return nil
+	}
+
 	installDir := s.silo.PHPOutputPath(version)
 	configureFlags := s.forgeSvc.GetPHPConfigureFlags(version, nil)
 
@@ -21,7 +32,7 @@ func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldF
 		ConfigureFlags:  configureFlags,
 	}
 
-	_, err := s.forgeSvc.Build(config)
+	_, err = s.forgeSvc.Build(config)
 	return err
 }
 

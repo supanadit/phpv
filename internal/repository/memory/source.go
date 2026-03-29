@@ -5,18 +5,25 @@ import (
 	"sort"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/pattern"
 )
 
-type SourceRepository struct{}
+type SourceRepository struct {
+	patternRegistry *pattern.PatternRegistry
+}
 
 func NewSourceRepository() *SourceRepository {
-	return &SourceRepository{}
+	registry := pattern.NewPatternRegistry()
+	registry.RegisterPatterns(pattern.DefaultURLPatterns)
+	return &SourceRepository{
+		patternRegistry: registry,
+	}
 }
 
 func (r *SourceRepository) buildSource(name, version string) domain.Source {
-	v := domain.ParseVersion(version)
-	pattern, _ := domain.MatchPattern(name, v)
-	url, _ := domain.BuildURL(pattern, v)
+	v := pattern.ParseVersion(version)
+	urlPattern, _ := r.patternRegistry.MatchPattern(name, v)
+	url, _ := pattern.BuildURL(urlPattern, v)
 	return domain.Source{Name: name, Version: version, URL: url}
 }
 

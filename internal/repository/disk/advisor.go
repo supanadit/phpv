@@ -54,11 +54,11 @@ type AdvisorRepository struct {
 
 var (
 	libraryPackages = map[string]string{
-		"libxml2":    "libxml-2.0",
-		"openssl":    "openssl",
-		"curl":       "libcurl",
-		"zlib":       "zlib",
-		"oniguruma":  "oniguruma",
+		"libxml2":   "libxml-2.0",
+		"openssl":   "openssl",
+		"curl":      "libcurl",
+		"zlib":      "zlib",
+		"oniguruma": "oniguruma",
 	}
 )
 
@@ -147,11 +147,14 @@ func (e *defaultExecutor) PathExists(path string) bool {
 }
 
 func determineState(fs afero.Fs, root, name, version string) domain.PackageState {
-	cachePath := filepath.Join(root, "cache", fmt.Sprintf("%s-%s.tar.gz", name, version))
+	cacheDir := filepath.Join(root, "cache", name, version)
+	cacheExists := false
+	if entries, err := afero.ReadDir(fs, cacheDir); err == nil && len(entries) > 0 {
+		cacheExists = true
+	}
 	sourcePath := filepath.Join(root, "sources", name, version)
 	versionPath := filepath.Join(root, "versions", name, version)
 
-	cacheExists, _ := afero.Exists(fs, cachePath)
 	sourceExists, _ := afero.Exists(fs, sourcePath)
 	versionExists, _ := afero.Exists(fs, versionPath)
 

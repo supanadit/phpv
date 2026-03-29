@@ -176,8 +176,7 @@ func run(
 			fmt.Printf("Installing PHP %s...\n", version)
 			forge, err := bundlerSvc.Install(version)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				return nil
+				return fmt.Errorf("failed to install PHP %s: %w", version, err)
 			}
 
 			fmt.Printf("\n✅ PHP installed successfully!\n")

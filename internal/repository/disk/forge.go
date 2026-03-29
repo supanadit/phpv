@@ -44,7 +44,7 @@ func (r *ForgeRepository) detectStrategy(name, version string) domain.BuildStrat
 		return domain.StrategyMakeOnly
 	case "cmake":
 		return domain.StrategyCMake
-	case "autoconf", "automake", "m4", "flex", "bison", "perl":
+	case "autoconf", "automake", "flex", "bison", "perl":
 		return domain.StrategyMakeOnly
 	case "openssl":
 		return domain.StrategyConfigureMake
@@ -180,6 +180,16 @@ func (r *ForgeRepository) ensureFs() {
 func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 	env := os.Environ()
 
+	buildToolsPath := filepath.Join(r.siloRepo.silo.Root, "build-tools")
+	buildToolsBinPath := r.buildToolsBinPath(buildToolsPath)
+
+	for i, v := range env {
+		if strings.HasPrefix(v, "PATH=") {
+			env[i] = "PATH=" + buildToolsBinPath + ":" + strings.TrimPrefix(v, "PATH=")
+			break
+		}
+	}
+
 	for _, v := range config.CPPFLAGS {
 		env = append(env, "CPPFLAGS="+v)
 	}
@@ -194,6 +204,37 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 	}
 
 	return env
+}
+
+func (r *ForgeRepository) buildToolsBinPath(buildToolsPath string) string {
+	var binPaths []string
+
+	entries, err := afero.ReadDir(r.fs, buildToolsPath)
+	if err != nil {
+		return ""
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		pkgPath := filepath.Join(buildToolsPath, entry.Name())
+		versionEntries, err := afero.ReadDir(r.fs, pkgPath)
+		if err != nil {
+			continue
+		}
+		for _, vEntry := range versionEntries {
+			if !vEntry.IsDir() {
+				continue
+			}
+			binPath := filepath.Join(pkgPath, vEntry.Name(), "bin")
+			if exists, _ := afero.DirExists(r.fs, binPath); exists {
+				binPaths = append(binPaths, binPath)
+			}
+		}
+	}
+
+	return strings.Join(binPaths, ":")
 }
 
 func (r *ForgeRepository) chmodBuildScripts(sourcePath string) {
@@ -211,6 +252,18 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 		return domain.Forge{}, fmt.Errorf("failed to chmod configure: %w", err)
 	}
 
+	if config.Name == "m4" {
+		autoreconf := exec.Command("autoreconf", "-fi")
+		autoreconf.Dir = sourcePath
+		autoreconf.Env = env
+		autoreconf.Stdout = os.Stdout
+		autoreconf.Stderr = os.Stderr
+		fmt.Println("Running autoreconf for m4")
+		if err := autoreconf.Run(); err != nil {
+			return domain.Forge{}, fmt.Errorf("autoreconf failed: %w", err)
+		}
+	}
+
 	args := []string{fmt.Sprintf("--prefix=%s", prefix)}
 	args = append(args, config.ConfigureFlags...)
 
@@ -225,7 +278,7 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 		return domain.Forge{}, fmt.Errorf("configure failed: %w", err)
 	}
 
-	if err := r.make(sourcePath, config.Jobs, env); err != nil {
+	if err := r.makeWithName(sourcePath, config.Jobs, env, config.Name); err != nil {
 		return domain.Forge{}, err
 	}
 
@@ -359,7 +412,7 @@ func (r *ForgeRepository) buildAutogen(sourcePath, prefix string, config domain.
 		}
 	}
 
-	if err := r.make(sourcePath, jobs, env); err != nil {
+	if err := r.makeWithName(sourcePath, jobs, env, config.Name); err != nil {
 		return domain.Forge{}, err
 	}
 
@@ -371,8 +424,16 @@ func (r *ForgeRepository) buildAutogen(sourcePath, prefix string, config domain.
 }
 
 func (r *ForgeRepository) make(sourcePath string, jobs int, env []string) error {
+	return r.makeWithName(sourcePath, jobs, env, "")
+}
+
+func (r *ForgeRepository) makeWithName(sourcePath string, jobs int, env []string, pkgName string) error {
 	if jobs == 0 {
 		jobs = runtime.NumCPU()
+	}
+
+	if pkgName == "m4" {
+		env = append(env, "M4_MAINTAINER_MODE=no")
 	}
 
 	mk := exec.Command("make", fmt.Sprintf("-j%d", jobs))

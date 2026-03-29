@@ -78,10 +78,6 @@ func (s *bundlerRepository) Install(version string) (domain.Forge, error) {
 }
 
 func (s *bundlerRepository) Orchestrate(name, exactVersion string) (domain.Forge, error) {
-	if err := s.ensureBuildTools(); err != nil {
-		return domain.Forge{}, fmt.Errorf("failed to ensure build tools: %w", err)
-	}
-
 	graph, err := s.assemblerSvc.GetGraph(name, exactVersion)
 	if err != nil {
 		return domain.Forge{}, fmt.Errorf("failed to resolve dependency graph: %w", err)

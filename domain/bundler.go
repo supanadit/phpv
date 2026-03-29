@@ -15,4 +15,5 @@ type InstallResult struct {
 type VersionResolved struct {
 	Package string
 	Version string
+	For     string
 }

@@ -8,23 +8,27 @@ import (
 	"github.com/supanadit/phpv/domain"
 )
 
-func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string) error {
+func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, contextMsg string, isBuildTool bool) error {
 	check, err := s.advisorSvc.Check(name, version, phpVersion)
 	if err != nil {
 		return err
 	}
 
 	if check.SystemAvailable {
-		fmt.Printf("✓ Using system %s@%s at %s (skipped build)\n", name, version, check.SystemPath)
+		if isBuildTool {
+			fmt.Printf("  ✓ %s@%s (system)%s\n", name, version, contextMsg)
+		} else {
+			fmt.Printf("✓ %s@%s at %s%s\n", name, version, check.SystemPath, contextMsg)
+		}
 		return nil
 	}
 
 	switch check.Action {
 	case "skip":
-		fmt.Printf("✓ %s@%s already installed\n", name, version)
+		fmt.Printf("✓ %s@%s already installed%s\n", name, version, contextMsg)
 		return nil
 	case "download":
-		fmt.Printf("Installing %s@%s...\n", name, version)
+		fmt.Printf("Installing %s@%s%s...\n", name, version, contextMsg)
 		url, err := s.patternRegistry.BuildURLByType(name, version, check.SourceType)
 		if err != nil {
 			return err
@@ -54,7 +58,7 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 			}
 			return err
 		}
-		fmt.Printf("✓ Successfully installed %s@%s\n", name, version)
+		fmt.Printf("✓ Successfully installed %s@%s%s\n", name, version, contextMsg)
 		return nil
 	}
 	return fmt.Errorf("unknown action %q for %s@%s", check.Action, name, version)

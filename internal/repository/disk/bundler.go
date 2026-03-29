@@ -21,6 +21,21 @@ import (
 	"github.com/supanadit/phpv/unload"
 )
 
+var buildTools = map[string]bool{
+	"m4":       true,
+	"autoconf": true,
+	"automake": true,
+	"libtool":  true,
+	"perl":     true,
+	"bison":    true,
+	"flex":     true,
+	"re2c":     true,
+}
+
+func isLibraryDependency(name string) bool {
+	return !buildTools[name]
+}
+
 type bundlerRepository struct {
 	assemblerSvc    *assembler.AssemblerService
 	advisorSvc      *advisor.Service
@@ -86,7 +101,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string) (domain.Forge
 	var depOrder []domain.VersionResolved
 	processed := make(map[string]bool)
 
-	for _, deps := range graph {
+	for pkgName, deps := range graph {
 		for _, dep := range deps {
 			depVer := extractVersion(dep.Version)
 			key := dep.Name + "@" + depVer
@@ -95,6 +110,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string) (domain.Forge
 				depOrder = append(depOrder, domain.VersionResolved{
 					Package: dep.Name,
 					Version: depVer,
+					For:     pkgName,
 				})
 			}
 		}
@@ -105,13 +121,19 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string) (domain.Forge
 	ldFlags := make([]string, 0)
 
 	for _, dep := range depOrder {
-		if err := s.buildPackage(dep.Package, dep.Version, exactVersion, ldLibraryPath, cppFlags, ldFlags); err != nil {
+		contextMsg := ""
+		if dep.For != "" && dep.For != name {
+			contextMsg = fmt.Sprintf(" (for %s)", dep.For)
+		}
+		if err := s.buildPackage(dep.Package, dep.Version, exactVersion, ldLibraryPath, cppFlags, ldFlags, contextMsg, buildTools[dep.Package]); err != nil {
 			return domain.Forge{}, fmt.Errorf("failed to build %s@%s: %w", dep.Package, dep.Version, err)
 		}
-		depPath := s.silo.DependencyPath(exactVersion, dep.Package, dep.Version)
-		ldLibraryPath = append(ldLibraryPath, filepath.Join(depPath, "lib"))
-		cppFlags = append(cppFlags, fmt.Sprintf("-I%s/include", depPath))
-		ldFlags = append(ldFlags, fmt.Sprintf("-L%s/lib", depPath))
+		if !buildTools[dep.Package] {
+			depPath := s.silo.DependencyPath(exactVersion, dep.Package, dep.Version)
+			ldLibraryPath = append(ldLibraryPath, filepath.Join(depPath, "lib"))
+			cppFlags = append(cppFlags, fmt.Sprintf("-I%s/include", depPath))
+			ldFlags = append(ldFlags, fmt.Sprintf("-L%s/lib", depPath))
+		}
 	}
 
 	if err := s.buildPHP(name, exactVersion, ldLibraryPath, cppFlags, ldFlags); err != nil {

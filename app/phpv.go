@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/advisor"
@@ -28,6 +29,29 @@ type silentLogger struct{}
 func (s *silentLogger) LogEvent(event fxevent.Event) {}
 
 type verboseKey struct{}
+
+const (
+	minBoxWidth = 64
+)
+
+func printBox(width int, lines []string) {
+	border := "+" + strings.Repeat("=", width) + "+"
+	middle := "+" + strings.Repeat("=", width) + "+"
+	bottom := "+" + strings.Repeat("=", width) + "+"
+
+	fmt.Println(border)
+	for i, line := range lines {
+		if i == 1 {
+			fmt.Println(middle)
+		}
+		padding := width - len(line)
+		if padding < 0 {
+			padding = 0
+		}
+		fmt.Println("|" + line + strings.Repeat(" ", padding) + "|")
+	}
+	fmt.Println(bottom)
+}
 
 func main() {
 	debugMode := flag.Bool("x", false, "verbose fx logging")
@@ -200,13 +224,43 @@ func run(
 		return
 	}
 
+	binaryPath := forge.Prefix + "/bin/php"
+	header := "                    PHP Installation Summary"
+	labelVersion := "Version:"
+	labelBinary := "Binary:"
+
+	boxWidth := minBoxWidth
+
+	contentWidth := boxWidth - 2
+
+	headerWidth := len(labelVersion) + 1 + len(version)
+	binaryWidth := len(labelBinary) + 1 + len(binaryPath)
+
+	if binaryWidth > contentWidth {
+		boxWidth = binaryWidth + 2
+		contentWidth = boxWidth - 2
+	}
+	if headerWidth > contentWidth {
+		boxWidth = headerWidth + 2
+		contentWidth = boxWidth - 2
+	}
+
+	displayBinaryPath := binaryPath
+	availableBinaryContent := contentWidth - len(labelBinary) - 1
+	if len(binaryPath) > availableBinaryContent {
+		displayBinaryPath = "..." + binaryPath[len(binaryPath)-availableBinaryContent+3:]
+	}
+
+	versionContent := fmt.Sprintf("%s %s", labelVersion, version)
+	binaryContent := fmt.Sprintf("%s %s", labelBinary, displayBinaryPath)
+
 	fmt.Println()
-	fmt.Println("╔══════════════════════════════════════════════════════════════╗")
-	fmt.Println("║                    PHP Installation Summary                   ║")
-	fmt.Println("╠══════════════════════════════════════════════════════════════╣")
-	fmt.Printf("║  Version: %-50s ║\n", version)
-	fmt.Printf("║  Binary:  %-50s ║\n", forge.Prefix+"/bin/php")
-	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
+	printBox(boxWidth, []string{
+		"",
+		header,
+		versionContent,
+		binaryContent,
+	})
 
 	shutdowner.Shutdown()
 }

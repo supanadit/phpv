@@ -2,6 +2,7 @@ package assembler
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
@@ -101,10 +102,8 @@ func (s *AssemblerService) GetGraph(packageName string, version string) (domain.
 		return nil, err
 	}
 
-	result := domain.DependencyGraph{}
-	for k, v := range graph {
-		result[k] = v
-	}
+	result := make(domain.DependencyGraph)
+	maps.Copy(result, graph)
 
 	return result, nil
 }

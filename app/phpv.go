@@ -45,10 +45,7 @@ func printBox(width int, lines []string) {
 		if i == 1 {
 			fmt.Println(middle)
 		}
-		padding := width - len(line)
-		if padding < 0 {
-			padding = 0
-		}
+		padding := max(width-len(line), 0)
 		fmt.Println("|" + line + strings.Repeat(" ", padding) + "|")
 	}
 	fmt.Println(bottom)

@@ -6,8 +6,8 @@ import (
 )
 
 func extractVersion(fullVersion string) string {
-	if idx := strings.Index(fullVersion, "|"); idx != -1 {
-		return fullVersion[:idx]
+	if before, _, found := strings.Cut(fullVersion, "|"); found {
+		return before
 	}
 	return fullVersion
 }

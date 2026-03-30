@@ -8,10 +8,6 @@ import (
 	"runtime"
 )
 
-func (r *ForgeRepository) make(sourcePath string, jobs int, env []string, verbose bool) error {
-	return r.makeWithName(sourcePath, jobs, env, "", verbose)
-}
-
 func (r *ForgeRepository) makeWithName(sourcePath string, jobs int, env []string, pkgName string, verbose bool) error {
 	if jobs == 0 {
 		jobs = runtime.NumCPU()
@@ -54,7 +50,7 @@ func (r *ForgeRepository) makeInstall(sourcePath string, jobs int, env []string,
 		stderr = io.Discard
 	}
 
-	mkInstall := exec.Command("make", "install")
+	mkInstall := exec.Command("make", fmt.Sprintf("-j%d", jobs))
 	mkInstall.Dir = sourcePath
 	mkInstall.Env = env
 	mkInstall.Stdout = stdout

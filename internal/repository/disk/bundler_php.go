@@ -2,7 +2,6 @@ package disk
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/utils"
@@ -52,8 +51,4 @@ func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldF
 
 	fmt.Printf("✓ PHP %s installed successfully\n", version)
 	return nil
-}
-
-func (s *bundlerRepository) siloPHPOutputPath(version string) string {
-	return filepath.Join(utils.PHPOutputPath(s.silo, version), "lib")
 }

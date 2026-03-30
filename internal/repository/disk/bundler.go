@@ -34,10 +34,6 @@ var buildTools = map[string]bool{
 	"zig":      true,
 }
 
-func isLibraryDependency(name string) bool {
-	return !buildTools[name]
-}
-
 type bundlerRepository struct {
 	assemblerSvc    *assembler.AssemblerService
 	advisorSvc      *advisor.Service

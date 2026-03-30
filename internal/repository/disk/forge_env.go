@@ -18,8 +18,8 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 	buildToolsBinPath := r.buildToolsBinPath(buildToolsPath)
 
 	for i, v := range env {
-		if strings.HasPrefix(v, "PATH=") {
-			env[i] = "PATH=" + buildToolsBinPath + ":" + strings.TrimPrefix(v, "PATH=")
+		if after, ok := strings.CutPrefix(v, "PATH="); ok {
+			env[i] = "PATH=" + buildToolsBinPath + ":" + after
 			break
 		}
 	}
@@ -32,9 +32,8 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 		"/usr/local/share/pkgconfig",
 	}
 	for i, v := range env {
-		if strings.HasPrefix(v, "PKG_CONFIG_PATH=") {
-			existing := strings.TrimPrefix(v, "PKG_CONFIG_PATH=")
-			pkgConfigPaths = append(pkgConfigPaths, strings.Split(existing, ":")...)
+		if after, ok := strings.CutPrefix(v, "PKG_CONFIG_PATH="); ok {
+			pkgConfigPaths = append(pkgConfigPaths, strings.Split(after, ":")...)
 			env[i] = "PKG_CONFIG_PATH=" + strings.Join(pkgConfigPaths, ":")
 			break
 		}
@@ -73,7 +72,7 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 
 func hasEnvVar(env []string, prefix string) bool {
 	for _, v := range env {
-		if strings.HasPrefix(v, prefix+"=") {
+		if _, found := strings.CutPrefix(v, prefix+"="); found {
 			return true
 		}
 	}

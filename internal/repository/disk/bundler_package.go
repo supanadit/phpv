@@ -20,9 +20,6 @@ func (s *bundlerRepository) needsAlternativeCC(phpVersion string, forceCompiler 
 	if v.Major < 8 {
 		return true
 	}
-	if v.Major == 8 && v.Minor == 1 && v.Patch < 33 {
-		return true
-	}
 	if v.Major == 8 && v.Minor == 0 {
 		return true
 	}
@@ -33,7 +30,13 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 	if !s.needsAlternativeCC(phpVersion, forceCompiler) {
 		return "", []string{}, "", nil
 	}
-	zigVersion := "0.14.0"
+
+	systemZig := "/home/supanadit/SDK/Zig/0.15.2/zig"
+	if _, err := os.Stat(systemZig); err == nil {
+		return systemZig + " cc", []string{"-fPIC", "-Wno-error"}, systemZig + " c++", nil
+	}
+
+	zigVersion := "0.15.2"
 	v := utils.ParseVersion(phpVersion)
 	if v.Major < 7 {
 		zigVersion = "0.13.0"
@@ -48,7 +51,7 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 		zigBinary = filepath.Join(s.silo.Root, "build-tools", "zig", zigVersion, "zig")
 	}
 
-	return zigBinary + " cc", []string{"-fPIC", "-Wno-error", "-fuse-ld=gold"}, "zig c++", nil
+	return zigBinary + " cc", []string{"-fPIC", "-Wno-error"}, zigBinary + " c++", nil
 }
 
 func (s *bundlerRepository) installBuildTool(name, version string) error {

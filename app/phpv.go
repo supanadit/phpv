@@ -263,7 +263,8 @@ func run(
 		RunE: func(cmd *cobra.Command, args []string) error {
 			verbose, _ := cmd.Flags().GetBool("verbose")
 			compiler, _ := cmd.Flags().GetString("compiler")
-			forge, err := handler.Install(args[0], compiler, verbose)
+			fresh, _ := cmd.Flags().GetBool("fresh")
+			forge, err := handler.Install(args[0], compiler, verbose, fresh)
 			if err != nil {
 				return err
 			}
@@ -273,6 +274,7 @@ func run(
 	}
 	installCmd.Flags().BoolP("verbose", "v", false, "Enable verbose output")
 	installCmd.Flags().String("compiler", "", "Force a specific compiler (e.g., zig, gcc)")
+	installCmd.Flags().Bool("fresh", false, "Clean existing installation before installing")
 
 	useCmd := &cobra.Command{
 		Use:   "use <version>",

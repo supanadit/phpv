@@ -5,7 +5,7 @@ import (
 )
 
 type TerminalService interface {
-	Install(version string, compiler string, verbose bool) (domain.Forge, error)
+	Install(version string, compiler string, verbose bool, fresh bool) (domain.Forge, error)
 	Use(version string) (string, error)
 	SetDefault(version string) error
 	GetDefault() (string, error)

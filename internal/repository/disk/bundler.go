@@ -86,15 +86,21 @@ func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo dom
 	}
 }
 
-func (s *bundlerRepository) Install(version string, compiler string) (domain.Forge, error) {
+func (s *bundlerRepository) Install(version string, compiler string, fresh bool) (domain.Forge, error) {
 	exactVersion, err := s.resolvePHPVersion(version)
 	if err != nil {
 		return domain.Forge{}, fmt.Errorf("failed to resolve version %q: %w", version, err)
 	}
-	return s.Orchestrate("php", exactVersion, compiler)
+	return s.Orchestrate("php", exactVersion, compiler, fresh)
 }
 
-func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler string) (domain.Forge, error) {
+func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler string, fresh bool) (domain.Forge, error) {
+	if fresh {
+		if err := s.freshClean(name, exactVersion); err != nil {
+			return domain.Forge{}, fmt.Errorf("failed to clean existing installation: %w", err)
+		}
+	}
+
 	graph, err := s.assemblerSvc.GetGraph(name, exactVersion)
 	if err != nil {
 		return domain.Forge{}, fmt.Errorf("failed to resolve dependency graph: %w", err)
@@ -167,8 +173,8 @@ func (s *bundlerRepository) resolvePHPVersion(constraint string) (string, error)
 	}
 
 	parts := strings.Split(constraint, ".")
-	major := 0
-	minor := 0
+	major := -1
+	minor := -1
 	patch := -1
 
 	if len(parts) >= 1 {
@@ -187,7 +193,7 @@ func (s *bundlerRepository) resolvePHPVersion(constraint string) (string, error)
 		if v.Major != major {
 			continue
 		}
-		if v.Minor != minor {
+		if minor >= 0 && v.Minor != minor {
 			continue
 		}
 		if patch >= 0 && v.Patch != patch {
@@ -213,4 +219,21 @@ func (s *bundlerRepository) resolvePHPVersion(constraint string) (string, error)
 	})
 
 	return candidates[0].Version, nil
+}
+
+func (s *bundlerRepository) freshClean(name, exactVersion string) error {
+	pathsToClean := []string{
+		utils.PHPVersionPath(s.silo, exactVersion),
+		utils.GetSourcePath(s.silo, name, exactVersion),
+	}
+
+	for _, path := range pathsToClean {
+		if exists, _ := afero.Exists(s.fs, path); exists {
+			if err := s.fs.RemoveAll(path); err != nil {
+				return fmt.Errorf("failed to remove %s: %w", path, err)
+			}
+		}
+	}
+
+	return nil
 }

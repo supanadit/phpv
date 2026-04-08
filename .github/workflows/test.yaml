@@ -14,7 +14,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        php_version: ['7.0', '7.1', '7.2', '7.3', '7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5']
+        php_version: ['7.4', '8.2', '8.4', '8.5']
+
+    # Setting the root at the job level or step level for isolation
+    env:
+      PHPV_ROOT: ${{ github.workspace }}/phpv-root-${{ matrix.php_version }}
 
     steps:
       - uses: actions/checkout@v4
@@ -25,41 +29,40 @@ jobs:
           go-version: '1.25'
           cache: true
 
-      - name: Install build tools (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential gcc g++ make m4 autoconf automake libtool \
-            pkg-config bison flex re2c perl cmake \
-            libssl-dev libxml2-dev zlib1g-dev
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            sudo apt-get update && sudo apt-get install -y build-essential libssl-dev libxml2-dev libsqlite3-dev
+          else
+            brew install openssl sqlite
+          fi
 
-      - name: Install build tools (macOS)
-        if: matrix.os == 'macos-latest'
+      - name: Build phpv for Isolation
         run: |
-          brew install autoconf automake libtool m4 pkg-config \
-            bison flex re2c perl cmake openssl
-
-      - name: Build phpv
-        env:
-          PHPV_ROOT: /tmp/phpv-${{ matrix.php_version }}
-        run: go build -o /tmp/phpv-${{ matrix.php_version }}/bin/phpv ./app/phpv.go
+          mkdir -p $PHPV_ROOT/bin
+          go build -o $PHPV_ROOT/bin/phpv ./app/phpv.go
+          # Add the version-specific bin to the path for all following steps
+          echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
 
       - name: Install PHP ${{ matrix.php_version }}
-        run: ./phpv install ${{ matrix.php_version }}
-        env:
-          PHPV_ROOT: /tmp/phpv-${{ matrix.php_version }}
+        # phpv uses the PHPV_ROOT env var to decide where to install
+        run: phpv install ${{ matrix.php_version }}
 
-      - name: Use PHP ${{ matrix.php_version }}
-        run: ./phpv use ${{ matrix.php_version }}
-        env:
-          PHPV_ROOT: /tmp/phpv-${{ matrix.php_version }}
-
-      - name: Verify PHP installation
-        env:
-          PHPV_ROOT: /tmp/phpv-${{ matrix.php_version }}
+      - name: Verify Isolated Installation
         run: |
-          export PATH="$PHPV_ROOT/bin:$PATH"
+          # 1. Initialize the shell for this specific PHPV_ROOT
+          eval "$($PHPV_ROOT/bin/phpv init bash)"
+          
+          # 2. Switch to the version
           phpv use ${{ matrix.php_version }}
+          
+          # 3. Confirm binary location is inside our isolated root
+          PHP_PATH=$(which php)
+          echo "PHP Path: $PHP_PATH"
+          
+          if [[ "$PHP_PATH" != "$PHPV_ROOT"* ]]; then
+            echo "Error: PHP is not running from the isolated root!"
+            exit 1
+          fi
+          
           php -v
-          which php

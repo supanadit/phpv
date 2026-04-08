@@ -13,7 +13,10 @@ PHPV_ROOT="${PHPV_ROOT:-$HOME/.phpv}"
 if [ -n "$PHPV_CURRENT" ]; then
     PHPV_VERSION="$PHPV_CURRENT"
 elif [ -f .phpvrc ] && [ -s .phpvrc ]; then
-    PHPV_VERSION="$(cat .phpvrc)"
+    PHPV_VERSION="$(phpv auto-detect-resolve "$(cat .phpvrc)" 2>/dev/null)"
+    if [ -z "$PHPV_VERSION" ]; then
+        PHPV_VERSION="$(cat .phpvrc)"
+    fi
 else
     PHPV_VERSION="$(phpv auto-detect-resolve 2>/dev/null || cat "$PHPV_ROOT/default" 2>/dev/null)"
 fi

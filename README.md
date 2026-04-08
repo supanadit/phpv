@@ -1,3 +1,5 @@
+![assets/logo.png](Logo)
+
 # phpv - PHP Version Manager
 
 [![Go Version](https://img.shields.io/github/go-mod/go-version/supanadit/phpv)](https://github.com/supanadit/phpv)

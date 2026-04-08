@@ -113,14 +113,5 @@ func (h *TerminalHandler) Which() (string, error) {
 
 func (h *TerminalHandler) resolveInstalledVersion(constraint string) (string, error) {
 	versions := h.Silo.ListVersions()
-	if len(versions) == 0 {
-		return "", fmt.Errorf("no PHP version found matching %q", constraint)
-	}
-
-	matched := utils.FilterVersionsByConstraint(versions, constraint)
-	if len(matched) == 0 {
-		return "", fmt.Errorf("no installed PHP version matching %q", constraint)
-	}
-
-	return matched[0], nil
+	return utils.ResolveInstalledVersion(versions, constraint)
 }

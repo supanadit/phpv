@@ -6,8 +6,8 @@ import (
 )
 
 type ForgeRepository interface {
-	Build(config domain.ForgeConfig) (domain.Forge, error)
-	BuildWithStrategy(config domain.ForgeConfig, strategy domain.BuildStrategy) (domain.Forge, error)
+	Build(config domain.ForgeConfig, sourceDir string) (domain.Forge, error)
+	BuildWithStrategy(config domain.ForgeConfig, strategy domain.BuildStrategy, sourceDir string) (domain.Forge, error)
 }
 
 type Service struct {
@@ -22,12 +22,12 @@ func NewService(forgeRepository ForgeRepository, flagResolver *flagresolver.Serv
 	}
 }
 
-func (s *Service) Build(config domain.ForgeConfig) (domain.Forge, error) {
-	return s.forgeRepository.Build(config)
+func (s *Service) Build(config domain.ForgeConfig, sourceDir string) (domain.Forge, error) {
+	return s.forgeRepository.Build(config, sourceDir)
 }
 
-func (s *Service) BuildWithStrategy(config domain.ForgeConfig, strategy domain.BuildStrategy) (domain.Forge, error) {
-	return s.forgeRepository.BuildWithStrategy(config, strategy)
+func (s *Service) BuildWithStrategy(config domain.ForgeConfig, strategy domain.BuildStrategy, sourceDir string) (domain.Forge, error) {
+	return s.forgeRepository.BuildWithStrategy(config, strategy, sourceDir)
 }
 
 func (s *Service) GetConfigureFlags(name string) []string {

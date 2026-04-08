@@ -34,7 +34,13 @@ func (r *ForgeRepository) GetPHPConfigureFlags(phpVersion string, extensions []s
 	return nil
 }
 
-func (r *ForgeRepository) Build(config domain.ForgeConfig) (domain.Forge, error) {
+func (r *ForgeRepository) Build(config domain.ForgeConfig, sourceDir string) (domain.Forge, error) {
 	strategy := r.detectStrategy(config.Name, config.Version)
-	return r.BuildWithStrategy(config, strategy)
+	return r.BuildWithStrategy(config, strategy, sourceDir)
+}
+
+func (r *ForgeRepository) ensureFs() {
+	if r.fs == nil {
+		r.fs = afero.NewOsFs()
+	}
 }

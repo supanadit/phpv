@@ -2,6 +2,7 @@ package disk
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/utils"
@@ -20,7 +21,31 @@ func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldF
 
 	fmt.Printf("Building PHP %s...\n", version)
 
+	url, err := s.patternRegistry.BuildURLByType(name, version, check.SourceType)
+	if err != nil {
+		return err
+	}
+
+	archive := archivePathFromURL(s.silo.Root, name, version, url)
+	if _, err := s.downloadSvc.Download(url, archive); err != nil {
+		return fmt.Errorf("failed to download PHP: %w", err)
+	}
+
+	sourceDir := utils.GetSourceDirPath(s.silo, name, version)
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create source directory: %w", err)
+	}
+
+	if _, err := s.unloadSvc.Unpack(archive, sourceDir); err != nil {
+		return fmt.Errorf("failed to extract PHP source: %w", err)
+	}
+
 	installDir := utils.PHPOutputPath(s.silo, version)
+
+	if err := os.MkdirAll(installDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create install directory: %w", err)
+	}
+
 	configureFlags := s.forgeSvc.GetPHPConfigureFlags(version, nil)
 
 	cc, cflags, cxx, err := s.getCompilerForVersion(version, forceCompiler)
@@ -43,7 +68,7 @@ func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldF
 		Verbose:         s.verbose,
 	}
 
-	_, err = s.forgeSvc.Build(config)
+	_, err = s.forgeSvc.Build(config, sourceDir)
 	if err != nil {
 		fmt.Printf("✗ Failed to build PHP %s: %v\n", version, err)
 		return err

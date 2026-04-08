@@ -50,7 +50,7 @@ func (r *ForgeRepository) makeInstall(sourcePath string, jobs int, env []string,
 		stderr = io.Discard
 	}
 
-	mkInstall := exec.Command("make", fmt.Sprintf("-j%d", jobs))
+	mkInstall := exec.Command("make", fmt.Sprintf("-j%d", jobs), "install")
 	mkInstall.Dir = sourcePath
 	mkInstall.Env = env
 	mkInstall.Stdout = stdout

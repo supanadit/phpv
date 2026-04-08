@@ -214,6 +214,11 @@ func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion st
 
 func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, forceCompiler string) error {
 	installDir := utils.DependencyPath(s.silo, phpVersion, name, version)
+	sourceDir := utils.GetSourceDirPath(s.silo, name, version)
+
+	if err := os.MkdirAll(installDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create install directory: %w", err)
+	}
 
 	cc, cflags, cxx, err := s.getCompilerForVersion(phpVersion, forceCompiler)
 	if err != nil {
@@ -235,6 +240,6 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 		Verbose:         s.verbose,
 	}
 
-	_, err = s.forgeSvc.Build(config)
+	_, err = s.forgeSvc.Build(config, sourceDir)
 	return err
 }

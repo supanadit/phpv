@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
-	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/afero"
@@ -161,60 +159,14 @@ func (s *bundlerRepository) resolvePHPVersion(constraint string) (string, error)
 		return "", err
 	}
 
-	var phpSources []domain.Source
+	var phpVersions []string
 	for _, src := range sources {
 		if src.Name == "php" {
-			phpSources = append(phpSources, src)
+			phpVersions = append(phpVersions, src.Version)
 		}
 	}
 
-	parts := strings.Split(constraint, ".")
-	major := -1
-	minor := -1
-	patch := -1
-
-	if len(parts) >= 1 {
-		major, _ = strconv.Atoi(parts[0])
-	}
-	if len(parts) >= 2 {
-		minor, _ = strconv.Atoi(parts[1])
-	}
-	if len(parts) >= 3 {
-		patch, _ = strconv.Atoi(parts[2])
-	}
-
-	var candidates []domain.Source
-	for _, src := range phpSources {
-		v := utils.ParseVersion(src.Version)
-		if v.Major != major {
-			continue
-		}
-		if minor >= 0 && v.Minor != minor {
-			continue
-		}
-		if patch >= 0 && v.Patch != patch {
-			continue
-		}
-		candidates = append(candidates, src)
-	}
-
-	if len(candidates) == 0 {
-		return "", fmt.Errorf("no PHP version found matching %q", constraint)
-	}
-
-	sort.Slice(candidates, func(i, j int) bool {
-		vi := utils.ParseVersion(candidates[i].Version)
-		vj := utils.ParseVersion(candidates[j].Version)
-		if vi.Major != vj.Major {
-			return vi.Major > vj.Major
-		}
-		if vi.Minor != vj.Minor {
-			return vi.Minor > vj.Minor
-		}
-		return vi.Patch > vj.Patch
-	})
-
-	return candidates[0].Version, nil
+	return utils.ResolveVersionConstraint(phpVersions, constraint)
 }
 
 func (s *bundlerRepository) freshClean(name, exactVersion string) error {

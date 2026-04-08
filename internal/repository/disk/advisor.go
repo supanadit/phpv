@@ -212,6 +212,12 @@ func determineState(fs afero.Fs, root, name, version, phpVersion string) domain.
 
 	versionExists, _ := afero.Exists(fs, versionPath)
 
+	builtCheck := checkBuilt(name, versionPath, version, fs)
+
+	if versionExists && builtCheck {
+		return domain.StateBuilt
+	}
+
 	if versionExists && !cacheExists && !sourceExists {
 		return domain.StateSourceMissingBuilt
 	}
@@ -233,6 +239,17 @@ func determineState(fs afero.Fs, root, name, version, phpVersion string) domain.
 	}
 
 	return domain.StateUnknown
+}
+
+func checkBuilt(name, versionPath, version string, fs afero.Fs) bool {
+	if name == "php" {
+		phpBinary := filepath.Join(versionPath, "bin", "php")
+		exists, _ := afero.Exists(fs, phpBinary)
+		return exists
+	}
+	binPath := filepath.Join(versionPath, "bin")
+	exists, _ := afero.Exists(fs, binPath)
+	return exists
 }
 
 func mustBuildFromSource(name, phpVersion string) bool {

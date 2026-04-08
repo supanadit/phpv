@@ -130,3 +130,19 @@ func splitConstraint(constraint string) []string {
 	}
 	return parts
 }
+
+func ResolveVersionConstraint(availableVersions []string, constraint string) (string, error) {
+	matched := FilterVersionsByConstraint(availableVersions, constraint)
+	if len(matched) == 0 {
+		return "", fmt.Errorf("no version found matching %q", constraint)
+	}
+	return matched[0], nil
+}
+
+func ResolveInstalledVersion(installedVersions []string, constraint string) (string, error) {
+	matched := FilterVersionsByConstraint(installedVersions, constraint)
+	if len(matched) == 0 {
+		return "", fmt.Errorf("no installed version matching %q", constraint)
+	}
+	return matched[0], nil
+}

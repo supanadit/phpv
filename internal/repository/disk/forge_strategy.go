@@ -24,16 +24,7 @@ func (r *ForgeRepository) detectStrategy(name, version string) domain.BuildStrat
 	}
 }
 
-func (r *ForgeRepository) BuildWithStrategy(config domain.ForgeConfig, strategy domain.BuildStrategy) (domain.Forge, error) {
-	url, err := r.resolveURL(config.Name, config.Version)
-	if err != nil {
-		return domain.Forge{}, err
-	}
-
-	if err := r.ensureSource(config.Name, config.Version, url); err != nil {
-		return domain.Forge{}, err
-	}
-
+func (r *ForgeRepository) BuildWithStrategy(config domain.ForgeConfig, strategy domain.BuildStrategy, sourceDir string) (domain.Forge, error) {
 	fmt.Printf("Compiling %s %s...\n", config.Name, config.Version)
 
 	silo, err := r.siloRepo.GetSilo()
@@ -41,7 +32,6 @@ func (r *ForgeRepository) BuildWithStrategy(config domain.ForgeConfig, strategy 
 		return domain.Forge{}, err
 	}
 
-	sourceDir := utils.GetSourceDirPath(silo, config.Name, config.Version)
 	installDir := config.Prefix
 	if installDir == "" {
 		installDir = utils.GetVersionPath(silo, config.Name, config.Version)

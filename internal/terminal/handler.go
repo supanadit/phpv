@@ -10,9 +10,9 @@ import (
 
 	"github.com/supanadit/phpv/bundler"
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/shim"
+	"github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/source"
 )
 
@@ -24,18 +24,18 @@ type UseResult struct {
 
 type TerminalHandler struct {
 	BundlerRepo bundler.BundlerRepository
-	Silo        *disk.SiloRepository
+	Silo        silo.SiloRepository
 	Source      source.SourceRepository
 }
 
 func NewHandler(
 	bundlerRepo bundler.BundlerRepository,
-	silo *disk.SiloRepository,
+	siloRepo silo.SiloRepository,
 	sourceSvc source.SourceRepository,
 ) *TerminalHandler {
 	return &TerminalHandler{
 		BundlerRepo: bundlerRepo,
-		Silo:        silo,
+		Silo:        siloRepo,
 		Source:      sourceSvc,
 	}
 }
@@ -207,8 +207,6 @@ func (h *TerminalHandler) Upgrade(constraint string) (*UpgradeResult, error) {
 		return nil, fmt.Errorf("no newer version available for %s (currently at %s)", constraint, currentVersion)
 	}
 
-	fmt.Printf("Upgrading PHP %s to %s...\n", currentVersion, latestMatch)
-
 	_, err = h.BundlerRepo.Install(latestMatch, "", true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to install new version: %w", err)
@@ -290,5 +288,55 @@ func (h *TerminalHandler) Doctor() (*DoctorResult, error) {
 	return &DoctorResult{
 		Issues:   issues,
 		Warnings: warnings,
+	}, nil
+}
+
+func (h *TerminalHandler) GetInitCode(shell string) (string, error) {
+	phpvRoot := GetPHPvRoot()
+	return GetInitCodeForShell(shell, phpvRoot), nil
+}
+
+func (h *TerminalHandler) GetPHPvRoot() string {
+	return GetPHPvRoot()
+}
+
+func (h *TerminalHandler) ListVersionsFormatted() (*VersionsResult, error) {
+	versions, err := h.ListInstalled()
+	if err != nil {
+		return nil, err
+	}
+
+	defaultVer, _ := h.GetDefault()
+
+	result := &VersionsResult{
+		Versions:   make([]VersionInfo, len(versions)),
+		DefaultVer: defaultVer,
+	}
+
+	for i, v := range versions {
+		result.Versions[i] = VersionInfo{
+			Version:   v,
+			IsDefault: v == defaultVer,
+		}
+	}
+
+	return result, nil
+}
+
+func (h *TerminalHandler) ListAvailableFormatted() (*ListResult, error) {
+	sources, err := h.ListAvailable()
+	if err != nil {
+		return nil, err
+	}
+
+	var versions []string
+	for _, src := range sources {
+		versions = append(versions, src.Version)
+	}
+
+	utils.SortVersions(versions)
+
+	return &ListResult{
+		Versions: versions,
 	}, nil
 }

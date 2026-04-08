@@ -4,10 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
-	"runtime"
-	"sort"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -21,7 +17,6 @@ import (
 	"github.com/supanadit/phpv/internal/repository/http"
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/terminal"
-	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/source"
 	"github.com/supanadit/phpv/unload"
 	"go.uber.org/fx"
@@ -32,195 +27,13 @@ type silentLogger struct{}
 
 func (s *silentLogger) LogEvent(event fxevent.Event) {}
 
-const (
-	minBoxWidth = 64
-)
-
-func getPHPvRoot() string {
-	if root := os.Getenv("PHPV_ROOT"); root != "" {
-		return root
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join(home, ".phpv")
-	}
-	return filepath.Join(home, ".phpv")
-}
-
-func detectShell() string {
-	if shell := os.Getenv("SHELL"); shell != "" {
-		switch {
-		case filepath.Base(shell) == "zsh":
-			return "zsh"
-		case filepath.Base(shell) == "fish":
-			return "fish"
-		case filepath.Base(shell) == "bash":
-			return "bash"
-		}
-	}
-	if runtime.GOOS == "windows" {
-		return "pwsh"
-	}
-	return "bash"
-}
-
-func bashInitCode(phpvRoot string) string {
-	return fmt.Sprintf(`export PHPV_ROOT="%s"
-export PATH="$PHPV_ROOT/bin:$PATH"
-
-phpv() {
-    local cmd="$1"
-    shift
-    case "$cmd" in
-        use|install|default|versions|list|which|uninstall|doctor|upgrade)
-            command phpv "$cmd" "$@"
-            ;;
-        shell-use)
-            local ver="$1"
-            if [ -z "$ver" ]; then
-                echo "Error: version required" >&2
-                return 1
-            fi
-            export PHPV_CURRENT="$ver"
-            phpv write-default "$ver"
-            ;;
-        *)
-            command phpv "$cmd" "$@"
-            ;;
-    esac
-}
-`, phpvRoot)
-}
-
-func zshInitCode(phpvRoot string) string {
-	return fmt.Sprintf(`export PHPV_ROOT="%s"
-export PATH="$PHPV_ROOT/bin:$PATH"
-
-phpv() {
-    local cmd="$1"
-    shift
-    case "$cmd" in
-        use|install|default|versions|list|which|uninstall|doctor|upgrade)
-            command phpv "$cmd" "$@"
-            ;;
-        shell-use)
-            local ver="$1"
-            if [ -z "$ver" ]; then
-                echo "Error: version required" >&2
-                return 1
-            fi
-            export PHPV_CURRENT="$ver"
-            phpv write-default "$ver"
-            ;;
-        *)
-            command phpv "$cmd" "$@"
-            ;;
-    esac
-}
-`, phpvRoot)
-}
-
-func fishInitCode(phpvRoot string) string {
-	return fmt.Sprintf(`set -gx PHPV_ROOT "%s"
-set -gx PATH "$PHPV_ROOT/bin" $PATH
-
-function phpv
-    set -l cmd "$argv[1]"
-    set -e argv[1]
-    switch "$cmd"
-        case use|install|default|versions|list|which|uninstall|doctor|upgrade
-            command phpv "$cmd" $argv
-        case shell-use
-            set -gx PHPV_CURRENT "$argv[1]"
-            command phpv write-default "$argv[1]"
-        case '*'
-            command phpv "$cmd" $argv
-    end
-end
-`, phpvRoot)
-}
-
-func initCode(shell string) string {
-	phpvRoot := getPHPvRoot()
-	switch shell {
-	case "fish":
-		return fishInitCode(phpvRoot)
-	case "zsh":
-		return zshInitCode(phpvRoot)
-	case "bash":
-		return bashInitCode(phpvRoot)
-	default:
-		return bashInitCode(phpvRoot)
-	}
-}
-
-func printInitCode(shell string) {
-	fmt.Print(initCode(shell))
-}
-
-func printBox(width int, lines []string) {
-	border := "+" + strings.Repeat("=", width) + "+"
-	middle := "+" + strings.Repeat("=", width) + "+"
-	bottom := "+" + strings.Repeat("=", width) + "+"
-
-	fmt.Println(border)
-	for i, line := range lines {
-		if i == 1 {
-			fmt.Println(middle)
-		}
-		padding := max(width-len(line), 0)
-		fmt.Println("|" + line + strings.Repeat(" ", padding) + "|")
-	}
-	fmt.Println(bottom)
-}
-
-func printInstallSummary(version string, forge domain.Forge) {
-	binaryPath := filepath.Join(forge.Prefix, "bin", "php")
-
-	labelVersion := "Version:"
-	labelBinary := "Binary:"
-
-	contentWidth := minBoxWidth - 2
-
-	headerWidth := len(labelVersion) + 1 + len(version)
-	binaryWidth := len(labelBinary) + 1 + len(binaryPath)
-
-	boxWidth := minBoxWidth
-	if binaryWidth > contentWidth {
-		boxWidth = binaryWidth + 2
-		contentWidth = boxWidth - 2
-	}
-	if headerWidth > contentWidth {
-		boxWidth = headerWidth + 2
-		contentWidth = boxWidth - 2
-	}
-
-	displayBinaryPath := binaryPath
-	availableBinaryContent := contentWidth - len(labelBinary) - 1
-	if len(binaryPath) > availableBinaryContent {
-		displayBinaryPath = "..." + binaryPath[len(binaryPath)-availableBinaryContent+3:]
-	}
-
-	header := "                    PHP Installation Summary"
-	versionContent := fmt.Sprintf("%s %s", labelVersion, version)
-	binaryContent := fmt.Sprintf("%s %s", labelBinary, displayBinaryPath)
-
-	fmt.Println()
-	printBox(boxWidth, []string{
-		"",
-		header,
-		versionContent,
-		binaryContent,
-	})
-}
-
 func main() {
 	viper.AutomaticEnv()
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		panic("You must have a home directory set for phpv to work")
 	}
-	viper.SetDefault("PHPV_ROOT", filepath.Join(homeDir, ".phpv"))
+	viper.SetDefault("PHPV_ROOT", homeDir+"/.phpv")
 
 	opts := []fx.Option{
 		fx.WithLogger(func() fxevent.Logger { return &silentLogger{} }),
@@ -338,13 +151,6 @@ func NewBundlerServiceConfig(
 		}
 	}
 
-	var logger utils.Logger
-	if verbose {
-		logger = utils.NewLogger(utils.LogLevelInfo)
-	} else {
-		logger = &utils.SilentLogger{}
-	}
-
 	return bundler.BundlerServiceConfig{
 		Assembler: asm,
 		Advisor:   adv,
@@ -355,7 +161,6 @@ func NewBundlerServiceConfig(
 		Silo:      silo,
 		SiloRepo:  sil,
 		Verbose:   verbose,
-		Logger:    logger,
 	}, nil
 }
 
@@ -404,7 +209,8 @@ func run(
 			}
 
 			if jsonOutput {
-				fmt.Printf(`{"command":"install","version":"%s","compiler":"%s","fresh":%t}\n`, args[0], compiler, fresh)
+				fmt.Printf(`{"command":"install","version":"%s","compiler":"%s","fresh":%t}`+"\n", args[0], compiler, fresh)
+				return nil
 			}
 
 			if quiet {
@@ -417,7 +223,7 @@ func run(
 			}
 
 			if !quiet {
-				printInstallSummary(args[0], forge)
+				terminal.PrintInstallSummary(args[0], forge)
 			}
 			return nil
 		},
@@ -441,7 +247,7 @@ func run(
 				return err
 			}
 			fmt.Printf("Switched to PHP %s\n", result.ExactVersion)
-			fmt.Printf("PHP binary: %s\n", filepath.Join(result.OutputPath, "bin", "php"))
+			fmt.Printf("PHP binary: %s\n", result.OutputPath+"/bin/php")
 			fmt.Printf("Add to PATH: export PATH=%s:$PATH\n", result.ShimPath)
 			return nil
 		},
@@ -487,7 +293,11 @@ After initialization, you can use 'phpv use <version>' to switch PHP versions in
 			if len(args) > 0 {
 				shell = args[0]
 			}
-			printInitCode(shell)
+			initCode, err := handler.GetInitCode(shell)
+			if err != nil {
+				return err
+			}
+			fmt.Print(initCode)
 			return nil
 		},
 	}
@@ -513,23 +323,19 @@ After initialization, you can use 'phpv use <version>' to switch PHP versions in
 		Long:  `List all PHP versions that are currently installed.`,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			versions, err := handler.ListInstalled()
+			result, err := handler.ListVersionsFormatted()
 			if err != nil {
 				return err
 			}
-			if len(versions) == 0 {
-				fmt.Println("No PHP versions installed")
-				return nil
+
+			printer := &terminal.VersionsPrinter{
+				Versions:   make([]string, len(result.Versions)),
+				DefaultVer: result.DefaultVer,
 			}
-			currentDefault, _ := handler.GetDefault()
-			fmt.Println("Installed PHP versions:")
-			for _, v := range versions {
-				if v == currentDefault {
-					fmt.Printf("  * %s (default)\n", v)
-				} else {
-					fmt.Printf("    %s\n", v)
-				}
+			for i, v := range result.Versions {
+				printer.Versions[i] = v.Version
 			}
+			printer.Print()
 			return nil
 		},
 	}
@@ -540,25 +346,16 @@ After initialization, you can use 'phpv use <version>' to switch PHP versions in
 		Long:  `List all PHP versions available to install from remote sources.`,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sources, err := handler.ListAvailable()
+			result, err := handler.ListAvailableFormatted()
 			if err != nil {
 				return err
 			}
-			if len(sources) == 0 {
+			if len(result.Versions) == 0 {
 				fmt.Println("No PHP versions available")
 				return nil
 			}
-			var phpVersions []string
-			for _, src := range sources {
-				phpVersions = append(phpVersions, src.Version)
-			}
-			sort.Slice(phpVersions, func(i, j int) bool {
-				vi := utils.ParseVersion(phpVersions[i])
-				vj := utils.ParseVersion(phpVersions[j])
-				return utils.CompareVersions(vi, vj) > 0
-			})
 			fmt.Println("Available PHP versions:")
-			for _, v := range phpVersions {
+			for _, v := range result.Versions {
 				fmt.Printf("  %s\n", v)
 			}
 			return nil
@@ -673,7 +470,7 @@ After initialization, you can use 'phpv use <version>' to switch PHP versions in
 				return err
 			}
 			fmt.Printf("Upgraded PHP %s -> %s\n", result.FromVersion, result.ToVersion)
-			printInstallSummary(result.ToVersion, result.Forge)
+			terminal.PrintInstallSummary(result.ToVersion, result.Forge)
 			return nil
 		},
 	}

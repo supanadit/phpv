@@ -76,7 +76,7 @@ func SortVersions(versions []string) {
 func FilterVersionsByConstraint(versions []string, constraint string) []string {
 	parts := splitConstraint(constraint)
 	major := 0
-	minor := 0
+	minor := -1
 	patch := -1
 
 	if len(parts) >= 1 {
@@ -95,7 +95,7 @@ func FilterVersionsByConstraint(versions []string, constraint string) []string {
 		if pv.Major != major {
 			continue
 		}
-		if pv.Minor != minor {
+		if minor >= 0 && pv.Minor != minor {
 			continue
 		}
 		if patch >= 0 && pv.Patch != patch {

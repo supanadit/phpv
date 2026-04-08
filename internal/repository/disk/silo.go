@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/spf13/afero"
 	"github.com/spf13/viper"
@@ -22,8 +23,9 @@ var (
 )
 
 type SiloRepository struct {
-	fs   afero.Fs
-	silo *domain.Silo
+	fs              afero.Fs
+	silo            *domain.Silo
+	buildToolsMutex sync.Mutex
 }
 
 func NewSiloRepository() (*SiloRepository, error) {
@@ -535,6 +537,9 @@ func (r *SiloRepository) saveBuildToolsRefs(refs map[string][]string) error {
 }
 
 func (r *SiloRepository) IncrementBuildToolRef(name, version, phpVersion string) error {
+	r.buildToolsMutex.Lock()
+	defer r.buildToolsMutex.Unlock()
+
 	refs, err := r.loadBuildToolsRefs()
 	if err != nil {
 		return err
@@ -547,6 +552,9 @@ func (r *SiloRepository) IncrementBuildToolRef(name, version, phpVersion string)
 }
 
 func (r *SiloRepository) DecrementBuildToolRef(name, version, phpVersion string) error {
+	r.buildToolsMutex.Lock()
+	defer r.buildToolsMutex.Unlock()
+
 	refs, err := r.loadBuildToolsRefs()
 	if err != nil {
 		return err
@@ -579,6 +587,9 @@ func (r *SiloRepository) GetBuildToolRefs() (map[string][]string, error) {
 }
 
 func (r *SiloRepository) RemoveBuildToolRef(name, version string) error {
+	r.buildToolsMutex.Lock()
+	defer r.buildToolsMutex.Unlock()
+
 	refs, err := r.loadBuildToolsRefs()
 	if err != nil {
 		return err

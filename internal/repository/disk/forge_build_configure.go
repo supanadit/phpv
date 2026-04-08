@@ -10,6 +10,25 @@ import (
 	"github.com/supanadit/phpv/domain"
 )
 
+func (r *ForgeRepository) findConfigureInSubdir(basePath, name string) string {
+	entries, err := os.ReadDir(basePath)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			configPath := filepath.Join(basePath, entry.Name(), name)
+			if _, err := os.Stat(configPath); err == nil {
+				return configPath
+			}
+			if found := r.findConfigureInSubdir(filepath.Join(basePath, entry.Name()), name); found != "" {
+				return found
+			}
+		}
+	}
+	return ""
+}
+
 func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config domain.ForgeConfig, env []string) (domain.Forge, error) {
 	configurePath := filepath.Join(sourcePath, "configure")
 	ConfigurePath := filepath.Join(sourcePath, "Configure")
@@ -28,11 +47,21 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 				configurePath = ConfigurePath
 				useConfigure = false
 				usesPerl = true
+			} else if found := r.findConfigureInSubdir(sourcePath, "Configure"); found != "" {
+				configurePath = found
+				useConfigure = false
+				usesPerl = true
 			} else {
-				return domain.Forge{}, fmt.Errorf("configure script not found for %s", config.Name)
+				return domain.Forge{}, fmt.Errorf("configure script not found for %s (checked ./config, ./Configure, and subdirectories)", config.Name)
 			}
 		} else if _, err := os.Stat(ConfigurePath); os.IsNotExist(err) {
-			return domain.Forge{}, fmt.Errorf("configure script not found at %s (or Configure)", configurePath)
+			if found := r.findConfigureInSubdir(sourcePath, "Configure"); found != "" {
+				configurePath = found
+				useConfigure = false
+				usesPerl = true
+			} else {
+				return domain.Forge{}, fmt.Errorf("configure script not found at %s (or Configure)", configurePath)
+			}
 		} else {
 			configurePath = ConfigurePath
 			useConfigure = false

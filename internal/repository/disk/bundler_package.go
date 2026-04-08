@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/utils"
@@ -64,7 +65,6 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 		if v.Major < 7 {
 			zigVersion = "0.13.0"
 		}
-		s.logInfo("Installing zig@%s (required for PHP %s)...", zigVersion, phpVersion)
 		if err := s.installBuildTool("zig", zigVersion, phpVersion); err != nil {
 			return "", nil, "", fmt.Errorf("[bundler] failed to install zig: %w", err)
 		}
@@ -90,6 +90,30 @@ func (s *bundlerRepository) installBuildTool(name, version, phpVersion string) e
 	}
 
 	installPath := filepath.Join(s.silo.Root, "build-tools", name, version)
+	if err := os.MkdirAll(filepath.Dir(installPath), 0755); err != nil {
+		return fmt.Errorf("[bundler] failed to create build-tools directory: %w", err)
+	}
+	lockPath := installPath + ".lock"
+
+	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err != nil {
+		if os.IsExist(err) {
+			for i := 0; i < 60; i++ {
+				time.Sleep(500 * time.Millisecond)
+				if _, err := os.Stat(installPath); err == nil {
+					return s.siloRepo.IncrementBuildToolRef(name, version, phpVersion)
+				}
+				if _, err := os.Stat(lockPath); os.IsNotExist(err) {
+					break
+				}
+			}
+		}
+		return fmt.Errorf("[bundler] failed to acquire lock for %s@%s: %w", name, version, err)
+	}
+	defer func() {
+		lock.Close()
+		os.Remove(lockPath)
+	}()
 
 	if _, err := os.Stat(installPath); os.IsNotExist(err) {
 		s.logInfo("Downloading build tool %s@%s...", name, version)
@@ -111,7 +135,10 @@ func (s *bundlerRepository) installBuildTool(name, version, phpVersion string) e
 	}
 
 	if name == "zig" {
-		zigBinary := filepath.Join(installPath, "zig")
+		zigBinary := s.findZigBinary(installPath)
+		if zigBinary == "" {
+			return fmt.Errorf("[bundler] zig binary not found in %s", installPath)
+		}
 		if err := os.Chmod(zigBinary, 0755); err != nil {
 			return fmt.Errorf("[bundler] failed to chmod zig binary: %w", err)
 		}
@@ -122,6 +149,34 @@ func (s *bundlerRepository) installBuildTool(name, version, phpVersion string) e
 	}
 
 	return nil
+}
+
+func (s *bundlerRepository) findZigBinary(dir string) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			subZig := filepath.Join(dir, entry.Name(), "zig")
+			if _, err := os.Stat(subZig); err == nil {
+				return subZig
+			}
+			subBin := filepath.Join(dir, entry.Name(), "bin", "zig")
+			if _, err := os.Stat(subBin); err == nil {
+				return subBin
+			}
+		}
+	}
+	directZig := filepath.Join(dir, "zig")
+	if _, err := os.Stat(directZig); err == nil {
+		return directZig
+	}
+	directBin := filepath.Join(dir, "bin", "zig")
+	if _, err := os.Stat(directBin); err == nil {
+		return directBin
+	}
+	return ""
 }
 
 func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, contextMsg string, isBuildTool bool, forceCompiler string) error {
@@ -135,7 +190,7 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 	}
 
 	if check.SystemAvailable && mustBuildFromSource(name, phpVersion) {
-		s.logInfo("Using system %s but PHP %s requires building from source", name, phpVersion)
+		s.logInfo("System %s available but PHP %s requires building from source", name, phpVersion)
 	}
 
 	switch check.Action {
@@ -241,6 +296,12 @@ func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion st
 	}
 
 	if check.SystemAvailable {
+		if mustBuildFromSource(name, phpVersion) {
+			if suggestion != "" {
+				s.logWarn("\n💡 %s@%s required by PHP %s but build from source failed.\n   Install system package to avoid building:\n   %s\n\n", name, version, phpVersion, suggestion)
+			}
+			return fmt.Errorf("[bundler] %s@%s required by PHP %s but build from source failed", name, version, phpVersion)
+		}
 		s.logInfo("Using system %s@%s at %s (build from source failed: %v)", name, version, check.SystemPath, err)
 		return nil
 	}
@@ -303,7 +364,7 @@ func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion strin
 	}
 
 	if check.SystemAvailable && mustBuildFromSource(name, phpVersion) {
-		s.logInfo("Using system %s but PHP %s requires building from source", name, phpVersion)
+		s.logInfo("System %s available but PHP %s requires building from source", name, phpVersion)
 	}
 
 	switch check.Action {
@@ -321,8 +382,16 @@ func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion strin
 		}
 		archive := archivePathFromURL(s.silo.Root, name, version, urls[0])
 		if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
-			s.logWarn("  Download failed, falling back to source build")
-			return nil, s.buildFromSourceOrSystem(name, version, phpVersion, ldPath, cppFlags, ldFlags, check.Suggestion, forceCompiler)
+			if mustBuildFromSource(name, phpVersion) {
+				s.logWarn("  Download failed (PHP %s requires build from source), trying source build...", phpVersion)
+			} else {
+				s.logWarn("  Download failed, falling back to source build")
+			}
+			err := s.buildFromSourceOrSystem(name, version, phpVersion, ldPath, cppFlags, ldFlags, check.Suggestion, forceCompiler)
+			if err != nil {
+				return nil, err
+			}
+			return depInfo, nil
 		}
 		fallthrough
 	case "extract":

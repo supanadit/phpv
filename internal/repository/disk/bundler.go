@@ -166,8 +166,12 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 				}
 
 				mu.Lock()
+				if firstErr != nil {
+					mu.Unlock()
+					return
+				}
 				completed[dep.Name+"@"+depVersion] = true
-				if !buildTools[dep.Name] {
+				if !buildTools[dep.Name] && depInfo.BuiltFromSource {
 					depPath := utils.DependencyPath(s.silo, exactVersion, dep.Name, depVersion)
 					depLibraryPaths = append(depLibraryPaths, filepath.Join(depPath, "lib"))
 					depCppFlags = append(depCppFlags, fmt.Sprintf("-I%s/include", depPath))

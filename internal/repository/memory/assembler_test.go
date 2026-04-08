@@ -15,63 +15,63 @@ func TestMemoryAssembler_GetDependencies(t *testing.T) {
 		wantContains []string
 	}{
 		{
-			name:         "PHP 8.3 dependencies",
+			name:         "PHP 8.3 minimal (no default dependencies)",
 			packageName:  "php",
 			version:      "8.3.0",
-			wantLen:      5,
-			wantContains: []string{"openssl", "libxml2", "zlib", "oniguruma", "curl"},
+			wantLen:      0,
+			wantContains: []string{},
 		},
 		{
-			name:         "PHP 8.2 dependencies",
+			name:         "PHP 8.2 minimal (no default dependencies)",
 			packageName:  "php",
 			version:      "8.2.0",
-			wantLen:      5,
-			wantContains: []string{"openssl", "libxml2", "zlib", "oniguruma", "curl"},
+			wantLen:      0,
+			wantContains: []string{},
 		},
 		{
-			name:         "PHP 8.1 dependencies",
+			name:         "PHP 8.1 minimal (no default dependencies)",
 			packageName:  "php",
 			version:      "8.1.0",
-			wantLen:      5,
-			wantContains: []string{"openssl", "libxml2", "zlib", "oniguruma", "curl"},
+			wantLen:      0,
+			wantContains: []string{},
 		},
 		{
-			name:         "PHP 8.0 dependencies",
+			name:         "PHP 8.0 minimal (no default dependencies)",
 			packageName:  "php",
 			version:      "8.0.0",
-			wantLen:      5,
-			wantContains: []string{"openssl", "libxml2", "zlib", "oniguruma", "curl"},
+			wantLen:      0,
+			wantContains: []string{},
 		},
 		{
-			name:         "PHP 7.4 dependencies",
+			name:         "PHP 7.4 minimal (no default dependencies)",
 			packageName:  "php",
 			version:      "7.4.0",
-			wantLen:      5,
-			wantContains: []string{"openssl", "libxml2", "zlib", "oniguruma", "curl"},
+			wantLen:      0,
+			wantContains: []string{},
 		},
 		{
-			name:         "PHP 5.6 dependencies",
+			name:         "PHP 5.6 minimal (no default dependencies)",
 			packageName:  "php",
 			version:      "5.6.0",
-			wantLen:      5,
-			wantContains: []string{"openssl", "libxml2", "zlib", "oniguruma", "curl"},
+			wantLen:      0,
+			wantContains: []string{},
 		},
 		{
-			name:         "PHP 5.4 with optional flex and bison",
+			name:         "PHP 5.4 minimal (no default dependencies)",
 			packageName:  "php",
 			version:      "5.4.0",
-			wantLen:      7,
-			wantContains: []string{"openssl", "libxml2", "zlib", "oniguruma", "curl", "flex", "bison"},
+			wantLen:      0,
+			wantContains: []string{},
 		},
 		{
-			name:         "OpenSSL 3.x has no perl",
+			name:         "OpenSSL 3.x has build deps",
 			packageName:  "openssl",
 			version:      "3.3.2",
 			wantLen:      4,
 			wantContains: []string{"m4", "autoconf", "automake", "libtool"},
 		},
 		{
-			name:         "OpenSSL 1.x has perl",
+			name:         "OpenSSL 1.x has perl and build deps",
 			packageName:  "openssl",
 			version:      "1.1.1w",
 			wantLen:      5,
@@ -107,7 +107,7 @@ func TestMemoryAssembler_GetDependencies(t *testing.T) {
 func TestMemoryAssembler_GetGraph(t *testing.T) {
 	repo := NewMemoryAssemblerRepository()
 
-	t.Run("PHP 8.3 full dependency graph", func(t *testing.T) {
+	t.Run("PHP 8.3 minimal graph (no default dependencies)", func(t *testing.T) {
 		graph, err := repo.GetGraph("php", "8.3.0")
 		if err != nil {
 			t.Fatalf("GetGraph() error = %v", err)
@@ -117,43 +117,43 @@ func TestMemoryAssembler_GetGraph(t *testing.T) {
 			t.Error("GetGraph() should contain php as root package")
 		}
 
-		if _, ok := graph["openssl"]; !ok {
-			t.Error("GetGraph() should contain openssl dependency")
+		if _, ok := graph["openssl"]; ok {
+			t.Error("GetGraph() should NOT contain openssl dependency for minimal install")
 		}
 
-		if _, ok := graph["libxml2"]; !ok {
-			t.Error("GetGraph() should contain libxml2 dependency")
+		if _, ok := graph["libxml2"]; ok {
+			t.Error("GetGraph() should NOT contain libxml2 dependency for minimal install")
 		}
 
-		if _, ok := graph["zlib"]; !ok {
-			t.Error("GetGraph() should contain zlib dependency")
+		if _, ok := graph["zlib"]; ok {
+			t.Error("GetGraph() should NOT contain zlib dependency for minimal install")
 		}
 
-		if _, ok := graph["oniguruma"]; !ok {
-			t.Error("GetGraph() should contain oniguruma dependency")
+		if _, ok := graph["oniguruma"]; ok {
+			t.Error("GetGraph() should NOT contain oniguruma dependency for minimal install")
 		}
 
-		if _, ok := graph["curl"]; !ok {
-			t.Error("GetGraph() should contain curl dependency")
+		if _, ok := graph["curl"]; ok {
+			t.Error("GetGraph() should NOT contain curl dependency for minimal install")
 		}
 
-		if _, ok := graph["m4"]; !ok {
-			t.Error("GetGraph() should contain m4 (build tool)")
+		if _, ok := graph["m4"]; ok {
+			t.Error("GetGraph() should NOT contain m4 (build tool) for minimal install")
 		}
 	})
 
-	t.Run("PHP 5.4 includes flex and bison", func(t *testing.T) {
+	t.Run("PHP 5.4 minimal (no default dependencies, no flex/bison)", func(t *testing.T) {
 		graph, err := repo.GetGraph("php", "5.4.0")
 		if err != nil {
 			t.Fatalf("GetGraph() error = %v", err)
 		}
 
-		if _, ok := graph["flex"]; !ok {
-			t.Error("GetGraph() should contain flex dependency for PHP 5.4")
+		if _, ok := graph["flex"]; ok {
+			t.Error("GetGraph() should NOT contain flex dependency for PHP 5.4 minimal")
 		}
 
-		if _, ok := graph["bison"]; !ok {
-			t.Error("GetGraph() should contain bison dependency for PHP 5.4")
+		if _, ok := graph["bison"]; ok {
+			t.Error("GetGraph() should NOT contain bison dependency for PHP 5.4 minimal")
 		}
 	})
 
@@ -192,25 +192,14 @@ func TestMemoryAssembler_CircularDependency(t *testing.T) {
 func TestMemoryAssembler_GetOrderedDependencies(t *testing.T) {
 	repo := NewMemoryAssemblerRepository()
 
-	t.Run("PHP 8.3 ordered dependencies", func(t *testing.T) {
+	t.Run("PHP 8.3 minimal (no ordered dependencies)", func(t *testing.T) {
 		deps, err := repo.GetOrderedDependencies("php", "8.3.0")
 		if err != nil {
 			t.Fatalf("GetOrderedDependencies() error = %v", err)
 		}
 
-		depMap := make(map[string]int)
-		for i, dep := range deps {
-			depMap[dep.Name] = i
-		}
-
-		if _, ok := depMap["m4"]; !ok {
-			t.Error("GetOrderedDependencies() should contain m4")
-		}
-		if _, ok := depMap["autoconf"]; !ok {
-			t.Error("GetOrderedDependencies() should contain autoconf")
-		}
-		if _, ok := depMap["openssl"]; !ok {
-			t.Error("GetOrderedDependencies() should contain openssl")
+		if len(deps) > 0 {
+			t.Errorf("GetOrderedDependencies() got %d deps, want 0 for minimal PHP install", len(deps))
 		}
 	})
 
@@ -254,8 +243,8 @@ func TestMemoryAssembler_GetOrderedDependencies(t *testing.T) {
 		}
 	})
 
-	t.Run("build tools come before libraries", func(t *testing.T) {
-		deps, err := repo.GetOrderedDependencies("php", "8.3.0")
+	t.Run("build tools come before libraries (via openssl)", func(t *testing.T) {
+		deps, err := repo.GetOrderedDependencies("openssl", "3.3.2")
 		if err != nil {
 			t.Fatalf("GetOrderedDependencies() error = %v", err)
 		}
@@ -265,7 +254,7 @@ func TestMemoryAssembler_GetOrderedDependencies(t *testing.T) {
 			"perl": true, "bison": true, "flex": true, "re2c": true,
 		}
 		libraries := map[string]bool{
-			"openssl": true, "libxml2": true, "zlib": true, "curl": true, "oniguruma": true,
+			"openssl": true,
 		}
 
 		var lastBuildToolIdx, firstLibraryIdx int = -1, -1

@@ -40,6 +40,10 @@ func (s *Service) CheckExtensionConflicts(extensions []string) ([]string, [][]st
 	return nil, nil, nil
 }
 
+func (s *Service) GetExtensionDependency(ext string) (string, bool) {
+	return s.repo.GetExtensionDependency(ext)
+}
+
 func findConflictingFor(pairs [][]string, ext string) []string {
 	var result []string
 	for _, pair := range pairs {

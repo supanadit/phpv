@@ -38,23 +38,19 @@ func (r *flagResolverRepo) GetConfigureFlags(name string) []string {
 }
 
 func (r *flagResolverRepo) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
-	v := utils.ParseVersion(phpVersion)
-
 	flags := []string{
 		"--disable-all",
 		"--enable-cli",
-		"--with-openssl",
-		"--with-curl",
-		"--with-zlib",
-		"--enable-mbstring",
 	}
 
-	if v.Major >= 7 {
-		flags = append(flags, "--with-libxml")
+	if len(extensions) == 0 {
+		return flags
 	}
 
-	if v.Major >= 8 {
-		flags = append(flags, "--enable-opcache")
+	v := utils.ParseVersion(phpVersion)
+	extSet := make(map[string]bool)
+	for _, ext := range extensions {
+		extSet[ext] = true
 	}
 
 	for _, ext := range extensions {
@@ -63,6 +59,10 @@ func (r *flagResolverRepo) GetPHPConfigureFlags(phpVersion string, extensions []
 				flags = append(flags, extFlags.Flag)
 			}
 		}
+	}
+
+	if extSet["opcache"] && v.Major >= 7 {
+		flags = append(flags, "--enable-opcache")
 	}
 
 	return flags
@@ -116,6 +116,10 @@ func (r *flagResolverRepo) CheckExtensionConflicts(extensions []string) ([]strin
 	}
 
 	return conflicts, conflictPairs
+}
+
+func (r *flagResolverRepo) GetExtensionDependency(ext string) (string, bool) {
+	return GetExtensionDependency(ext)
 }
 
 func contains(slice []string, item string) bool {

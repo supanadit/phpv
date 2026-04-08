@@ -123,6 +123,12 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 		return domain.Forge{}, fmt.Errorf("[assembler] failed to resolve dependency levels: %w", err)
 	}
 
+	extDeps := s.resolveExtensionDependencies(extensions, exactVersion)
+	if len(extDeps) > 0 {
+		extLevels := [][]domain.Dependency{extDeps}
+		levels = append(extLevels, levels...)
+	}
+
 	sem := make(chan struct{}, s.jobs)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -232,6 +238,31 @@ func (s *bundlerRepository) resolvePHPVersion(constraint string) (string, error)
 	}
 
 	return utils.ResolveVersionConstraint(phpVersions, constraint)
+}
+
+func (s *bundlerRepository) resolveExtensionDependencies(extensions []string, phpVersion string) []domain.Dependency {
+	if len(extensions) == 0 {
+		return nil
+	}
+
+	depMap := make(map[string]string)
+	seen := make(map[string]bool)
+
+	for _, ext := range extensions {
+		if dep, ok := s.flagResolverSvc.GetExtensionDependency(ext); ok {
+			if !seen[dep] {
+				seen[dep] = true
+				depMap[dep] = dep
+			}
+		}
+	}
+
+	var deps []domain.Dependency
+	for dep := range depMap {
+		deps = append(deps, domain.Dependency{Name: dep, Version: ""})
+	}
+
+	return deps
 }
 
 func (s *bundlerRepository) freshClean(name, exactVersion string) error {

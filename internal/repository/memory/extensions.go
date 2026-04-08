@@ -5,10 +5,11 @@ import (
 )
 
 type extensionDef struct {
-	Flag      string
-	MinPHP    string
-	MaxPHP    string
-	Conflicts []string
+	Flag       string
+	MinPHP     string
+	MaxPHP     string
+	Conflicts  []string
+	Dependency string
 }
 
 var bundledExtensions = map[string]extensionDef{
@@ -17,8 +18,9 @@ var bundledExtensions = map[string]extensionDef{
 		MinPHP: "5.0",
 	},
 	"bz2": {
-		Flag:   "--with-bz2",
-		MinPHP: "5.0",
+		Flag:       "--with-bz2",
+		MinPHP:     "5.0",
+		Dependency: "bzip2",
 	},
 	"calendar": {
 		Flag:   "--enable-calendar",
@@ -29,8 +31,9 @@ var bundledExtensions = map[string]extensionDef{
 		MinPHP: "5.0",
 	},
 	"curl": {
-		Flag:   "--with-curl",
-		MinPHP: "5.0",
+		Flag:       "--with-curl",
+		MinPHP:     "5.0",
+		Dependency: "curl",
 	},
 	"dba": {
 		Flag:   "--enable-dba",
@@ -101,12 +104,14 @@ var bundledExtensions = map[string]extensionDef{
 		MinPHP: "5.0",
 	},
 	"libxml": {
-		Flag:   "--with-libxml",
-		MinPHP: "5.0",
+		Flag:       "--with-libxml",
+		MinPHP:     "5.0",
+		Dependency: "libxml2",
 	},
 	"mbstring": {
-		Flag:   "--enable-mbstring",
-		MinPHP: "5.0",
+		Flag:       "--enable-mbstring",
+		MinPHP:     "5.0",
+		Dependency: "oniguruma",
 	},
 	"mysql": {
 		Flag:      "--with-mysql",
@@ -128,8 +133,9 @@ var bundledExtensions = map[string]extensionDef{
 		MinPHP: "7.0",
 	},
 	"openssl": {
-		Flag:   "--with-openssl",
-		MinPHP: "5.0",
+		Flag:       "--with-openssl",
+		MinPHP:     "5.0",
+		Dependency: "openssl",
 	},
 	"pcntl": {
 		Flag:   "--enable-pcntl",
@@ -289,8 +295,9 @@ var bundledExtensions = map[string]extensionDef{
 		MinPHP: "5.0",
 	},
 	"zlib": {
-		Flag:   "--with-zlib",
-		MinPHP: "5.0",
+		Flag:       "--with-zlib",
+		MinPHP:     "5.0",
+		Dependency: "zlib",
 	},
 }
 
@@ -330,4 +337,12 @@ func GetConflictingExtensions(name string) []string {
 		return nil
 	}
 	return ext.Conflicts
+}
+
+func GetExtensionDependency(name string) (string, bool) {
+	ext, ok := bundledExtensions[name]
+	if !ok || ext.Dependency == "" {
+		return "", false
+	}
+	return ext.Dependency, true
 }

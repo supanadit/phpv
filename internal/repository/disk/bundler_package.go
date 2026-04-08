@@ -60,7 +60,7 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 
 	if _, err := os.Stat(zigBinary); os.IsNotExist(err) {
 		v := utils.ParseVersion(phpVersion)
-		zigVersion := "0.15.2"
+		zigVersion := "0.14.0"
 		if v.Major < 7 {
 			zigVersion = "0.13.0"
 		}

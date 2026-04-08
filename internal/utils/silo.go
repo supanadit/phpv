@@ -121,7 +121,7 @@ func GetSystemPkgConfigPaths() []string {
 }
 
 func GetZigCompilerPath(siloRoot, phpVersion string) string {
-	zigVersion := "0.15.2"
+	zigVersion := "0.14.0"
 	if v := ParseVersion(phpVersion); v.Major < 7 {
 		zigVersion = "0.13.0"
 	}
@@ -133,5 +133,12 @@ func GetOS() string {
 }
 
 func GetArch() string {
-	return runtime.GOARCH
+	a := runtime.GOARCH
+	switch a {
+	case "amd64":
+		return "x86_64"
+	case "arm64":
+		return "aarch64"
+	}
+	return a
 }

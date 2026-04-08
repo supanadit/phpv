@@ -116,3 +116,42 @@ func FindComposerExtensionsFromPath(path string) (string, []string, error) {
 
 	return "", nil, nil
 }
+
+func ParsePhpvrc(dir string) (string, error) {
+	phpvrcPath := filepath.Join(dir, ".phpvrc")
+
+	data, err := os.ReadFile(phpvrcPath)
+	if err != nil {
+		return "", err
+	}
+
+	version := strings.TrimSpace(string(data))
+	if version == "" {
+		return "", nil
+	}
+
+	return version, nil
+}
+
+func FindPhpvrcFromPath(path string) (string, string, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", "", err
+	}
+
+	dir := absPath
+	for {
+		version, err := ParsePhpvrc(dir)
+		if err == nil && version != "" {
+			return dir, version, nil
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+
+	return "", "", nil
+}

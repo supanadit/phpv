@@ -406,6 +406,9 @@ func TestListAvailable_Success(t *testing.T) {
 func TestWhich_NoDefault(t *testing.T) {
 	handler := newTestHandler()
 
+	mockSilo := handler.Silo.(*mockSiloRepo)
+	mockSilo.defaultVer = ""
+
 	mockBundler := &mockBundlerRepo{}
 	handler.BundlerRepo = mockBundler
 
@@ -413,26 +416,41 @@ func TestWhich_NoDefault(t *testing.T) {
 	if err != nil {
 		t.Errorf("Which failed: %v", err)
 	}
-	if phpPath == "" {
-		t.Error("Expected path to be set")
+	if phpPath != "" {
+		t.Errorf("Expected empty path for no default, got %s", phpPath)
 	}
 }
 
-func TestUninstall_Success(t *testing.T) {
+func TestWhich_WithDefaultButNoBinary(t *testing.T) {
+	handler := newTestHandler()
+
+	mockSilo := handler.Silo.(*mockSiloRepo)
+	mockSilo.defaultVer = "8.4.0"
+
+	mockBundler := &mockBundlerRepo{}
+	handler.BundlerRepo = mockBundler
+
+	phpPath, err := handler.Which()
+	if err != nil {
+		t.Errorf("Which failed: %v", err)
+	}
+	if phpPath != "" {
+		t.Errorf("Expected empty path when binary doesn't exist, got %s", phpPath)
+	}
+}
+
+func TestUninstall_StaleData(t *testing.T) {
 	handler := newTestHandler()
 
 	mockBundler := &mockBundlerRepo{}
 	handler.BundlerRepo = mockBundler
 
 	result, err := handler.Uninstall("8.4.0")
-	if err != nil {
-		t.Errorf("Uninstall failed: %v", err)
+	if err == nil {
+		t.Error("Expected error for stale data (missing binary), got nil")
 	}
-	if result == nil {
-		t.Fatal("UninstallResult is nil")
-	}
-	if result.Version != "8.4.0" {
-		t.Errorf("Expected version 8.4.0, got %s", result.Version)
+	if result != nil {
+		t.Error("Expected nil result for stale data")
 	}
 }
 

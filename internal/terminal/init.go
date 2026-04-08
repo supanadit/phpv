@@ -6,9 +6,17 @@ export PATH="$PHPV_ROOT/bin:$PATH"
 
 phpv() {
     local cmd="$1"
-    shift
+    [ $# -gt 0 ] && shift
     case "$cmd" in
-        use|install|default|versions|list|which|uninstall|doctor|upgrade|auto-detect)
+        use)
+            if [ -z "$1" ]; then
+                echo "Error: version required" >&2
+                return 1
+            fi
+            command phpv "$cmd" "$@"
+            export PHPV_CURRENT="$1"
+            ;;
+        install|default|versions|list|which|uninstall|doctor|upgrade|auto-detect)
             command phpv "$cmd" "$@"
             ;;
         shell-use)
@@ -18,7 +26,6 @@ phpv() {
                 return 1
             fi
             export PHPV_CURRENT="$ver"
-            phpv write-default "$ver"
             ;;
         *)
             command phpv "$cmd" "$@"
@@ -34,7 +41,6 @@ _phpv_auto_switch() {
             local current="${PHPV_CURRENT:-$(cat "$PHPV_ROOT/default" 2>/dev/null)}"
             if [ "$current" != "$phpver" ]; then
                 export PHPV_CURRENT="$phpver"
-                phpv write-default "$phpver" 2>/dev/null
             fi
         fi
     fi
@@ -50,9 +56,17 @@ export PATH="$PHPV_ROOT/bin:$PATH"
 
 phpv() {
     local cmd="$1"
-    shift
+    [ $# -gt 0 ] && shift
     case "$cmd" in
-        use|install|default|versions|list|which|uninstall|doctor|upgrade|auto-detect)
+        use)
+            if [ -z "$1" ]; then
+                echo "Error: version required" >&2
+                return 1
+            fi
+            command phpv "$cmd" "$@"
+            export PHPV_CURRENT="$1"
+            ;;
+        install|default|versions|list|which|uninstall|doctor|upgrade|auto-detect)
             command phpv "$cmd" "$@"
             ;;
         shell-use)
@@ -62,7 +76,6 @@ phpv() {
                 return 1
             fi
             export PHPV_CURRENT="$ver"
-            phpv write-default "$ver"
             ;;
         *)
             command phpv "$cmd" "$@"
@@ -78,7 +91,6 @@ _phpv_auto_switch() {
             local current="${PHPV_CURRENT:-$(cat "$PHPV_ROOT/default" 2>/dev/null)}"
             if [ "$current" != "$phpver" ]; then
                 export PHPV_CURRENT="$phpver"
-                phpv write-default "$phpver" 2>/dev/null
             fi
         fi
     fi
@@ -97,11 +109,17 @@ function phpv
     set -l cmd "$argv[1]"
     set -e argv[1]
     switch "$cmd"
-        case use|install|default|versions|list|which|uninstall|doctor|upgrade|auto-detect
+        case use
+            if test (count $argv) -eq 0
+                echo "Error: version required" >&2
+                return 1
+            end
+            command phpv "$cmd" $argv
+            set -gx PHPV_CURRENT "$argv[1]"
+        case install|default|versions|list|which|uninstall|doctor|upgrade|auto-detect
             command phpv "$cmd" $argv
         case shell-use
             set -gx PHPV_CURRENT "$argv[1]"
-            command phpv write-default "$argv[1]"
         case '*'
             command phpv "$cmd" $argv
     end
@@ -117,7 +135,6 @@ function _phpv_auto_switch
             end
             if test "$current" != "$phpver"
                 set -gx PHPV_CURRENT "$phpver"
-                command phpv write-default "$phpver" 2>/dev/null
             end
         end
     end

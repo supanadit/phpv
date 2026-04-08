@@ -8,8 +8,15 @@ import (
 
 const dynamicShimTemplate = `#!/bin/bash
 # Dynamic shim - resolves PHP version at runtime
+# Resolution order: PHPV_CURRENT → .phpvrc → composer.json → $PHPV_ROOT/default
 PHPV_ROOT="${PHPV_ROOT:-$HOME/.phpv}"
-PHPV_VERSION="${PHPV_CURRENT:-$(cat "$PHPV_ROOT/default" 2>/dev/null)}"
+if [ -n "$PHPV_CURRENT" ]; then
+    PHPV_VERSION="$PHPV_CURRENT"
+elif [ -f .phpvrc ] && [ -s .phpvrc ]; then
+    PHPV_VERSION="$(cat .phpvrc)"
+else
+    PHPV_VERSION="$(phpv auto-detect-resolve 2>/dev/null || cat "$PHPV_ROOT/default" 2>/dev/null)"
+fi
 if [ -z "$PHPV_VERSION" ]; then
     echo "Error: No PHP version selected. Run 'phpv use <version>' first." >&2
     exit 1

@@ -54,20 +54,23 @@ func (h *TerminalHandler) Use(constraint string) (*UseResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get silo: %w", err)
 	}
+
+	outputPath := utils.PHPOutputPath(silo, exactVersion)
+	phpBinary := filepath.Join(outputPath, "bin", "php")
+	if _, err := os.Stat(phpBinary); os.IsNotExist(err) {
+		return nil, fmt.Errorf("PHP %s is not properly installed (binary not found: %s)", exactVersion, phpBinary)
+	}
+
 	shimPath := utils.BinPath(silo)
 
 	if err := shim.WriteShims(shimPath); err != nil {
 		return nil, fmt.Errorf("failed to write shims: %w", err)
 	}
 
-	if err := h.Silo.SetDefault(exactVersion); err != nil {
-		return nil, fmt.Errorf("failed to set default: %w", err)
-	}
-
 	return &UseResult{
 		ExactVersion: exactVersion,
 		ShimPath:     shimPath,
-		OutputPath:   utils.PHPOutputPath(silo, exactVersion),
+		OutputPath:   outputPath,
 	}, nil
 }
 
@@ -166,6 +169,9 @@ func (h *TerminalHandler) Which() (string, error) {
 		return "", fmt.Errorf("failed to get silo: %w", err)
 	}
 	phpPath := filepath.Join(utils.PHPOutputPath(silo, defaultVer), "bin", "php")
+	if _, err := os.Stat(phpPath); os.IsNotExist(err) {
+		return "", nil
+	}
 	return phpPath, nil
 }
 
@@ -183,6 +189,13 @@ func (h *TerminalHandler) Uninstall(constraint string) (*UninstallResult, error)
 	silo, err := h.Silo.GetSilo()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get silo: %w", err)
+	}
+
+	outputPath := utils.PHPOutputPath(silo, exactVersion)
+	phpBinary := filepath.Join(outputPath, "bin", "php")
+	if _, err := os.Stat(phpBinary); os.IsNotExist(err) {
+		h.Silo.RemovePHPInstallation(exactVersion)
+		return nil, fmt.Errorf("PHP %s is not properly installed (binary not found: %s), cleaning up stale data", exactVersion, phpBinary)
 	}
 
 	state, err := h.Silo.GetState(exactVersion)

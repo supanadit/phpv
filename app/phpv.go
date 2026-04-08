@@ -252,17 +252,19 @@ func run(
 
 	useCmd := &cobra.Command{
 		Use:   "use <version>",
-		Short: "Switch to a PHP version",
-		Long:  `Switch to the specified PHP version. After running this command, add $PHPV_ROOT/bin to your PATH.`,
+		Short: "Switch to a PHP version for the current session",
+		Long:  `Switch to the specified PHP version. This sets PHPV_CURRENT for the current session only. Use 'phpv default' to set a global default.`,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			result, err := handler.Use(args[0])
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Switched to PHP %s\n", result.ExactVersion)
-			fmt.Printf("PHP binary: %s\n", result.OutputPath+"/bin/php")
-			fmt.Printf("Add to PATH: export PATH=%s:$PATH\n", result.ShimPath)
+			fmt.Printf("PHP %s is now active in this session\n", result.ExactVersion)
+			fmt.Printf("To use this version in new terminals, run:\n")
+			fmt.Printf("  export PHPV_CURRENT=%s\n", result.ExactVersion)
+			fmt.Printf("Or add 'export PATH=%s:$PATH' and use .phpvrc or composer.json for auto-switching\n", result.ShimPath)
+			fmt.Printf("To set a global default, use: phpv default %s\n", result.ExactVersion)
 			return nil
 		},
 	}

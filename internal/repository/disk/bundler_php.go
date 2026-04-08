@@ -3,8 +3,10 @@ package disk
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/pattern"
@@ -16,9 +18,13 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 		return err
 	}
 
+	outputPath := utils.PHPOutputPath(s.silo, version)
+	phpBinary := filepath.Join(outputPath, "bin", "php")
 	if check.Action == "skip" {
-		s.logInfo("✓ PHP %s is already installed at %s", version, utils.PHPOutputPath(s.silo, version))
-		return nil
+		if exists, _ := afero.Exists(s.fs, phpBinary); exists {
+			s.logInfo("✓ PHP %s is already installed at %s", version, outputPath)
+			return nil
+		}
 	}
 
 	if len(extensions) > 0 {

@@ -415,8 +415,22 @@ func TestSiloRepository_ListVersions(t *testing.T) {
 	}
 
 	versions = repo.ListVersions()
+	if len(versions) != 0 {
+		t.Errorf("expected 0 versions (no binary), got %d", len(versions))
+	}
+
+	outputBinDir := filepath.Join(tmpDir, "versions", "8.3.0", "output", "bin")
+	if err := os.MkdirAll(outputBinDir, 0755); err != nil {
+		t.Fatalf("failed to create bin dir: %v", err)
+	}
+	phpBinary := filepath.Join(outputBinDir, "php")
+	if err := os.WriteFile(phpBinary, []byte("fake"), 0755); err != nil {
+		t.Fatalf("failed to create fake php binary: %v", err)
+	}
+
+	versions = repo.ListVersions()
 	if len(versions) != 1 {
-		t.Errorf("expected 1 version, got %d", len(versions))
+		t.Errorf("expected 1 version (with binary), got %d", len(versions))
 	}
 }
 

@@ -284,7 +284,24 @@ func (r *SiloRepository) RemoveVersion(pkg, ver string) error {
 }
 
 func (r *SiloRepository) ListVersions() []string {
-	return r.listItems(utils.VersionPath(r.silo))
+	basePath := utils.VersionPath(r.silo)
+	entries, err := afero.ReadDir(r.fs, basePath)
+	if err != nil {
+		return nil
+	}
+
+	var items []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			versionPath := filepath.Join(basePath, entry.Name())
+			outputPath := filepath.Join(versionPath, "output", "bin", "php")
+			if exists, _ := afero.Exists(r.fs, outputPath); exists {
+				items = append(items, entry.Name())
+			}
+		}
+	}
+
+	return items
 }
 
 func (r *SiloRepository) GetDefault() (string, error) {

@@ -44,7 +44,7 @@ jobs:
         run: go build -o phpv ./app/phpv.go
 
       - name: Install PHP ${{ matrix.php_version }}
-        run: ./phpv install ${{ matrix.php_version }} --jobs=2
+        run: ./phpv install ${{ matrix.php_version }}
 
       - name: Use PHP ${{ matrix.php_version }}
         run: ./phpv use ${{ matrix.php_version }}

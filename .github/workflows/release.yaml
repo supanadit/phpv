@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            artifact_name: phpv-${{ github.event.release.tag_name }}-linux-amd64
+          - os: linux
+            arch: arm64
+            artifact_name: phpv-${{ github.event.release.tag_name }}-linux-arm64
+          - os: darwin
+            arch: amd64
+            artifact_name: phpv-${{ github.event.release.tag_name }}-darwin-amd64
+          - os: darwin
+            arch: arm64
+            artifact_name: phpv-${{ github.event.release.tag_name }}-darwin-arm64
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: 0
+        run: |
+          echo "Building for ${{ matrix.os }}/${{ matrix.arch }}"
+          go build -ldflags "-X github.com/supanadit/phpv/domain.AppVersion=${{ github.event.release.tag_name }}" -o ${{ matrix.artifact_name }} ./app/phpv.go
+          chmod +x ${{ matrix.artifact_name }}
+
+      - name: Generate checksums
+        run: |
+          sha256sum ${{ matrix.artifact_name }} > ${{ matrix.artifact_name }}.sha256
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ matrix.artifact_name }}
+            ${{ matrix.artifact_name }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  generate-completions:
+    name: Generate Shell Completions
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Build binary
+        run: |
+          go build -ldflags "-X github.com/supanadit/phpv/domain.AppVersion=${{ github.event.release.tag_name }}" -o phpv ./app/phpv.go
+
+      - name: Generate bash completion
+        run: |
+          mkdir -p completions
+          ./phpv completion bash > completions/phpv.bash
+
+      - name: Generate zsh completion
+        run: |
+          mkdir -p completions
+          ./phpv completion zsh > completions/_phpv
+
+      - name: Generate fish completion
+        run: |
+          mkdir -p completions
+          ./phpv completion fish > completions/phpv.fish
+
+      - name: Generate PowerShell completion
+        run: |
+          mkdir -p completions
+          ./phpv completion powershell > completions/phpv.ps1
+
+      - name: Upload completions
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            completions/phpv.bash
+            completions/_phpv
+            completions/phpv.fish
+            completions/phpv.ps1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

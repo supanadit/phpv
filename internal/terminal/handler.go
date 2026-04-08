@@ -3,7 +3,10 @@ package terminal
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 
 	"github.com/supanadit/phpv/bundler"
 	"github.com/supanadit/phpv/domain"
@@ -164,5 +167,125 @@ func (h *TerminalHandler) CleanBuildTools(dryRun bool) (*CleanBuildToolsResult, 
 		Removed:    removed,
 		WillRemove: willRemove,
 		DryRun:     dryRun,
+	}, nil
+}
+
+func (h *TerminalHandler) Upgrade(constraint string) (*UpgradeResult, error) {
+	currentVersion, err := h.resolveInstalledVersion(constraint)
+	if err != nil {
+		return nil, fmt.Errorf("no installed version matching %q: %w", constraint, err)
+	}
+
+	availableSources, err := h.Source.GetVersions()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get available versions: %w", err)
+	}
+
+	var phpVersions []string
+	for _, src := range availableSources {
+		if src.Name == "php" {
+			phpVersions = append(phpVersions, src.Version)
+		}
+	}
+
+	currentParsed := utils.ParseVersion(currentVersion)
+	var latestMatch string
+
+	for _, v := range phpVersions {
+		parsed := utils.ParseVersion(v)
+		if parsed.Major == currentParsed.Major && parsed.Minor == currentParsed.Minor {
+			if latestMatch == "" || utils.CompareVersions(parsed, utils.ParseVersion(latestMatch)) > 0 {
+				latestMatch = v
+			}
+		}
+	}
+
+	if latestMatch == "" || latestMatch == currentVersion {
+		return nil, fmt.Errorf("no newer version available for %s (currently at %s)", constraint, currentVersion)
+	}
+
+	fmt.Printf("Upgrading PHP %s to %s...\n", currentVersion, latestMatch)
+
+	_, err = h.BundlerRepo.Install(latestMatch, "", true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to install new version: %w", err)
+	}
+
+	silo, _ := h.Silo.GetSilo()
+	outputPath := utils.PHPOutputPath(silo, latestMatch)
+
+	return &UpgradeResult{
+		FromVersion: currentVersion,
+		ToVersion:   latestMatch,
+		Forge: domain.Forge{
+			Prefix: outputPath,
+			Env:    map[string]string{},
+		},
+	}, nil
+}
+
+func (h *TerminalHandler) Doctor() (*DoctorResult, error) {
+	var issues []DoctorIssue
+	var warnings []DoctorWarning
+
+	if runtime.GOOS == "linux" {
+		requiredCommands := []string{"make", "gcc", "bison", "flex", "re2c", " autoconf", "automake", "libtool", "pkg-config"}
+		for _, cmd := range requiredCommands {
+			name := strings.TrimPrefix(cmd, " ")
+			if name == "autoconf" || name == "automake" || name == "libtool" {
+				name = cmd
+			}
+			if _, err := exec.LookPath(name); err != nil {
+				issues = append(issues, DoctorIssue{
+					Category: "system",
+					Message:  fmt.Sprintf("required command not found: %s", name),
+				})
+			}
+		}
+
+		if _, err := exec.LookPath("xz"); err != nil {
+			issues = append(issues, DoctorIssue{
+				Category: "system",
+				Message:  "xz utility not found (required for extracting .tar.xz archives)",
+			})
+		}
+	}
+
+	silo, err := h.Silo.GetSilo()
+	if err != nil {
+		issues = append(issues, DoctorIssue{
+			Category: "phpv",
+			Message:  fmt.Sprintf("failed to get silo: %v", err),
+		})
+	} else {
+		if _, err := os.Stat(silo.Root); os.IsNotExist(err) {
+			issues = append(issues, DoctorIssue{
+				Category: "phpv",
+				Message:  fmt.Sprintf("PHPV_ROOT does not exist: %s", silo.Root),
+			})
+		}
+
+		defaultVer, _ := h.Silo.GetDefault()
+		if defaultVer != "" {
+			phpPath := filepath.Join(utils.PHPOutputPath(silo, defaultVer), "bin", "php")
+			if _, err := os.Stat(phpPath); os.IsNotExist(err) {
+				warnings = append(warnings, DoctorWarning{
+					Category: "phpv",
+					Message:  fmt.Sprintf("default PHP version set to %s but binary not found", defaultVer),
+				})
+			}
+		}
+	}
+
+	if len(issues) == 0 && len(warnings) == 0 {
+		warnings = append(warnings, DoctorWarning{
+			Category: "system",
+			Message:  "no issues detected",
+		})
+	}
+
+	return &DoctorResult{
+		Issues:   issues,
+		Warnings: warnings,
 	}, nil
 }

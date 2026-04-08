@@ -14,6 +14,8 @@ type TerminalService interface {
 	Which() (string, error)
 	Uninstall(version string) (*UninstallResult, error)
 	CleanBuildTools(dryRun bool) (*CleanBuildToolsResult, error)
+	Upgrade(constraint string) (*UpgradeResult, error)
+	Doctor() (*DoctorResult, error)
 }
 
 type UninstallResult struct {
@@ -26,4 +28,25 @@ type CleanBuildToolsResult struct {
 	Removed    []string
 	WillRemove []string
 	DryRun     bool
+}
+
+type UpgradeResult struct {
+	FromVersion string
+	ToVersion   string
+	Forge       domain.Forge
+}
+
+type DoctorResult struct {
+	Issues   []DoctorIssue
+	Warnings []DoctorWarning
+}
+
+type DoctorIssue struct {
+	Category string
+	Message  string
+}
+
+type DoctorWarning struct {
+	Category string
+	Message  string
 }

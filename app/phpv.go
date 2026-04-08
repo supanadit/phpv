@@ -33,6 +33,7 @@ func (s *silentLogger) LogEvent(event fxevent.Event) {}
 
 const (
 	minBoxWidth = 64
+	phpvVersion = "0.1.0"
 )
 
 func printBox(width int, lines []string) {
@@ -262,17 +263,42 @@ func run(
 			verbose, _ := cmd.Flags().GetBool("verbose")
 			compiler, _ := cmd.Flags().GetString("compiler")
 			fresh, _ := cmd.Flags().GetBool("fresh")
-			forge, err := handler.Install(args[0], compiler, verbose, fresh)
+			dryRun, _ := cmd.Flags().GetBool("dry-run")
+			jsonOutput, _ := cmd.Flags().GetBool("json")
+			quiet, _ := cmd.Flags().GetBool("quiet")
+			force, _ := cmd.Flags().GetBool("force")
+
+			if dryRun {
+				fmt.Println("[dry-run] Would install PHP", args[0])
+				return nil
+			}
+
+			if jsonOutput {
+				fmt.Printf(`{"command":"install","version":"%s","compiler":"%s","fresh":%t}\n`, args[0], compiler, fresh)
+			}
+
+			if quiet {
+				verbose = false
+			}
+
+			forge, err := handler.Install(args[0], compiler, verbose, fresh || force)
 			if err != nil {
 				return err
 			}
-			printInstallSummary(args[0], forge)
+
+			if !quiet {
+				printInstallSummary(args[0], forge)
+			}
 			return nil
 		},
 	}
 	installCmd.Flags().BoolP("verbose", "v", false, "Enable verbose output")
 	installCmd.Flags().String("compiler", "", "Force a specific compiler (e.g., zig, gcc)")
 	installCmd.Flags().Bool("fresh", false, "Clean existing installation before installing")
+	installCmd.Flags().Bool("dry-run", false, "Preview install steps without executing")
+	installCmd.Flags().Bool("json", false, "JSON output for machine parsing")
+	installCmd.Flags().BoolP("quiet", "q", false, "Suppress non-essential output")
+	installCmd.Flags().Bool("force", false, "Force rebuild even if already installed")
 
 	useCmd := &cobra.Command{
 		Use:   "use <version>",
@@ -448,6 +474,128 @@ func run(
 	}
 	buildToolsCleanCmd.Flags().Bool("dry-run", false, "Show what would be removed without actually removing")
 
+	upgradeCmd := &cobra.Command{
+		Use:   "upgrade [constraint]",
+		Short: "Upgrade to the latest PHP version",
+		Long:  `Upgrade the installed PHP version matching the constraint to the latest available version. If no constraint is given, upgrades the default version.`,
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			constraint := ""
+			if len(args) > 0 {
+				constraint = args[0]
+			} else {
+				defaultVer, err := handler.GetDefault()
+				if err != nil {
+					return err
+				}
+				if defaultVer == "" {
+					return fmt.Errorf("no default version set, specify a version to upgrade")
+				}
+				constraint = defaultVer
+			}
+			result, err := handler.Upgrade(constraint)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Upgraded PHP %s -> %s\n", result.FromVersion, result.ToVersion)
+			printInstallSummary(result.ToVersion, result.Forge)
+			return nil
+		},
+	}
+
+	doctorCmd := &cobra.Command{
+		Use:   "doctor",
+		Short: "Check system dependencies",
+		Long:  `Check if the system has all the required dependencies for building PHP.`,
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := handler.Doctor()
+			if err != nil {
+				return err
+			}
+			if len(result.Issues) > 0 {
+				fmt.Println("Issues found:")
+				for _, issue := range result.Issues {
+					fmt.Printf("  [%s] %s\n", issue.Category, issue.Message)
+				}
+			}
+			fmt.Println("Doctor check complete")
+			return nil
+		},
+	}
+
+	versionCmd := &cobra.Command{
+		Use:   "version",
+		Short: "Show phpv version",
+		Long:  `Show the version of phpv being used.`,
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Printf("phpv %s\n", phpvVersion)
+			return nil
+		},
+	}
+
+	completionCmd := &cobra.Command{
+		Use:   "completion [bash|zsh|fish|powershell]",
+		Short: "Generate shell completion script",
+		Long: `Generate shell completion script for the specified shell.
+		
+To load completions:
+
+Bash:
+
+  $ source <(phpv completion bash)
+
+  # To load completions for each session, execute once:
+  # Linux:
+  $ phpv completion bash > /etc/bash_completion.d/phpv
+  # macOS:
+  $ phpv completion bash > /usr/local/etc/bash_completion.d/phpv
+
+Zsh:
+
+  # If shell completion is not already enabled in your environment,
+  # you will need to enable it.  You can execute the following once:
+
+  $ echo "autoload -U compinit; compinit" >> ~/.zshrc
+
+  # To load completions for each session, execute once:
+  $ phpv completion zsh > "${fpath[1]}/_phpv"
+
+  # You will need to start a new shell for this setup to take effect.
+
+Fish:
+
+  $ phpv completion fish | source
+
+  # To load completions for each session, execute once:
+  $ phpv completion fish > ~/.config/fish/completions/phpv.fish
+
+PowerShell:
+
+  PS> phpv completion powershell | Out-String | Invoke-Expression
+
+  # To load completions for each session, execute once:
+  PS> phpv completion powershell > phpv.ps1
+  # and source this file from your PowerShell profile.
+`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			switch args[0] {
+			case "bash":
+				return rootCmd.GenBashCompletion(os.Stdout)
+			case "zsh":
+				return rootCmd.GenZshCompletion(os.Stdout)
+			case "fish":
+				return rootCmd.GenFishCompletion(os.Stdout, true)
+			case "powershell":
+				return rootCmd.GenPowerShellCompletionWithDesc(os.Stdout)
+			default:
+				return fmt.Errorf("unsupported shell: %s", args[0])
+			}
+		},
+	}
+
 	rootCmd.AddCommand(installCmd)
 	rootCmd.AddCommand(useCmd)
 	rootCmd.AddCommand(defaultCmd)
@@ -457,6 +605,12 @@ func run(
 	rootCmd.AddCommand(uninstallCmd)
 	rootCmd.AddCommand(buildToolsCmd)
 	buildToolsCmd.AddCommand(buildToolsCleanCmd)
+	rootCmd.AddCommand(upgradeCmd)
+	rootCmd.AddCommand(doctorCmd)
+	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(completionCmd)
+
+	rootCmd.Version = phpvVersion
 
 	if err := rootCmd.Execute(); err != nil {
 		shutdowner.Shutdown(fx.ExitCode(1))

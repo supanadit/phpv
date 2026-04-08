@@ -301,12 +301,16 @@ func run(
 	}
 
 	autoDetectResolveCmd := &cobra.Command{
-		Use:    "auto-detect-resolve",
+		Use:    "auto-detect-resolve [constraint]",
 		Hidden: true,
 		Short:  "Detect and resolve PHP version from composer.json",
-		Args:   cobra.NoArgs,
+		Args:   cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			version, err := handler.AutoDetectResolve()
+			constraint := ""
+			if len(args) > 0 {
+				constraint = args[0]
+			}
+			version, err := handler.AutoDetectResolve(constraint)
 			if err != nil {
 				os.Exit(1)
 			}

@@ -754,7 +754,7 @@ func TestAutoDetectResolve_NotInstalled(t *testing.T) {
 	os.WriteFile(filepath.Join(tmpDir, "composer.json"), []byte(composerJSON), 0644)
 	os.Chdir(tmpDir)
 
-	_, err = handler.AutoDetectResolve()
+	_, err = handler.AutoDetectResolve("")
 	if err == nil {
 		t.Error("AutoDetectResolve should fail when version is not installed")
 	}

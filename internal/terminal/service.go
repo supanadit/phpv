@@ -9,7 +9,7 @@ type TerminalService interface {
 	Use(version string) (*UseResult, error)
 	ShellUse(version string) error
 	AutoDetect() (string, error)
-	AutoDetectResolve() (string, error)
+	AutoDetectResolve(constraint string) (string, error)
 	SetDefault(version string) error
 	GetDefault() (string, error)
 	ListInstalled() ([]string, error)

@@ -13,8 +13,11 @@ phpv() {
                 echo "Error: version required" >&2
                 return 1
             fi
-            command phpv "$cmd" "$@"
-            export PHPV_CURRENT="$1"
+            command phpv "$cmd" "$@" >/dev/null 2>&1
+            resolved=$(phpv auto-detect-resolve "$1" 2>/dev/null)
+            if [ -n "$resolved" ]; then
+                export PHPV_CURRENT="$resolved"
+            fi
             ;;
         install|default|versions|list|which|uninstall|doctor|upgrade|auto-detect)
             command phpv "$cmd" "$@"
@@ -63,8 +66,11 @@ phpv() {
                 echo "Error: version required" >&2
                 return 1
             fi
-            command phpv "$cmd" "$@"
-            export PHPV_CURRENT="$1"
+            command phpv "$cmd" "$@" >/dev/null 2>&1
+            resolved=$(phpv auto-detect-resolve "$1" 2>/dev/null)
+            if [ -n "$resolved" ]; then
+                export PHPV_CURRENT="$resolved"
+            fi
             ;;
         install|default|versions|list|which|uninstall|doctor|upgrade|auto-detect)
             command phpv "$cmd" "$@"
@@ -114,8 +120,11 @@ function phpv
                 echo "Error: version required" >&2
                 return 1
             end
-            command phpv "$cmd" $argv
-            set -gx PHPV_CURRENT "$argv[1]"
+            command phpv "$cmd" $argv >/dev/null 2>&1
+            set -l resolved (phpv auto-detect-resolve "$argv[1]" 2>/dev/null)
+            if test -n "$resolved"
+                set -gx PHPV_CURRENT "$resolved"
+            end
         case install|default|versions|list|which|uninstall|doctor|upgrade|auto-detect
             command phpv "$cmd" $argv
         case shell-use

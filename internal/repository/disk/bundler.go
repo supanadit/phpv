@@ -72,6 +72,12 @@ func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo dom
 		siloRepo = cfg.SiloRepo.(*SiloRepository)
 	}
 
+	if cfg.Logger != nil {
+		if diskForge, ok := cfg.Forge.(*ForgeRepository); ok {
+			diskForge.SetLogger(cfg.Logger)
+		}
+	}
+
 	return &bundlerRepository{
 		assemblerSvc:    assemblerSvc,
 		advisorSvc:      advisorSvc,
@@ -93,7 +99,7 @@ func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo dom
 func (s *bundlerRepository) Install(version string, compiler string, fresh bool) (domain.Forge, error) {
 	exactVersion, err := s.resolvePHPVersion(version)
 	if err != nil {
-		return domain.Forge{}, fmt.Errorf("failed to resolve version %q: %w", version, err)
+		return domain.Forge{}, fmt.Errorf("[bundler] failed to resolve PHP version %q: %w", version, err)
 	}
 	return s.Orchestrate("php", exactVersion, compiler, fresh)
 }
@@ -101,18 +107,18 @@ func (s *bundlerRepository) Install(version string, compiler string, fresh bool)
 func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler string, fresh bool) (domain.Forge, error) {
 	if fresh {
 		if err := s.freshClean(name, exactVersion); err != nil {
-			return domain.Forge{}, fmt.Errorf("failed to clean existing installation: %w", err)
+			return domain.Forge{}, fmt.Errorf("[bundler] failed to clean existing installation: %w", err)
 		}
 	}
 
 	if err := s.siloRepo.MarkInProgress(exactVersion); err != nil {
-		return domain.Forge{}, fmt.Errorf("failed to mark installation in progress: %w", err)
+		return domain.Forge{}, fmt.Errorf("[bundler] failed to mark installation in progress: %w", err)
 	}
 
 	levels, err := s.assemblerSvc.GetDependencyLevels(name, exactVersion)
 	if err != nil {
 		s.siloRepo.MarkFailed(exactVersion)
-		return domain.Forge{}, fmt.Errorf("failed to resolve dependency levels: %w", err)
+		return domain.Forge{}, fmt.Errorf("[assembler] failed to resolve dependency levels: %w", err)
 	}
 
 	sem := make(chan struct{}, s.jobs)
@@ -151,7 +157,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 				if err != nil {
 					mu.Lock()
 					if firstErr == nil {
-						firstErr = fmt.Errorf("failed to build %s@%s: %w", dep.Name, depVersion, err)
+						firstErr = fmt.Errorf("[forge] failed to build %s@%s: %w", dep.Name, depVersion, err)
 					}
 					mu.Unlock()
 					return
@@ -184,7 +190,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 	if err := s.buildPHP(name, exactVersion, depLibraryPaths, depCppFlags, depLdFlags, forceCompiler); err != nil {
 		s.siloRepo.MarkFailed(exactVersion)
 		s.siloRepo.Rollback(exactVersion)
-		return domain.Forge{}, fmt.Errorf("failed to build PHP: %w", err)
+		return domain.Forge{}, fmt.Errorf("[forge] failed to build PHP: %w", err)
 	}
 
 	if err := s.siloRepo.SaveDependencyInfo(exactVersion, builtDeps); err != nil {
@@ -231,7 +237,7 @@ func (s *bundlerRepository) freshClean(name, exactVersion string) error {
 	for _, path := range pathsToClean {
 		if exists, _ := afero.Exists(s.fs, path); exists {
 			if err := s.fs.RemoveAll(path); err != nil {
-				return fmt.Errorf("failed to remove %s: %w", path, err)
+				return fmt.Errorf("[bundler] failed to remove %s: %w", path, err)
 			}
 		}
 	}

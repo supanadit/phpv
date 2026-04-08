@@ -24,8 +24,14 @@ func (r *ForgeRepository) detectStrategy(name, version string) domain.BuildStrat
 	}
 }
 
+func (r *ForgeRepository) logInfo(msg string, args ...interface{}) {
+	if r.logger != nil {
+		r.logger.Info(msg, args...)
+	}
+}
+
 func (r *ForgeRepository) BuildWithStrategy(config domain.ForgeConfig, strategy domain.BuildStrategy, sourceDir string) (domain.Forge, error) {
-	fmt.Printf("Compiling %s %s...\n", config.Name, config.Version)
+	r.logInfo("[forge] Compiling %s %s...", config.Name, config.Version)
 
 	silo, err := r.siloRepo.GetSilo()
 	if err != nil {
@@ -53,6 +59,6 @@ func (r *ForgeRepository) BuildWithStrategy(config domain.ForgeConfig, strategy 
 	case domain.StrategyAutogen:
 		return r.buildAutogen(sourceDir, installDir, config, env)
 	default:
-		return domain.Forge{}, fmt.Errorf("unsupported build strategy: %s", strategy)
+		return domain.Forge{}, fmt.Errorf("[forge] unsupported build strategy: %s", strategy)
 	}
 }

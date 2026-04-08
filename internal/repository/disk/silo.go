@@ -591,12 +591,23 @@ func (r *SiloRepository) RemoveBuildToolRef(name, version string) error {
 }
 
 func (r *SiloRepository) RemovePHPInstallation(phpVersion string) ([]string, error) {
+	deps, err := r.GetDependencyInfo(phpVersion)
+	if err != nil {
+		return nil, fmt.Errorf("[bundler] failed to read dependency info: %w", err)
+	}
+
+	var removedTools []string
+	var builtFromSource []string
+	for _, dep := range deps {
+		if dep.BuiltFromSource {
+			builtFromSource = append(builtFromSource, dep.Name+"@"+dep.Version)
+		}
+	}
+
 	refs, err := r.loadBuildToolsRefs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load build-tools refs: %w", err)
 	}
-
-	var removedTools []string
 
 	for key, phpVersions := range refs {
 		var newVersions []string
@@ -649,6 +660,8 @@ func (r *SiloRepository) RemovePHPInstallation(phpVersion string) ([]string, err
 			}
 		}
 	}
+
+	_ = builtFromSource
 
 	return removedTools, nil
 }

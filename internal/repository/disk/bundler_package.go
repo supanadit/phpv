@@ -66,7 +66,7 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 		}
 		s.logInfo("Installing zig@%s (required for PHP %s)...", zigVersion, phpVersion)
 		if err := s.installBuildTool("zig", zigVersion, phpVersion); err != nil {
-			return "", nil, "", fmt.Errorf("failed to install zig: %w", err)
+			return "", nil, "", fmt.Errorf("[bundler] failed to install zig: %w", err)
 		}
 		zigBinary = utils.GetZigCompilerPath(s.silo.Root, phpVersion)
 	} else {
@@ -86,7 +86,7 @@ func (s *bundlerRepository) installBuildTool(name, version, phpVersion string) e
 
 	urls, err := pattern.BuildURLs(pat, utils.ParseVersion(version))
 	if err != nil {
-		return fmt.Errorf("failed to build URL for %s@%s: %w", name, version, err)
+		return fmt.Errorf("[bundler] failed to build URL for %s@%s: %w", name, version, err)
 	}
 
 	installPath := filepath.Join(s.silo.Root, "build-tools", name, version)
@@ -94,27 +94,27 @@ func (s *bundlerRepository) installBuildTool(name, version, phpVersion string) e
 	if _, err := os.Stat(installPath); os.IsNotExist(err) {
 		archive := archivePathFromURL(s.silo.Root, name, version, urls[0])
 		if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
-			return fmt.Errorf("failed to download %s@%s: %w", name, version, err)
+			return fmt.Errorf("[download] failed to download %s@%s: %w", name, version, err)
 		}
 
 		if err := os.MkdirAll(installPath, 0755); err != nil {
-			return fmt.Errorf("failed to create directory for %s@%s: %w", name, version, err)
+			return fmt.Errorf("[bundler] failed to create directory for %s@%s: %w", name, version, err)
 		}
 
 		if _, err := s.unloadSvc.Unpack(archive, installPath); err != nil {
-			return fmt.Errorf("failed to extract %s@%s: %w", name, version, err)
+			return fmt.Errorf("[unload] failed to extract %s@%s: %w", name, version, err)
 		}
 	}
 
 	if name == "zig" {
 		zigBinary := filepath.Join(installPath, "zig")
 		if err := os.Chmod(zigBinary, 0755); err != nil {
-			return fmt.Errorf("failed to chmod zig binary: %w", err)
+			return fmt.Errorf("[bundler] failed to chmod zig binary: %w", err)
 		}
 	}
 
 	if err := s.siloRepo.IncrementBuildToolRef(name, version, phpVersion); err != nil {
-		return fmt.Errorf("failed to increment build-tool ref: %w", err)
+		return fmt.Errorf("[bundler] failed to increment build-tool ref: %w", err)
 	}
 
 	return nil
@@ -151,7 +151,7 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		}
 		urls, err := pattern.BuildURLs(pat, utils.ParseVersion(version))
 		if err != nil {
-			return fmt.Errorf("failed to build URL for %s@%s: %w", name, version, err)
+			return fmt.Errorf("[bundler] failed to build URL for %s@%s: %w", name, version, err)
 		}
 		archive := archivePathFromURL(s.silo.Root, name, version, urls[0])
 		if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
@@ -162,11 +162,11 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 	case "extract":
 		archive := s.findCachedArchive(name, version)
 		if archive == "" {
-			return fmt.Errorf("no cached archive for %s@%s", name, version)
+			return fmt.Errorf("[bundler] no cached archive for %s@%s", name, version)
 		}
 		dest := utils.GetSourceDirPath(s.silo, name, version)
 		if _, err := s.unloadSvc.Unpack(archive, dest); err != nil {
-			return err
+			return fmt.Errorf("[unload] failed to extract %s@%s: %w", name, version, err)
 		}
 		fallthrough
 	case "build", "rebuild":
@@ -181,7 +181,7 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		s.logInfo("✓ Successfully installed %s@%s%s", name, version, contextMsg)
 		return nil
 	}
-	return fmt.Errorf("unknown action %q for %s@%s", check.Action, name, version)
+	return fmt.Errorf("[bundler] unknown action %q for %s@%s", check.Action, name, version)
 }
 
 func (s *bundlerRepository) findCachedArchive(pkg, ver string) string {
@@ -201,7 +201,7 @@ func (s *bundlerRepository) findCachedArchive(pkg, ver string) string {
 func (s *bundlerRepository) buildFromSource(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, forceCompiler string) error {
 	sources, err := s.sourceSvc.GetSources(name, version)
 	if err != nil {
-		return fmt.Errorf("failed to get sources for %s@%s: %w", name, version, err)
+		return fmt.Errorf("[bundler] failed to get sources for %s@%s: %w", name, version, err)
 	}
 
 	var lastErr error
@@ -224,7 +224,7 @@ func (s *bundlerRepository) buildFromSource(name, version, phpVersion string, ld
 	}
 
 	if lastErr != nil {
-		return fmt.Errorf("all mirrors failed for %s@%s: %w", name, version, lastErr)
+		return fmt.Errorf("[download] all mirrors failed for %s@%s: %w", name, version, lastErr)
 	}
 	return nil
 }
@@ -237,7 +237,7 @@ func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion st
 
 	check, checkErr := s.advisorSvc.Check(name, version, phpVersion)
 	if checkErr != nil {
-		return fmt.Errorf("download failed: %w, system check also failed: %v", err, checkErr)
+		return fmt.Errorf("[download] download failed: %w, system check also failed: %v", err, checkErr)
 	}
 
 	if check.SystemAvailable {
@@ -257,7 +257,7 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 	sourceDir := utils.GetSourceDirPath(s.silo, name, version)
 
 	if err := os.MkdirAll(installDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create install directory: %w", err)
+		return fmt.Errorf("[forge] failed to create install directory: %w", err)
 	}
 
 	cc, cflags, cxx, err := s.getCompilerForVersion(phpVersion, forceCompiler)
@@ -323,7 +323,7 @@ func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion strin
 		}
 		urls, err := pattern.BuildURLs(pat, utils.ParseVersion(version))
 		if err != nil {
-			return nil, fmt.Errorf("failed to build URL for %s@%s: %w", name, version, err)
+			return nil, fmt.Errorf("[bundler] failed to build URL for %s@%s: %w", name, version, err)
 		}
 		archive := archivePathFromURL(s.silo.Root, name, version, urls[0])
 		if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
@@ -334,11 +334,11 @@ func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion strin
 	case "extract":
 		archive := s.findCachedArchive(name, version)
 		if archive == "" {
-			return nil, fmt.Errorf("no cached archive for %s@%s", name, version)
+			return nil, fmt.Errorf("[bundler] no cached archive for %s@%s", name, version)
 		}
 		dest := utils.GetSourceDirPath(s.silo, name, version)
 		if _, err := s.unloadSvc.Unpack(archive, dest); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("[unload] failed to extract %s@%s: %w", name, version, err)
 		}
 		fallthrough
 	case "build", "rebuild":
@@ -353,5 +353,5 @@ func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion strin
 		s.logInfo("✓ Successfully installed %s@%s%s", name, version, contextMsg)
 		return depInfo, nil
 	}
-	return nil, fmt.Errorf("unknown action %q for %s@%s", check.Action, name, version)
+	return nil, fmt.Errorf("[bundler] unknown action %q for %s@%s", check.Action, name, version)
 }

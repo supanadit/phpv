@@ -57,17 +57,17 @@ func (r *DownloadRepository) ensureFs() {
 func (r *DownloadRepository) exists(url string) error {
 	req, err := http.NewRequest(http.MethodHead, url, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("[download] failed to create request: %w", err)
 	}
 
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
+		return fmt.Errorf("[download] failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("file not found or inaccessible: %s", url)
+		return fmt.Errorf("[download] file not found or inaccessible: %s", url)
 	}
 
 	return nil
@@ -82,7 +82,7 @@ func (r *DownloadRepository) Download(url, destination string) (*domain.Download
 
 	dir := filepath.Dir(destination)
 	if err := r.fs.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create destination directory: %w", err)
+		return nil, fmt.Errorf("[download] failed to create destination directory: %w", err)
 	}
 
 	supportResume := r.checkResumeSupport(url)
@@ -95,17 +95,17 @@ func (r *DownloadRepository) Download(url, destination string) (*domain.Download
 		downloadedSize = stat.Size()
 		file, err = r.fs.OpenFile(destination, os.O_APPEND|os.O_WRONLY, 0o644)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open file for append: %w", err)
+			return nil, fmt.Errorf("[download] failed to open file for append: %w", err)
 		}
 	} else {
 		if err == nil && stat.Size() > 0 {
 			if err := r.fs.Remove(destination); err != nil {
-				return nil, fmt.Errorf("failed to remove incomplete file: %w", err)
+				return nil, fmt.Errorf("[download] failed to remove incomplete file: %w", err)
 			}
 		}
 		file, err = r.fs.Create(destination)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create file: %w", err)
+			return nil, fmt.Errorf("[download] failed to create file: %w", err)
 		}
 		downloadedSize = 0
 	}
@@ -113,7 +113,7 @@ func (r *DownloadRepository) Download(url, destination string) (*domain.Download
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("[download] failed to create request: %w", err)
 	}
 
 	if downloadedSize > 0 {
@@ -122,7 +122,7 @@ func (r *DownloadRepository) Download(url, destination string) (*domain.Download
 
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
+		return nil, fmt.Errorf("[download] failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -130,26 +130,26 @@ func (r *DownloadRepository) Download(url, destination string) (*domain.Download
 	case http.StatusOK:
 		if downloadedSize > 0 {
 			if err := file.Truncate(0); err != nil {
-				return nil, fmt.Errorf("failed to truncate file: %w", err)
+				return nil, fmt.Errorf("[download] failed to truncate file: %w", err)
 			}
 			if _, err := file.Seek(0, 0); err != nil {
-				return nil, fmt.Errorf("failed to seek file: %w", err)
+				return nil, fmt.Errorf("[download] failed to seek file: %w", err)
 			}
 		}
 	case http.StatusPartialContent:
 		if downloadedSize == 0 {
-			return nil, fmt.Errorf("server returned partial content but no existing file found")
+			return nil, fmt.Errorf("[download] server returned partial content but no existing file found")
 		}
 	case http.StatusRequestedRangeNotSatisfiable:
 		file.Close()
 		r.fs.Remove(destination)
 		return r.Download(url, destination)
 	default:
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("[download] unexpected status code: %d", resp.StatusCode)
 	}
 
 	if _, err := io.Copy(file, resp.Body); err != nil {
-		return nil, fmt.Errorf("failed to write file: %w", err)
+		return nil, fmt.Errorf("[download] failed to write file: %w", err)
 	}
 
 	return &domain.Download{
@@ -264,7 +264,7 @@ func (r *DownloadRepository) DownloadWithFallbacks(urls []string, destination st
 		}
 	}
 
-	return nil, fmt.Errorf("all download attempts failed")
+	return nil, fmt.Errorf("[download] all download attempts failed")
 }
 
 func (r *DownloadRepository) DownloadWithRetry(url, destination string, maxRetries, retryDelay int) (*domain.Download, error) {
@@ -283,7 +283,7 @@ func (r *DownloadRepository) DownloadWithRetry(url, destination string, maxRetri
 		lastErr = err
 	}
 
-	return nil, fmt.Errorf("download failed after %d attempts: %w", maxRetries+1, lastErr)
+	return nil, fmt.Errorf("[download] download failed after %d attempts: %w", maxRetries+1, lastErr)
 }
 
 func verifyChecksum(filePath, expectedChecksum string) error {
@@ -293,18 +293,18 @@ func verifyChecksum(filePath, expectedChecksum string) error {
 
 	file, err := os.Open(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to open file for checksum verification: %w", err)
+		return fmt.Errorf("[download] failed to open file for checksum verification: %w", err)
 	}
 	defer file.Close()
 
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
-		return fmt.Errorf("failed to compute checksum: %w", err)
+		return fmt.Errorf("[download] failed to compute checksum: %w", err)
 	}
 
 	actualChecksum := hex.EncodeToString(hash.Sum(nil))
 	if actualChecksum != expectedChecksum {
-		return fmt.Errorf("checksum mismatch: expected %s, got %s", expectedChecksum, actualChecksum)
+		return fmt.Errorf("[download] checksum mismatch: expected %s, got %s", expectedChecksum, actualChecksum)
 	}
 
 	return nil

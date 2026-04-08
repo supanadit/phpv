@@ -191,7 +191,7 @@ func NewFlagResolverRepository() domain.FlagResolverRepository {
 }
 
 func NewForgeRepository(dl download.DownloadRepository, ul unload.UnloadRepository, sil *disk.SiloRepository, src source.SourceRepository) forge.ForgeRepository {
-	return disk.NewForgeRepository(dl, ul, sil, src)
+	return disk.NewForgeRepository(dl, ul, sil, src, nil)
 }
 
 func NewBundlerServiceConfig(

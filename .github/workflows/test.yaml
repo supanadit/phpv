@@ -1,0 +1,57 @@
+name: Test PHP Versions
+
+on:
+  push:
+    branches: [development]
+  pull_request:
+    branches: [main, development]
+
+jobs:
+  test-php-install:
+    timeout-minutes: 45
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        php_version: ['7.0', '7.1', '7.2', '7.3', '7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Install build tools (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential gcc g++ make m4 autoconf automake libtool \
+            pkg-config bison flex re2c perl cmake \
+            libssl-dev libxml2-dev zlib1g-dev
+
+      - name: Install build tools (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install autoconf automake libtool m4 pkg-config \
+            bison flex re2c perl cmake openssl
+
+      - name: Build phpv
+        run: go build -o phpv ./app/phpv.go
+
+      - name: Install PHP ${{ matrix.php_version }}
+        run: ./phpv install ${{ matrix.php_version }} --jobs=2
+
+      - name: Use PHP ${{ matrix.php_version }}
+        run: ./phpv use ${{ matrix.php_version }}
+
+      - name: Verify PHP installation
+        run: |
+          export PATH="$HOME/.phpv/bin:$PATH"
+          php --version
+          php -v
+          which php

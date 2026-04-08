@@ -45,13 +45,7 @@ func (e *defaultExecutor) PkgConfig(pkg string) (string, string, error) {
 func (e *defaultExecutor) PkgConfigExists(pkg string) bool {
 	env := os.Environ()
 	pkgConfigPath := os.Getenv("PKG_CONFIG_PATH")
-	standardPaths := []string{
-		"/usr/lib/pkgconfig",
-		"/usr/lib/x86_64-linux-gnu/pkgconfig",
-		"/usr/share/pkgconfig",
-		"/usr/local/lib/pkgconfig",
-		"/usr/local/share/pkgconfig",
-	}
+	standardPaths := utils.GetSystemPkgConfigPaths()
 	for _, p := range standardPaths {
 		if pkgConfigPath == "" {
 			pkgConfigPath = p

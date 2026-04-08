@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/utils"
 )
 
 func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
@@ -24,13 +25,7 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 		}
 	}
 
-	pkgConfigPaths := []string{
-		"/usr/lib/pkgconfig",
-		"/usr/lib/x86_64-linux-gnu/pkgconfig",
-		"/usr/share/pkgconfig",
-		"/usr/local/lib/pkgconfig",
-		"/usr/local/share/pkgconfig",
-	}
+	pkgConfigPaths := utils.GetSystemPkgConfigPaths()
 	for i, v := range env {
 		if after, ok := strings.CutPrefix(v, "PKG_CONFIG_PATH="); ok {
 			pkgConfigPaths = append(pkgConfigPaths, strings.Split(after, ":")...)

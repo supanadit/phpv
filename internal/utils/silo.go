@@ -1,7 +1,9 @@
 package utils
 
 import (
+	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/supanadit/phpv/domain"
 )
@@ -84,4 +86,44 @@ func BuildToolPath(silo *domain.Silo, pkg, ver string) string {
 
 func BuildToolBinPath(silo *domain.Silo, pkg, ver string) string {
 	return filepath.Join(BuildToolPath(silo, pkg, ver), "bin")
+}
+
+func GetSystemPkgConfigPaths() []string {
+	var paths []string
+
+	basePaths := []string{
+		"/usr/lib/pkgconfig",
+		"/usr/share/pkgconfig",
+		"/usr/local/lib/pkgconfig",
+		"/usr/local/share/pkgconfig",
+		"/opt/homebrew/lib/pkgconfig",
+	}
+
+	archSuffix := runtime.GOARCH + "-linux-gnu"
+
+	linuxGnuPaths := []string{
+		filepath.Join("/usr/lib", archSuffix, "pkgconfig"),
+		filepath.Join("/usr/lib64", archSuffix, "pkgconfig"),
+	}
+
+	if runtime.GOOS == "linux" {
+		for _, p := range linuxGnuPaths {
+			if _, err := os.Stat(p); err == nil {
+				paths = append(paths, p)
+			}
+		}
+		paths = append(basePaths, paths...)
+	} else {
+		paths = basePaths
+	}
+
+	return paths
+}
+
+func GetZigCompilerPath(siloRoot, phpVersion string) string {
+	zigVersion := "0.15.2"
+	if v := ParseVersion(phpVersion); v.Major < 7 {
+		zigVersion = "0.13.0"
+	}
+	return filepath.Join(siloRoot, "build-tools", "zig", zigVersion, "zig")
 }

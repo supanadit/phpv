@@ -32,24 +32,25 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 		return "", []string{}, "", nil
 	}
 
-	systemZig := "/home/supanadit/SDK/Zig/0.15.2/zig"
-	if _, err := os.Stat(systemZig); err == nil {
-		return systemZig + " cc", []string{"-fPIC", "-Wno-error"}, systemZig + " c++", nil
+	if zigPath := os.Getenv("PHPV_ZIG_PATH"); zigPath != "" {
+		if _, err := os.Stat(zigPath); err == nil {
+			return zigPath + " cc", []string{"-fPIC", "-Wno-error"}, zigPath + " c++", nil
+		}
 	}
 
-	zigVersion := "0.15.2"
-	v := utils.ParseVersion(phpVersion)
-	if v.Major < 7 {
-		zigVersion = "0.13.0"
-	}
-	zigBinary := filepath.Join(s.silo.Root, "build-tools", "zig", zigVersion, "zig")
+	zigBinary := utils.GetZigCompilerPath(s.silo.Root, phpVersion)
 
 	if _, err := os.Stat(zigBinary); os.IsNotExist(err) {
+		v := utils.ParseVersion(phpVersion)
+		zigVersion := "0.15.2"
+		if v.Major < 7 {
+			zigVersion = "0.13.0"
+		}
 		fmt.Printf("Installing zig@%s (required for PHP %s)...\n", zigVersion, phpVersion)
 		if err := s.installBuildTool("zig", zigVersion); err != nil {
 			return "", nil, "", fmt.Errorf("failed to install zig: %w", err)
 		}
-		zigBinary = filepath.Join(s.silo.Root, "build-tools", "zig", zigVersion, "zig")
+		zigBinary = utils.GetZigCompilerPath(s.silo.Root, phpVersion)
 	}
 
 	return zigBinary + " cc", []string{"-fPIC", "-Wno-error"}, zigBinary + " c++", nil

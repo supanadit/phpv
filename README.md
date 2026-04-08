@@ -362,9 +362,3 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 ## License
 
 phpv is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
-## Links
-
-- [Documentation](docs/)
-- [Issue Tracker](https://github.com/supanadit/phpv/issues)
-- [Release Notes](CHANGELOG.md)

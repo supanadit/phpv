@@ -6,6 +6,7 @@ import (
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/download"
 	"github.com/supanadit/phpv/forge"
+	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/source"
 	"github.com/supanadit/phpv/unload"
@@ -27,4 +28,5 @@ type BundlerServiceConfig struct {
 	SiloRepo  silo.SiloRepository
 	Jobs      int
 	Verbose   bool
+	Logger    utils.Logger
 }

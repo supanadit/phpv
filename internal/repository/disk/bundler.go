@@ -46,6 +46,7 @@ type bundlerRepository struct {
 	fs              afero.Fs
 	jobs            int
 	verbose         bool
+	logger          utils.Logger
 }
 
 func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo domain.FlagResolverRepository) bundler.BundlerRepository {
@@ -84,6 +85,7 @@ func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo dom
 		fs:              afero.NewOsFs(),
 		jobs:            jobs,
 		verbose:         cfg.Verbose,
+		logger:          cfg.Logger,
 	}
 }
 

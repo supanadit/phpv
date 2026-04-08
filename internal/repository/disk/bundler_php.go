@@ -16,11 +16,11 @@ func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldF
 	}
 
 	if check.Action == "skip" {
-		fmt.Printf("✓ PHP %s is already installed at %s\n", version, utils.PHPOutputPath(s.silo, version))
+		s.logInfo("✓ PHP %s is already installed at %s", version, utils.PHPOutputPath(s.silo, version))
 		return nil
 	}
 
-	fmt.Printf("Building PHP %s...\n", version)
+	s.logInfo("Building PHP %s...", version)
 
 	pat, err := s.patternRegistry.MatchPatternByType(name, check.SourceType, "linux", "x86_64", utils.ParseVersion(version))
 	if err != nil {
@@ -76,10 +76,10 @@ func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldF
 
 	_, err = s.forgeSvc.Build(config, sourceDir)
 	if err != nil {
-		fmt.Printf("✗ Failed to build PHP %s: %v\n", version, err)
+		s.logError("✗ Failed to build PHP %s: %v", version, err)
 		return err
 	}
 
-	fmt.Printf("✓ PHP %s installed successfully\n", version)
+	s.logInfo("✓ PHP %s installed successfully", version)
 	return nil
 }

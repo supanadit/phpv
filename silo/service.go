@@ -30,6 +30,8 @@ type SiloRepository interface {
 	RetrieveVersion(pkg, ver string) (io.ReadCloser, error)
 	RemoveVersion(pkg, ver string) error
 	ListVersions() []string
+	GetDefault() (string, error)
+	SetDefault(version string) error
 
 	FullClean(pkg, ver string) error
 	CleanAll() error
@@ -50,6 +52,44 @@ type SiloRepository interface {
 	RemoveBuildToolRef(name, version string) error
 
 	RemovePHPInstallation(phpVersion string) ([]string, error)
+	GetInstalledBuildTools() ([]string, error)
+	RemoveUnusedBuildTools(dryRun bool) ([]string, []string, error)
+}
+
+type ArchiveRepository interface {
+	ArchiveExists(pkg, ver string) bool
+	GetArchivePath(pkg, ver string) string
+	StoreArchive(pkg, ver string, data io.Reader) error
+	RetrieveArchive(pkg, ver string) (io.ReadCloser, error)
+	RemoveArchive(pkg, ver string) error
+	ListArchives() []string
+}
+
+type SourceRepository interface {
+	SourceExists(pkg, ver string) bool
+	GetSourcePath(pkg, ver string) string
+	StoreSource(pkg, ver string, data io.Reader) error
+	RetrieveSource(pkg, ver string) (io.ReadCloser, error)
+	RemoveSource(pkg, ver string) error
+	ListSources() []string
+}
+
+type VersionRepository interface {
+	VersionExists(pkg, ver string) bool
+	GetVersionPath(pkg, ver string) string
+	StoreVersion(pkg, ver string, data io.Reader) error
+	RetrieveVersion(pkg, ver string) (io.ReadCloser, error)
+	RemoveVersion(pkg, ver string) error
+	ListVersions() []string
+	GetDefault() (string, error)
+	SetDefault(version string) error
+}
+
+type BuildToolsRepository interface {
+	IncrementBuildToolRef(name, version, phpVersion string) error
+	DecrementBuildToolRef(name, version, phpVersion string) error
+	GetBuildToolRefs() (map[string][]string, error)
+	RemoveBuildToolRef(name, version string) error
 	GetInstalledBuildTools() ([]string, error)
 	RemoveUnusedBuildTools(dryRun bool) ([]string, []string, error)
 }
@@ -142,6 +182,14 @@ func (s *Service) RemoveVersion(pkg, ver string) error {
 
 func (s *Service) ListVersions() []string {
 	return s.repo.ListVersions()
+}
+
+func (s *Service) GetDefault() (string, error) {
+	return s.repo.GetDefault()
+}
+
+func (s *Service) SetDefault(version string) error {
+	return s.repo.SetDefault(version)
 }
 
 func (s *Service) FullClean(pkg, ver string) error {

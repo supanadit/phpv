@@ -10,6 +10,24 @@ import (
 	"github.com/supanadit/phpv/pattern"
 )
 
+func (s *bundlerRepository) logInfo(msg string, args ...interface{}) {
+	if s.logger != nil {
+		s.logger.Info(msg, args...)
+	}
+}
+
+func (s *bundlerRepository) logWarn(msg string, args ...interface{}) {
+	if s.logger != nil {
+		s.logger.Warn(msg, args...)
+	}
+}
+
+func (s *bundlerRepository) logError(msg string, args ...interface{}) {
+	if s.logger != nil {
+		s.logger.Error(msg, args...)
+	}
+}
+
 func (s *bundlerRepository) needsAlternativeCC(phpVersion string, forceCompiler string) bool {
 	if forceCompiler == "zig" {
 		return true
@@ -46,14 +64,14 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 		if v.Major < 7 {
 			zigVersion = "0.13.0"
 		}
-		fmt.Printf("Installing zig@%s (required for PHP %s)...\n", zigVersion, phpVersion)
+		s.logInfo("Installing zig@%s (required for PHP %s)...", zigVersion, phpVersion)
 		if err := s.installBuildTool("zig", zigVersion, phpVersion); err != nil {
 			return "", nil, "", fmt.Errorf("failed to install zig: %w", err)
 		}
 		zigBinary = utils.GetZigCompilerPath(s.silo.Root, phpVersion)
 	} else {
 		if err := s.siloRepo.IncrementBuildToolRef("zig", filepath.Base(filepath.Dir(zigBinary)), phpVersion); err != nil {
-			fmt.Printf("Warning: failed to increment zig ref: %v\n", err)
+			s.logWarn("Warning: failed to increment zig ref: %v", err)
 		}
 	}
 
@@ -110,23 +128,23 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 
 	if check.SystemAvailable && !mustBuildFromSource(name, phpVersion) {
 		if isBuildTool {
-			fmt.Printf("  ✓ %s@%s (system)%s\n", name, version, contextMsg)
+			s.logInfo("  ✓ %s@%s (system)%s", name, version, contextMsg)
 		} else {
-			fmt.Printf("✓ %s@%s at %s%s\n", name, version, check.SystemPath, contextMsg)
+			s.logInfo("✓ %s@%s at %s%s", name, version, check.SystemPath, contextMsg)
 		}
 		return nil
 	}
 
 	if check.SystemAvailable && mustBuildFromSource(name, phpVersion) {
-		fmt.Printf("System %s available but PHP %s requires building from source\n", name, phpVersion)
+		s.logInfo("System %s available but PHP %s requires building from source", name, phpVersion)
 	}
 
 	switch check.Action {
 	case "skip":
-		fmt.Printf("✓ %s@%s already installed%s\n", name, version, contextMsg)
+		s.logInfo("✓ %s@%s already installed%s", name, version, contextMsg)
 		return nil
 	case "download":
-		fmt.Printf("Installing %s@%s%s...\n", name, version, contextMsg)
+		s.logInfo("Installing %s@%s%s...", name, version, contextMsg)
 		pat, err := s.patternRegistry.MatchPatternByType(name, check.SourceType, "linux", "x86_64", utils.ParseVersion(version))
 		if err != nil {
 			return err
@@ -137,7 +155,7 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		}
 		archive := archivePathFromURL(s.silo.Root, name, version, urls[0])
 		if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
-			fmt.Printf("  Download failed, falling back to source build\n")
+			s.logWarn("  Download failed, falling back to source build")
 			return s.buildFromSourceOrSystem(name, version, phpVersion, ldPath, cppFlags, ldFlags, check.Suggestion, forceCompiler)
 		}
 		fallthrough
@@ -154,13 +172,13 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 	case "build", "rebuild":
 		err := s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, forceCompiler)
 		if err != nil {
-			fmt.Printf("✗ Failed to build %s@%s: %v\n", name, version, err)
+			s.logError("✗ Failed to build %s@%s: %v", name, version, err)
 			if check.Suggestion != "" {
-				fmt.Printf("\n💡 Tip: Install system package to avoid building from source:\n   %s\n\n", check.Suggestion)
+				s.logWarn("\n💡 Tip: Install system package to avoid building from source:\n   %s\n\n", check.Suggestion)
 			}
 			return err
 		}
-		fmt.Printf("✓ Successfully installed %s@%s%s\n", name, version, contextMsg)
+		s.logInfo("✓ Successfully installed %s@%s%s", name, version, contextMsg)
 		return nil
 	}
 	return fmt.Errorf("unknown action %q for %s@%s", check.Action, name, version)
@@ -191,14 +209,14 @@ func (s *bundlerRepository) buildFromSource(name, version, phpVersion string, ld
 		archive := archivePathFromURL(s.silo.Root, name, version, src.URL)
 		if _, err := s.downloadSvc.Download(src.URL, archive); err != nil {
 			lastErr = err
-			fmt.Printf("Download failed for %s@%s from %s, trying next mirror...\n", name, version, src.URL)
+			s.logWarn("Download failed for %s@%s from %s, trying next mirror...", name, version, src.URL)
 			continue
 		}
 
 		sourceDir := utils.GetSourceDirPath(s.silo, name, version)
 		if _, err := s.unloadSvc.Unpack(archive, sourceDir); err != nil {
 			lastErr = err
-			fmt.Printf("Extraction failed for %s@%s, trying next mirror...\n", name, version)
+			s.logWarn("Extraction failed for %s@%s, trying next mirror...", name, version)
 			continue
 		}
 
@@ -223,12 +241,12 @@ func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion st
 	}
 
 	if check.SystemAvailable {
-		fmt.Printf("Using system %s@%s at %s (build from source failed: %v)\n", name, version, check.SystemPath, err)
+		s.logInfo("Using system %s@%s at %s (build from source failed: %v)", name, version, check.SystemPath, err)
 		return nil
 	}
 
 	if suggestion != "" {
-		fmt.Printf("\n💡 Tip: Install system package to avoid building from source:\n   %s\n\n", suggestion)
+		s.logWarn("\n💡 Tip: Install system package to avoid building from source:\n   %s\n\n", suggestion)
 	}
 
 	return err

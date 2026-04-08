@@ -216,6 +216,13 @@ func NewBundlerServiceConfig(
 		}
 	}
 
+	var logger utils.Logger
+	if verbose {
+		logger = utils.NewLogger(utils.LogLevelInfo)
+	} else {
+		logger = &utils.SilentLogger{}
+	}
+
 	return bundler.BundlerServiceConfig{
 		Assembler: asm,
 		Advisor:   adv,
@@ -226,6 +233,7 @@ func NewBundlerServiceConfig(
 		Silo:      silo,
 		SiloRepo:  sil,
 		Verbose:   verbose,
+		Logger:    logger,
 	}, nil
 }
 

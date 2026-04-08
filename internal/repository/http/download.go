@@ -1,6 +1,8 @@
 package http
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/download"
 )
 
 type DownloadRepository struct {
@@ -21,7 +24,16 @@ type DownloadRepository struct {
 func NewDownloadRepository() *DownloadRepository {
 	return &DownloadRepository{
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 120 * time.Second,
+		},
+		fs: afero.NewOsFs(),
+	}
+}
+
+func NewDownloadRepositoryWithTimeout(timeout time.Duration) *DownloadRepository {
+	return &DownloadRepository{
+		client: &http.Client{
+			Timeout: timeout,
 		},
 		fs: afero.NewOsFs(),
 	}
@@ -30,7 +42,7 @@ func NewDownloadRepository() *DownloadRepository {
 func NewDownloadRepositoryWithFs(fs afero.Fs) *DownloadRepository {
 	return &DownloadRepository{
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 120 * time.Second,
 		},
 		fs: fs,
 	}
@@ -182,48 +194,118 @@ func (r *DownloadRepository) isValidContentType(resp *http.Response) bool {
 	return true
 }
 
-func (r *DownloadRepository) DownloadWithFallbacks(urls []string, destination string) (*domain.Download, error) {
-	var lastErr error
+func (r *DownloadRepository) DownloadWithFallbacks(urls []string, destination string, options ...download.DownloadOption) (*domain.Download, error) {
+	opts := &download.DownloadOptions{
+		MaxRetries: 3,
+		RetryDelay: 1000, // 1 second base delay
+	}
+
+	for _, opt := range options {
+		opt(opts)
+	}
+
 	for _, url := range urls {
-		err := r.exists(url)
-		if err != nil {
-			lastErr = err
-			continue
+		var lastErr error
+
+		for attempt := 0; attempt <= opts.MaxRetries; attempt++ {
+			if attempt > 0 {
+				delay := time.Duration(opts.RetryDelay*(1<<(attempt-1))) * time.Millisecond
+				time.Sleep(delay)
+			}
+
+			err := r.exists(url)
+			if err != nil {
+				lastErr = fmt.Errorf("[attempt %d/%d] HEAD check failed: %w", attempt+1, opts.MaxRetries+1, err)
+				continue
+			}
+
+			req, err := http.NewRequest(http.MethodHead, url, nil)
+			if err != nil {
+				lastErr = fmt.Errorf("[attempt %d/%d] failed to create request: %w", attempt+1, opts.MaxRetries+1, err)
+				continue
+			}
+
+			resp, err := r.client.Do(req)
+			if err != nil {
+				lastErr = fmt.Errorf("[attempt %d/%d] request failed: %w", attempt+1, opts.MaxRetries+1, err)
+				continue
+			}
+			resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				lastErr = fmt.Errorf("[attempt %d/%d] file not found or inaccessible: %s", attempt+1, opts.MaxRetries+1, url)
+				continue
+			}
+
+			if !r.isValidContentType(resp) {
+				lastErr = fmt.Errorf("[attempt %d/%d] server returned HTML instead of archive: %s", attempt+1, opts.MaxRetries+1, url)
+				continue
+			}
+
+			download, err := r.DownloadWithRetry(url, destination, opts.MaxRetries, opts.RetryDelay)
+			if err != nil {
+				lastErr = fmt.Errorf("[attempt %d/%d] download failed: %w", attempt+1, opts.MaxRetries+1, err)
+				continue
+			}
+
+			if opts.Checksum != "" {
+				if err := verifyChecksum(destination, opts.Checksum); err != nil {
+					r.fs.Remove(destination)
+					lastErr = fmt.Errorf("[attempt %d/%d] checksum verification failed: %w", attempt+1, opts.MaxRetries+1, err)
+					continue
+				}
+			}
+
+			return download, nil
 		}
 
-		req, err := http.NewRequest(http.MethodHead, url, nil)
-		if err != nil {
-			lastErr = fmt.Errorf("failed to create request: %w", err)
+		if lastErr != nil {
 			continue
 		}
+	}
 
-		resp, err := r.client.Do(req)
-		if err != nil {
-			lastErr = fmt.Errorf("failed to send request: %w", err)
-			continue
-		}
-		resp.Body.Close()
+	return nil, fmt.Errorf("all download attempts failed")
+}
 
-		if resp.StatusCode != http.StatusOK {
-			lastErr = fmt.Errorf("file not found or inaccessible: %s", url)
-			continue
-		}
+func (r *DownloadRepository) DownloadWithRetry(url, destination string, maxRetries, retryDelay int) (*domain.Download, error) {
+	var lastErr error
 
-		if !r.isValidContentType(resp) {
-			lastErr = fmt.Errorf("server returned HTML instead of archive: %s", url)
-			continue
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			delay := time.Duration(retryDelay*(1<<(attempt-1))) * time.Millisecond
+			time.Sleep(delay)
 		}
 
 		download, err := r.Download(url, destination)
-		if err != nil {
-			lastErr = err
-			continue
+		if err == nil {
+			return download, nil
 		}
-		return download, nil
+		lastErr = err
 	}
 
-	if lastErr != nil {
-		return nil, fmt.Errorf("all download attempts failed: %w", lastErr)
+	return nil, fmt.Errorf("download failed after %d attempts: %w", maxRetries+1, lastErr)
+}
+
+func verifyChecksum(filePath, expectedChecksum string) error {
+	if expectedChecksum == "" {
+		return nil
 	}
-	return nil, fmt.Errorf("no URLs available to download")
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open file for checksum verification: %w", err)
+	}
+	defer file.Close()
+
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return fmt.Errorf("failed to compute checksum: %w", err)
+	}
+
+	actualChecksum := hex.EncodeToString(hash.Sum(nil))
+	if actualChecksum != expectedChecksum {
+		return fmt.Errorf("checksum mismatch: expected %s, got %s", expectedChecksum, actualChecksum)
+	}
+
+	return nil
 }

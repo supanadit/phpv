@@ -39,5 +39,6 @@ type URLPattern struct {
 	Constraint    func(v *Version) bool
 	Template      string
 	Fallbacks     []string
+	Checksum      string // SHA256 checksum for verification (optional)
 	ExtensionFunc func(v *Version) string
 }

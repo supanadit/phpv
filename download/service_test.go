@@ -19,7 +19,7 @@ func (m *mockDownloadRepository) Download(url, destination string) (*domain.Down
 	return m.download, nil
 }
 
-func (m *mockDownloadRepository) DownloadWithFallbacks(urls []string, destination string) (*domain.Download, error) {
+func (m *mockDownloadRepository) DownloadWithFallbacks(urls []string, destination string, options ...DownloadOption) (*domain.Download, error) {
 	if m.err != nil {
 		return nil, m.err
 	}

@@ -2,6 +2,11 @@ package pattern
 
 import "github.com/supanadit/phpv/domain"
 
+// DefaultURLPatterns provides download URLs for all supported packages.
+// Checksum field can be added for security - run:
+//   curl -sL <url> | sha256sum
+// Checksums should be added per major.minor.patch version for accuracy.
+
 var DefaultURLPatterns = []domain.URLPattern{
 	{
 		Name:       "php",

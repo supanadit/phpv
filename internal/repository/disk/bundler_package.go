@@ -7,6 +7,7 @@ import (
 
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/utils"
+	"github.com/supanadit/phpv/pattern"
 )
 
 func (s *bundlerRepository) needsAlternativeCC(phpVersion string, forceCompiler string) bool {
@@ -55,13 +56,18 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 }
 
 func (s *bundlerRepository) installBuildTool(name, version string) error {
-	url, err := s.patternRegistry.BuildURLByType(name, version, domain.SourceTypeBinary)
+	pat, err := s.patternRegistry.MatchPatternByType(name, domain.SourceTypeBinary, "linux", "x86_64", utils.ParseVersion(version))
 	if err != nil {
 		return err
 	}
 
-	archive := archivePathFromURL(s.silo.Root, name, version, url)
-	if _, err := s.downloadSvc.Download(url, archive); err != nil {
+	urls, err := pattern.BuildURLs(pat, utils.ParseVersion(version))
+	if err != nil {
+		return fmt.Errorf("failed to build URL for %s@%s: %w", name, version, err)
+	}
+
+	archive := archivePathFromURL(s.silo.Root, name, version, urls[0])
+	if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
 		return fmt.Errorf("failed to download %s@%s: %w", name, version, err)
 	}
 
@@ -109,13 +115,17 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		return nil
 	case "download":
 		fmt.Printf("Installing %s@%s%s...\n", name, version, contextMsg)
-		url, err := s.patternRegistry.BuildURLByType(name, version, check.SourceType)
+		pat, err := s.patternRegistry.MatchPatternByType(name, check.SourceType, "linux", "x86_64", utils.ParseVersion(version))
 		if err != nil {
 			return err
 		}
-		archive := archivePathFromURL(s.silo.Root, name, version, url)
-		if _, err := s.downloadSvc.Download(url, archive); err != nil {
-			fmt.Printf("  Binary download failed, falling back to source build\n")
+		urls, err := pattern.BuildURLs(pat, utils.ParseVersion(version))
+		if err != nil {
+			return fmt.Errorf("failed to build URL for %s@%s: %w", name, version, err)
+		}
+		archive := archivePathFromURL(s.silo.Root, name, version, urls[0])
+		if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
+			fmt.Printf("  Download failed, falling back to source build\n")
 			return s.buildFromSourceOrSystem(name, version, phpVersion, ldPath, cppFlags, ldFlags, check.Suggestion, forceCompiler)
 		}
 		fallthrough

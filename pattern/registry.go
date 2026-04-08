@@ -130,3 +130,26 @@ func BuildURL(pattern domain.URLPattern, v *domain.Version) (string, error) {
 
 	return url, nil
 }
+
+func BuildURLs(pattern domain.URLPattern, v *domain.Version) ([]string, error) {
+	var urls []string
+
+	url, err := BuildURL(pattern, v)
+	if err != nil {
+		return nil, err
+	}
+	urls = append(urls, url)
+
+	for _, fallback := range pattern.Fallbacks {
+		fbURL := fallback
+		fbURL = strings.ReplaceAll(fbURL, "{version}", v.Raw)
+		fbURL = strings.ReplaceAll(fbURL, "{major}.{minor}", fmt.Sprintf("%d.%d", v.Major, v.Minor))
+		if pattern.ExtensionFunc != nil {
+			ext := pattern.ExtensionFunc(v)
+			fbURL = strings.ReplaceAll(fbURL, "{ext}", ext)
+		}
+		urls = append(urls, fbURL)
+	}
+
+	return urls, nil
+}

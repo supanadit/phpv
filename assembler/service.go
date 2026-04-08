@@ -12,6 +12,7 @@ import (
 type AssemblerRepository interface {
 	GetGraph(packageName string, version string) (domain.DependencyGraph, error)
 	GetDependencies(packageName string, version string) ([]domain.Dependency, error)
+	GetOrderedDependencies(packageName string, version string) ([]domain.Dependency, error)
 }
 
 type AssemblerService struct {
@@ -59,11 +60,73 @@ func (s *AssemblerService) GetDependencies(packageName string, version string) (
 	return pkg.Default, nil
 }
 
+func (s *AssemblerService) GetOrderedDependencies(packageName string, version string) ([]domain.Dependency, error) {
+	visiting := make(map[string]bool)
+	visited := make(map[string]bool)
+	var result []domain.Dependency
+	seen := make(map[string]bool)
+
+	var resolve func(name string, ver string) error
+	resolve = func(name string, ver string) error {
+		if visited[name] {
+			return nil
+		}
+		if visiting[name] {
+			return fmt.Errorf("circular dependency detected involving %s", name)
+		}
+
+		visiting[name] = true
+
+		deps, err := s.GetDependencies(name, ver)
+		if err != nil {
+			visiting[name] = false
+			return fmt.Errorf("failed to get dependencies for %s@%s: %w", name, ver, err)
+		}
+
+		for _, dep := range deps {
+			depVersion := dep.Version
+			if idx := strings.Index(dep.Version, "|"); idx != -1 {
+				depVersion = dep.Version[:idx]
+			}
+
+			if err := resolve(dep.Name, depVersion); err != nil {
+				if dep.Optional {
+					continue
+				}
+				visiting[name] = false
+				return err
+			}
+		}
+
+		visiting[name] = false
+		visited[name] = true
+
+		key := name + "@" + ver
+		if !seen[key] {
+			seen[key] = true
+			result = append(result, domain.Dependency{
+				Name:     name,
+				Version:  ver,
+				Optional: false,
+			})
+		}
+
+		return nil
+	}
+
+	if err := resolve(packageName, version); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 func (s *AssemblerService) GetGraph(packageName string, version string) (domain.DependencyGraph, error) {
 	if s.repo != nil {
 		return s.repo.GetGraph(packageName, version)
 	}
 
+	visiting := make(map[string]bool)
 	visited := make(map[string]bool)
 
 	var resolve func(name string, ver string) (domain.DependencyGraph, error)
@@ -73,8 +136,12 @@ func (s *AssemblerService) GetGraph(packageName string, version string) (domain.
 			return domain.DependencyGraph{}, nil
 		}
 
-		visited[name] = true
-		defer func() { visited[name] = false }()
+		if visiting[name] {
+			return domain.DependencyGraph{}, fmt.Errorf("circular dependency detected involving %s", name)
+		}
+
+		visiting[name] = true
+		defer func() { visiting[name] = false }()
 
 		deps, err := s.GetDependencies(name, ver)
 		if err != nil {
@@ -98,6 +165,8 @@ func (s *AssemblerService) GetGraph(packageName string, version string) (domain.
 				}
 				return nil, fmt.Errorf("failed to resolve dependency %s@%s: %w", dep.Name, depVersion, err)
 			}
+
+			visited[dep.Name] = true
 
 			for k, v := range depGraph {
 				if _, exists := graph[k]; !exists {
@@ -136,4 +205,8 @@ func (r *assemblerRepository) GetGraph(packageName string, version string) (doma
 
 func (r *assemblerRepository) GetDependencies(packageName string, version string) ([]domain.Dependency, error) {
 	return r.AssemblerService.GetDependencies(packageName, version)
+}
+
+func (r *assemblerRepository) GetOrderedDependencies(packageName string, version string) ([]domain.Dependency, error) {
+	return r.AssemblerService.GetOrderedDependencies(packageName, version)
 }

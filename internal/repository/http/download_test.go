@@ -66,6 +66,12 @@ func TestDownloadRepository_Download_Success(t *testing.T) {
 func TestDownloadRepository_Download_Resume_Success(t *testing.T) {
 	var receivedRange string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			w.Header().Set("Accept-Ranges", "bytes")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		receivedRange = r.Header.Get("Range")
 
 		rangeHeader := r.Header.Get("Range")

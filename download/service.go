@@ -6,6 +6,7 @@ import (
 
 type DownloadRepository interface {
 	Download(url, destination string) (*domain.Download, error)
+	DownloadWithFallbacks(urls []string, destination string) (*domain.Download, error)
 }
 
 type Service struct {
@@ -20,4 +21,8 @@ func NewService(downloadRepository DownloadRepository) *Service {
 
 func (s *Service) Download(url, destination string) (*domain.Download, error) {
 	return s.downloadRepository.Download(url, destination)
+}
+
+func (s *Service) DownloadWithFallbacks(urls []string, destination string) (*domain.Download, error) {
+	return s.downloadRepository.DownloadWithFallbacks(urls, destination)
 }

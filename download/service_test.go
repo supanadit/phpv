@@ -19,6 +19,13 @@ func (m *mockDownloadRepository) Download(url, destination string) (*domain.Down
 	return m.download, nil
 }
 
+func (m *mockDownloadRepository) DownloadWithFallbacks(urls []string, destination string) (*domain.Download, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.download, nil
+}
+
 func TestNewDownloadService(t *testing.T) {
 	repo := &mockDownloadRepository{}
 	svc := NewService(repo)

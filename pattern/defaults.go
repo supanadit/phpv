@@ -141,6 +141,10 @@ var DefaultURLPatterns = []domain.URLPattern{
 		Type:       domain.SourceTypeSource,
 		Constraint: func(v *domain.Version) bool { return true },
 		Template:   "https://download.gnome.org/sources/libxml2/{major}.{minor}/libxml2-{version}.tar.xz",
+		Fallbacks: []string{
+			"https://xmlsoft.org/sources/libxml2-{version}.tar.xz",
+			"https://ftp.linux.org.tw/pub/libxml/libxml2-{version}.tar.xz",
+		},
 	},
 
 	{

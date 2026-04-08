@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/afero"
@@ -162,4 +163,67 @@ func (r *DownloadRepository) checkResumeSupport(url string) bool {
 	}
 
 	return resp.Header.Get("Accept-Ranges") == "bytes"
+}
+
+func (r *DownloadRepository) isValidContentType(resp *http.Response) bool {
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		return true
+	}
+	blockedPrefixes := []string{
+		"text/html",
+		"application/xhtml",
+	}
+	for _, prefix := range blockedPrefixes {
+		if strings.HasPrefix(contentType, prefix) {
+			return false
+		}
+	}
+	return true
+}
+
+func (r *DownloadRepository) DownloadWithFallbacks(urls []string, destination string) (*domain.Download, error) {
+	var lastErr error
+	for _, url := range urls {
+		err := r.exists(url)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		req, err := http.NewRequest(http.MethodHead, url, nil)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to create request: %w", err)
+			continue
+		}
+
+		resp, err := r.client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to send request: %w", err)
+			continue
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("file not found or inaccessible: %s", url)
+			continue
+		}
+
+		if !r.isValidContentType(resp) {
+			lastErr = fmt.Errorf("server returned HTML instead of archive: %s", url)
+			continue
+		}
+
+		download, err := r.Download(url, destination)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		return download, nil
+	}
+
+	if lastErr != nil {
+		return nil, fmt.Errorf("all download attempts failed: %w", lastErr)
+	}
+	return nil, fmt.Errorf("no URLs available to download")
 }

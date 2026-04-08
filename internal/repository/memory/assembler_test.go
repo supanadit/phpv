@@ -188,3 +188,98 @@ func TestMemoryAssembler_CircularDependency(t *testing.T) {
 		t.Error("GetGraph() should return error for nonexistent package")
 	}
 }
+
+func TestMemoryAssembler_GetOrderedDependencies(t *testing.T) {
+	repo := NewMemoryAssemblerRepository()
+
+	t.Run("PHP 8.3 ordered dependencies", func(t *testing.T) {
+		deps, err := repo.GetOrderedDependencies("php", "8.3.0")
+		if err != nil {
+			t.Fatalf("GetOrderedDependencies() error = %v", err)
+		}
+
+		depMap := make(map[string]int)
+		for i, dep := range deps {
+			depMap[dep.Name] = i
+		}
+
+		if _, ok := depMap["m4"]; !ok {
+			t.Error("GetOrderedDependencies() should contain m4")
+		}
+		if _, ok := depMap["autoconf"]; !ok {
+			t.Error("GetOrderedDependencies() should contain autoconf")
+		}
+		if _, ok := depMap["openssl"]; !ok {
+			t.Error("GetOrderedDependencies() should contain openssl")
+		}
+	})
+
+	t.Run("m4 comes before autoconf (base dependency)", func(t *testing.T) {
+		deps, err := repo.GetOrderedDependencies("autoconf", "2.72")
+		if err != nil {
+			t.Fatalf("GetOrderedDependencies() error = %v", err)
+		}
+
+		depMap := make(map[string]int)
+		for i, dep := range deps {
+			depMap[dep.Name] = i
+		}
+
+		if m4Idx, ok := depMap["m4"]; ok {
+			if autoconfIdx, ok := depMap["autoconf"]; ok {
+				if m4Idx >= autoconfIdx {
+					t.Errorf("m4 (index %d) should come before autoconf (index %d)", m4Idx, autoconfIdx)
+				}
+			}
+		}
+	})
+
+	t.Run("m4 comes before openssl (transitive)", func(t *testing.T) {
+		deps, err := repo.GetOrderedDependencies("openssl", "3.3.2")
+		if err != nil {
+			t.Fatalf("GetOrderedDependencies() error = %v", err)
+		}
+
+		depMap := make(map[string]int)
+		for i, dep := range deps {
+			depMap[dep.Name] = i
+		}
+
+		if m4Idx, ok := depMap["m4"]; ok {
+			if opensslIdx, ok := depMap["openssl"]; ok {
+				if m4Idx >= opensslIdx {
+					t.Errorf("m4 (index %d) should come before openssl (index %d)", m4Idx, opensslIdx)
+				}
+			}
+		}
+	})
+
+	t.Run("build tools come before libraries", func(t *testing.T) {
+		deps, err := repo.GetOrderedDependencies("php", "8.3.0")
+		if err != nil {
+			t.Fatalf("GetOrderedDependencies() error = %v", err)
+		}
+
+		buildTools := map[string]bool{
+			"m4": true, "autoconf": true, "automake": true, "libtool": true,
+			"perl": true, "bison": true, "flex": true, "re2c": true,
+		}
+		libraries := map[string]bool{
+			"openssl": true, "libxml2": true, "zlib": true, "curl": true, "oniguruma": true,
+		}
+
+		var lastBuildToolIdx, firstLibraryIdx int = -1, -1
+		for i, dep := range deps {
+			if buildTools[dep.Name] {
+				lastBuildToolIdx = i
+			}
+			if libraries[dep.Name] && firstLibraryIdx == -1 {
+				firstLibraryIdx = i
+			}
+		}
+
+		if lastBuildToolIdx >= firstLibraryIdx && firstLibraryIdx != -1 {
+			t.Errorf("All build tools should come before libraries. Last build tool (index %d), first library (index %d)", lastBuildToolIdx, firstLibraryIdx)
+		}
+	})
+}

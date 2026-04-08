@@ -6,6 +6,7 @@ import (
 
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/utils"
+	"github.com/supanadit/phpv/pattern"
 )
 
 func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldFlags []string, forceCompiler string) error {
@@ -21,13 +22,18 @@ func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldF
 
 	fmt.Printf("Building PHP %s...\n", version)
 
-	url, err := s.patternRegistry.BuildURLByType(name, version, check.SourceType)
+	pat, err := s.patternRegistry.MatchPatternByType(name, check.SourceType, "linux", "x86_64", utils.ParseVersion(version))
 	if err != nil {
 		return err
 	}
 
-	archive := archivePathFromURL(s.silo.Root, name, version, url)
-	if _, err := s.downloadSvc.Download(url, archive); err != nil {
+	urls, err := pattern.BuildURLs(pat, utils.ParseVersion(version))
+	if err != nil {
+		return fmt.Errorf("failed to build URL for PHP: %w", err)
+	}
+
+	archive := archivePathFromURL(s.silo.Root, name, version, urls[0])
+	if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
 		return fmt.Errorf("failed to download PHP: %w", err)
 	}
 

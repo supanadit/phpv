@@ -38,5 +38,6 @@ type URLPattern struct {
 	Arch          string // target arch, "" = all
 	Constraint    func(v *Version) bool
 	Template      string
+	Fallbacks     []string
 	ExtensionFunc func(v *Version) string
 }

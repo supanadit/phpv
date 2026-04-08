@@ -22,7 +22,7 @@ func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldF
 
 	s.logInfo("Building PHP %s...", version)
 
-	pat, err := s.patternRegistry.MatchPatternByType(name, check.SourceType, "linux", "x86_64", utils.ParseVersion(version))
+	pat, err := s.patternRegistry.MatchPatternByType(name, check.SourceType, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
 	if err != nil {
 		return err
 	}

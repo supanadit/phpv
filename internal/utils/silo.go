@@ -127,3 +127,11 @@ func GetZigCompilerPath(siloRoot, phpVersion string) string {
 	}
 	return filepath.Join(siloRoot, "build-tools", "zig", zigVersion, "zig")
 }
+
+func GetOS() string {
+	return runtime.GOOS
+}
+
+func GetArch() string {
+	return runtime.GOARCH
+}

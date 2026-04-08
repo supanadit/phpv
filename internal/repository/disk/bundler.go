@@ -105,8 +105,13 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 		}
 	}
 
+	if err := s.siloRepo.MarkInProgress(exactVersion); err != nil {
+		return domain.Forge{}, fmt.Errorf("failed to mark installation in progress: %w", err)
+	}
+
 	levels, err := s.assemblerSvc.GetDependencyLevels(name, exactVersion)
 	if err != nil {
+		s.siloRepo.MarkFailed(exactVersion)
 		return domain.Forge{}, fmt.Errorf("failed to resolve dependency levels: %w", err)
 	}
 
@@ -119,6 +124,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 	var depLibraryPaths []string
 	var depCppFlags []string
 	var depLdFlags []string
+	var builtDeps []domain.DependencyInfo
 
 	for levelIdx, level := range levels {
 		wg.Add(len(level))
@@ -141,7 +147,8 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 				}
 
 				contextMsg := ""
-				if err := s.buildPackage(dep.Name, depVersion, exactVersion, depLibraryPaths, depCppFlags, depLdFlags, contextMsg, buildTools[dep.Name], forceCompiler); err != nil {
+				depInfo, err := s.buildPackageWithInfo(dep.Name, depVersion, exactVersion, depLibraryPaths, depCppFlags, depLdFlags, contextMsg, buildTools[dep.Name], forceCompiler)
+				if err != nil {
 					mu.Lock()
 					if firstErr == nil {
 						firstErr = fmt.Errorf("failed to build %s@%s: %w", dep.Name, depVersion, err)
@@ -158,19 +165,34 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 					depCppFlags = append(depCppFlags, fmt.Sprintf("-I%s/include", depPath))
 					depLdFlags = append(depLdFlags, fmt.Sprintf("-L%s/lib", depPath))
 				}
+				if depInfo != nil {
+					builtDeps = append(builtDeps, *depInfo)
+				}
 				mu.Unlock()
 			}(dep)
 		}
 		wg.Wait()
 
 		if firstErr != nil {
+			s.siloRepo.MarkFailed(exactVersion)
+			s.siloRepo.Rollback(exactVersion)
 			return domain.Forge{}, firstErr
 		}
 		_ = levelIdx
 	}
 
 	if err := s.buildPHP(name, exactVersion, depLibraryPaths, depCppFlags, depLdFlags, forceCompiler); err != nil {
+		s.siloRepo.MarkFailed(exactVersion)
+		s.siloRepo.Rollback(exactVersion)
 		return domain.Forge{}, fmt.Errorf("failed to build PHP: %w", err)
+	}
+
+	if err := s.siloRepo.SaveDependencyInfo(exactVersion, builtDeps); err != nil {
+		s.logWarn("Warning: failed to save dependency info: %v", err)
+	}
+
+	if err := s.siloRepo.MarkComplete(exactVersion); err != nil {
+		s.logWarn("Warning: failed to mark installation complete: %v", err)
 	}
 
 	outputPath := utils.PHPOutputPath(s.silo, exactVersion)

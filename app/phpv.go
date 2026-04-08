@@ -260,11 +260,26 @@ func run(
 		Args:   cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			version := args[0]
-			result, err := handler.Use(version)
+			err := handler.ShellUse(version)
 			if err != nil {
 				return err
 			}
-			fmt.Printf("export PHPV_CURRENT=%s\n", result.ExactVersion)
+			fmt.Printf("export PHPV_CURRENT=%s\n", version)
+			return nil
+		},
+	}
+
+	autoDetectCmd := &cobra.Command{
+		Use:    "auto-detect",
+		Hidden: true,
+		Short:  "Detect PHP version from composer.json",
+		Args:   cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			version, err := handler.AutoDetect()
+			if err != nil {
+				os.Exit(1)
+			}
+			fmt.Println(version)
 			return nil
 		},
 	}
@@ -584,6 +599,7 @@ PowerShell:
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(shellUseCmd)
 	rootCmd.AddCommand(writeDefaultCmd)
+	rootCmd.AddCommand(autoDetectCmd)
 
 	rootCmd.Version = domain.AppVersion
 

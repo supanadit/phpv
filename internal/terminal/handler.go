@@ -68,6 +68,37 @@ func (h *TerminalHandler) Use(constraint string) (*UseResult, error) {
 	}, nil
 }
 
+func (h *TerminalHandler) ShellUse(constraint string) error {
+	exactVersion, err := h.resolveInstalledVersion(constraint)
+	if err != nil {
+		return err
+	}
+
+	if err := h.Silo.SetDefault(exactVersion); err != nil {
+		return fmt.Errorf("failed to set default: %w", err)
+	}
+
+	return nil
+}
+
+func (h *TerminalHandler) AutoDetect() (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	version, err := utils.ParseComposerJSON(cwd)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse composer.json: %w", err)
+	}
+
+	if version == "" {
+		return "", fmt.Errorf("no PHP version configured in composer.json")
+	}
+
+	return version, nil
+}
+
 func (h *TerminalHandler) SetDefault(constraint string) error {
 	exactVersion, err := h.resolveInstalledVersion(constraint)
 	if err != nil {

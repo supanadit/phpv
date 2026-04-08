@@ -7,6 +7,8 @@ import (
 type TerminalService interface {
 	Install(version string, compiler string, verbose bool, fresh bool) (domain.Forge, error)
 	Use(version string) (string, error)
+	ShellUse(version string) error
+	AutoDetect() (string, error)
 	SetDefault(version string) error
 	GetDefault() (string, error)
 	ListInstalled() ([]string, error)

@@ -8,7 +8,7 @@ phpv() {
     local cmd="$1"
     shift
     case "$cmd" in
-        use|install|default|versions|list|which|uninstall|doctor|upgrade)
+        use|install|default|versions|list|which|uninstall|doctor|upgrade|auto-detect)
             command phpv "$cmd" "$@"
             ;;
         shell-use)
@@ -25,6 +25,23 @@ phpv() {
             ;;
     esac
 }
+
+_phpv_auto_switch() {
+    if [ -f composer.json ] && command -v phpv >/dev/null 2>&1; then
+        local phpver
+        phpver=$(phpv auto-detect 2>/dev/null)
+        if [ -n "$phpver" ]; then
+            local current
+            current="${PHPV_CURRENT:-$(cat "$PHPV_ROOT/default" 2>/dev/null)}"
+            if [ "$current" != "$phpver" ]; then
+                export PHPV_CURRENT="$phpver"
+                phpv write-default "$phpver" 2>/dev/null
+            fi
+        fi
+    fi
+}
+
+PROMPT_COMMAND="_phpv_auto_switch;$PROMPT_COMMAND"
 `
 }
 
@@ -36,7 +53,7 @@ phpv() {
     local cmd="$1"
     shift
     case "$cmd" in
-        use|install|default|versions|list|which|uninstall|doctor|upgrade)
+        use|install|default|versions|list|which|uninstall|doctor|upgrade|auto-detect)
             command phpv "$cmd" "$@"
             ;;
         shell-use)
@@ -53,6 +70,24 @@ phpv() {
             ;;
     esac
 }
+
+_phpv_auto_switch() {
+    if [ -f composer.json ] && command -v phpv >/dev/null 2>&1; then
+        local phpver
+        phpver=$(phpv auto-detect 2>/dev/null)
+        if [ -n "$phpver" ]; then
+            local current
+            current="${PHPV_CURRENT:-$(cat "$PHPV_ROOT/default" 2>/dev/null)}"
+            if [ "$current" != "$phpver" ]; then
+                export PHPV_CURRENT="$phpver"
+                phpv write-default "$phpver" 2>/dev/null
+            fi
+        fi
+    fi
+}
+
+autoload -Uz add-zsh-hook
+add-zsh-hook precmd _phpv_auto_switch
 `
 }
 
@@ -64,7 +99,7 @@ function phpv
     set -l cmd "$argv[1]"
     set -e argv[1]
     switch "$cmd"
-        case use|install|default|versions|list|which|uninstall|doctor|upgrade
+        case use|install|default|versions|list|which|uninstall|doctor|upgrade|auto-detect
             command phpv "$cmd" $argv
         case shell-use
             set -gx PHPV_CURRENT "$argv[1]"
@@ -73,6 +108,24 @@ function phpv
             command phpv "$cmd" $argv
     end
 end
+
+function _phpv_auto_switch
+    if test -f composer.json; and type -q phpv
+        set phpver (phpv auto-detect 2>/dev/null)
+        if test -n "$phpver"
+            set current "$PHPV_CURRENT"
+            if test -z "$current"
+                set current (cat "$PHPV_ROOT/default" 2>/dev/null)
+            end
+            if test "$current" != "$phpver"
+                set -gx PHPV_CURRENT "$phpver"
+                command phpv write-default "$phpver" 2>/dev/null
+            end
+        end
+    end
+end
+
+functions -c fish_prompt _phpv_auto_switch
 `
 }
 

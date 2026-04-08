@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/utils"
 )
@@ -40,12 +41,24 @@ func (s *bundlerRepository) PECLInstall(archivePath string, phpVersion string) (
 		return nil, fmt.Errorf("failed to create extension directory: %w", err)
 	}
 
+	statePath := s.getExtStateFilePath(phpVersion, extName)
+	cleanup := func() {
+		afero.WriteFile(s.fs, statePath, []byte("failed"), 0644)
+		os.RemoveAll(extractDir)
+	}
+
+	if err := afero.WriteFile(s.fs, statePath, []byte("in_progress"), 0644); err != nil {
+		return nil, fmt.Errorf("failed to write state file: %w", err)
+	}
+
 	if _, err := s.unloadSvc.Unpack(archivePath, extractDir); err != nil {
+		cleanup()
 		return nil, fmt.Errorf("failed to extract PECL archive: %w", err)
 	}
 
 	sourceDir := s.findExtensionSourceDir(extractDir, extName)
 	if sourceDir == "" {
+		cleanup()
 		return nil, fmt.Errorf("could not find extension source directory in %s", extractDir)
 	}
 
@@ -54,6 +67,7 @@ func (s *bundlerRepository) PECLInstall(archivePath string, phpVersion string) (
 	phpizeCmd := exec.Command(phpizeBin)
 	phpizeCmd.Dir = sourceDir
 	if output, err := phpizeCmd.CombinedOutput(); err != nil {
+		cleanup()
 		return nil, fmt.Errorf("phpize failed: %s, %w", string(output), err)
 	}
 
@@ -66,19 +80,26 @@ func (s *bundlerRepository) PECLInstall(archivePath string, phpVersion string) (
 		"CFLAGS=-O2",
 	)
 	if output, err := configureCmd.CombinedOutput(); err != nil {
+		cleanup()
 		return nil, fmt.Errorf("configure failed: %s, %w", string(output), err)
 	}
 
 	makeCmd := exec.Command("make", "-j", fmt.Sprintf("%d", s.jobs))
 	makeCmd.Dir = sourceDir
 	if output, err := makeCmd.CombinedOutput(); err != nil {
+		cleanup()
 		return nil, fmt.Errorf("make failed: %s, %w", string(output), err)
 	}
 
 	makeInstallCmd := exec.Command("make", "install")
 	makeInstallCmd.Dir = sourceDir
 	if output, err := makeInstallCmd.CombinedOutput(); err != nil {
+		cleanup()
 		return nil, fmt.Errorf("make install failed: %s, %w", string(output), err)
+	}
+
+	if err := afero.WriteFile(s.fs, statePath, []byte("installed"), 0644); err != nil {
+		return nil, fmt.Errorf("failed to write state file: %w", err)
 	}
 
 	s.logInfo("✓ PECL extension %s installed successfully", extName)
@@ -105,6 +126,11 @@ func (s *bundlerRepository) PECLList(phpVersion string) ([]string, error) {
 	var extensions []string
 	for _, entry := range entries {
 		if entry.IsDir() && entry.Name() != "" && entry.Name() != "." && entry.Name() != ".." {
+			statePath := s.getExtStateFilePath(phpVersion, entry.Name())
+			stateData, err := afero.ReadFile(s.fs, statePath)
+			if err != nil || string(stateData) != "installed" {
+				continue
+			}
 			extensions = append(extensions, entry.Name())
 		}
 	}
@@ -211,4 +237,8 @@ func (s *bundlerRepository) findExtensionSourceDir(baseDir string, extName strin
 	}
 
 	return ""
+}
+
+func (s *bundlerRepository) getExtStateFilePath(phpVersion string, extName string) string {
+	return filepath.Join(utils.PHPOutputPath(s.silo, phpVersion), "lib", "extensions", extName, ".state")
 }

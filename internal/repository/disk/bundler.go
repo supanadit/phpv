@@ -245,21 +245,20 @@ func (s *bundlerRepository) resolveExtensionDependencies(extensions []string, ph
 		return nil
 	}
 
-	depMap := make(map[string]string)
+	depMap := make(map[string]domain.Dependency)
 	seen := make(map[string]bool)
 
 	for _, ext := range extensions {
-		if dep, ok := s.flagResolverSvc.GetExtensionDependency(ext); ok {
-			if !seen[dep] {
-				seen[dep] = true
-				depMap[dep] = dep
-			}
+		pkg, version, ok := s.flagResolverSvc.GetExtensionDependencyWithVersion(ext, phpVersion)
+		if ok && !seen[pkg] {
+			seen[pkg] = true
+			depMap[pkg] = domain.Dependency{Name: pkg, Version: version}
 		}
 	}
 
 	var deps []domain.Dependency
-	for dep := range depMap {
-		deps = append(deps, domain.Dependency{Name: dep, Version: ""})
+	for _, dep := range depMap {
+		deps = append(deps, dep)
 	}
 
 	return deps

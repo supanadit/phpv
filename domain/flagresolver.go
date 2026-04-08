@@ -11,4 +11,5 @@ type FlagResolverRepository interface {
 	ValidateExtensions(extensions []string, phpVersion string) ([]string, error)
 	CheckExtensionConflicts(extensions []string) ([]string, [][]string)
 	GetExtensionDependency(ext string) (string, bool)
+	GetExtensionDependencyWithVersion(ext, phpVersion string) (string, string, bool)
 }

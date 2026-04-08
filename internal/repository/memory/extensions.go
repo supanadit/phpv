@@ -4,12 +4,18 @@ import (
 	"github.com/supanadit/phpv/internal/utils"
 )
 
+type VersionConstraintDef struct {
+	VersionRange string
+	Version      string
+}
+
 type extensionDef struct {
-	Flag       string
-	MinPHP     string
-	MaxPHP     string
-	Conflicts  []string
-	Dependency string
+	Flag      string
+	MinPHP    string
+	MaxPHP    string
+	Conflicts []string
+	Package   string
+	Versions  []VersionConstraintDef
 }
 
 var bundledExtensions = map[string]extensionDef{
@@ -18,9 +24,9 @@ var bundledExtensions = map[string]extensionDef{
 		MinPHP: "5.0",
 	},
 	"bz2": {
-		Flag:       "--with-bz2",
-		MinPHP:     "5.0",
-		Dependency: "bzip2",
+		Flag:    "--with-bz2",
+		MinPHP:  "5.0",
+		Package: "bzip2",
 	},
 	"calendar": {
 		Flag:   "--enable-calendar",
@@ -31,9 +37,16 @@ var bundledExtensions = map[string]extensionDef{
 		MinPHP: "5.0",
 	},
 	"curl": {
-		Flag:       "--with-curl",
-		MinPHP:     "5.0",
-		Dependency: "curl",
+		Flag:    "--with-curl",
+		MinPHP:  "5.0",
+		Package: "curl",
+		Versions: []VersionConstraintDef{
+			{VersionRange: ">=8.0.0", Version: "8.10.1|>=8.0.0"},
+			{VersionRange: ">=7.0.0 <8.0.0", Version: "7.88.1|>=7.80.0"},
+			{VersionRange: ">=5.6.0 <7.0.0", Version: "7.20.0|>=7.20.0,<7.21.0"},
+			{VersionRange: ">=5.1.0 <5.6.0", Version: "7.12.1|>=7.12.0,<7.13.0"},
+			{VersionRange: ">=5.0.0 <5.1.0", Version: "7.12.0|>=7.12.0,<7.13.0"},
+		},
 	},
 	"dba": {
 		Flag:   "--enable-dba",
@@ -104,14 +117,24 @@ var bundledExtensions = map[string]extensionDef{
 		MinPHP: "5.0",
 	},
 	"libxml": {
-		Flag:       "--with-libxml",
-		MinPHP:     "5.0",
-		Dependency: "libxml2",
+		Flag:    "--with-libxml",
+		MinPHP:  "5.0",
+		Package: "libxml2",
+		Versions: []VersionConstraintDef{
+			{VersionRange: ">=8.2.0", Version: "2.12.7|~2.12.0"},
+			{VersionRange: ">=8.0.0 <8.2.0", Version: "2.11.7|~2.11.0"},
+			{VersionRange: ">=5.0.0 <8.0.0", Version: "2.9.14|~2.9.0"},
+		},
 	},
 	"mbstring": {
-		Flag:       "--enable-mbstring",
-		MinPHP:     "5.0",
-		Dependency: "oniguruma",
+		Flag:    "--enable-mbstring",
+		MinPHP:  "5.0",
+		Package: "oniguruma",
+		Versions: []VersionConstraintDef{
+			{VersionRange: ">=8.0.0", Version: "6.9.9|~6.9.0"},
+			{VersionRange: ">=7.4.0 <8.0.0", Version: "6.9.8|~6.9.0"},
+			{VersionRange: ">=5.0.0 <7.4.0", Version: "5.9.6|~5.9.0"},
+		},
 	},
 	"mysql": {
 		Flag:      "--with-mysql",
@@ -133,9 +156,14 @@ var bundledExtensions = map[string]extensionDef{
 		MinPHP: "7.0",
 	},
 	"openssl": {
-		Flag:       "--with-openssl",
-		MinPHP:     "5.0",
-		Dependency: "openssl",
+		Flag:    "--with-openssl",
+		MinPHP:  "5.0",
+		Package: "openssl",
+		Versions: []VersionConstraintDef{
+			{VersionRange: ">=8.2.0", Version: "3.3.2|>=3.0.0,<4.0.0"},
+			{VersionRange: ">=7.0.0 <8.2.0", Version: "1.1.1w|>=1.1.0,<1.2.0"},
+			{VersionRange: ">=5.0.0 <7.0.0", Version: "1.0.1u|>=1.0.0,<1.1.0"},
+		},
 	},
 	"pcntl": {
 		Flag:   "--enable-pcntl",
@@ -295,9 +323,13 @@ var bundledExtensions = map[string]extensionDef{
 		MinPHP: "5.0",
 	},
 	"zlib": {
-		Flag:       "--with-zlib",
-		MinPHP:     "5.0",
-		Dependency: "zlib",
+		Flag:    "--with-zlib",
+		MinPHP:  "5.0",
+		Package: "zlib",
+		Versions: []VersionConstraintDef{
+			{VersionRange: ">=8.0.0", Version: "1.3.1|>=1.3.0"},
+			{VersionRange: ">=5.0.0 <8.0.0", Version: "1.2.13|>=1.2.0,<1.3.0"},
+		},
 	},
 }
 
@@ -341,8 +373,23 @@ func GetConflictingExtensions(name string) []string {
 
 func GetExtensionDependency(name string) (string, bool) {
 	ext, ok := bundledExtensions[name]
-	if !ok || ext.Dependency == "" {
+	if !ok || ext.Package == "" {
 		return "", false
 	}
-	return ext.Dependency, true
+	return ext.Package, true
+}
+
+func GetExtensionDependencyWithVersion(extName, phpVersion string) (string, string, bool) {
+	ext, ok := bundledExtensions[extName]
+	if !ok || ext.Package == "" {
+		return "", "", false
+	}
+
+	for _, v := range ext.Versions {
+		if utils.MatchVersionRange(v.VersionRange, phpVersion) {
+			return ext.Package, v.Version, true
+		}
+	}
+
+	return "", "", false
 }

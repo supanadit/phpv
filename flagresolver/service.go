@@ -44,6 +44,10 @@ func (s *Service) GetExtensionDependency(ext string) (string, bool) {
 	return s.repo.GetExtensionDependency(ext)
 }
 
+func (s *Service) GetExtensionDependencyWithVersion(ext, phpVersion string) (string, string, bool) {
+	return s.repo.GetExtensionDependencyWithVersion(ext, phpVersion)
+}
+
 func findConflictingFor(pairs [][]string, ext string) []string {
 	var result []string
 	for _, pair := range pairs {

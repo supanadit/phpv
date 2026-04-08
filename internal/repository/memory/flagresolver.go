@@ -122,6 +122,10 @@ func (r *flagResolverRepo) GetExtensionDependency(ext string) (string, bool) {
 	return GetExtensionDependency(ext)
 }
 
+func (r *flagResolverRepo) GetExtensionDependencyWithVersion(ext, phpVersion string) (string, string, bool) {
+	return GetExtensionDependencyWithVersion(ext, phpVersion)
+}
+
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
 		if s == item {

@@ -47,16 +47,20 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 			zigVersion = "0.13.0"
 		}
 		fmt.Printf("Installing zig@%s (required for PHP %s)...\n", zigVersion, phpVersion)
-		if err := s.installBuildTool("zig", zigVersion); err != nil {
+		if err := s.installBuildTool("zig", zigVersion, phpVersion); err != nil {
 			return "", nil, "", fmt.Errorf("failed to install zig: %w", err)
 		}
 		zigBinary = utils.GetZigCompilerPath(s.silo.Root, phpVersion)
+	} else {
+		if err := s.siloRepo.IncrementBuildToolRef("zig", filepath.Base(filepath.Dir(zigBinary)), phpVersion); err != nil {
+			fmt.Printf("Warning: failed to increment zig ref: %v\n", err)
+		}
 	}
 
 	return zigBinary + " cc", []string{"-fPIC", "-Wno-error"}, zigBinary + " c++", nil
 }
 
-func (s *bundlerRepository) installBuildTool(name, version string) error {
+func (s *bundlerRepository) installBuildTool(name, version, phpVersion string) error {
 	pat, err := s.patternRegistry.MatchPatternByType(name, domain.SourceTypeBinary, "linux", "x86_64", utils.ParseVersion(version))
 	if err != nil {
 		return err
@@ -67,18 +71,21 @@ func (s *bundlerRepository) installBuildTool(name, version string) error {
 		return fmt.Errorf("failed to build URL for %s@%s: %w", name, version, err)
 	}
 
-	archive := archivePathFromURL(s.silo.Root, name, version, urls[0])
-	if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
-		return fmt.Errorf("failed to download %s@%s: %w", name, version, err)
-	}
-
 	installPath := filepath.Join(s.silo.Root, "build-tools", name, version)
-	if err := os.MkdirAll(installPath, 0755); err != nil {
-		return fmt.Errorf("failed to create directory for %s@%s: %w", name, version, err)
-	}
 
-	if _, err := s.unloadSvc.Unpack(archive, installPath); err != nil {
-		return fmt.Errorf("failed to extract %s@%s: %w", name, version, err)
+	if _, err := os.Stat(installPath); os.IsNotExist(err) {
+		archive := archivePathFromURL(s.silo.Root, name, version, urls[0])
+		if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
+			return fmt.Errorf("failed to download %s@%s: %w", name, version, err)
+		}
+
+		if err := os.MkdirAll(installPath, 0755); err != nil {
+			return fmt.Errorf("failed to create directory for %s@%s: %w", name, version, err)
+		}
+
+		if _, err := s.unloadSvc.Unpack(archive, installPath); err != nil {
+			return fmt.Errorf("failed to extract %s@%s: %w", name, version, err)
+		}
 	}
 
 	if name == "zig" {
@@ -86,6 +93,10 @@ func (s *bundlerRepository) installBuildTool(name, version string) error {
 		if err := os.Chmod(zigBinary, 0755); err != nil {
 			return fmt.Errorf("failed to chmod zig binary: %w", err)
 		}
+	}
+
+	if err := s.siloRepo.IncrementBuildToolRef(name, version, phpVersion); err != nil {
+		return fmt.Errorf("failed to increment build-tool ref: %w", err)
 	}
 
 	return nil

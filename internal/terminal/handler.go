@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/supanadit/phpv/bundler"
@@ -114,4 +115,54 @@ func (h *TerminalHandler) Which() (string, error) {
 func (h *TerminalHandler) resolveInstalledVersion(constraint string) (string, error) {
 	versions := h.Silo.ListVersions()
 	return utils.ResolveInstalledVersion(versions, constraint)
+}
+
+func (h *TerminalHandler) Uninstall(constraint string) (*UninstallResult, error) {
+	exactVersion, err := h.resolveInstalledVersion(constraint)
+	if err != nil {
+		return nil, fmt.Errorf("version not installed: %w", err)
+	}
+
+	silo, _ := h.Silo.GetSilo()
+
+	state, err := h.Silo.GetState(exactVersion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get state: %w", err)
+	}
+	if state == domain.StateNone {
+		return nil, fmt.Errorf("version %s is not installed", exactVersion)
+	}
+
+	defaultVer, _ := h.Silo.GetDefault()
+	wasDefault := defaultVer == exactVersion
+
+	removedTools, err := h.Silo.RemovePHPInstallation(exactVersion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to uninstall: %w", err)
+	}
+
+	shimPath := utils.BinPath(silo)
+	for _, name := range []string{"php", "php-cgi", "phpize", "php-config"} {
+		shimPath := filepath.Join(shimPath, name)
+		_ = os.RemoveAll(shimPath)
+	}
+
+	return &UninstallResult{
+		Version:      exactVersion,
+		RemovedTools: removedTools,
+		WasDefault:   wasDefault,
+	}, nil
+}
+
+func (h *TerminalHandler) CleanBuildTools(dryRun bool) (*CleanBuildToolsResult, error) {
+	removed, willRemove, err := h.Silo.RemoveUnusedBuildTools(dryRun)
+	if err != nil {
+		return nil, err
+	}
+
+	return &CleanBuildToolsResult{
+		Removed:    removed,
+		WillRemove: willRemove,
+		DryRun:     dryRun,
+	}, nil
 }

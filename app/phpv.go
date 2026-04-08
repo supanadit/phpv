@@ -383,12 +383,80 @@ func run(
 		},
 	}
 
+	uninstallCmd := &cobra.Command{
+		Use:   "uninstall <version>",
+		Short: "Uninstall a PHP version",
+		Long:  `Remove the specified PHP version and its dependencies. Build-tools that are no longer used will be cleaned up.`,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := handler.Uninstall(args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Uninstalled PHP %s\n", result.Version)
+			if len(result.RemovedTools) > 0 {
+				fmt.Println("Removed unused build-tools:")
+				for _, tool := range result.RemovedTools {
+					fmt.Printf("  - %s\n", tool)
+				}
+			}
+			if result.WasDefault {
+				fmt.Println("Cleared default PHP version")
+			}
+			return nil
+		},
+	}
+
+	buildToolsCmd := &cobra.Command{
+		Use:   "build-tools",
+		Short: "Manage build-tools",
+		Long:  `Manage build-tools used for compiling PHP and its dependencies.`,
+	}
+
+	buildToolsCleanCmd := &cobra.Command{
+		Use:   "clean",
+		Short: "Remove unused build-tools",
+		Long:  `Remove build-tools that are no longer used by any PHP version. Use --dry-run to see what would be removed without actually removing.`,
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dryRun, _ := cmd.Flags().GetBool("dry-run")
+			result, err := handler.CleanBuildTools(dryRun)
+			if err != nil {
+				return err
+			}
+			if dryRun {
+				if len(result.WillRemove) == 0 {
+					fmt.Println("No unused build-tools to remove")
+				} else {
+					fmt.Println("Would remove unused build-tools:")
+					for _, tool := range result.WillRemove {
+						fmt.Printf("  - %s\n", tool)
+					}
+				}
+			} else {
+				if len(result.Removed) == 0 {
+					fmt.Println("No unused build-tools to remove")
+				} else {
+					fmt.Println("Removed unused build-tools:")
+					for _, tool := range result.Removed {
+						fmt.Printf("  - %s\n", tool)
+					}
+				}
+			}
+			return nil
+		},
+	}
+	buildToolsCleanCmd.Flags().Bool("dry-run", false, "Show what would be removed without actually removing")
+
 	rootCmd.AddCommand(installCmd)
 	rootCmd.AddCommand(useCmd)
 	rootCmd.AddCommand(defaultCmd)
 	rootCmd.AddCommand(versionsCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(whichCmd)
+	rootCmd.AddCommand(uninstallCmd)
+	rootCmd.AddCommand(buildToolsCmd)
+	buildToolsCmd.AddCommand(buildToolsCleanCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		shutdowner.Shutdown(fx.ExitCode(1))

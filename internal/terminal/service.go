@@ -12,4 +12,18 @@ type TerminalService interface {
 	ListInstalled() ([]string, error)
 	ListAvailable() ([]domain.Source, error)
 	Which() (string, error)
+	Uninstall(version string) (*UninstallResult, error)
+	CleanBuildTools(dryRun bool) (*CleanBuildToolsResult, error)
+}
+
+type UninstallResult struct {
+	Version      string
+	RemovedTools []string
+	WasDefault   bool
+}
+
+type CleanBuildToolsResult struct {
+	Removed    []string
+	WillRemove []string
+	DryRun     bool
 }

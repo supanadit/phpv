@@ -43,6 +43,15 @@ type SiloRepository interface {
 	SaveDependencyInfo(phpVersion string, deps []domain.DependencyInfo) error
 	GetDependencyInfo(phpVersion string) ([]domain.DependencyInfo, error)
 	RemoveDependencyInfo(phpVersion string) error
+
+	IncrementBuildToolRef(name, version, phpVersion string) error
+	DecrementBuildToolRef(name, version, phpVersion string) error
+	GetBuildToolRefs() (map[string][]string, error)
+	RemoveBuildToolRef(name, version string) error
+
+	RemovePHPInstallation(phpVersion string) ([]string, error)
+	GetInstalledBuildTools() ([]string, error)
+	RemoveUnusedBuildTools(dryRun bool) ([]string, []string, error)
 }
 
 type Service struct {
@@ -173,4 +182,32 @@ func (s *Service) GetDependencyInfo(phpVersion string) ([]domain.DependencyInfo,
 
 func (s *Service) RemoveDependencyInfo(phpVersion string) error {
 	return s.repo.RemoveDependencyInfo(phpVersion)
+}
+
+func (s *Service) IncrementBuildToolRef(name, version, phpVersion string) error {
+	return s.repo.IncrementBuildToolRef(name, version, phpVersion)
+}
+
+func (s *Service) DecrementBuildToolRef(name, version, phpVersion string) error {
+	return s.repo.DecrementBuildToolRef(name, version, phpVersion)
+}
+
+func (s *Service) GetBuildToolRefs() (map[string][]string, error) {
+	return s.repo.GetBuildToolRefs()
+}
+
+func (s *Service) RemoveBuildToolRef(name, version string) error {
+	return s.repo.RemoveBuildToolRef(name, version)
+}
+
+func (s *Service) RemovePHPInstallation(phpVersion string) ([]string, error) {
+	return s.repo.RemovePHPInstallation(phpVersion)
+}
+
+func (s *Service) GetInstalledBuildTools() ([]string, error) {
+	return s.repo.GetInstalledBuildTools()
+}
+
+func (s *Service) RemoveUnusedBuildTools(dryRun bool) ([]string, []string, error) {
+	return s.repo.RemoveUnusedBuildTools(dryRun)
 }

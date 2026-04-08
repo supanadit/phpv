@@ -41,7 +41,9 @@ jobs:
             bison flex re2c perl cmake openssl
 
       - name: Build phpv
-        run: go build -o phpv ./app/phpv.go
+        env:
+          PHPV_ROOT: /tmp/phpv-${{ matrix.php_version }}
+        run: go build -o /tmp/phpv-${{ matrix.php_version }}/bin/phpv ./app/phpv.go
 
       - name: Install PHP ${{ matrix.php_version }}
         run: ./phpv install ${{ matrix.php_version }}
@@ -58,6 +60,6 @@ jobs:
           PHPV_ROOT: /tmp/phpv-${{ matrix.php_version }}
         run: |
           export PATH="$PHPV_ROOT/bin:$PATH"
-          ./phpv use ${{ matrix.php_version }}
+          phpv use ${{ matrix.php_version }}
           php -v
           which php

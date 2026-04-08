@@ -52,16 +52,19 @@ func (h *TerminalHandler) Use(constraint string) (*UseResult, error) {
 
 	silo, _ := h.Silo.GetSilo()
 	shimPath := utils.BinPath(silo)
-	outputPath := utils.PHPOutputPath(silo, exactVersion)
 
-	if err := shim.WriteShims(shimPath, exactVersion, outputPath); err != nil {
+	if err := shim.WriteShims(shimPath); err != nil {
 		return nil, fmt.Errorf("failed to write shims: %w", err)
+	}
+
+	if err := h.Silo.SetDefault(exactVersion); err != nil {
+		return nil, fmt.Errorf("failed to set default: %w", err)
 	}
 
 	return &UseResult{
 		ExactVersion: exactVersion,
 		ShimPath:     shimPath,
-		OutputPath:   outputPath,
+		OutputPath:   utils.PHPOutputPath(silo, exactVersion),
 	}, nil
 }
 

@@ -6,52 +6,35 @@ import (
 	"path/filepath"
 )
 
-const phpShimTemplate = `#!/bin/bash
-# Shim for PHP %s
-PHPV_VERSION="%s"
-PHPV_OUTPUT="%s"
-export PHPV_CURRENT="${PHPV_VERSION}"
-export LD_LIBRARY_PATH="${PHPV_OUTPUT}/lib:${LD_LIBRARY_PATH}"
-exec "${PHPV_OUTPUT}/bin/php" "$@"
+const dynamicShimTemplate = `#!/bin/bash
+# Dynamic shim - resolves PHP version at runtime
+PHPV_ROOT="${PHPV_ROOT:-$HOME/.phpv}"
+PHPV_VERSION="${PHPV_CURRENT:-$(cat "$PHPV_ROOT/default" 2>/dev/null)}"
+if [ -z "$PHPV_VERSION" ]; then
+    echo "Error: No PHP version selected. Run 'phpv use <version>' first." >&2
+    exit 1
+fi
+PHPV_OUTPUT="$PHPV_ROOT/versions/$PHPV_VERSION/output"
+if [ ! -d "$PHPV_OUTPUT" ]; then
+    echo "Error: PHP version $PHPV_VERSION not found. Run 'phpv install $PHPV_VERSION' first." >&2
+    exit 1
+fi
+export PHPV_CURRENT="$PHPV_VERSION"
+export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:${LD_LIBRARY_PATH}"
+exec "${PHPV_OUTPUT}/bin/%s" "$@"
 `
 
-const phpizeShimTemplate = `#!/bin/bash
-# Shim for phpize %s
-PHPV_VERSION="%s"
-PHPV_OUTPUT="%s"
-export PHPV_CURRENT="${PHPV_VERSION}"
-export LD_LIBRARY_PATH="${PHPV_OUTPUT}/lib:${LD_LIBRARY_PATH}"
-exec "${PHPV_OUTPUT}/bin/phpize" "$@"
-`
-
-const phpConfigShimTemplate = `#!/bin/bash
-# Shim for php-config %s
-PHPV_VERSION="%s"
-PHPV_OUTPUT="%s"
-export PHPV_CURRENT="${PHPV_VERSION}"
-export LD_LIBRARY_PATH="${PHPV_OUTPUT}/lib:${LD_LIBRARY_PATH}"
-exec "${PHPV_OUTPUT}/bin/php-config" "$@"
-`
-
-const phpCgiShimTemplate = `#!/bin/bash
-# Shim for php-cgi %s
-PHPV_VERSION="%s"
-PHPV_OUTPUT="%s"
-export PHPV_CURRENT="${PHPV_VERSION}"
-export LD_LIBRARY_PATH="${PHPV_OUTPUT}/lib:${LD_LIBRARY_PATH}"
-exec "${PHPV_OUTPUT}/bin/php-cgi" "$@"
-`
-
-func WriteShims(binPath, version, outputPath string) error {
-	shims := map[string]string{
-		"php":        fmt.Sprintf(phpShimTemplate, version, version, outputPath),
-		"phpize":     fmt.Sprintf(phpizeShimTemplate, version, version, outputPath),
-		"php-config": fmt.Sprintf(phpConfigShimTemplate, version, version, outputPath),
-		"php-cgi":    fmt.Sprintf(phpCgiShimTemplate, version, version, outputPath),
+func WriteShims(binPath string) error {
+	shims := []string{
+		"php",
+		"phpize",
+		"php-config",
+		"php-cgi",
 	}
 
-	for name, content := range shims {
+	for _, name := range shims {
 		shimPath := filepath.Join(binPath, name)
+		content := fmt.Sprintf(dynamicShimTemplate, name)
 		if err := os.WriteFile(shimPath, []byte(content), 0755); err != nil {
 			return fmt.Errorf("failed to write shim %s: %w", name, err)
 		}

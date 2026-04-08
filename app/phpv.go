@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -33,8 +34,129 @@ func (s *silentLogger) LogEvent(event fxevent.Event) {}
 
 const (
 	minBoxWidth = 64
-	phpvVersion = "0.1.0"
 )
+
+func getPHPvRoot() string {
+	if root := os.Getenv("PHPV_ROOT"); root != "" {
+		return root
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(home, ".phpv")
+	}
+	return filepath.Join(home, ".phpv")
+}
+
+func detectShell() string {
+	if shell := os.Getenv("SHELL"); shell != "" {
+		switch {
+		case filepath.Base(shell) == "zsh":
+			return "zsh"
+		case filepath.Base(shell) == "fish":
+			return "fish"
+		case filepath.Base(shell) == "bash":
+			return "bash"
+		}
+	}
+	if runtime.GOOS == "windows" {
+		return "pwsh"
+	}
+	return "bash"
+}
+
+func bashInitCode(phpvRoot string) string {
+	return fmt.Sprintf(`export PHPV_ROOT="%s"
+export PATH="$PHPV_ROOT/bin:$PATH"
+
+phpv() {
+    local cmd="$1"
+    shift
+    case "$cmd" in
+        use|install|default|versions|list|which|uninstall|doctor|upgrade)
+            command phpv "$cmd" "$@"
+            ;;
+        shell-use)
+            local ver="$1"
+            if [ -z "$ver" ]; then
+                echo "Error: version required" >&2
+                return 1
+            fi
+            export PHPV_CURRENT="$ver"
+            phpv write-default "$ver"
+            ;;
+        *)
+            command phpv "$cmd" "$@"
+            ;;
+    esac
+}
+`, phpvRoot)
+}
+
+func zshInitCode(phpvRoot string) string {
+	return fmt.Sprintf(`export PHPV_ROOT="%s"
+export PATH="$PHPV_ROOT/bin:$PATH"
+
+phpv() {
+    local cmd="$1"
+    shift
+    case "$cmd" in
+        use|install|default|versions|list|which|uninstall|doctor|upgrade)
+            command phpv "$cmd" "$@"
+            ;;
+        shell-use)
+            local ver="$1"
+            if [ -z "$ver" ]; then
+                echo "Error: version required" >&2
+                return 1
+            fi
+            export PHPV_CURRENT="$ver"
+            phpv write-default "$ver"
+            ;;
+        *)
+            command phpv "$cmd" "$@"
+            ;;
+    esac
+}
+`, phpvRoot)
+}
+
+func fishInitCode(phpvRoot string) string {
+	return fmt.Sprintf(`set -gx PHPV_ROOT "%s"
+set -gx PATH "$PHPV_ROOT/bin" $PATH
+
+function phpv
+    set -l cmd "$argv[1]"
+    set -e argv[1]
+    switch "$cmd"
+        case use|install|default|versions|list|which|uninstall|doctor|upgrade
+            command phpv "$cmd" $argv
+        case shell-use
+            set -gx PHPV_CURRENT "$argv[1]"
+            command phpv write-default "$argv[1]"
+        case '*'
+            command phpv "$cmd" $argv
+    end
+end
+`, phpvRoot)
+}
+
+func initCode(shell string) string {
+	phpvRoot := getPHPvRoot()
+	switch shell {
+	case "fish":
+		return fishInitCode(phpvRoot)
+	case "zsh":
+		return zshInitCode(phpvRoot)
+	case "bash":
+		return bashInitCode(phpvRoot)
+	default:
+		return bashInitCode(phpvRoot)
+	}
+}
+
+func printInitCode(shell string) {
+	fmt.Print(initCode(shell))
+}
 
 func printBox(width int, lines []string) {
 	border := "+" + strings.Repeat("=", width) + "+"
@@ -310,8 +432,8 @@ func run(
 
 	useCmd := &cobra.Command{
 		Use:   "use <version>",
-		Short: "Switch to a PHP version in current shell",
-		Long:  `Generate shims for the specified PHP version and print PATH instructions.`,
+		Short: "Switch to a PHP version",
+		Long:  `Switch to the specified PHP version. After running this command, add $PHPV_ROOT/bin to your PATH.`,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			result, err := handler.Use(args[0])
@@ -319,8 +441,53 @@ func run(
 				return err
 			}
 			fmt.Printf("Switched to PHP %s\n", result.ExactVersion)
+			fmt.Printf("PHP binary: %s\n", filepath.Join(result.OutputPath, "bin", "php"))
 			fmt.Printf("Add to PATH: export PATH=%s:$PATH\n", result.ShimPath)
-			fmt.Println("Or restart your shell to use the shims")
+			return nil
+		},
+	}
+
+	shellUseCmd := &cobra.Command{
+		Use:    "shell-use <version>",
+		Hidden: true,
+		Short:  "Internal command for shell integration",
+		Args:   cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			version := args[0]
+			result, err := handler.Use(version)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("export PHPV_CURRENT=%s\n", result.ExactVersion)
+			return nil
+		},
+	}
+
+	writeDefaultCmd := &cobra.Command{
+		Use:    "write-default <version>",
+		Hidden: true,
+		Short:  "Internal command to write default version",
+		Args:   cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return handler.SetDefault(args[0])
+		},
+	}
+
+	initCmd := &cobra.Command{
+		Use:   "init [bash|zsh|fish]",
+		Short: "Output shell initialization code",
+		Long: `Output shell initialization code for the specified shell. Add this to your shell RC file or eval it:
+
+    eval "$(phpv init)"
+
+After initialization, you can use 'phpv use <version>' to switch PHP versions in the current shell.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			shell := "bash"
+			if len(args) > 0 {
+				shell = args[0]
+			}
+			printInitCode(shell)
 			return nil
 		},
 	}
@@ -538,7 +705,7 @@ func run(
 		Long:  `Show the version of phpv being used.`,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Printf("phpv %s\n", phpvVersion)
+			fmt.Printf("phpv %s\n", domain.AppVersion)
 			return nil
 		},
 	}
@@ -617,8 +784,11 @@ PowerShell:
 	rootCmd.AddCommand(doctorCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(completionCmd)
+	rootCmd.AddCommand(initCmd)
+	rootCmd.AddCommand(shellUseCmd)
+	rootCmd.AddCommand(writeDefaultCmd)
 
-	rootCmd.Version = phpvVersion
+	rootCmd.Version = domain.AppVersion
 
 	if err := rootCmd.Execute(); err != nil {
 		shutdowner.Shutdown(fx.ExitCode(1))

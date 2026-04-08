@@ -284,14 +284,17 @@ The `use` command generates shim scripts in `$PHPV_ROOT/bin/`:
 
 ```bash
 # Build binary
-go build -o phpv ./app/phpv.go
+go build -o phpv ./app/
 
 # Run CLI
-./phpv install 8.4
-./phpv use 8.4
-./phpv versions
-./phpv list
-./phpv which
+go run ./app/ install 8.4
+go run ./app/ use 8.4
+go run ./app/ versions
+go run ./app/ list
+go run ./app/ which
+
+# Or run directly (single file)
+go run ./app/phpv.go install 8.4
 
 # Run all tests
 go test ./...

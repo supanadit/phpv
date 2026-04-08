@@ -98,19 +98,21 @@ jobs:
           echo "PHPV_ROOT=$PHPV_ROOT" >> $GITHUB_ENV
           echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
 
-      - name: Download PHP ${{ matrix.php-version }} source
-        timeout-minutes: 30
+      - name: Install PHP ${{ matrix.php-version }}
+        timeout-minutes: 60
         run: |
-          echo "Downloading PHP ${{ matrix.php-version }} source..."
-          phpv download ${{ matrix.php-version }} -V
+          echo "Installing PHP ${{ matrix.php-version }}..."
+          phpv install ${{ matrix.php-version }} -v
         env:
           PHPV_ROOT: ${{ env.PHPV_ROOT }}
 
-      - name: Build PHP ${{ matrix.php-version }}
-        timeout-minutes: 60
+      - name: Use PHP ${{ matrix.php-version }} and Generate Shims
         run: |
-          echo "Building PHP ${{ matrix.php-version }}..."
-          phpv build ${{ matrix.php-version }} -V
+          echo "Activating PHP ${{ matrix.php-version }} and generating shims..."
+          eval "$(phpv use ${{ matrix.php-version }})"
+          echo "PHPV_VERSION=$PHPV_VERSION"
+          echo "PHPV_ROOT=$PHPV_ROOT"
+          echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
         env:
           PHPV_ROOT: ${{ env.PHPV_ROOT }}
 
@@ -119,16 +121,7 @@ jobs:
           echo "Testing shims..."
           ls -la $PHPV_ROOT/bin/
           
-          # Check if php shim exists
-          if [ -f "$PHPV_ROOT/bin/php" ]; then
-            echo "✓ php shim exists"
-          else
-            echo "✗ php shim not found"
-            exit 1
-          fi
-          
-          # Check if other shims exist
-          for binary in php-cgi php-config phpize phpdbg; do
+          for binary in php php-cgi php-config phpize phpdbg; do
             if [ -f "$PHPV_ROOT/bin/$binary" ]; then
               echo "✓ $binary shim exists"
             else
@@ -139,41 +132,13 @@ jobs:
           
           echo "All shims verified successfully!"
 
-      - name: Switch Version and Verify
-        run: |
-          echo "Switching to PHP ${{ matrix.php-version }}..."
-          
-          # Use phpv to switch version
-          eval "$(phpv use ${{ matrix.php-version }})"
-          echo "PHPV_VERSION=$PHPV_VERSION"
-          
-          # Verify version is set
-          if [ -z "$PHPV_VERSION" ]; then
-            echo "✗ PHPV_VERSION is not set"
-            exit 1
-          fi
-          
-          # Check that the version matches what we expect
-          EXPECTED_VERSION="${{ matrix.php-version }}"
-          if [[ "$PHPV_VERSION" == $EXPECTED_VERSION* ]]; then
-            echo "✓ Version matches: $PHPV_VERSION"
-          else
-            echo "✗ Version mismatch. Expected: $EXPECTED_VERSION, Got: $PHPV_VERSION"
-            exit 1
-          fi
-
       - name: Run php -v
         run: |
           echo "Running php -v..."
           
-          # Switch to the version first
-          eval "$(phpv use ${{ matrix.php-version }})"
-          
-          # Run php -v
           PHP_OUTPUT=$(php -v 2>&1)
           echo "$PHP_OUTPUT"
           
-          # Verify output contains PHP version
           EXPECTED_PATTERN="PHP ${{ matrix.php-version }}"
           if echo "$PHP_OUTPUT" | grep -q "$EXPECTED_PATTERN"; then
             echo "✓ php -v output contains expected version: $EXPECTED_PATTERN"
@@ -190,18 +155,12 @@ jobs:
         run: |
           echo "Testing additional PHP binaries..."
           
-          # Switch to the version
-          eval "$(phpv use ${{ matrix.php-version }})"
-          
-          # Test php-config
           echo "Testing php-config..."
           php-config --version
           
-          # Test phpize (check if it runs without errors)
           echo "Testing phpize..."
           phpize --version || true
           
-          # Test phpdbg (if available for this version)
           echo "Testing phpdbg..."
           phpdbg --version 2>&1 || echo "phpdbg not available for this version"
           
@@ -234,10 +193,10 @@ jobs:
           echo "  - 8.0, 8.1, 8.2, 8.3, 8.4, 8.5"
           echo ""
           echo "Test scenario completed for each version:"
-          echo "  1. Build - Compiled PHP from source"
-          echo "  2. Test Shims - Verified shim binaries exist"
-          echo "  3. Switch Version - Activated version with 'phpv use'"
-          echo "  4. Run 'php -v' - Verified version output"
+          echo "  1. Install - Download, build, and install PHP from source"
+          echo "  2. Use & Shims - Generate shims with 'phpv use'"
+          echo "  3. Run 'php -v' - Verified version output"
+          echo "  4. Test binaries - Verify php-config, phpize, phpdbg"
           echo ""
           echo "Overall status: ${{ needs.test-php-versions.result }}"
           echo "=========================================="

@@ -25,8 +25,16 @@ func (r *flagResolverRepo) GetConfigureFlags(name string) []string {
 			"--with-libxml2",
 			"--with-onig",
 		}
+	case "openssl":
+		return []string{"shared", "no-ssl3", "no-legacy"}
+	case "curl":
+		return []string{"--with-openssl", "--without-brotli", "--disable-ldap"}
+	case "libxml2":
+		return []string{"--with-zlib=/usr", "--without-lzma"}
+	case "zlib", "oniguruma", "re2c", "autoconf", "automake", "libtool", "flex", "bison", "perl", "cmake":
+		return []string{}
 	}
-	return nil
+	return []string{}
 }
 
 func (r *flagResolverRepo) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {

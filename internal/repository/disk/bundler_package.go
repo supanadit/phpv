@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/supanadit/phpv/domain"
@@ -247,7 +248,6 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		}
 		fallthrough
 	case "build", "rebuild":
-		s.logInfo("Compiling %s@%s...", name, version)
 		err := s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, forceCompiler)
 		if err != nil {
 			s.logError("✗ Failed to build %s@%s: %v", name, version, err)
@@ -349,6 +349,36 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 		return err
 	}
 
+	configureFlags := s.forgeSvc.GetConfigureFlags(name)
+
+	if len(configureFlags) > 0 {
+		s.logInfo("  Flags: %s", strings.Join(configureFlags, " "))
+	} else {
+		s.logInfo("  Flags: (none)")
+	}
+	s.logInfo("  Path: %s", installDir)
+	if len(cppFlags) > 0 {
+		s.logInfo("  CPPFLAGS: %s", strings.Join(cppFlags, " "))
+	}
+	if len(ldFlags) > 0 {
+		s.logInfo("  LDFLAGS: %s", strings.Join(ldFlags, " "))
+	}
+	if len(ldPath) > 0 {
+		s.logInfo("  LD_LIBRARY_PATH: %s", strings.Join(ldPath, ":"))
+	}
+
+	compilerName := "gcc"
+	compilerPath := ""
+	if strings.Contains(cc, "zig") {
+		compilerName = "zig"
+		compilerPath = strings.Split(cc, " ")[0]
+	}
+	atMsg := ""
+	if compilerPath != "" {
+		atMsg = " at " + compilerPath
+	}
+	s.logInfo("  Compiling %s@%s with %s%s", name, version, compilerName, atMsg)
+
 	config := domain.ForgeConfig{
 		Name:            name,
 		Version:         version,
@@ -357,7 +387,7 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 		CPPFLAGS:        cppFlags,
 		LDFLAGS:         ldFlags,
 		LD_LIBRARY_PATH: ldPath,
-		ConfigureFlags:  s.forgeSvc.GetConfigureFlags(name),
+		ConfigureFlags:  configureFlags,
 		CC:              cc,
 		CFLAGS:          cflags,
 		CXX:             cxx,
@@ -429,7 +459,6 @@ func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion strin
 		}
 		fallthrough
 	case "build", "rebuild":
-		s.logInfo("Compiling %s@%s...", name, version)
 		err := s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, forceCompiler)
 		if err != nil {
 			s.logError("✗ Failed to build %s@%s: %v", name, version, err)

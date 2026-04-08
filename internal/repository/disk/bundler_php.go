@@ -75,6 +75,38 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 		return err
 	}
 
+	if len(configureFlags) > 0 {
+		s.logInfo("  Flags: %s", strings.Join(configureFlags, " "))
+	} else {
+		s.logInfo("  Flags: (none)")
+	}
+	s.logInfo("  Path: %s", installDir)
+	if len(cppFlags) > 0 {
+		s.logInfo("  CPPFLAGS: %s", strings.Join(cppFlags, " "))
+	}
+	if len(ldFlags) > 0 {
+		s.logInfo("  LDFLAGS: %s", strings.Join(ldFlags, " "))
+	}
+	if len(ldPath) > 0 {
+		s.logInfo("  LD_LIBRARY_PATH: %s", strings.Join(ldPath, ":"))
+	}
+
+	compilerName := "gcc"
+	compilerPath := ""
+	if strings.Contains(cc, "zig") {
+		compilerName = "zig"
+		compilerPath = strings.Split(cc, " ")[0]
+	}
+	atMsg := ""
+	if compilerPath != "" {
+		atMsg = " at " + compilerPath
+	}
+	compileMsg := fmt.Sprintf("  Compiling php@%s with %s%s", version, compilerName, atMsg)
+	if len(extensions) > 0 {
+		compileMsg += fmt.Sprintf(" and extension %s", strings.Join(extensions, ","))
+	}
+	s.logInfo("%s", compileMsg)
+
 	config := domain.ForgeConfig{
 		Name:            name,
 		Version:         version,
@@ -96,23 +128,7 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 		return err
 	}
 
-	if len(extensions) > 0 {
-		s.logInfo("Installing PHP %s with %s", version, strings.Join(extensions, ","))
-	} else {
-		s.logInfo("Installing PHP %s", version)
-	}
-
-	s.logInfo("")
-	s.logInfo("Build complete.")
-	if len(cppFlags) > 0 {
-		s.logInfo("CPPFLAGS: %s", strings.Join(cppFlags, " "))
-	}
-	if len(ldFlags) > 0 {
-		s.logInfo("LDFLAGS: %s", strings.Join(ldFlags, " "))
-	}
-	if len(ldPath) > 0 {
-		s.logInfo("LD_LIBRARY_PATH: %s", strings.Join(ldPath, ":"))
-	}
+	s.logInfo("  installing php@%s", version)
 
 	return nil
 }

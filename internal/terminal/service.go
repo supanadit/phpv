@@ -5,8 +5,8 @@ import (
 )
 
 type TerminalService interface {
-	Install(version string, compiler string, verbose bool, fresh bool) (domain.Forge, error)
-	Use(version string) (string, error)
+	Install(version string, compiler string, extensions []string, verbose bool, fresh bool) (domain.Forge, error)
+	Use(version string) (*UseResult, error)
 	ShellUse(version string) error
 	AutoDetect() (string, error)
 	AutoDetectResolve() (string, error)
@@ -21,6 +21,15 @@ type TerminalService interface {
 	Doctor() (*DoctorResult, error)
 	GetInitCode(shell string) (string, error)
 	GetPHPvRoot() string
+	PECLInstall(archivePath string) (*PECLInstallResult, error)
+	PECLList() ([]string, error)
+	PECLUninstall(name string) error
+}
+
+type PECLInstallResult struct {
+	Name       string
+	Version    string
+	InstallDir string
 }
 
 type UninstallResult struct {

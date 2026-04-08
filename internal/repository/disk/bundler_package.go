@@ -92,11 +92,13 @@ func (s *bundlerRepository) installBuildTool(name, version, phpVersion string) e
 	installPath := filepath.Join(s.silo.Root, "build-tools", name, version)
 
 	if _, err := os.Stat(installPath); os.IsNotExist(err) {
+		s.logInfo("Downloading build tool %s@%s...", name, version)
 		archive := archivePathFromURL(s.silo.Root, name, version, urls[0])
 		if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
 			return fmt.Errorf("[download] failed to download %s@%s: %w", name, version, err)
 		}
 
+		s.logInfo("Extracting build tool %s@%s...", name, version)
 		if err := os.MkdirAll(installPath, 0755); err != nil {
 			return fmt.Errorf("[bundler] failed to create directory for %s@%s: %w", name, version, err)
 		}
@@ -104,6 +106,8 @@ func (s *bundlerRepository) installBuildTool(name, version, phpVersion string) e
 		if _, err := s.unloadSvc.Unpack(archive, installPath); err != nil {
 			return fmt.Errorf("[unload] failed to extract %s@%s: %w", name, version, err)
 		}
+
+		s.logInfo("Installing build tool %s@%s", name, version)
 	}
 
 	if name == "zig" {
@@ -127,24 +131,18 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 	}
 
 	if check.SystemAvailable && !mustBuildFromSource(name, phpVersion) {
-		if isBuildTool {
-			s.logInfo("  ✓ %s@%s (system)%s", name, version, contextMsg)
-		} else {
-			s.logInfo("✓ %s@%s at %s%s", name, version, check.SystemPath, contextMsg)
-		}
 		return nil
 	}
 
 	if check.SystemAvailable && mustBuildFromSource(name, phpVersion) {
-		s.logInfo("System %s available but PHP %s requires building from source", name, phpVersion)
+		s.logInfo("Using system %s but PHP %s requires building from source", name, phpVersion)
 	}
 
 	switch check.Action {
 	case "skip":
-		s.logInfo("✓ %s@%s already installed%s", name, version, contextMsg)
 		return nil
 	case "download":
-		s.logInfo("Installing %s@%s%s...", name, version, contextMsg)
+		s.logInfo("Downloading %s@%s...", name, version)
 		pat, err := s.patternRegistry.MatchPatternByType(name, check.SourceType, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
 		if err != nil {
 			return err
@@ -160,6 +158,7 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		}
 		fallthrough
 	case "extract":
+		s.logInfo("Extracting %s@%s...", name, version)
 		archive := s.findCachedArchive(name, version)
 		if archive == "" {
 			return fmt.Errorf("[bundler] no cached archive for %s@%s", name, version)
@@ -170,6 +169,7 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		}
 		fallthrough
 	case "build", "rebuild":
+		s.logInfo("Compiling %s@%s...", name, version)
 		err := s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, forceCompiler)
 		if err != nil {
 			s.logError("✗ Failed to build %s@%s: %v", name, version, err)
@@ -178,7 +178,7 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 			}
 			return err
 		}
-		s.logInfo("✓ Successfully installed %s@%s%s", name, version, contextMsg)
+		s.logInfo("Installing %s@%s", name, version)
 		return nil
 	}
 	return fmt.Errorf("[bundler] unknown action %q for %s@%s", check.Action, name, version)
@@ -299,24 +299,18 @@ func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion strin
 	if check.SystemAvailable && !mustBuildFromSource(name, phpVersion) {
 		depInfo.BuiltFromSource = false
 		depInfo.SystemPath = check.SystemPath
-		if isBuildTool {
-			s.logInfo("  ✓ %s@%s (system)%s", name, version, contextMsg)
-		} else {
-			s.logInfo("✓ %s@%s at %s%s", name, version, check.SystemPath, contextMsg)
-		}
 		return depInfo, nil
 	}
 
 	if check.SystemAvailable && mustBuildFromSource(name, phpVersion) {
-		s.logInfo("System %s available but PHP %s requires building from source", name, phpVersion)
+		s.logInfo("Using system %s but PHP %s requires building from source", name, phpVersion)
 	}
 
 	switch check.Action {
 	case "skip":
-		s.logInfo("✓ %s@%s already installed%s", name, version, contextMsg)
 		return depInfo, nil
 	case "download":
-		s.logInfo("Installing %s@%s%s...", name, version, contextMsg)
+		s.logInfo("Downloading %s@%s...", name, version)
 		pat, err := s.patternRegistry.MatchPatternByType(name, check.SourceType, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
 		if err != nil {
 			return nil, err
@@ -332,6 +326,7 @@ func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion strin
 		}
 		fallthrough
 	case "extract":
+		s.logInfo("Extracting %s@%s...", name, version)
 		archive := s.findCachedArchive(name, version)
 		if archive == "" {
 			return nil, fmt.Errorf("[bundler] no cached archive for %s@%s", name, version)
@@ -342,6 +337,7 @@ func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion strin
 		}
 		fallthrough
 	case "build", "rebuild":
+		s.logInfo("Compiling %s@%s...", name, version)
 		err := s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, forceCompiler)
 		if err != nil {
 			s.logError("✗ Failed to build %s@%s: %v", name, version, err)
@@ -350,7 +346,7 @@ func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion strin
 			}
 			return nil, err
 		}
-		s.logInfo("✓ Successfully installed %s@%s%s", name, version, contextMsg)
+		s.logInfo("Installing %s@%s", name, version)
 		return depInfo, nil
 	}
 	return nil, fmt.Errorf("[bundler] unknown action %q for %s@%s", check.Action, name, version)

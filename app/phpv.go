@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -17,6 +19,7 @@ import (
 	"github.com/supanadit/phpv/internal/repository/http"
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/terminal"
+	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/source"
 	"github.com/supanadit/phpv/unload"
 	"go.uber.org/fx"
@@ -151,6 +154,9 @@ func NewBundlerServiceConfig(
 		}
 	}
 
+	var logger utils.Logger
+	logger = utils.NewLogger(utils.LogLevelInfo)
+
 	return bundler.BundlerServiceConfig{
 		Assembler: asm,
 		Advisor:   adv,
@@ -161,6 +167,7 @@ func NewBundlerServiceConfig(
 		Silo:      silo,
 		SiloRepo:  sil,
 		Verbose:   verbose,
+		Logger:    logger,
 	}, nil
 }
 
@@ -202,14 +209,20 @@ func run(
 			jsonOutput, _ := cmd.Flags().GetBool("json")
 			quiet, _ := cmd.Flags().GetBool("quiet")
 			force, _ := cmd.Flags().GetBool("force")
+			extStr, _ := cmd.Flags().GetString("ext")
+
+			extensions := parseExtensions(extStr)
 
 			if dryRun {
 				fmt.Println("[dry-run] Would install PHP", args[0])
+				if len(extensions) > 0 {
+					fmt.Printf("[dry-run] Extensions: %s\n", extStr)
+				}
 				return nil
 			}
 
 			if jsonOutput {
-				fmt.Printf(`{"command":"install","version":"%s","compiler":"%s","fresh":%t}`+"\n", args[0], compiler, fresh)
+				fmt.Printf(`{"command":"install","version":"%s","compiler":"%s","extensions":%v,"fresh":%t}`+"\n", args[0], compiler, extensions, fresh)
 				return nil
 			}
 
@@ -217,7 +230,7 @@ func run(
 				verbose = false
 			}
 
-			forge, err := handler.Install(args[0], compiler, verbose, fresh || force)
+			forge, err := handler.Install(args[0], compiler, extensions, verbose, fresh || force)
 			if err != nil {
 				return err
 			}
@@ -230,6 +243,7 @@ func run(
 	}
 	installCmd.Flags().BoolP("verbose", "v", false, "Enable verbose output")
 	installCmd.Flags().String("compiler", "", "Force a specific compiler (e.g., zig, gcc)")
+	installCmd.Flags().String("ext", "", "Comma-separated list of bundled extensions to enable (e.g., opcache,mbstring,curl)")
 	installCmd.Flags().Bool("fresh", false, "Clean existing installation before installing")
 	installCmd.Flags().Bool("dry-run", false, "Preview install steps without executing")
 	installCmd.Flags().Bool("json", false, "JSON output for machine parsing")
@@ -617,6 +631,91 @@ PowerShell:
 	rootCmd.AddCommand(autoDetectCmd)
 	rootCmd.AddCommand(autoDetectResolveCmd)
 
+	peclCmd := &cobra.Command{
+		Use:   "pecl",
+		Short: "Manage PECL extensions",
+		Long:  `Manage PECL extensions for the currently active PHP version. Use 'phpv use <version>' to switch PHP versions first.`,
+	}
+
+	peclInstallCmd := &cobra.Command{
+		Use:   "install <archive.tgz>",
+		Short: "Install a PECL extension from archive",
+		Long: `Install a PECL extension from a downloaded .tgz archive.
+First download the extension archive from https://pecl.php.net, then run:
+  phpv pecl install /path/to/extension-1.2.3.tgz`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			yes, _ := cmd.Flags().GetBool("yes")
+
+			defaultVer, err := handler.GetDefault()
+			if err != nil {
+				return fmt.Errorf("failed to get default PHP version: %w", err)
+			}
+			if defaultVer == "" {
+				return fmt.Errorf("no default PHP version set. Run 'phpv use <version>' first")
+			}
+
+			if !yes {
+				fmt.Printf("Installing %s for PHP %s? [y/N] ", args[0], defaultVer)
+				reader := bufio.NewReader(os.Stdin)
+				response, _ := reader.ReadString('\n')
+				response = strings.TrimSpace(strings.ToLower(response))
+				if response != "y" && response != "yes" {
+					fmt.Println("Aborted.")
+					return nil
+				}
+			}
+
+			result, err := handler.PECLInstall(args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Printf("✓ Installed %s %s\n", result.Name, result.Version)
+			fmt.Printf("  Extension directory: %s\n", result.InstallDir)
+			return nil
+		},
+	}
+	peclInstallCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
+
+	peclListCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List installed PECL extensions",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			extensions, err := handler.PECLList()
+			if err != nil {
+				return err
+			}
+			if len(extensions) == 0 {
+				fmt.Println("No PECL extensions installed")
+				return nil
+			}
+			fmt.Println("Installed PECL extensions:")
+			for _, ext := range extensions {
+				fmt.Printf("  - %s\n", ext)
+			}
+			return nil
+		},
+	}
+
+	peclUninstallCmd := &cobra.Command{
+		Use:   "uninstall <name>",
+		Short: "Uninstall a PECL extension",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := handler.PECLUninstall(args[0]); err != nil {
+				return err
+			}
+			fmt.Printf("✓ Uninstalled %s\n", args[0])
+			return nil
+		},
+	}
+
+	peclCmd.AddCommand(peclInstallCmd)
+	peclCmd.AddCommand(peclListCmd)
+	peclCmd.AddCommand(peclUninstallCmd)
+	rootCmd.AddCommand(peclCmd)
+
 	rootCmd.Version = domain.AppVersion
 
 	if err := rootCmd.Execute(); err != nil {
@@ -625,4 +724,18 @@ PowerShell:
 	}
 
 	shutdowner.Shutdown()
+}
+
+func parseExtensions(extStr string) []string {
+	if extStr == "" {
+		return nil
+	}
+	extensions := []string{}
+	for _, ext := range strings.Split(extStr, ",") {
+		ext = strings.TrimSpace(ext)
+		if ext != "" {
+			extensions = append(extensions, ext)
+		}
+	}
+	return extensions
 }

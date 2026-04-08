@@ -106,14 +106,16 @@ func (s *AssemblerService) GetOrderedDependencies(packageName string, version st
 		visiting[name] = false
 		visited[name] = true
 
-		key := name + "@" + ver
-		if !seen[key] {
-			seen[key] = true
-			result = append(result, domain.Dependency{
-				Name:     name,
-				Version:  ver,
-				Optional: false,
-			})
+		if name != packageName {
+			key := name + "@" + ver
+			if !seen[key] {
+				seen[key] = true
+				result = append(result, domain.Dependency{
+					Name:     name,
+					Version:  ver,
+					Optional: false,
+				})
+			}
 		}
 
 		return nil

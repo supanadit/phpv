@@ -8,4 +8,6 @@ type ConfigureFlag struct {
 type FlagResolverRepository interface {
 	GetConfigureFlags(name string) []string
 	GetPHPConfigureFlags(phpVersion string, extensions []string) []string
+	ValidateExtensions(extensions []string, phpVersion string) ([]string, error)
+	CheckExtensionConflicts(extensions []string) ([]string, [][]string)
 }

@@ -3,13 +3,14 @@ package disk
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/pattern"
 )
 
-func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldFlags []string, forceCompiler string) error {
+func (s *bundlerRepository) buildPHP(name, version string, extensions []string, ldPath, cppFlags, ldFlags []string, forceCompiler string) error {
 	check, err := s.advisorSvc.Check(name, version, "")
 	if err != nil {
 		return err
@@ -20,7 +21,19 @@ func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldF
 		return nil
 	}
 
-	s.logInfo("Building PHP %s...", version)
+	if len(extensions) > 0 {
+		if err := s.flagResolverSvc.ValidateExtensions(extensions, version); err != nil {
+			return fmt.Errorf("invalid extension: %w", err)
+		}
+
+		conflicts, conflictPairs, err := s.flagResolverSvc.CheckExtensionConflicts(extensions)
+		if err != nil {
+			s.logWarn("Warning: extension conflict detected between %s", conflicts)
+			for _, pair := range conflictPairs {
+				s.logWarn("  %s conflicts with %s", pair[0], pair[1])
+			}
+		}
+	}
 
 	pat, err := s.patternRegistry.MatchPatternByType(name, check.SourceType, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
 	if err != nil {
@@ -33,6 +46,8 @@ func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldF
 	}
 
 	archive := archivePathFromURL(s.silo.Root, name, version, urls[0])
+
+	s.logInfo("Downloading PHP %s...", version)
 	if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
 		return fmt.Errorf("failed to download PHP: %w", err)
 	}
@@ -42,6 +57,7 @@ func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldF
 		return fmt.Errorf("failed to create source directory: %w", err)
 	}
 
+	s.logInfo("Extracting PHP %s...", version)
 	if _, err := s.unloadSvc.Unpack(archive, sourceDir); err != nil {
 		return fmt.Errorf("failed to extract PHP source: %w", err)
 	}
@@ -52,7 +68,7 @@ func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldF
 		return fmt.Errorf("failed to create install directory: %w", err)
 	}
 
-	configureFlags := s.forgeSvc.GetPHPConfigureFlags(version, nil)
+	configureFlags := s.forgeSvc.GetPHPConfigureFlags(version, extensions)
 
 	cc, cflags, cxx, err := s.getCompilerForVersion(version, forceCompiler)
 	if err != nil {
@@ -80,6 +96,23 @@ func (s *bundlerRepository) buildPHP(name, version string, ldPath, cppFlags, ldF
 		return err
 	}
 
-	s.logInfo("✓ PHP %s installed successfully", version)
+	if len(extensions) > 0 {
+		s.logInfo("Installing PHP %s with %s", version, strings.Join(extensions, ","))
+	} else {
+		s.logInfo("Installing PHP %s", version)
+	}
+
+	s.logInfo("")
+	s.logInfo("Build complete.")
+	if len(cppFlags) > 0 {
+		s.logInfo("CPPFLAGS: %s", strings.Join(cppFlags, " "))
+	}
+	if len(ldFlags) > 0 {
+		s.logInfo("LDFLAGS: %s", strings.Join(ldFlags, " "))
+	}
+	if len(ldPath) > 0 {
+		s.logInfo("LD_LIBRARY_PATH: %s", strings.Join(ldPath, ":"))
+	}
+
 	return nil
 }

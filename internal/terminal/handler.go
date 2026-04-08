@@ -40,8 +40,8 @@ func NewHandler(
 	}
 }
 
-func (h *TerminalHandler) Install(version string, compiler string, verbose bool, fresh bool) (domain.Forge, error) {
-	return h.BundlerRepo.Install(version, compiler, fresh)
+func (h *TerminalHandler) Install(version string, compiler string, extensions []string, verbose bool, fresh bool) (domain.Forge, error) {
+	return h.BundlerRepo.Install(version, compiler, extensions, fresh)
 }
 
 func (h *TerminalHandler) Use(constraint string) (*UseResult, error) {
@@ -50,7 +50,10 @@ func (h *TerminalHandler) Use(constraint string) (*UseResult, error) {
 		return nil, err
 	}
 
-	silo, _ := h.Silo.GetSilo()
+	silo, err := h.Silo.GetSilo()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get silo: %w", err)
+	}
 	shimPath := utils.BinPath(silo)
 
 	if err := shim.WriteShims(shimPath); err != nil {
@@ -158,7 +161,10 @@ func (h *TerminalHandler) Which() (string, error) {
 		return "", nil
 	}
 
-	silo, _ := h.Silo.GetSilo()
+	silo, err := h.Silo.GetSilo()
+	if err != nil {
+		return "", fmt.Errorf("failed to get silo: %w", err)
+	}
 	phpPath := filepath.Join(utils.PHPOutputPath(silo, defaultVer), "bin", "php")
 	return phpPath, nil
 }
@@ -174,7 +180,10 @@ func (h *TerminalHandler) Uninstall(constraint string) (*UninstallResult, error)
 		return nil, fmt.Errorf("version not installed: %w", err)
 	}
 
-	silo, _ := h.Silo.GetSilo()
+	silo, err := h.Silo.GetSilo()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get silo: %w", err)
+	}
 
 	state, err := h.Silo.GetState(exactVersion)
 	if err != nil {
@@ -252,12 +261,15 @@ func (h *TerminalHandler) Upgrade(constraint string) (*UpgradeResult, error) {
 		return nil, fmt.Errorf("no newer version available for %s (currently at %s)", constraint, currentVersion)
 	}
 
-	_, err = h.BundlerRepo.Install(latestMatch, "", true)
+	_, err = h.BundlerRepo.Install(latestMatch, "", nil, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to install new version: %w", err)
 	}
 
-	silo, _ := h.Silo.GetSilo()
+	silo, err := h.Silo.GetSilo()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get silo: %w", err)
+	}
 	outputPath := utils.PHPOutputPath(silo, latestMatch)
 
 	return &UpgradeResult{
@@ -384,4 +396,55 @@ func (h *TerminalHandler) ListAvailableFormatted() (*ListResult, error) {
 	return &ListResult{
 		Versions: versions,
 	}, nil
+}
+
+func (h *TerminalHandler) PECLInstall(archivePath string) (*PECLInstallResult, error) {
+	defaultVer, err := h.Silo.GetDefault()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get default PHP version: %w", err)
+	}
+	if defaultVer == "" {
+		return nil, fmt.Errorf("no default PHP version set. Run 'phpv use <version>' first")
+	}
+
+	ext, err := h.BundlerRepo.PECLInstall(archivePath, defaultVer)
+	if err != nil {
+		return nil, err
+	}
+
+	silo, err := h.Silo.GetSilo()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get silo: %w", err)
+	}
+	extensionsDir := filepath.Join(utils.PHPOutputPath(silo, defaultVer), "lib", "extensions", ext.Name)
+
+	return &PECLInstallResult{
+		Name:       ext.Name,
+		Version:    ext.Version,
+		InstallDir: extensionsDir,
+	}, nil
+}
+
+func (h *TerminalHandler) PECLList() ([]string, error) {
+	defaultVer, err := h.Silo.GetDefault()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get default PHP version: %w", err)
+	}
+	if defaultVer == "" {
+		return nil, fmt.Errorf("no default PHP version set. Run 'phpv use <version>' first")
+	}
+
+	return h.BundlerRepo.PECLList(defaultVer)
+}
+
+func (h *TerminalHandler) PECLUninstall(name string) error {
+	defaultVer, err := h.Silo.GetDefault()
+	if err != nil {
+		return fmt.Errorf("failed to get default PHP version: %w", err)
+	}
+	if defaultVer == "" {
+		return fmt.Errorf("no default PHP version set. Run 'phpv use <version>' first")
+	}
+
+	return h.BundlerRepo.PECLUninstall(name, defaultVer)
 }

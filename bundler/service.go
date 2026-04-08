@@ -13,20 +13,24 @@ import (
 )
 
 type BundlerRepository interface {
-	Install(version string, compiler string, fresh bool) (domain.Forge, error)
-	Orchestrate(name, exactVersion string, compiler string, fresh bool) (domain.Forge, error)
+	Install(version string, compiler string, extensions []string, fresh bool) (domain.Forge, error)
+	Orchestrate(name, exactVersion string, compiler string, extensions []string, fresh bool) (domain.Forge, error)
+	PECLInstall(archivePath string, phpVersion string) (*domain.Extension, error)
+	PECLList(phpVersion string) ([]string, error)
+	PECLUninstall(name string, phpVersion string) error
 }
 
 type BundlerServiceConfig struct {
-	Assembler assembler.AssemblerRepository
-	Advisor   advisor.AdvisorRepository
-	Forge     forge.ForgeRepository
-	Download  download.DownloadRepository
-	Unload    unload.UnloadRepository
-	Source    source.SourceRepository
-	Silo      *domain.Silo
-	SiloRepo  silo.SiloRepository
-	Jobs      int
-	Verbose   bool
-	Logger    utils.Logger
+	Assembler  assembler.AssemblerRepository
+	Advisor    advisor.AdvisorRepository
+	Forge      forge.ForgeRepository
+	Download   download.DownloadRepository
+	Unload     unload.UnloadRepository
+	Source     source.SourceRepository
+	Silo       *domain.Silo
+	SiloRepo   silo.SiloRepository
+	Jobs       int
+	Verbose    bool
+	Logger     utils.Logger
+	Extensions []string
 }

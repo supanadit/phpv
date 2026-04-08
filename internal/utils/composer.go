@@ -13,6 +13,7 @@ type ComposerConfig struct {
 		Platform struct {
 			PHP string `json:"php"`
 		} `json:"platform"`
+		PHPExtensions []string `json:"php-extensions"`
 	} `json:"config"`
 }
 
@@ -75,4 +76,43 @@ func FindComposerJSONFromPath(path string) (string, string, error) {
 	}
 
 	return "", "", nil
+}
+
+func ParseComposerExtensions(dir string) ([]string, error) {
+	composerPath := filepath.Join(dir, "composer.json")
+
+	data, err := os.ReadFile(composerPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var config ComposerConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+
+	return config.Config.PHPExtensions, nil
+}
+
+func FindComposerExtensionsFromPath(path string) (string, []string, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", nil, err
+	}
+
+	dir := absPath
+	for {
+		extensions, err := ParseComposerExtensions(dir)
+		if err == nil && len(extensions) > 0 {
+			return dir, extensions, nil
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+
+	return "", nil, nil
 }

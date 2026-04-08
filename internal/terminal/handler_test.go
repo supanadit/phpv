@@ -11,22 +11,34 @@ import (
 )
 
 type mockBundlerRepo struct {
-	installFunc     func(version, compiler string, fresh bool) (domain.Forge, error)
-	orchestrateFunc func(name, version, compiler string, fresh bool) (domain.Forge, error)
+	installFunc     func(version, compiler string, extensions []string, fresh bool) (domain.Forge, error)
+	orchestrateFunc func(name, version, compiler string, extensions []string, fresh bool) (domain.Forge, error)
 }
 
-func (m *mockBundlerRepo) Install(version, compiler string, fresh bool) (domain.Forge, error) {
+func (m *mockBundlerRepo) Install(version, compiler string, extensions []string, fresh bool) (domain.Forge, error) {
 	if m.installFunc != nil {
-		return m.installFunc(version, compiler, fresh)
+		return m.installFunc(version, compiler, extensions, fresh)
 	}
 	return domain.Forge{Prefix: "/fake/prefix"}, nil
 }
 
-func (m *mockBundlerRepo) Orchestrate(name, version, compiler string, fresh bool) (domain.Forge, error) {
+func (m *mockBundlerRepo) Orchestrate(name, version, compiler string, extensions []string, fresh bool) (domain.Forge, error) {
 	if m.orchestrateFunc != nil {
-		return m.orchestrateFunc(name, version, compiler, fresh)
+		return m.orchestrateFunc(name, version, compiler, extensions, fresh)
 	}
 	return domain.Forge{Prefix: "/fake/prefix"}, nil
+}
+
+func (m *mockBundlerRepo) PECLInstall(archivePath string, phpVersion string) (*domain.Extension, error) {
+	return nil, nil
+}
+
+func (m *mockBundlerRepo) PECLList(phpVersion string) ([]string, error) {
+	return nil, nil
+}
+
+func (m *mockBundlerRepo) PECLUninstall(name string, phpVersion string) error {
+	return nil
 }
 
 type mockSiloRepo struct {
@@ -250,7 +262,7 @@ func TestInstall_Success(t *testing.T) {
 	handler := newTestHandler()
 
 	mockBundler := &mockBundlerRepo{
-		installFunc: func(version, compiler string, fresh bool) (domain.Forge, error) {
+		installFunc: func(version, compiler string, extensions []string, fresh bool) (domain.Forge, error) {
 			return domain.Forge{
 				Prefix: "/fake/output",
 				Env:    map[string]string{"LD_LIBRARY_PATH": "/fake/lib"},
@@ -259,7 +271,7 @@ func TestInstall_Success(t *testing.T) {
 	}
 	handler.BundlerRepo = mockBundler
 
-	_, err := handler.Install("8.4.0", "", false, false)
+	_, err := handler.Install("8.4.0", "", nil, false, false)
 	if err != nil {
 		t.Errorf("Install failed: %v", err)
 	}
@@ -270,13 +282,13 @@ func TestInstall_Error(t *testing.T) {
 
 	expectedErr := errors.New("installation failed")
 	mockBundler := &mockBundlerRepo{
-		installFunc: func(version, compiler string, fresh bool) (domain.Forge, error) {
+		installFunc: func(version, compiler string, extensions []string, fresh bool) (domain.Forge, error) {
 			return domain.Forge{}, expectedErr
 		},
 	}
 	handler.BundlerRepo = mockBundler
 
-	_, err := handler.Install("8.4.0", "", false, false)
+	_, err := handler.Install("8.4.0", "", nil, false, false)
 	if err == nil {
 		t.Error("Install should have failed")
 	}

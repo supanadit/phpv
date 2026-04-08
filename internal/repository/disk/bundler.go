@@ -48,6 +48,7 @@ type bundlerRepository struct {
 	jobs            int
 	verbose         bool
 	logger          utils.Logger
+	extensions      []string
 }
 
 func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo domain.FlagResolverRepository) bundler.BundlerRepository {
@@ -93,18 +94,19 @@ func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo dom
 		jobs:            jobs,
 		verbose:         cfg.Verbose,
 		logger:          cfg.Logger,
+		extensions:      cfg.Extensions,
 	}
 }
 
-func (s *bundlerRepository) Install(version string, compiler string, fresh bool) (domain.Forge, error) {
+func (s *bundlerRepository) Install(version string, compiler string, extensions []string, fresh bool) (domain.Forge, error) {
 	exactVersion, err := s.resolvePHPVersion(version)
 	if err != nil {
 		return domain.Forge{}, fmt.Errorf("[bundler] failed to resolve PHP version %q: %w", version, err)
 	}
-	return s.Orchestrate("php", exactVersion, compiler, fresh)
+	return s.Orchestrate("php", exactVersion, compiler, extensions, fresh)
 }
 
-func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler string, fresh bool) (domain.Forge, error) {
+func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler string, extensions []string, fresh bool) (domain.Forge, error) {
 	if fresh {
 		if err := s.freshClean(name, exactVersion); err != nil {
 			return domain.Forge{}, fmt.Errorf("[bundler] failed to clean existing installation: %w", err)
@@ -187,7 +189,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 		_ = levelIdx
 	}
 
-	if err := s.buildPHP(name, exactVersion, depLibraryPaths, depCppFlags, depLdFlags, forceCompiler); err != nil {
+	if err := s.buildPHP(name, exactVersion, extensions, depLibraryPaths, depCppFlags, depLdFlags, forceCompiler); err != nil {
 		s.siloRepo.MarkFailed(exactVersion)
 		s.siloRepo.Rollback(exactVersion)
 		return domain.Forge{}, fmt.Errorf("[forge] failed to build PHP: %w", err)

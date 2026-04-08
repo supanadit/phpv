@@ -226,8 +226,8 @@ var DefaultURLPatterns = []domain.URLPattern{
 		Constraint: func(v *domain.Version) bool { return v.Major == 2 && v.Minor == 12 && v.Patch == 7 },
 		Template:   "https://download.gnome.org/sources/libxml2/{major}.{minor}/libxml2-{version}.tar.xz",
 		Fallbacks: []string{
+			"https://github.com/GNOME/libxml2/archive/refs/tags/v{version}.tar.gz",
 			"https://xmlsoft.org/sources/libxml2-{version}.tar.xz",
-			"https://ftp.linux.org.tw/pub/libxml/libxml2-{version}.tar.xz",
 		},
 		Checksum: "24ae78ff1363a973e6d8beba941a7945da2ac056e19b53956aeb6927fd6cfb56",
 	},
@@ -237,8 +237,8 @@ var DefaultURLPatterns = []domain.URLPattern{
 		Constraint: func(v *domain.Version) bool { return v.Major == 2 && v.Minor == 12 && v.Patch == 5 },
 		Template:   "https://download.gnome.org/sources/libxml2/{major}.{minor}/libxml2-{version}.tar.xz",
 		Fallbacks: []string{
+			"https://github.com/GNOME/libxml2/archive/refs/tags/v{version}.tar.gz",
 			"https://xmlsoft.org/sources/libxml2-{version}.tar.xz",
-			"https://ftp.linux.org.tw/pub/libxml/libxml2-{version}.tar.xz",
 		},
 		Checksum: "a1fa6ed2a0a1c02c39c6a0e6b1a7a3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a",
 	},
@@ -248,8 +248,8 @@ var DefaultURLPatterns = []domain.URLPattern{
 		Constraint: func(v *domain.Version) bool { return true },
 		Template:   "https://download.gnome.org/sources/libxml2/{major}.{minor}/libxml2-{version}.tar.xz",
 		Fallbacks: []string{
+			"https://github.com/GNOME/libxml2/archive/refs/tags/v{version}.tar.gz",
 			"https://xmlsoft.org/sources/libxml2-{version}.tar.xz",
-			"https://ftp.linux.org.tw/pub/libxml/libxml2-{version}.tar.xz",
 		},
 	},
 

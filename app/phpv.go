@@ -284,6 +284,21 @@ func run(
 		},
 	}
 
+	autoDetectResolveCmd := &cobra.Command{
+		Use:    "auto-detect-resolve",
+		Hidden: true,
+		Short:  "Detect and resolve PHP version from composer.json",
+		Args:   cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			version, err := handler.AutoDetectResolve()
+			if err != nil {
+				os.Exit(1)
+			}
+			fmt.Println(version)
+			return nil
+		},
+	}
+
 	writeDefaultCmd := &cobra.Command{
 		Use:    "write-default <version>",
 		Hidden: true,
@@ -600,6 +615,7 @@ PowerShell:
 	rootCmd.AddCommand(shellUseCmd)
 	rootCmd.AddCommand(writeDefaultCmd)
 	rootCmd.AddCommand(autoDetectCmd)
+	rootCmd.AddCommand(autoDetectResolveCmd)
 
 	rootCmd.Version = domain.AppVersion
 

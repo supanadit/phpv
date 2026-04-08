@@ -99,6 +99,20 @@ func (h *TerminalHandler) AutoDetect() (string, error) {
 	return version, nil
 }
 
+func (h *TerminalHandler) AutoDetectResolve() (string, error) {
+	constraint, err := h.AutoDetect()
+	if err != nil {
+		return "", err
+	}
+
+	exactVersion, err := h.resolveInstalledVersion(constraint)
+	if err != nil {
+		return "", fmt.Errorf("PHP %s from composer.json is not installed: %w", constraint, err)
+	}
+
+	return exactVersion, nil
+}
+
 func (h *TerminalHandler) SetDefault(constraint string) error {
 	exactVersion, err := h.resolveInstalledVersion(constraint)
 	if err != nil {

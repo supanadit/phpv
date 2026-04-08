@@ -29,10 +29,9 @@ phpv() {
 _phpv_auto_switch() {
     if [ -f composer.json ] && command -v phpv >/dev/null 2>&1; then
         local phpver
-        phpver=$(phpv auto-detect 2>/dev/null)
+        phpver=$(phpv auto-detect-resolve 2>/dev/null)
         if [ -n "$phpver" ]; then
-            local current
-            current="${PHPV_CURRENT:-$(cat "$PHPV_ROOT/default" 2>/dev/null)}"
+            local current="${PHPV_CURRENT:-$(cat "$PHPV_ROOT/default" 2>/dev/null)}"
             if [ "$current" != "$phpver" ]; then
                 export PHPV_CURRENT="$phpver"
                 phpv write-default "$phpver" 2>/dev/null
@@ -74,10 +73,9 @@ phpv() {
 _phpv_auto_switch() {
     if [ -f composer.json ] && command -v phpv >/dev/null 2>&1; then
         local phpver
-        phpver=$(phpv auto-detect 2>/dev/null)
+        phpver=$(phpv auto-detect-resolve 2>/dev/null)
         if [ -n "$phpver" ]; then
-            local current
-            current="${PHPV_CURRENT:-$(cat "$PHPV_ROOT/default" 2>/dev/null)}"
+            local current="${PHPV_CURRENT:-$(cat "$PHPV_ROOT/default" 2>/dev/null)}"
             if [ "$current" != "$phpver" ]; then
                 export PHPV_CURRENT="$phpver"
                 phpv write-default "$phpver" 2>/dev/null
@@ -111,7 +109,7 @@ end
 
 function _phpv_auto_switch
     if test -f composer.json; and type -q phpv
-        set phpver (phpv auto-detect 2>/dev/null)
+        set phpver (phpv auto-detect-resolve 2>/dev/null)
         if test -n "$phpver"
             set current "$PHPV_CURRENT"
             if test -z "$current"

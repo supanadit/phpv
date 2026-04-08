@@ -3,6 +3,8 @@ package terminal
 import (
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/supanadit/phpv/domain"
@@ -615,5 +617,115 @@ func TestResolveInstalledVersion(t *testing.T) {
 	_, err := handler.resolveInstalledVersion("8.4")
 	if err != nil {
 		t.Errorf("resolveInstalledVersion failed: %v", err)
+	}
+}
+
+func TestShellUse_Success(t *testing.T) {
+	handler := newTestHandler()
+
+	mockBundler := &mockBundlerRepo{}
+	handler.BundlerRepo = mockBundler
+
+	err := handler.ShellUse("8.4.0")
+	if err != nil {
+		t.Errorf("ShellUse failed: %v", err)
+	}
+}
+
+func TestShellUse_VersionNotInstalled(t *testing.T) {
+	handler := newTestHandler()
+
+	mockBundler := &mockBundlerRepo{}
+	handler.BundlerRepo = mockBundler
+
+	err := handler.ShellUse("9.0.0")
+	if err == nil {
+		t.Error("ShellUse should have failed for non-installed version")
+	}
+}
+
+func TestShellUse_ConstraintResolution(t *testing.T) {
+	mockSilo := newMockSiloRepo()
+	mockSilo.versions = []string{"8.4.0", "8.3.0"}
+	mockSilo.installedVerts = map[string]bool{"8.4.0": true, "8.3.0": true}
+
+	mockBundler := &mockBundlerRepo{}
+	srcRepo := &mockSourceRepo{}
+	handler := NewHandler(mockBundler, mockSilo, srcRepo)
+
+	err := handler.ShellUse("8.4")
+	if err != nil {
+		t.Errorf("ShellUse with constraint failed: %v", err)
+	}
+
+	if mockSilo.defaultVer != "8.4.0" {
+		t.Errorf("Expected default 8.4.0, got %s", mockSilo.defaultVer)
+	}
+}
+
+func TestAutoDetect_NoComposer(t *testing.T) {
+	mockSilo := newMockSiloRepo()
+	mockBundler := &mockBundlerRepo{}
+	srcRepo := &mockSourceRepo{}
+	handler := NewHandler(mockBundler, mockSilo, srcRepo)
+
+	oldCwd, err := os.Getwd()
+	if err != nil {
+		t.Skip("Cannot get current directory, skipping test")
+	}
+	defer os.Chdir(oldCwd)
+
+	tmpDir := t.TempDir()
+	os.Chdir(tmpDir)
+
+	_, err = handler.AutoDetect()
+	if err == nil {
+		t.Error("AutoDetect should fail when no composer.json exists")
+	}
+}
+
+func TestAutoDetect_EmptyConfig(t *testing.T) {
+	mockSilo := newMockSiloRepo()
+	mockBundler := &mockBundlerRepo{}
+	srcRepo := &mockSourceRepo{}
+	handler := NewHandler(mockBundler, mockSilo, srcRepo)
+
+	oldCwd, err := os.Getwd()
+	if err != nil {
+		t.Skip("Cannot get current directory, skipping test")
+	}
+	defer os.Chdir(oldCwd)
+
+	tmpDir := t.TempDir()
+	composerJSON := `{"name": "test/package"}`
+	os.WriteFile(filepath.Join(tmpDir, "composer.json"), []byte(composerJSON), 0644)
+	os.Chdir(tmpDir)
+
+	_, err = handler.AutoDetect()
+	if err == nil {
+		t.Error("AutoDetect should fail when no config.platform.php is set")
+	}
+}
+
+func TestAutoDetectResolve_NotInstalled(t *testing.T) {
+	mockSilo := newMockSiloRepo()
+	mockBundler := &mockBundlerRepo{}
+	srcRepo := &mockSourceRepo{}
+	handler := NewHandler(mockBundler, mockSilo, srcRepo)
+
+	oldCwd, err := os.Getwd()
+	if err != nil {
+		t.Skip("Cannot get current directory, skipping test")
+	}
+	defer os.Chdir(oldCwd)
+
+	tmpDir := t.TempDir()
+	composerJSON := `{"config":{"platform":{"php":"9.0"}}}`
+	os.WriteFile(filepath.Join(tmpDir, "composer.json"), []byte(composerJSON), 0644)
+	os.Chdir(tmpDir)
+
+	_, err = handler.AutoDetectResolve()
+	if err == nil {
+		t.Error("AutoDetectResolve should fail when version is not installed")
 	}
 }

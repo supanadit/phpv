@@ -281,10 +281,20 @@ func determineActionAndURL(state domain.PackageState, systemAvailable bool, regi
 		if systemAvailable && !mustBuildFromSource(name, phpVersion) {
 			return "skip", "", domain.SourceTypeBinary
 		}
+
 		url, err := registry.BuildURLByType(name, version, domain.SourceTypeBinary)
 		if err == nil {
 			return "download", url, domain.SourceTypeBinary
 		}
+
+		if name == "php" {
+			url, err = registry.BuildURLByType(name, version, domain.SourceTypeSource)
+			if err == nil {
+				return "download", url, domain.SourceTypeSource
+			}
+			return "unknown", "", domain.SourceTypeSource
+		}
+
 		url, err = registry.BuildURLByType(name, version, domain.SourceTypeSource)
 		if err == nil {
 			return "download", url, domain.SourceTypeSource

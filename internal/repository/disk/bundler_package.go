@@ -98,14 +98,20 @@ func (s *bundlerRepository) installBuildTool(name, version, phpVersion string) e
 	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 	if err != nil {
 		if os.IsExist(err) {
+			var lockGone bool
 			for i := 0; i < 60; i++ {
 				time.Sleep(500 * time.Millisecond)
-				if _, err := os.Stat(installPath); err == nil {
+				if s.isToolInstalled(name, installPath) {
 					return s.siloRepo.IncrementBuildToolRef(name, version, phpVersion)
 				}
 				if _, err := os.Stat(lockPath); os.IsNotExist(err) {
+					lockGone = true
 					break
 				}
+			}
+			if lockGone && !s.isToolInstalled(name, installPath) {
+				os.RemoveAll(installPath)
+				return s.installBuildTool(name, version, phpVersion)
 			}
 		}
 		return fmt.Errorf("[bundler] failed to acquire lock for %s@%s: %w", name, version, err)
@@ -177,6 +183,23 @@ func (s *bundlerRepository) findZigBinary(dir string) string {
 		return directBin
 	}
 	return ""
+}
+
+func (s *bundlerRepository) isToolInstalled(name, installPath string) bool {
+	if _, err := os.Stat(installPath); os.IsNotExist(err) {
+		return false
+	}
+
+	switch name {
+	case "zig":
+		return s.findZigBinary(installPath) != ""
+	default:
+		entries, err := os.ReadDir(installPath)
+		if err != nil {
+			return false
+		}
+		return len(entries) > 0
+	}
 }
 
 func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, contextMsg string, isBuildTool bool, forceCompiler string) error {

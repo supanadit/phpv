@@ -126,6 +126,7 @@ func (r *UnloadRepository) unpackTarXz(source, destination string, stripPrefix b
 		f.Close()
 		return 0, fmt.Errorf("failed to create xz reader: %w", err)
 	}
+	defer f.Close()
 
 	return r.extractTar(tar.NewReader(xr), destination, stripPrefix)
 }
@@ -188,13 +189,10 @@ func commonPrefix(files []*zip.File) string {
 	return prefix
 }
 
-type tarEntry struct {
-	header *tar.Header
-	data   []byte
-}
-
 func (r *UnloadRepository) extractTar(tr *tar.Reader, destination string, stripPrefix bool) (int, error) {
-	var entries []tarEntry
+	extracted := 0
+	prefix := ""
+	firstEntry := true
 
 	for {
 		header, err := tr.Next()
@@ -202,39 +200,29 @@ func (r *UnloadRepository) extractTar(tr *tar.Reader, destination string, stripP
 			break
 		}
 		if err != nil {
-			return 0, fmt.Errorf("failed to read tar header: %w", err)
+			return extracted, fmt.Errorf("failed to read tar header: %w", err)
 		}
 
-		data := make([]byte, header.Size)
-		_, err = io.ReadFull(tr, data)
-		if err != nil && err != io.ErrUnexpectedEOF {
-			return 0, fmt.Errorf("failed to read tar data: %w", err)
+		name := header.Name
+		if firstEntry && stripPrefix {
+			parts := strings.SplitN(name, "/", 2)
+			if len(parts) >= 2 {
+				prefix = parts[0]
+			}
+			firstEntry = false
 		}
-
-		entries = append(entries, tarEntry{header: header, data: data})
-	}
-
-	if len(entries) == 0 {
-		return 0, nil
-	}
-
-	prefix := ""
-	if stripPrefix {
-		prefix = topLevelPrefixFromEntries(entries)
-	}
-
-	extracted := 0
-	for _, e := range entries {
-		name := strings.TrimPrefix(e.header.Name, prefix)
+		name = strings.TrimPrefix(name, prefix)
 		if name == "" {
+			io.CopyN(io.Discard, tr, header.Size)
 			continue
 		}
 
 		path := filepath.Join(destination, name)
-		if e.header.FileInfo().IsDir() {
+		if header.FileInfo().IsDir() {
 			if err := r.fs.MkdirAll(path, 0o755); err != nil {
 				return extracted, err
 			}
+			io.CopyN(io.Discard, tr, header.Size)
 			continue
 		}
 
@@ -247,7 +235,7 @@ func (r *UnloadRepository) extractTar(tr *tar.Reader, destination string, stripP
 			return extracted, err
 		}
 
-		_, err = f.Write(e.data)
+		_, err = io.CopyN(f, tr, header.Size)
 		f.Close()
 		if err != nil {
 			return extracted, err
@@ -255,23 +243,6 @@ func (r *UnloadRepository) extractTar(tr *tar.Reader, destination string, stripP
 		extracted++
 	}
 	return extracted, nil
-}
-
-func topLevelPrefixFromEntries(entries []tarEntry) string {
-	if len(entries) == 0 {
-		return ""
-	}
-	parts := strings.SplitN(entries[0].header.Name, "/", 2)
-	if len(parts) < 2 {
-		return ""
-	}
-	prefix := parts[0]
-	for _, e := range entries[1:] {
-		if !strings.HasPrefix(e.header.Name, prefix+"/") {
-			return ""
-		}
-	}
-	return prefix
 }
 
 func (r *UnloadRepository) extractZipFile(file *zip.File, name, destination string) error {

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/advisor"
@@ -104,60 +105,81 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 		}
 	}
 
-	graph, err := s.assemblerSvc.GetGraph(name, exactVersion)
+	levels, err := s.assemblerSvc.GetDependencyLevels(name, exactVersion)
 	if err != nil {
-		return domain.Forge{}, fmt.Errorf("failed to resolve dependency graph: %w", err)
+		return domain.Forge{}, fmt.Errorf("failed to resolve dependency levels: %w", err)
 	}
 
-	var depOrder []domain.VersionResolved
-	processed := make(map[string]bool)
+	sem := make(chan struct{}, s.jobs)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	var firstErr error
 
-	for pkgName, deps := range graph {
-		for _, dep := range deps {
-			depVer := extractVersion(dep.Version)
-			key := dep.Name + "@" + depVer
-			if !processed[key] {
-				processed[key] = true
-				depOrder = append(depOrder, domain.VersionResolved{
-					Package: dep.Name,
-					Version: depVer,
-					For:     pkgName,
-				})
-			}
+	completed := make(map[string]bool)
+	var depLibraryPaths []string
+	var depCppFlags []string
+	var depLdFlags []string
+
+	for levelIdx, level := range levels {
+		wg.Add(len(level))
+		for _, dep := range level {
+			go func(dep domain.Dependency) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				mu.Lock()
+				if firstErr != nil {
+					mu.Unlock()
+					return
+				}
+				mu.Unlock()
+
+				depVersion := dep.Version
+				if idx := strings.Index(dep.Version, "|"); idx != -1 {
+					depVersion = dep.Version[:idx]
+				}
+
+				contextMsg := ""
+				if err := s.buildPackage(dep.Name, depVersion, exactVersion, depLibraryPaths, depCppFlags, depLdFlags, contextMsg, buildTools[dep.Name], forceCompiler); err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = fmt.Errorf("failed to build %s@%s: %w", dep.Name, depVersion, err)
+					}
+					mu.Unlock()
+					return
+				}
+
+				mu.Lock()
+				completed[dep.Name+"@"+depVersion] = true
+				if !buildTools[dep.Name] {
+					depPath := utils.DependencyPath(s.silo, exactVersion, dep.Name, depVersion)
+					depLibraryPaths = append(depLibraryPaths, filepath.Join(depPath, "lib"))
+					depCppFlags = append(depCppFlags, fmt.Sprintf("-I%s/include", depPath))
+					depLdFlags = append(depLdFlags, fmt.Sprintf("-L%s/lib", depPath))
+				}
+				mu.Unlock()
+			}(dep)
 		}
+		wg.Wait()
+
+		if firstErr != nil {
+			return domain.Forge{}, firstErr
+		}
+		_ = levelIdx
 	}
 
-	ldLibraryPath := make([]string, 0)
-	cppFlags := make([]string, 0)
-	ldFlags := make([]string, 0)
-
-	for _, dep := range depOrder {
-		contextMsg := ""
-		if dep.For != "" && dep.For != name {
-			contextMsg = fmt.Sprintf(" (for %s)", dep.For)
-		}
-		if err := s.buildPackage(dep.Package, dep.Version, exactVersion, ldLibraryPath, cppFlags, ldFlags, contextMsg, buildTools[dep.Package], forceCompiler); err != nil {
-			return domain.Forge{}, fmt.Errorf("failed to build %s@%s: %w", dep.Package, dep.Version, err)
-		}
-		if !buildTools[dep.Package] {
-			depPath := utils.DependencyPath(s.silo, exactVersion, dep.Package, dep.Version)
-			ldLibraryPath = append(ldLibraryPath, filepath.Join(depPath, "lib"))
-			cppFlags = append(cppFlags, fmt.Sprintf("-I%s/include", depPath))
-			ldFlags = append(ldFlags, fmt.Sprintf("-L%s/lib", depPath))
-		}
-	}
-
-	if err := s.buildPHP(name, exactVersion, ldLibraryPath, cppFlags, ldFlags, forceCompiler); err != nil {
+	if err := s.buildPHP(name, exactVersion, depLibraryPaths, depCppFlags, depLdFlags, forceCompiler); err != nil {
 		return domain.Forge{}, fmt.Errorf("failed to build PHP: %w", err)
 	}
 
 	outputPath := utils.PHPOutputPath(s.silo, exactVersion)
-	ldLibraryPath = append(ldLibraryPath, filepath.Join(outputPath, "lib"))
+	depLibraryPaths = append(depLibraryPaths, filepath.Join(outputPath, "lib"))
 
 	return domain.Forge{
 		Prefix: outputPath,
 		Env: map[string]string{
-			"LD_LIBRARY_PATH": strings.Join(ldLibraryPath, ":"),
+			"LD_LIBRARY_PATH": strings.Join(depLibraryPaths, ":"),
 		},
 	}, nil
 }

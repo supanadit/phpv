@@ -289,13 +289,13 @@ func determineActionAndURL(state domain.PackageState, systemAvailable bool, regi
 		if err == nil {
 			return "download", url, domain.SourceTypeSource
 		}
-		return "unknown", "", ""
+		return "unknown", "", domain.SourceTypeSource
 	case domain.StateSourceDownloaded:
-		return "extract", "", ""
+		return "extract", "", domain.SourceTypeSource
 	case domain.StateSourceExtracted:
-		return "build", "", ""
+		return "build", "", domain.SourceTypeSource
 	case domain.StateSourceMissingBuilt:
-		return "rebuild", "", ""
+		return "rebuild", "", domain.SourceTypeSource
 	case domain.StateBuilt:
 		return "skip", "", ""
 	default:

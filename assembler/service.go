@@ -13,6 +13,7 @@ type AssemblerRepository interface {
 	GetGraph(packageName string, version string) (domain.DependencyGraph, error)
 	GetDependencies(packageName string, version string) ([]domain.Dependency, error)
 	GetOrderedDependencies(packageName string, version string) ([]domain.Dependency, error)
+	GetDependencyLevels(packageName string, version string) ([][]domain.Dependency, error)
 }
 
 type AssemblerService struct {
@@ -61,6 +62,10 @@ func (s *AssemblerService) GetDependencies(packageName string, version string) (
 }
 
 func (s *AssemblerService) GetOrderedDependencies(packageName string, version string) ([]domain.Dependency, error) {
+	if s.repo != nil {
+		return s.repo.GetOrderedDependencies(packageName, version)
+	}
+
 	visiting := make(map[string]bool)
 	visited := make(map[string]bool)
 	var result []domain.Dependency
@@ -116,6 +121,91 @@ func (s *AssemblerService) GetOrderedDependencies(packageName string, version st
 
 	if err := resolve(packageName, version); err != nil {
 		return nil, err
+	}
+
+	return result, nil
+}
+
+func (s *AssemblerService) GetDependencyLevels(packageName string, version string) ([][]domain.Dependency, error) {
+	if s.repo != nil {
+		return s.repo.GetDependencyLevels(packageName, version)
+	}
+
+	allDeps, err := s.GetOrderedDependencies(packageName, version)
+	if err != nil {
+		return nil, err
+	}
+
+	depNamesInResult := make(map[string]bool)
+	for _, dep := range allDeps {
+		depNamesInResult[dep.Name] = true
+	}
+
+	type levelItem struct {
+		name    string
+		version string
+	}
+
+	var levels [][]levelItem
+	placed := make(map[string]bool)
+	depCache := make(map[string][]domain.Dependency)
+
+	for len(placed) < len(allDeps) {
+		var currentLevel []levelItem
+		for _, dep := range allDeps {
+			if placed[dep.Name] {
+				continue
+			}
+
+			var deps []domain.Dependency
+			if cached, ok := depCache[dep.Name]; ok {
+				deps = cached
+			} else {
+				var err error
+				deps, err = s.GetDependencies(dep.Name, dep.Version)
+				if err != nil {
+					deps = []domain.Dependency{}
+				}
+				depCache[dep.Name] = deps
+			}
+
+			canBuild := true
+			for _, d := range deps {
+				if depNamesInResult[d.Name] && !placed[d.Name] {
+					canBuild = false
+					break
+				}
+			}
+
+			if canBuild {
+				currentLevel = append(currentLevel, levelItem{
+					name:    dep.Name,
+					version: dep.Version,
+				})
+			}
+		}
+
+		if len(currentLevel) == 0 && len(placed) < len(allDeps) {
+			return nil, fmt.Errorf("circular dependency detected")
+		}
+
+		for _, item := range currentLevel {
+			placed[item.name] = true
+		}
+		levels = append(levels, currentLevel)
+	}
+
+	var result [][]domain.Dependency
+	for _, level := range levels {
+		var levelDeps []domain.Dependency
+		for _, item := range level {
+			levelDeps = append(levelDeps, domain.Dependency{
+				Name:     item.name,
+				Version:  item.version,
+				Optional: false,
+			})
+		}
+		result = append(result, levelDeps)
 	}
 
 	return result, nil
@@ -209,4 +299,8 @@ func (r *assemblerRepository) GetDependencies(packageName string, version string
 
 func (r *assemblerRepository) GetOrderedDependencies(packageName string, version string) ([]domain.Dependency, error) {
 	return r.AssemblerService.GetOrderedDependencies(packageName, version)
+}
+
+func (r *assemblerRepository) GetDependencyLevels(packageName string, version string) ([][]domain.Dependency, error) {
+	return r.AssemblerService.GetDependencyLevels(packageName, version)
 }

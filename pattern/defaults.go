@@ -361,7 +361,7 @@ var DefaultURLPatterns = []domain.URLPattern{
 		Name:       "zig",
 		Type:       domain.SourceTypeBinary,
 		OS:         domain.OSDarwin,
-		Arch:       domain.ArchArm64,
+		Arch:       domain.ArchAarch64,
 		Constraint: func(v *domain.Version) bool { return v.Major == 0 && v.Minor >= 13 },
 		Template:   "https://ziglang.org/download/{version}/zig-macos-aarch64-{version}.tar.xz",
 	},

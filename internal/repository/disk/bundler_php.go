@@ -43,7 +43,12 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 
 	pat, err := s.patternRegistry.MatchPatternByType(name, check.SourceType, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
 	if err != nil {
-		return err
+		if check.SourceType == domain.SourceTypeBinary && name == "php" {
+			pat, err = s.patternRegistry.MatchPatternByType(name, domain.SourceTypeSource, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
+		}
+		if err != nil {
+			return fmt.Errorf("failed to find URL pattern for %s@%s: %w", name, version, err)
+		}
 	}
 
 	urls, err := pattern.BuildURLs(pat, utils.ParseVersion(version))

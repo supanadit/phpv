@@ -83,12 +83,18 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 	s.logInfo("  Path: %s", installDir)
 	if len(cppFlags) > 0 {
 		s.logInfo("  CPPFLAGS: %s", strings.Join(cppFlags, " "))
+	} else {
+		s.logInfo("  CPPFLAGS: (none)")
 	}
 	if len(ldFlags) > 0 {
 		s.logInfo("  LDFLAGS: %s", strings.Join(ldFlags, " "))
+	} else {
+		s.logInfo("  LDFLAGS: (none)")
 	}
 	if len(ldPath) > 0 {
 		s.logInfo("  LD_LIBRARY_PATH: %s", strings.Join(ldPath, ":"))
+	} else {
+		s.logInfo("  LD_LIBRARY_PATH: (none)")
 	}
 
 	compilerName := "gcc"

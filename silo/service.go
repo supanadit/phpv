@@ -33,6 +33,16 @@ type SiloRepository interface {
 
 	FullClean(pkg, ver string) error
 	CleanAll() error
+
+	MarkInProgress(phpVersion string) error
+	MarkComplete(phpVersion string) error
+	MarkFailed(phpVersion string) error
+	GetState(phpVersion string) (domain.InstallState, error)
+	Rollback(phpVersion string) error
+
+	SaveDependencyInfo(phpVersion string, deps []domain.DependencyInfo) error
+	GetDependencyInfo(phpVersion string) ([]domain.DependencyInfo, error)
+	RemoveDependencyInfo(phpVersion string) error
 }
 
 type Service struct {
@@ -131,4 +141,36 @@ func (s *Service) FullClean(pkg, ver string) error {
 
 func (s *Service) CleanAll() error {
 	return s.repo.CleanAll()
+}
+
+func (s *Service) MarkInProgress(phpVersion string) error {
+	return s.repo.MarkInProgress(phpVersion)
+}
+
+func (s *Service) MarkComplete(phpVersion string) error {
+	return s.repo.MarkComplete(phpVersion)
+}
+
+func (s *Service) MarkFailed(phpVersion string) error {
+	return s.repo.MarkFailed(phpVersion)
+}
+
+func (s *Service) GetState(phpVersion string) (domain.InstallState, error) {
+	return s.repo.GetState(phpVersion)
+}
+
+func (s *Service) Rollback(phpVersion string) error {
+	return s.repo.Rollback(phpVersion)
+}
+
+func (s *Service) SaveDependencyInfo(phpVersion string, deps []domain.DependencyInfo) error {
+	return s.repo.SaveDependencyInfo(phpVersion, deps)
+}
+
+func (s *Service) GetDependencyInfo(phpVersion string) ([]domain.DependencyInfo, error) {
+	return s.repo.GetDependencyInfo(phpVersion)
+}
+
+func (s *Service) RemoveDependencyInfo(phpVersion string) error {
+	return s.repo.RemoveDependencyInfo(phpVersion)
 }

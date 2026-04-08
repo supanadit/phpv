@@ -223,6 +223,7 @@ func NewBundlerServiceConfig(
 		Unload:    ul,
 		Source:    src,
 		Silo:      silo,
+		SiloRepo:  sil,
 		Verbose:   verbose,
 	}, nil
 }

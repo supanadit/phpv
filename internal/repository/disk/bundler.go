@@ -42,6 +42,7 @@ type bundlerRepository struct {
 	patternRegistry *pattern.PatternRegistry
 	flagResolverSvc *flagresolver.Service
 	silo            *domain.Silo
+	siloRepo        *SiloRepository
 	fs              afero.Fs
 	jobs            int
 	verbose         bool
@@ -64,6 +65,11 @@ func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo dom
 	unloadSvc := unload.NewService(cfg.Unload)
 	sourceSvc := source.NewService(cfg.Source)
 
+	var siloRepo *SiloRepository
+	if cfg.SiloRepo != nil {
+		siloRepo = cfg.SiloRepo.(*SiloRepository)
+	}
+
 	return &bundlerRepository{
 		assemblerSvc:    assemblerSvc,
 		advisorSvc:      advisorSvc,
@@ -74,6 +80,7 @@ func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo dom
 		patternRegistry: registry,
 		flagResolverSvc: flagResolverSvc,
 		silo:            cfg.Silo,
+		siloRepo:        siloRepo,
 		fs:              afero.NewOsFs(),
 		jobs:            jobs,
 		verbose:         cfg.Verbose,

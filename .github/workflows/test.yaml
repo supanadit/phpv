@@ -58,6 +58,6 @@ jobs:
           PHPV_ROOT: /tmp/phpv-${{ matrix.php_version }}
         run: |
           export PATH="$PHPV_ROOT/bin:$PATH"
-          phpv use ${{ matrix.php_version }}
+          ./phpv use ${{ matrix.php_version }}
           php -v
           which php

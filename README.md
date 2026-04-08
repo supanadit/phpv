@@ -1,4 +1,4 @@
-![assets/logo.png](Logo)
+![Logo](assets/logo.png)
 
 # phpv - PHP Version Manager
 

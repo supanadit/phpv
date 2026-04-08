@@ -45,13 +45,19 @@ jobs:
 
       - name: Install PHP ${{ matrix.php_version }}
         run: ./phpv install ${{ matrix.php_version }}
+        env:
+          PHPV_ROOT: /tmp/phpv-${{ matrix.php_version }}
 
       - name: Use PHP ${{ matrix.php_version }}
         run: ./phpv use ${{ matrix.php_version }}
+        env:
+          PHPV_ROOT: /tmp/phpv-${{ matrix.php_version }}
 
       - name: Verify PHP installation
+        env:
+          PHPV_ROOT: /tmp/phpv-${{ matrix.php_version }}
         run: |
-          export PATH="$HOME/.phpv/bin:$PATH"
-          php --version
+          export PATH="$PHPV_ROOT/bin:$PATH"
+          phpv use ${{ matrix.php_version }}
           php -v
           which php

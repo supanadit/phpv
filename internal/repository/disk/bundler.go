@@ -122,7 +122,7 @@ func (s *bundlerRepository) Rebuild(version string, compiler string, extensions 
 	var depCppFlags []string
 	var depLdFlags []string
 
-	if err := s.buildPHP("php", exactVersion, extensions, depLibraryPaths, depCppFlags, depLdFlags, compiler); err != nil {
+	if err := s.buildPHP("php", exactVersion, extensions, depLibraryPaths, depCppFlags, depLdFlags, compiler, true); err != nil {
 		return domain.Forge{}, fmt.Errorf("[bundler] failed to rebuild PHP: %w", err)
 	}
 
@@ -230,7 +230,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 		_ = levelIdx
 	}
 
-	if err := s.buildPHP(name, exactVersion, extensions, depLibraryPaths, depCppFlags, depLdFlags, forceCompiler); err != nil {
+	if err := s.buildPHP(name, exactVersion, extensions, depLibraryPaths, depCppFlags, depLdFlags, forceCompiler, false); err != nil {
 		s.siloRepo.MarkFailed(exactVersion)
 		s.siloRepo.Rollback(exactVersion)
 		return domain.Forge{}, fmt.Errorf("[forge] failed to build PHP: %w", err)

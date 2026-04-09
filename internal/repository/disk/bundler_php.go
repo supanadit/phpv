@@ -12,7 +12,7 @@ import (
 	"github.com/supanadit/phpv/pattern"
 )
 
-func (s *bundlerRepository) buildPHP(name, version string, extensions []string, ldPath, cppFlags, ldFlags []string, forceCompiler string) error {
+func (s *bundlerRepository) buildPHP(name, version string, extensions []string, ldPath, cppFlags, ldFlags []string, forceCompiler string, forceRebuild bool) error {
 	check, err := s.advisorSvc.Check(name, version, "")
 	if err != nil {
 		return err
@@ -25,55 +25,64 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 
 	switch check.Action {
 	case "skip":
-		if exists, _ := afero.Exists(s.fs, phpBinary); exists {
+		exists, _ := afero.Exists(s.fs, phpBinary)
+		if exists && !forceRebuild {
 			s.logInfo("✓ PHP %s is already installed at %s", version, outputPath)
 			return nil
 		}
+		if !exists {
+			s.logInfo("PHP binary not found, will rebuild from source", version)
+		} else {
+			s.logInfo("Forcing rebuild of PHP %s with new extension flags", version)
+		}
+		fallthrough
 
 	case "download":
-		pat, err := s.patternRegistry.MatchPatternByType(name, check.SourceType, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
-		if err != nil {
-			if check.SourceType == domain.SourceTypeBinary && name == "php" {
-				pat, err = s.patternRegistry.MatchPatternByType(name, domain.SourceTypeSource, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
-			}
+		if !forceRebuild {
+			pat, err := s.patternRegistry.MatchPatternByType(name, check.SourceType, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
 			if err != nil {
-				return fmt.Errorf("failed to find URL pattern for %s@%s: %w", name, version, err)
+				if check.SourceType == domain.SourceTypeBinary && name == "php" {
+					pat, err = s.patternRegistry.MatchPatternByType(name, domain.SourceTypeSource, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
+				}
+				if err != nil {
+					return fmt.Errorf("failed to find URL pattern for %s@%s: %w", name, version, err)
+				}
+			}
+
+			urls, err := pattern.BuildURLs(pat, utils.ParseVersion(version))
+			if err != nil {
+				return fmt.Errorf("failed to build URL for PHP: %w", err)
+			}
+
+			archive = archivePathFromURL(s.silo.Root, name, version, urls[0])
+
+			s.logInfo("Downloading PHP %s...", version)
+			if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
+				return fmt.Errorf("failed to download PHP: %w", err)
 			}
 		}
-
-		urls, err := pattern.BuildURLs(pat, utils.ParseVersion(version))
-		if err != nil {
-			return fmt.Errorf("failed to build URL for PHP: %w", err)
-		}
-
-		archive = archivePathFromURL(s.silo.Root, name, version, urls[0])
-
-		s.logInfo("Downloading PHP %s...", version)
-		if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
-			return fmt.Errorf("failed to download PHP: %w", err)
-		}
-
 		fallthrough
 
 	case "extract":
-		s.logInfo("Extracting PHP %s...", version)
+		if !forceRebuild {
+			s.logInfo("Extracting PHP %s...", version)
 
-		if archive == "" {
-			archive = s.findCachedArchive(name, version)
 			if archive == "" {
-				return fmt.Errorf("[bundler] no cached archive for php@%s", version)
+				archive = s.findCachedArchive(name, version)
+				if archive == "" {
+					return fmt.Errorf("[bundler] no cached archive for php@%s", version)
+				}
+			}
+
+			sourceDir := utils.GetSourceDirPath(s.silo, name, version)
+			if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+				return fmt.Errorf("failed to create source directory: %w", err)
+			}
+
+			if _, err := s.unloadSvc.Unpack(archive, sourceDir); err != nil {
+				return fmt.Errorf("failed to extract PHP source: %w", err)
 			}
 		}
-
-		sourceDir := utils.GetSourceDirPath(s.silo, name, version)
-		if err := os.MkdirAll(sourceDir, 0o755); err != nil {
-			return fmt.Errorf("failed to create source directory: %w", err)
-		}
-
-		if _, err := s.unloadSvc.Unpack(archive, sourceDir); err != nil {
-			return fmt.Errorf("failed to extract PHP source: %w", err)
-		}
-
 		fallthrough
 
 	case "build", "rebuild":

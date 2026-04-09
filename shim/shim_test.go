@@ -161,7 +161,7 @@ func TestShimContent_ExecWithArgs(t *testing.T) {
 }
 
 func TestDynamicShimTemplate_php(t *testing.T) {
-	template := fmt.Sprintf(dynamicShimTemplate, "php")
+	template := fmt.Sprintf(dynamicShimTemplate, "php", "php", "php")
 
 	if template == "" {
 		t.Fatal("Template should not be empty")
@@ -173,7 +173,7 @@ func TestDynamicShimTemplate_php(t *testing.T) {
 }
 
 func TestDynamicShimTemplate_phpize(t *testing.T) {
-	template := fmt.Sprintf(dynamicShimTemplate, "phpize")
+	template := fmt.Sprintf(dynamicShimTemplate, "phpize", "phpize", "phpize")
 
 	if template == "" {
 		t.Fatal("Template should not be empty")
@@ -181,7 +181,7 @@ func TestDynamicShimTemplate_phpize(t *testing.T) {
 }
 
 func TestDynamicShimTemplate_phpConfig(t *testing.T) {
-	template := fmt.Sprintf(dynamicShimTemplate, "php-config")
+	template := fmt.Sprintf(dynamicShimTemplate, "php-config", "php-config", "php-config")
 
 	if template == "" {
 		t.Fatal("Template should not be empty")
@@ -189,7 +189,7 @@ func TestDynamicShimTemplate_phpConfig(t *testing.T) {
 }
 
 func TestDynamicShimTemplate_phpCgi(t *testing.T) {
-	template := fmt.Sprintf(dynamicShimTemplate, "php-cgi")
+	template := fmt.Sprintf(dynamicShimTemplate, "php-cgi", "php-cgi", "php-cgi")
 
 	if template == "" {
 		t.Fatal("Template should not be empty")
@@ -204,7 +204,7 @@ func TestWriteShims_AllBinaries(t *testing.T) {
 	for _, name := range shims {
 		shimPath := filepath.Join(binPath, name)
 
-		content := fmt.Sprintf(dynamicShimTemplate, name)
+		content := fmt.Sprintf(dynamicShimTemplate, name, name, name)
 		if err := os.WriteFile(shimPath, []byte(content), 0755); err != nil {
 			t.Errorf("Failed to write shim %s: %v", name, err)
 		}

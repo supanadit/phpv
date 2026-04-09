@@ -297,10 +297,17 @@ Example:
 	useCmd := &cobra.Command{
 		Use:   "use <version>",
 		Short: "Switch to a PHP version for the current session",
-		Long:  `Switch to the specified PHP version. This sets PHPV_CURRENT for the current session only. Use 'phpv default' to set a global default.`,
+		Long:  `Switch to the specified PHP version. This sets PHPV_CURRENT for the current session only. Use 'phpv default' to set a global default. Use 'phpv use system' to use the system-installed PHP.`,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := handler.Use(args[0])
+			var result *terminal.UseResult
+			var err error
+
+			if args[0] == "system" {
+				result, err = handler.UseSystem()
+			} else {
+				result, err = handler.Use(args[0])
+			}
 			if err != nil {
 				return err
 			}

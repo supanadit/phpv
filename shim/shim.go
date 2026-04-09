@@ -10,8 +10,16 @@ import (
 
 const dynamicShimTemplate = `#!/bin/bash
 # Dynamic shim - resolves PHP version at runtime
-# Resolution order: PHPV_CURRENT → .phpvrc → composer.json → $PHPV_ROOT/default
+# Resolution order: PHPV_CURRENT → .phpvrc → composer.json → $PHPV_ROOT/default → system
 PHPV_ROOT="${PHPV_ROOT:-$HOME/.phpv}"
+if [ -f "$PHPV_ROOT/.phpv_system" ]; then
+    PHP_PATH="$(command -v %s 2>/dev/null)"
+    if [ -z "$PHP_PATH" ]; then
+        echo "Error: System %s not found" >&2
+        exit 1
+    fi
+    exec "$PHP_PATH" "$@"
+fi
 if [ -n "$PHPV_CURRENT" ]; then
     PHPV_VERSION="$PHPV_CURRENT"
 elif [ -f .phpvrc ] && [ -s .phpvrc ]; then
@@ -39,6 +47,20 @@ exec "${PHPV_OUTPUT}/bin/%s" "$@"
 const composerShimTemplate = `#!/bin/bash
 # Dynamic shim for composer - runs system composer through phpv PHP
 PHPV_ROOT="${PHPV_ROOT:-$HOME/.phpv}"
+if [ -f "$PHPV_ROOT/.phpv_system" ]; then
+    PHP_PATH="$(command -v php 2>/dev/null)"
+    if [ -z "$PHP_PATH" ]; then
+        echo "Error: System PHP not found" >&2
+        exit 1
+    fi
+    COMPOSER_PATH="{{ .ComposerPath }}"
+    if [ -z "$COMPOSER_PATH" ]; then
+        echo "Error: composer not found. Please install composer first." >&2
+        echo "Hint: https://getcomposer.org/download/" >&2
+        exit 1
+    fi
+    exec "$PHP_PATH" "$COMPOSER_PATH" "$@"
+fi
 if [ -n "$PHPV_CURRENT" ]; then
     PHPV_VERSION="$PHPV_CURRENT"
 elif [ -f .phpvrc ] && [ -s .phpvrc ]; then
@@ -115,7 +137,7 @@ func WriteShims(cfg ShimConfig) error {
 
 	for _, name := range phpShims {
 		shimPath := filepath.Join(cfg.BinPath, name)
-		content := fmt.Sprintf(dynamicShimTemplate, name)
+		content := fmt.Sprintf(dynamicShimTemplate, name, name, name)
 		if err := os.WriteFile(shimPath, []byte(content), 0755); err != nil {
 			return fmt.Errorf("failed to write shim %s: %w", name, err)
 		}
@@ -128,5 +150,34 @@ func WriteShims(cfg ShimConfig) error {
 		return fmt.Errorf("failed to write shim composer: %w", err)
 	}
 
+	return nil
+}
+
+func SystemMarkerPath(siloRoot string) string {
+	return filepath.Join(siloRoot, ".phpv_system")
+}
+
+func WriteSystemMarker(siloRoot string) error {
+	markerPath := SystemMarkerPath(siloRoot)
+	if err := os.WriteFile(markerPath, []byte{}, 0644); err != nil {
+		return fmt.Errorf("failed to write system marker: %w", err)
+	}
+	return nil
+}
+
+func IsSystemMode(siloRoot string) bool {
+	markerPath := SystemMarkerPath(siloRoot)
+	_, err := os.Stat(markerPath)
+	return err == nil
+}
+
+func RemoveSystemMarker(siloRoot string) error {
+	markerPath := SystemMarkerPath(siloRoot)
+	if _, err := os.Stat(markerPath); os.IsNotExist(err) {
+		return nil
+	}
+	if err := os.Remove(markerPath); err != nil {
+		return fmt.Errorf("failed to remove system marker: %w", err)
+	}
 	return nil
 }

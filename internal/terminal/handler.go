@@ -196,6 +196,8 @@ func (h *TerminalHandler) Use(constraint string) (*UseResult, error) {
 		return nil, fmt.Errorf("failed to get silo: %w", err)
 	}
 
+	_ = shim.RemoveSystemMarker(silo.Root)
+
 	outputPath := utils.PHPOutputPath(silo, exactVersion)
 	phpBinary := filepath.Join(outputPath, "bin", "php")
 	if _, err := os.Stat(phpBinary); os.IsNotExist(err) {
@@ -216,6 +218,38 @@ func (h *TerminalHandler) Use(constraint string) (*UseResult, error) {
 		ExactVersion: exactVersion,
 		ShimPath:     shimPath,
 		OutputPath:   outputPath,
+	}, nil
+}
+
+func (h *TerminalHandler) UseSystem() (*UseResult, error) {
+	systemPHP, err := exec.LookPath("php")
+	if err != nil {
+		return nil, fmt.Errorf("no system PHP found: please install PHP first")
+	}
+
+	silo, err := h.Silo.GetSilo()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get silo: %w", err)
+	}
+
+	if err := shim.WriteSystemMarker(silo.Root); err != nil {
+		return nil, err
+	}
+
+	shimPath := utils.BinPath(silo)
+	composerPath := shim.DetectComposerPath()
+
+	if err := shim.WriteShims(shim.ShimConfig{
+		BinPath:      shimPath,
+		ComposerPath: composerPath,
+	}); err != nil {
+		return nil, fmt.Errorf("failed to write shims: %w", err)
+	}
+
+	return &UseResult{
+		ExactVersion: "system",
+		ShimPath:     shimPath,
+		OutputPath:   filepath.Dir(systemPHP),
 	}, nil
 }
 
@@ -303,6 +337,30 @@ func (h *TerminalHandler) ListAvailable() ([]domain.Source, error) {
 }
 
 func (h *TerminalHandler) Which() (string, error) {
+	silo, err := h.Silo.GetSilo()
+	if err != nil {
+		return "", fmt.Errorf("failed to get silo: %w", err)
+	}
+
+	if shim.IsSystemMode(silo.Root) {
+		phpvBin := filepath.Join(silo.Root, "bin")
+		pathEnv := os.Getenv("PATH")
+		var filteredParts []string
+		for _, part := range strings.Split(pathEnv, ":") {
+			if part != phpvBin && !strings.HasPrefix(part, silo.Root+"/") {
+				filteredParts = append(filteredParts, part)
+			}
+		}
+		filteredPath := strings.Join(filteredParts, ":")
+
+		cmd := exec.Command("which", "php")
+		cmd.Env = append(os.Environ(), "PATH="+filteredPath)
+		out, err := cmd.Output()
+		if err == nil {
+			return strings.TrimSpace(string(out)), nil
+		}
+	}
+
 	defaultVer, err := h.Silo.GetDefault()
 	if err != nil {
 		return "", err
@@ -312,10 +370,6 @@ func (h *TerminalHandler) Which() (string, error) {
 		return "", nil
 	}
 
-	silo, err := h.Silo.GetSilo()
-	if err != nil {
-		return "", fmt.Errorf("failed to get silo: %w", err)
-	}
 	phpPath := filepath.Join(utils.PHPOutputPath(silo, defaultVer), "bin", "php")
 	if _, err := os.Stat(phpPath); os.IsNotExist(err) {
 		return "", nil

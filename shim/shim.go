@@ -3,7 +3,9 @@ package shim
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 const dynamicShimTemplate = `#!/bin/bash
@@ -34,20 +36,90 @@ export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:${LD_LIBRARY_PATH}"
 exec "${PHPV_OUTPUT}/bin/%s" "$@"
 `
 
-func WriteShims(binPath string) error {
-	shims := []string{
+const composerShimTemplate = `#!/bin/bash
+# Dynamic shim for composer - runs system composer through phpv PHP
+PHPV_ROOT="${PHPV_ROOT:-$HOME/.phpv}"
+if [ -n "$PHPV_CURRENT" ]; then
+    PHPV_VERSION="$PHPV_CURRENT"
+elif [ -f .phpvrc ] && [ -s .phpvrc ]; then
+    PHPV_VERSION="$(phpv auto-detect-resolve "$(cat .phpvrc)" 2>/dev/null)"
+    if [ -z "$PHPV_VERSION" ]; then
+        PHPV_VERSION="$(cat .phpvrc)"
+    fi
+else
+    PHPV_VERSION="$(phpv auto-detect-resolve 2>/dev/null || cat "$PHPV_ROOT/default" 2>/dev/null)"
+fi
+if [ -z "$PHPV_VERSION" ]; then
+    echo "Error: No PHP version selected. Run 'phpv use <version>' first." >&2
+    exit 1
+fi
+PHPV_OUTPUT="$PHPV_ROOT/versions/$PHPV_VERSION/output"
+if [ ! -d "$PHPV_OUTPUT" ]; then
+    echo "Error: PHP version $PHPV_VERSION not found. Run 'phpv install $PHPV_VERSION' first." >&2
+    exit 1
+fi
+export PHPV_CURRENT="$PHPV_VERSION"
+export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:${LD_LIBRARY_PATH}"
+COMPOSER_PATH="{{ .ComposerPath }}"
+if [ -z "$COMPOSER_PATH" ]; then
+    echo "Error: composer not found. Please install composer first." >&2
+    echo "Hint: https://getcomposer.org/download/" >&2
+    exit 1
+fi
+exec "${PHPV_OUTPUT}/bin/php" "$COMPOSER_PATH" "$@"
+`
+
+type ShimConfig struct {
+	BinPath      string
+	ComposerPath string
+}
+
+func DetectComposerPath() string {
+	phpvRoot := os.Getenv("PHPV_ROOT")
+	if phpvRoot == "" {
+		phpvRoot = filepath.Join(os.Getenv("HOME"), ".phpv")
+	}
+	phpvBin := filepath.Join(phpvRoot, "bin")
+
+	pathEnv := os.Getenv("PATH")
+	var filteredParts []string
+	for _, part := range strings.Split(pathEnv, ":") {
+		if part != phpvBin && !strings.HasPrefix(part, phpvRoot+"/") {
+			filteredParts = append(filteredParts, part)
+		}
+	}
+	filteredPath := strings.Join(filteredParts, ":")
+
+	cmd := exec.Command("which", "composer")
+	cmd.Env = append(os.Environ(), "PATH="+filteredPath)
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func WriteShims(cfg ShimConfig) error {
+	phpShims := []string{
 		"php",
 		"phpize",
 		"php-config",
 		"php-cgi",
 	}
 
-	for _, name := range shims {
-		shimPath := filepath.Join(binPath, name)
+	for _, name := range phpShims {
+		shimPath := filepath.Join(cfg.BinPath, name)
 		content := fmt.Sprintf(dynamicShimTemplate, name)
 		if err := os.WriteFile(shimPath, []byte(content), 0755); err != nil {
 			return fmt.Errorf("failed to write shim %s: %w", name, err)
 		}
+	}
+
+	composerPath := cfg.ComposerPath
+	shimPath := filepath.Join(cfg.BinPath, "composer")
+	content := strings.Replace(composerShimTemplate, "{{ .ComposerPath }}", composerPath, 1)
+	if err := os.WriteFile(shimPath, []byte(content), 0755); err != nil {
+		return fmt.Errorf("failed to write shim composer: %w", err)
 	}
 
 	return nil

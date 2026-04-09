@@ -11,12 +11,12 @@ import (
 func TestWriteShims_Success(t *testing.T) {
 	binPath := t.TempDir()
 
-	err := WriteShims(binPath)
+	err := WriteShims(ShimConfig{BinPath: binPath})
 	if err != nil {
 		t.Fatalf("WriteShims failed: %v", err)
 	}
 
-	expectedShims := []string{"php", "phpize", "php-config", "php-cgi"}
+	expectedShims := []string{"php", "phpize", "php-config", "php-cgi", "composer"}
 
 	for _, name := range expectedShims {
 		shimPath := filepath.Join(binPath, name)
@@ -45,7 +45,7 @@ func TestWriteShims_OverwritesExisting(t *testing.T) {
 		t.Fatalf("Failed to create existing shim: %v", err)
 	}
 
-	err := WriteShims(binPath)
+	err := WriteShims(ShimConfig{BinPath: binPath})
 	if err != nil {
 		t.Fatalf("WriteShims failed: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestWriteShims_OverwritesExisting(t *testing.T) {
 func TestShimContent_ContainsDynamicResolution(t *testing.T) {
 	binPath := t.TempDir()
 
-	err := WriteShims(binPath)
+	err := WriteShims(ShimConfig{BinPath: binPath})
 	if err != nil {
 		t.Fatalf("WriteShims failed: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestShimContent_ContainsDynamicResolution(t *testing.T) {
 func TestShimContent_NoVersionSelected(t *testing.T) {
 	binPath := t.TempDir()
 
-	err := WriteShims(binPath)
+	err := WriteShims(ShimConfig{BinPath: binPath})
 	if err != nil {
 		t.Fatalf("WriteShims failed: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestShimContent_NoVersionSelected(t *testing.T) {
 func TestShimContent_VersionNotFound(t *testing.T) {
 	binPath := t.TempDir()
 
-	err := WriteShims(binPath)
+	err := WriteShims(ShimConfig{BinPath: binPath})
 	if err != nil {
 		t.Fatalf("WriteShims failed: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestShimContent_VersionNotFound(t *testing.T) {
 func TestShimContent_ExecWithArgs(t *testing.T) {
 	binPath := t.TempDir()
 
-	err := WriteShims(binPath)
+	err := WriteShims(ShimConfig{BinPath: binPath})
 	if err != nil {
 		t.Fatalf("WriteShims failed: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestDynamicShimTemplate_phpCgi(t *testing.T) {
 func TestWriteShims_AllBinaries(t *testing.T) {
 	binPath := t.TempDir()
 
-	shims := []string{"php", "phpize", "php-config", "php-cgi"}
+	shims := []string{"php", "phpize", "php-config", "php-cgi", "composer"}
 
 	for _, name := range shims {
 		shimPath := filepath.Join(binPath, name)
@@ -224,12 +224,12 @@ func TestWriteShims_AllBinaries(t *testing.T) {
 func TestWriteShims_Executable(t *testing.T) {
 	binPath := t.TempDir()
 
-	err := WriteShims(binPath)
+	err := WriteShims(ShimConfig{BinPath: binPath})
 	if err != nil {
 		t.Fatalf("WriteShims failed: %v", err)
 	}
 
-	for _, name := range []string{"php", "phpize", "php-config", "php-cgi"} {
+	for _, name := range []string{"php", "phpize", "php-config", "php-cgi", "composer"} {
 		shimPath := filepath.Join(binPath, name)
 		info, err := os.Stat(shimPath)
 		if err != nil {
@@ -247,7 +247,7 @@ func TestWriteShims_Executable(t *testing.T) {
 func TestShimContent_DefaultLookup(t *testing.T) {
 	binPath := t.TempDir()
 
-	err := WriteShims(binPath)
+	err := WriteShims(ShimConfig{BinPath: binPath})
 	if err != nil {
 		t.Fatalf("WriteShims failed: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestShimContent_DefaultLookup(t *testing.T) {
 func TestShimContent_EnvironmentFallback(t *testing.T) {
 	binPath := t.TempDir()
 
-	err := WriteShims(binPath)
+	err := WriteShims(ShimConfig{BinPath: binPath})
 	if err != nil {
 		t.Fatalf("WriteShims failed: %v", err)
 	}
@@ -287,5 +287,71 @@ func TestShimContent_EnvironmentFallback(t *testing.T) {
 
 	if !strings.Contains(shimContent, "$HOME/.phpv") {
 		t.Error("Shim should default to $HOME/.phpv")
+	}
+}
+
+func TestComposerShim_ContainsComposerPath(t *testing.T) {
+	binPath := t.TempDir()
+	composerPath := "/usr/bin/composer"
+
+	err := WriteShims(ShimConfig{BinPath: binPath, ComposerPath: composerPath})
+	if err != nil {
+		t.Fatalf("WriteShims failed: %v", err)
+	}
+
+	composerShimPath := filepath.Join(binPath, "composer")
+	content, err := os.ReadFile(composerShimPath)
+	if err != nil {
+		t.Fatalf("Failed to read composer shim: %v", err)
+	}
+
+	shimContent := string(content)
+
+	if !strings.Contains(shimContent, composerPath) {
+		t.Error("Composer shim should contain the composer path")
+	}
+
+	if !strings.Contains(shimContent, "exec") {
+		t.Error("Composer shim should contain exec command")
+	}
+
+	if !strings.Contains(shimContent, `"$@"`) {
+		t.Error("Composer shim should pass arguments with \"$@\"")
+	}
+}
+
+func TestComposerShim_EmptyComposerPathShowsError(t *testing.T) {
+	binPath := t.TempDir()
+
+	err := WriteShims(ShimConfig{BinPath: binPath, ComposerPath: ""})
+	if err != nil {
+		t.Fatalf("WriteShims failed: %v", err)
+	}
+
+	composerShimPath := filepath.Join(binPath, "composer")
+	content, err := os.ReadFile(composerShimPath)
+	if err != nil {
+		t.Fatalf("Failed to read composer shim: %v", err)
+	}
+
+	shimContent := string(content)
+
+	if !strings.Contains(shimContent, "composer not found") {
+		t.Error("Composer shim should show error when composer path is empty")
+	}
+
+	if !strings.Contains(shimContent, "https://getcomposer.org/download/") {
+		t.Error("Composer shim should show install hint")
+	}
+}
+
+func TestDetectComposerPath(t *testing.T) {
+	path := DetectComposerPath()
+	if path == "" {
+		t.Skip("Composer not found in PATH, skipping test")
+	}
+
+	if !strings.Contains(path, "composer") {
+		t.Errorf("DetectComposerPath returned unexpected path: %s", path)
 	}
 }

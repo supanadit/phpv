@@ -62,8 +62,12 @@ func (h *TerminalHandler) Use(constraint string) (*UseResult, error) {
 	}
 
 	shimPath := utils.BinPath(silo)
+	composerPath := shim.DetectComposerPath()
 
-	if err := shim.WriteShims(shimPath); err != nil {
+	if err := shim.WriteShims(shim.ShimConfig{
+		BinPath:      shimPath,
+		ComposerPath: composerPath,
+	}); err != nil {
 		return nil, fmt.Errorf("failed to write shims: %w", err)
 	}
 

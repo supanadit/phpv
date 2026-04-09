@@ -250,6 +250,50 @@ func run(
 	installCmd.Flags().BoolP("quiet", "q", false, "Suppress non-essential output")
 	installCmd.Flags().Bool("force", false, "Force rebuild even if already installed")
 
+	rebuildCmd := &cobra.Command{
+		Use:   "rebuild <version>",
+		Short: "Rebuild PHP with different extensions without reinstalling dependencies",
+		Long: `Rebuild an existing PHP installation with new extension flags. This is faster than 'install --fresh' because it preserves the downloaded archive and extracted source, only recompiling PHP with the new configuration.
+
+Example:
+  phpv rebuild 8 --ext phar,iconv,filter,fileinfo
+  phpv rebuild 8 --ext phar,iconv,filter,fileinfo,dom,session`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			verbose, _ := cmd.Flags().GetBool("verbose")
+			compiler, _ := cmd.Flags().GetString("compiler")
+			extStr, _ := cmd.Flags().GetString("ext")
+			quiet, _ := cmd.Flags().GetBool("quiet")
+			jsonOutput, _ := cmd.Flags().GetBool("json")
+
+			extensions := parseExtensions(extStr)
+
+			if quiet {
+				verbose = false
+			}
+
+			if jsonOutput {
+				fmt.Printf(`{"command":"rebuild","version":"%s","compiler":"%s","extensions":%v}`+"\n", args[0], compiler, extensions)
+				return nil
+			}
+
+			forge, err := handler.Rebuild(args[0], compiler, extensions, verbose)
+			if err != nil {
+				return err
+			}
+
+			if !quiet {
+				terminal.PrintInstallSummary(args[0], forge)
+			}
+			return nil
+		},
+	}
+	rebuildCmd.Flags().BoolP("verbose", "v", false, "Enable verbose output")
+	rebuildCmd.Flags().String("compiler", "", "Force a specific compiler (e.g., zig, gcc)")
+	rebuildCmd.Flags().String("ext", "", "Comma-separated list of bundled extensions to enable (e.g., opcache,mbstring,curl)")
+	rebuildCmd.Flags().Bool("json", false, "JSON output for machine parsing")
+	rebuildCmd.Flags().BoolP("quiet", "q", false, "Suppress non-essential output")
+
 	useCmd := &cobra.Command{
 		Use:   "use <version>",
 		Short: "Switch to a PHP version for the current session",
@@ -619,6 +663,7 @@ PowerShell:
 	}
 
 	rootCmd.AddCommand(installCmd)
+	rootCmd.AddCommand(rebuildCmd)
 	rootCmd.AddCommand(useCmd)
 	rootCmd.AddCommand(defaultCmd)
 	rootCmd.AddCommand(versionsCmd)

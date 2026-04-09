@@ -106,6 +106,37 @@ func (s *bundlerRepository) Install(version string, compiler string, extensions 
 	return s.Orchestrate("php", exactVersion, compiler, extensions, fresh)
 }
 
+func (s *bundlerRepository) Rebuild(version string, compiler string, extensions []string) (domain.Forge, error) {
+	exactVersion, err := s.resolvePHPVersion(version)
+	if err != nil {
+		return domain.Forge{}, fmt.Errorf("[bundler] failed to resolve PHP version %q: %w", version, err)
+	}
+
+	outputPath := utils.PHPOutputPath(s.silo, exactVersion)
+	phpBinary := filepath.Join(outputPath, "bin", "php")
+	if exists, _ := afero.Exists(s.fs, phpBinary); !exists {
+		return domain.Forge{}, fmt.Errorf("[bundler] PHP %s is not installed. Use 'phpv install %s' first", exactVersion, version)
+	}
+
+	var depLibraryPaths []string
+	var depCppFlags []string
+	var depLdFlags []string
+
+	if err := s.buildPHP("php", exactVersion, extensions, depLibraryPaths, depCppFlags, depLdFlags, compiler, true); err != nil {
+		return domain.Forge{}, fmt.Errorf("[bundler] failed to rebuild PHP: %w", err)
+	}
+
+	outputPath = utils.PHPOutputPath(s.silo, exactVersion)
+	depLibraryPaths = append(depLibraryPaths, filepath.Join(outputPath, "lib"))
+
+	return domain.Forge{
+		Prefix: outputPath,
+		Env: map[string]string{
+			"LD_LIBRARY_PATH": strings.Join(depLibraryPaths, ":"),
+		},
+	}, nil
+}
+
 func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler string, extensions []string, fresh bool) (domain.Forge, error) {
 	if fresh {
 		if err := s.freshClean(name, exactVersion); err != nil {
@@ -199,7 +230,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 		_ = levelIdx
 	}
 
-	if err := s.buildPHP(name, exactVersion, extensions, depLibraryPaths, depCppFlags, depLdFlags, forceCompiler); err != nil {
+	if err := s.buildPHP(name, exactVersion, extensions, depLibraryPaths, depCppFlags, depLdFlags, forceCompiler, false); err != nil {
 		s.siloRepo.MarkFailed(exactVersion)
 		s.siloRepo.Rollback(exactVersion)
 		return domain.Forge{}, fmt.Errorf("[forge] failed to build PHP: %w", err)

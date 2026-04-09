@@ -12,12 +12,20 @@ import (
 
 type mockBundlerRepo struct {
 	installFunc     func(version, compiler string, extensions []string, fresh bool) (domain.Forge, error)
+	rebuildFunc     func(version, compiler string, extensions []string) (domain.Forge, error)
 	orchestrateFunc func(name, version, compiler string, extensions []string, fresh bool) (domain.Forge, error)
 }
 
 func (m *mockBundlerRepo) Install(version, compiler string, extensions []string, fresh bool) (domain.Forge, error) {
 	if m.installFunc != nil {
 		return m.installFunc(version, compiler, extensions, fresh)
+	}
+	return domain.Forge{Prefix: "/fake/prefix"}, nil
+}
+
+func (m *mockBundlerRepo) Rebuild(version, compiler string, extensions []string) (domain.Forge, error) {
+	if m.rebuildFunc != nil {
+		return m.rebuildFunc(version, compiler, extensions)
 	}
 	return domain.Forge{Prefix: "/fake/prefix"}, nil
 }

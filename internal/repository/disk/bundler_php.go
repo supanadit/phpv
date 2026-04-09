@@ -31,7 +31,7 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 			return nil
 		}
 		if !exists {
-			s.logInfo("PHP binary not found, will rebuild from source", version)
+			s.logInfo("PHP binary not found, will rebuild from source %s", version)
 		} else {
 			s.logInfo("Forcing rebuild of PHP %s with new extension flags", version)
 		}

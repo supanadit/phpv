@@ -80,6 +80,12 @@ func DetectComposerPath() string {
 		phpvRoot = filepath.Join(os.Getenv("HOME"), ".phpv")
 	}
 	phpvBin := filepath.Join(phpvRoot, "bin")
+	phpvPhar := filepath.Join(phpvRoot, "phar")
+
+	localComposer := filepath.Join(phpvPhar, "composer.phar")
+	if _, err := os.Stat(localComposer); err == nil {
+		return localComposer
+	}
 
 	pathEnv := os.Getenv("PATH")
 	var filteredParts []string

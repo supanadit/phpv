@@ -28,6 +28,10 @@ func BinPath(silo *domain.Silo) string {
 	return filepath.Join(silo.Root, "bin")
 }
 
+func PharPath(silo *domain.Silo) string {
+	return filepath.Join(silo.Root, "phar")
+}
+
 func ArchiveKey(pkg, ver string) string {
 	return filepath.Join("cache", pkg, ver, "archive")
 }

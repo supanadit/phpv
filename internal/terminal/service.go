@@ -25,6 +25,11 @@ type TerminalService interface {
 	PECLInstall(archivePath string) (*PECLInstallResult, error)
 	PECLList() ([]string, error)
 	PECLUninstall(name string) error
+	PharInstall(name string, version string) (*domain.PharResult, error)
+	PharUpdate(name string, version string) (*domain.PharResult, error)
+	PharRemove(name string) error
+	PharList() ([]string, error)
+	PharWhich(name string) (string, error)
 }
 
 type PECLInstallResult struct {

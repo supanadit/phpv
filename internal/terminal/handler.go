@@ -44,6 +44,10 @@ func (h *TerminalHandler) Install(version string, compiler string, extensions []
 	return h.BundlerRepo.Install(version, compiler, extensions, fresh)
 }
 
+func (h *TerminalHandler) Rebuild(version string, compiler string, extensions []string, verbose bool) (domain.Forge, error) {
+	return h.BundlerRepo.Rebuild(version, compiler, extensions)
+}
+
 func (h *TerminalHandler) Use(constraint string) (*UseResult, error) {
 	exactVersion, err := h.resolveInstalledVersion(constraint)
 	if err != nil {

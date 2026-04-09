@@ -6,6 +6,7 @@ import (
 
 type TerminalService interface {
 	Install(version string, compiler string, extensions []string, verbose bool, fresh bool) (domain.Forge, error)
+	Rebuild(version string, compiler string, extensions []string, verbose bool) (domain.Forge, error)
 	Use(version string) (*UseResult, error)
 	ShellUse(version string) error
 	AutoDetect() (string, error)

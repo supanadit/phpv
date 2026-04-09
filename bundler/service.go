@@ -14,6 +14,7 @@ import (
 
 type BundlerRepository interface {
 	Install(version string, compiler string, extensions []string, fresh bool) (domain.Forge, error)
+	Rebuild(version string, compiler string, extensions []string) (domain.Forge, error)
 	Orchestrate(name, exactVersion string, compiler string, extensions []string, fresh bool) (domain.Forge, error)
 	PECLInstall(archivePath string, phpVersion string) (*domain.Extension, error)
 	PECLList(phpVersion string) ([]string, error)

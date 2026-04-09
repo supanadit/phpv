@@ -430,11 +430,8 @@ After initialization, you can use 'phpv use <version>' to switch PHP versions in
 			}
 
 			printer := &terminal.VersionsPrinter{
-				Versions:   make([]string, len(result.Versions)),
+				Versions:   result.Versions,
 				DefaultVer: result.DefaultVer,
-			}
-			for i, v := range result.Versions {
-				printer.Versions[i] = v.Version
 			}
 			printer.Print()
 			return nil

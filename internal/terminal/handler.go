@@ -580,19 +580,64 @@ func (h *TerminalHandler) ListVersionsFormatted() (*VersionsResult, error) {
 
 	defaultVer, _ := h.GetDefault()
 
+	silo, err := h.Silo.GetSilo()
+	if err != nil {
+		return nil, err
+	}
+
 	result := &VersionsResult{
-		Versions:   make([]VersionInfo, len(versions)),
+		Versions:   make([]VersionInfo, 0, len(versions)+1),
 		DefaultVer: defaultVer,
 	}
 
-	for i, v := range versions {
-		result.Versions[i] = VersionInfo{
+	systemPHPPath, systemPHPVersion := h.detectSystemPHP(silo.Root)
+	if systemPHPPath != "" {
+		result.Versions = append(result.Versions, VersionInfo{
+			Version:    systemPHPVersion,
+			IsDefault:  false,
+			IsSystem:   true,
+			SystemPath: systemPHPPath,
+		})
+	}
+
+	for _, v := range versions {
+		result.Versions = append(result.Versions, VersionInfo{
 			Version:   v,
 			IsDefault: v == defaultVer,
-		}
+			IsSystem:  false,
+		})
 	}
 
 	return result, nil
+}
+
+func (h *TerminalHandler) detectSystemPHP(siloRoot string) (path string, version string) {
+	phpvBin := filepath.Join(siloRoot, "bin")
+	pathEnv := os.Getenv("PATH")
+	var filteredParts []string
+	for _, part := range strings.Split(pathEnv, ":") {
+		if part != phpvBin && !strings.HasPrefix(part, siloRoot+"/") {
+			filteredParts = append(filteredParts, part)
+		}
+	}
+	filteredPath := strings.Join(filteredParts, ":")
+
+	cmd := exec.Command("which", "php")
+	cmd.Env = append(os.Environ(), "PATH="+filteredPath)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", ""
+	}
+	path = strings.TrimSpace(string(out))
+
+	versionCmd := exec.Command(path, "-r", "echo PHP_VERSION;")
+	versionCmd.Env = append(os.Environ(), "PATH="+filteredPath)
+	versionOut, err := versionCmd.Output()
+	if err != nil {
+		return path, ""
+	}
+	version = strings.TrimSpace(string(versionOut))
+	return path, version
 }
 
 func (h *TerminalHandler) ListAvailableFormatted() (*ListResult, error) {

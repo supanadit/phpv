@@ -84,8 +84,10 @@ type VersionsResult struct {
 }
 
 type VersionInfo struct {
-	Version   string
-	IsDefault bool
+	Version    string
+	IsDefault  bool
+	IsSystem   bool
+	SystemPath string
 }
 
 type ListResult struct {

@@ -78,7 +78,7 @@ func (s *InstallSummary) Print() {
 }
 
 type VersionsPrinter struct {
-	Versions   []string
+	Versions   []VersionInfo
 	DefaultVer string
 }
 
@@ -90,10 +90,12 @@ func (p *VersionsPrinter) Print() {
 
 	fmt.Println("Installed PHP versions:")
 	for _, v := range p.Versions {
-		if v == p.DefaultVer {
-			fmt.Printf("  * %s (default)\n", v)
+		if v.IsSystem {
+			fmt.Printf("    system (%s -> %s)\n", v.SystemPath, v.Version)
+		} else if v.IsDefault {
+			fmt.Printf("  * %s (default)\n", v.Version)
 		} else {
-			fmt.Printf("    %s\n", v)
+			fmt.Printf("    %s\n", v.Version)
 		}
 	}
 }

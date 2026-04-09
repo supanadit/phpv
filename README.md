@@ -113,7 +113,7 @@ phpv install 8          # Latest 8.x.x
 phpv install 8.4.0      # Exact version
 
 # With extensions
-phpv install 8.4 --ext pdo_mysql --ext pdo_pgsql --ext intl
+phpv install 8.4 --ext curl,openssl,intl
 
 # With verbose output to watch the build
 phpv install 8.4 --verbose
@@ -134,9 +134,10 @@ phpv which               # Path to current PHP binary
 ### Manage PECL Extensions
 
 ```bash
-phpv pecl install redis
+# Download archive on https://pecl.php.net/packages.php
+phpv pecl install cld-0.5.0.tgz
 phpv pecl list
-phpv pecl uninstall redis
+phpv pecl uninstall cld
 ```
 
 ### Diagnose Issues
@@ -202,7 +203,7 @@ phpv install 8.4
 | `phpv uninstall <version>` | Remove PHP version and isolated dependencies |
 | `phpv upgrade [version]` | Upgrade to latest patch/minor version |
 | `phpv doctor` | Check system for missing build dependencies |
-| `phpv pecl install <ext>` | Install PECL extension |
+| `phpv pecl install <ext-archive>` | Install PECL extension |
 | `phpv pecl list` | List installed PECL extensions |
 | `phpv pecl uninstall <ext>` | Uninstall PECL extension |
 | `phpv build-tools clean` | Remove unused shared build tools |

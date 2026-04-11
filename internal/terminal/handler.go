@@ -390,16 +390,16 @@ func (h *TerminalHandler) Which() (string, error) {
 		}
 	}
 
-	defaultVer, err := h.Silo.GetDefault()
+	activeVer, err := h.resolveActivePHP()
 	if err != nil {
 		return "", err
 	}
 
-	if defaultVer == "" {
+	if activeVer == "" {
 		return "", nil
 	}
 
-	phpPath := filepath.Join(utils.PHPOutputPath(silo, defaultVer), "bin", "php")
+	phpPath := filepath.Join(utils.PHPOutputPath(silo, activeVer), "bin", "php")
 	if _, err := os.Stat(phpPath); os.IsNotExist(err) {
 		return "", nil
 	}

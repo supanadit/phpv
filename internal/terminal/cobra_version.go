@@ -162,7 +162,7 @@ func registerVersionCommands(root *cobra.Command, handler *TerminalHandler) {
 				return err
 			}
 			if phpPath == "" {
-				fmt.Println("No default PHP version set")
+				fmt.Println("No active PHP version set")
 				return nil
 			}
 			fmt.Println(phpPath)

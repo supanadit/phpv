@@ -224,7 +224,7 @@ func (s *bundlerRepository) isToolInstalled(name, installPath string) bool {
 	}
 }
 
-func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, contextMsg string, isBuildTool bool, forceCompiler string) error {
+func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, contextMsg string, isBuildTool bool, forceCompiler string) error {
 	check, err := s.advisorSvc.Check(name, version, phpVersion)
 	if err != nil {
 		return err
@@ -254,7 +254,7 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		archive := archivePathFromURL(s.silo.Root, name, version, urls[0])
 		if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
 			s.logWarn("  Download failed, falling back to source build")
-			return s.buildFromSourceOrSystem(name, version, phpVersion, ldPath, cppFlags, ldFlags, check.Suggestion, forceCompiler)
+			return s.buildFromSourceOrSystem(name, version, phpVersion, ldPath, cppFlags, ldFlags, pkgConfigPaths, check.Suggestion, forceCompiler)
 		}
 		fallthrough
 	case "extract":
@@ -269,7 +269,7 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		}
 		fallthrough
 	case "build", "rebuild":
-		err := s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, forceCompiler)
+		err := s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, pkgConfigPaths, forceCompiler)
 		if err != nil {
 			s.logError("✗ Failed to build %s@%s: %v", name, version, err)
 			if check.Suggestion != "" {
@@ -297,7 +297,7 @@ func (s *bundlerRepository) findCachedArchive(pkg, ver string) string {
 	return filepath.Join(cacheDir, "archive")
 }
 
-func (s *bundlerRepository) buildFromSource(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, forceCompiler string) error {
+func (s *bundlerRepository) buildFromSource(name, version, phpVersion string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, forceCompiler string) error {
 	sources, err := s.sourceSvc.GetSources(name, version)
 	if err != nil {
 		return fmt.Errorf("[bundler] failed to get sources for %s@%s: %w", name, version, err)
@@ -319,7 +319,7 @@ func (s *bundlerRepository) buildFromSource(name, version, phpVersion string, ld
 			continue
 		}
 
-		return s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, forceCompiler)
+		return s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, pkgConfigPaths, forceCompiler)
 	}
 
 	if lastErr != nil {
@@ -328,8 +328,8 @@ func (s *bundlerRepository) buildFromSource(name, version, phpVersion string, ld
 	return nil
 }
 
-func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, suggestion string, forceCompiler string) error {
-	err := s.buildFromSource(name, version, phpVersion, ldPath, cppFlags, ldFlags, forceCompiler)
+func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, suggestion string, forceCompiler string) error {
+	err := s.buildFromSource(name, version, phpVersion, ldPath, cppFlags, ldFlags, pkgConfigPaths, forceCompiler)
 	if err == nil {
 		return nil
 	}
@@ -357,7 +357,7 @@ func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion st
 	return err
 }
 
-func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, forceCompiler string) error {
+func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, forceCompiler string) error {
 	installDir := utils.DependencyPath(s.silo, phpVersion, name, version)
 	sourceDir := utils.GetSourceDirPath(s.silo, name, version)
 
@@ -418,6 +418,7 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 		CC:              cc,
 		CFLAGS:          cflags,
 		CXX:             cxx,
+		PkgConfigPaths:  pkgConfigPaths,
 		Verbose:         s.verbose,
 	}
 
@@ -425,7 +426,7 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 	return err
 }
 
-func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, contextMsg string, isBuildTool bool, forceCompiler string) (*domain.DependencyInfo, error) {
+func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, contextMsg string, isBuildTool bool, forceCompiler string) (*domain.DependencyInfo, error) {
 	check, err := s.advisorSvc.Check(name, version, phpVersion)
 	if err != nil {
 		return nil, err
@@ -467,7 +468,7 @@ func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion strin
 			} else {
 				s.logWarn("  Download failed, falling back to source build")
 			}
-			err := s.buildFromSourceOrSystem(name, version, phpVersion, ldPath, cppFlags, ldFlags, check.Suggestion, forceCompiler)
+			err := s.buildFromSourceOrSystem(name, version, phpVersion, ldPath, cppFlags, ldFlags, pkgConfigPaths, check.Suggestion, forceCompiler)
 			if err != nil {
 				return nil, err
 			}
@@ -486,7 +487,7 @@ func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion strin
 		}
 		fallthrough
 	case "build", "rebuild":
-		err := s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, forceCompiler)
+		err := s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, pkgConfigPaths, forceCompiler)
 		if err != nil {
 			s.logError("✗ Failed to build %s@%s: %v", name, version, err)
 			if check.Suggestion != "" {

@@ -12,7 +12,7 @@ import (
 	"github.com/supanadit/phpv/pattern"
 )
 
-func (s *bundlerRepository) buildPHP(name, version string, extensions []string, ldPath, cppFlags, ldFlags []string, forceCompiler string, forceRebuild bool) error {
+func (s *bundlerRepository) buildPHP(name, version string, extensions []string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, forceCompiler string, forceRebuild bool) error {
 	check, err := s.advisorSvc.Check(name, version, "")
 	if err != nil {
 		return err
@@ -162,6 +162,7 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 			CC:              cc,
 			CFLAGS:          cflags,
 			CXX:             cxx,
+			PkgConfigPaths:  pkgConfigPaths,
 			Verbose:         s.verbose,
 		}
 

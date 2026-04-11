@@ -2,6 +2,7 @@ package disk
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -121,8 +122,9 @@ func (s *bundlerRepository) Rebuild(version string, compiler string, extensions 
 	var depLibraryPaths []string
 	var depCppFlags []string
 	var depLdFlags []string
+	var depPkgConfigPaths []string
 
-	if err := s.buildPHP("php", exactVersion, extensions, depLibraryPaths, depCppFlags, depLdFlags, compiler, true); err != nil {
+	if err := s.buildPHP("php", exactVersion, extensions, depLibraryPaths, depCppFlags, depLdFlags, depPkgConfigPaths, compiler, true); err != nil {
 		return domain.Forge{}, fmt.Errorf("[bundler] failed to rebuild PHP: %w", err)
 	}
 
@@ -169,6 +171,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 	var depLibraryPaths []string
 	var depCppFlags []string
 	var depLdFlags []string
+	var depPkgConfigPaths []string
 	var builtDeps []domain.DependencyInfo
 
 	for levelIdx, level := range levels {
@@ -192,7 +195,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 				}
 
 				contextMsg := ""
-				depInfo, err := s.buildPackageWithInfo(dep.Name, depVersion, exactVersion, depLibraryPaths, depCppFlags, depLdFlags, contextMsg, buildTools[dep.Name], forceCompiler)
+				depInfo, err := s.buildPackageWithInfo(dep.Name, depVersion, exactVersion, depLibraryPaths, depCppFlags, depLdFlags, depPkgConfigPaths, contextMsg, buildTools[dep.Name], forceCompiler)
 				if err != nil {
 					mu.Lock()
 					if firstErr == nil {
@@ -213,6 +216,14 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 					depLibraryPaths = append(depLibraryPaths, filepath.Join(depPath, "lib"))
 					depCppFlags = append(depCppFlags, fmt.Sprintf("-I%s/include", depPath))
 					depLdFlags = append(depLdFlags, fmt.Sprintf("-L%s/lib", depPath))
+					lib64PcPath := filepath.Join(depPath, "lib64", "pkgconfig")
+					libPcPath := filepath.Join(depPath, "lib", "pkgconfig")
+					if _, err := os.Stat(libPcPath); err == nil {
+						depPkgConfigPaths = append(depPkgConfigPaths, libPcPath)
+					}
+					if _, err := os.Stat(lib64PcPath); err == nil {
+						depPkgConfigPaths = append(depPkgConfigPaths, lib64PcPath)
+					}
 				}
 				if depInfo != nil {
 					builtDeps = append(builtDeps, *depInfo)
@@ -230,7 +241,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 		_ = levelIdx
 	}
 
-	if err := s.buildPHP(name, exactVersion, extensions, depLibraryPaths, depCppFlags, depLdFlags, forceCompiler, false); err != nil {
+	if err := s.buildPHP(name, exactVersion, extensions, depLibraryPaths, depCppFlags, depLdFlags, depPkgConfigPaths, forceCompiler, false); err != nil {
 		s.siloRepo.MarkFailed(exactVersion)
 		s.siloRepo.Rollback(exactVersion)
 		return domain.Forge{}, fmt.Errorf("[forge] failed to build PHP: %w", err)

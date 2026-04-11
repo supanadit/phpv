@@ -25,16 +25,21 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 		}
 	}
 
-	pkgConfigPaths := utils.GetSystemPkgConfigPaths()
+	systemPkgConfigPaths := utils.GetSystemPkgConfigPaths()
+	var allPkgConfigPaths []string
+	if len(config.PkgConfigPaths) > 0 {
+		allPkgConfigPaths = append(allPkgConfigPaths, config.PkgConfigPaths...)
+	}
+	allPkgConfigPaths = append(allPkgConfigPaths, systemPkgConfigPaths...)
 	for i, v := range env {
 		if after, ok := strings.CutPrefix(v, "PKG_CONFIG_PATH="); ok {
-			pkgConfigPaths = append(pkgConfigPaths, strings.Split(after, ":")...)
-			env[i] = "PKG_CONFIG_PATH=" + strings.Join(pkgConfigPaths, ":")
+			allPkgConfigPaths = append(allPkgConfigPaths, strings.Split(after, ":")...)
+			env[i] = "PKG_CONFIG_PATH=" + strings.Join(allPkgConfigPaths, ":")
 			break
 		}
 	}
 	if !hasEnvVar(env, "PKG_CONFIG_PATH") {
-		env = append(env, "PKG_CONFIG_PATH="+strings.Join(pkgConfigPaths, ":"))
+		env = append(env, "PKG_CONFIG_PATH="+strings.Join(allPkgConfigPaths, ":"))
 	}
 
 	for _, v := range config.CPPFLAGS {

@@ -320,38 +320,24 @@ func registerPackages(svc *assembler.AssemblerService) {
 			},
 		},
 		{
-			Package: "autoconf",
-			Default: []domain.Dependency{
-				{Name: "m4", Version: "1.4.19"},
-			},
-			Constraints: []domain.VersionConstraint{
-				{VersionRange: ">=2.69", Dependencies: []domain.Dependency{}},
-			},
-		},
-		{
-			Package: "automake",
-			Default: []domain.Dependency{
-				{Name: "autoconf", Version: "2.69"},
-				{Name: "m4", Version: "1.4.19"},
-			},
-			Constraints: []domain.VersionConstraint{
-				{VersionRange: ">=1.15", Dependencies: []domain.Dependency{}},
-			},
-		},
-		{
-			Package: "libtool",
-			Default: []domain.Dependency{
-				{Name: "m4", Version: "1.4.19"},
-				{Name: "autoconf", Version: "2.69"},
-			},
+			Package:     "autoconf",
+			Default:     []domain.Dependency{},
 			Constraints: []domain.VersionConstraint{},
 		},
 		{
-			Package: "m4",
-			Default: []domain.Dependency{},
-			Constraints: []domain.VersionConstraint{
-				{VersionRange: ">=1.4.19", Dependencies: []domain.Dependency{}},
-			},
+			Package:     "automake",
+			Default:     []domain.Dependency{},
+			Constraints: []domain.VersionConstraint{},
+		},
+		{
+			Package:     "libtool",
+			Default:     []domain.Dependency{},
+			Constraints: []domain.VersionConstraint{},
+		},
+		{
+			Package:     "m4",
+			Default:     []domain.Dependency{},
+			Constraints: []domain.VersionConstraint{},
 		},
 		{
 			Package:     "perl",
@@ -359,25 +345,14 @@ func registerPackages(svc *assembler.AssemblerService) {
 			Constraints: []domain.VersionConstraint{},
 		},
 		{
-			Package: "flex",
-			Default: []domain.Dependency{
-				{Name: "m4", Version: "1.4.19"},
-				{Name: "autoconf", Version: "2.69"},
-				{Name: "automake", Version: "1.15.1"},
-				{Name: "libtool", Version: "2.4.6"},
-			},
+			Package:     "flex",
+			Default:     []domain.Dependency{},
 			Constraints: []domain.VersionConstraint{},
 		},
 		{
-			Package: "bison",
-			Default: []domain.Dependency{
-				{Name: "m4", Version: "1.4.19"},
-				{Name: "autoconf", Version: "2.69"},
-				{Name: "automake", Version: "1.15.1"},
-			},
-			Constraints: []domain.VersionConstraint{
-				{VersionRange: ">=3.0", Dependencies: []domain.Dependency{}},
-			},
+			Package:     "bison",
+			Default:     []domain.Dependency{},
+			Constraints: []domain.VersionConstraint{},
 		},
 		{
 			Package:     "zig",

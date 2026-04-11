@@ -95,14 +95,35 @@ func (r *ForgeRepository) buildToolsBinPath(buildToolsPath string) string {
 			if !vEntry.IsDir() {
 				continue
 			}
-			binPath := filepath.Join(pkgPath, vEntry.Name(), "bin")
+			versionDir := filepath.Join(pkgPath, vEntry.Name())
+
+			binPath := filepath.Join(versionDir, "bin")
 			if exists, _ := afero.DirExists(r.fs, binPath); exists {
 				binPaths = append(binPaths, binPath)
+				continue
+			}
+
+			if r.hasExecutable(versionDir, entry.Name()) {
+				binPaths = append(binPaths, versionDir)
+				continue
+			}
+
+			nestedBin := filepath.Join(versionDir, entry.Name(), "bin")
+			if exists, _ := afero.DirExists(r.fs, nestedBin); exists {
+				binPaths = append(binPaths, nestedBin)
 			}
 		}
 	}
 
 	return strings.Join(binPaths, ":")
+}
+
+func (r *ForgeRepository) hasExecutable(dir, name string) bool {
+	exePath := filepath.Join(dir, name)
+	if exists, _ := afero.Exists(r.fs, exePath); exists {
+		return true
+	}
+	return false
 }
 
 func (r *ForgeRepository) chmodBuildScripts(sourcePath string) {

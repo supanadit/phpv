@@ -324,7 +324,9 @@ func registerPackages(svc *assembler.AssemblerService) {
 			Default: []domain.Dependency{
 				{Name: "m4", Version: "1.4.19"},
 			},
-			Constraints: []domain.VersionConstraint{},
+			Constraints: []domain.VersionConstraint{
+				{VersionRange: ">=2.69", Dependencies: []domain.Dependency{}},
+			},
 		},
 		{
 			Package: "automake",
@@ -332,7 +334,9 @@ func registerPackages(svc *assembler.AssemblerService) {
 				{Name: "autoconf", Version: "2.69"},
 				{Name: "m4", Version: "1.4.19"},
 			},
-			Constraints: []domain.VersionConstraint{},
+			Constraints: []domain.VersionConstraint{
+				{VersionRange: ">=1.15", Dependencies: []domain.Dependency{}},
+			},
 		},
 		{
 			Package: "libtool",
@@ -343,9 +347,11 @@ func registerPackages(svc *assembler.AssemblerService) {
 			Constraints: []domain.VersionConstraint{},
 		},
 		{
-			Package:     "m4",
-			Default:     []domain.Dependency{},
-			Constraints: []domain.VersionConstraint{},
+			Package: "m4",
+			Default: []domain.Dependency{},
+			Constraints: []domain.VersionConstraint{
+				{VersionRange: ">=1.4.19", Dependencies: []domain.Dependency{}},
+			},
 		},
 		{
 			Package:     "perl",
@@ -369,7 +375,9 @@ func registerPackages(svc *assembler.AssemblerService) {
 				{Name: "autoconf", Version: "2.69"},
 				{Name: "automake", Version: "1.15.1"},
 			},
-			Constraints: []domain.VersionConstraint{},
+			Constraints: []domain.VersionConstraint{
+				{VersionRange: ">=3.0", Dependencies: []domain.Dependency{}},
+			},
 		},
 		{
 			Package:     "zig",

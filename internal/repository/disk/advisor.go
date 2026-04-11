@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/afero"
@@ -76,6 +77,116 @@ func (e *defaultExecutor) PkgConfigExists(pkg string) bool {
 	return cmd.Run() == nil
 }
 
+var buildToolVersionParsers = map[string]func(string) string{
+	"m4":       parseM4Version,
+	"autoconf": parseAutoconfVersion,
+	"automake": parseAutomakeVersion,
+	"bison":    parseBisonVersion,
+	"flex":     parseFlexVersion,
+	"libtool":  parseLibtoolVersion,
+	"perl":     parsePerlVersion,
+	"re2c":     parseRe2cVersion,
+	"zig":      parseZigVersion,
+}
+
+func parseM4Version(output string) string {
+	re := regexp.MustCompile(`\(GNU M4\) (\d+\.\d+(?:\.\d+)?)`)
+	matches := re.FindStringSubmatch(output)
+	if len(matches) >= 2 {
+		return matches[1]
+	}
+	return ""
+}
+
+func parseAutoconfVersion(output string) string {
+	re := regexp.MustCompile(`\(GNU Autoconf\) (\d+\.\d+(?:\.\d+)?)`)
+	matches := re.FindStringSubmatch(output)
+	if len(matches) >= 2 {
+		return matches[1]
+	}
+	return ""
+}
+
+func parseAutomakeVersion(output string) string {
+	re := regexp.MustCompile(`\(GNU Automake\) (\d+\.\d+(?:\.\d+)?)`)
+	matches := re.FindStringSubmatch(output)
+	if len(matches) >= 2 {
+		return matches[1]
+	}
+	return ""
+}
+
+func parseBisonVersion(output string) string {
+	re := regexp.MustCompile(`\(GNU Bison\) (\d+\.\d+(?:\.\d+)?)`)
+	matches := re.FindStringSubmatch(output)
+	if len(matches) >= 2 {
+		return matches[1]
+	}
+	return ""
+}
+
+func parseFlexVersion(output string) string {
+	re := regexp.MustCompile(`flex (\d+\.\d+(?:\.\d+)?)`)
+	matches := re.FindStringSubmatch(output)
+	if len(matches) >= 2 {
+		return matches[1]
+	}
+	return ""
+}
+
+func parseLibtoolVersion(output string) string {
+	re := regexp.MustCompile(`\(GNU libtool\) (\d+\.\d+(?:\.\d+)?)`)
+	matches := re.FindStringSubmatch(output)
+	if len(matches) >= 2 {
+		return matches[1]
+	}
+	return ""
+}
+
+func parsePerlVersion(output string) string {
+	re := regexp.MustCompile(`This is perl 5, version (\d+)`)
+	matches := re.FindStringSubmatch(output)
+	if len(matches) >= 2 {
+		minor := matches[1]
+		return "5." + minor
+	}
+	re2 := regexp.MustCompile(`v?(\d+\.\d+\.\d+)`)
+	matches2 := re2.FindStringSubmatch(output)
+	if len(matches2) >= 2 {
+		return matches2[1]
+	}
+	return ""
+}
+
+func parseRe2cVersion(output string) string {
+	parts := strings.Fields(output)
+	if len(parts) >= 2 {
+		return parts[1]
+	}
+	return ""
+}
+
+func parseZigVersion(output string) string {
+	parts := strings.Fields(output)
+	if len(parts) >= 2 {
+		return parts[1]
+	}
+	return ""
+}
+
+func (e *defaultExecutor) GetVersion(name string) string {
+	cmd := exec.Command(name, "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	parser := buildToolVersionParsers[name]
+	if parser == nil {
+		return ""
+	}
+	return parser(strings.TrimSpace(string(out)))
+}
+
 type AdvisorRepository struct {
 	fs              afero.Fs
 	root            string
@@ -99,6 +210,15 @@ var (
 		"curl":      "sudo apt install libcurl4-openssl-dev  # or: sudo dnf install libcurl-devel",
 		"zlib":      "sudo apt install zlib1g-dev  # or: sudo dnf install zlib-devel",
 		"oniguruma": "sudo apt install libonig-dev  # or: sudo dnf install oniguruma-devel",
+		"m4":        "sudo apt install m4",
+		"autoconf":  "sudo apt install autoconf",
+		"automake":  "sudo apt install automake",
+		"libtool":   "sudo apt install libtool",
+		"perl":      "sudo apt install perl",
+		"bison":     "sudo apt install bison",
+		"flex":      "sudo apt install flex",
+		"re2c":      "sudo apt install re2c",
+		"zig":       "sudo apt install zig",
 	}
 )
 
@@ -151,9 +271,9 @@ func (r *AdvisorRepository) checkSystemPackage(name string) (bool, string, strin
 	if pkgConfigName, isLib := libraryPackages[name]; isLib {
 		return r.checkSystemLibrary(name, pkgConfigName)
 	}
-	_, path, _ := r.checkSystemExecutable(name)
+	available, path, version := r.checkSystemExecutable(name)
 	if path != "" {
-		return true, path, ""
+		return available, path, version
 	}
 	return false, "", ""
 }
@@ -163,7 +283,8 @@ func (r *AdvisorRepository) checkSystemExecutable(name string) (bool, string, st
 	if err != nil {
 		return false, "", ""
 	}
-	return true, path, ""
+	version := r.exec.GetVersion(name)
+	return true, path, version
 }
 
 func (r *AdvisorRepository) checkSystemLibrary(name, pkgConfigName string) (bool, string, string) {
@@ -299,6 +420,10 @@ func (r *AdvisorRepository) shouldBuildFromSource(name, phpVersion string) bool 
 		return false
 	}
 
+	if _, isBuildTool := buildTools[name]; isBuildTool {
+		return r.shouldBuildToolFromSource(name, phpVersion)
+	}
+
 	if r.assembler == nil {
 		return mustBuildFromSource(name, phpVersion)
 	}
@@ -334,6 +459,47 @@ func (r *AdvisorRepository) shouldBuildFromSource(name, phpVersion string) bool 
 	}
 
 	return false
+}
+
+func (r *AdvisorRepository) shouldBuildToolFromSource(name, phpVersion string) bool {
+	if r.assembler == nil {
+		return false
+	}
+
+	constraint := r.getBuildToolConstraint(name, phpVersion)
+
+	if constraint == "" {
+		_, path, _ := r.checkSystemExecutable(name)
+		return path == ""
+	}
+
+	_, _, systemVersion := r.checkSystemExecutable(name)
+	if systemVersion == "" {
+		return true
+	}
+
+	return !utils.MatchVersionRange(constraint, systemVersion)
+}
+
+func (r *AdvisorRepository) getBuildToolConstraint(name, phpVersion string) string {
+	if phpVersion == "" {
+		return ""
+	}
+
+	deps, err := r.assembler.GetDependencies("php", phpVersion)
+	if err != nil {
+		return ""
+	}
+
+	for _, dep := range deps {
+		if dep.Name != name {
+			continue
+		}
+
+		return extractConstraint(dep.Version)
+	}
+
+	return ""
 }
 
 func extractConstraint(version string) string {

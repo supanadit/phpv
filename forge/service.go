@@ -37,3 +37,14 @@ func (s *Service) GetConfigureFlags(name string, version string) []string {
 func (s *Service) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
 	return s.flagResolver.GetPHPConfigureFlags(phpVersion, extensions)
 }
+
+func (s *Service) GetBuildStrategyForTool(name string) domain.BuildStrategy {
+	switch name {
+	case "autoconf", "automake", "libtool":
+		return domain.StrategyConfigureMake
+	case "m4":
+		return domain.StrategyMakeOnly
+	default:
+		return domain.StrategyMakeOnly
+	}
+}

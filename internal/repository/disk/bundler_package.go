@@ -159,24 +159,79 @@ func (s *bundlerRepository) installBuildTool(name, version, phpVersion string) e
 			return fmt.Errorf("[unload] failed to extract %s@%s: %w", name, version, err)
 		}
 
+		if name == "zig" {
+			zigBinary := s.findZigBinary(installPath)
+			if zigBinary == "" {
+				return fmt.Errorf("[bundler] zig binary not found in %s", installPath)
+			}
+			if err := os.Chmod(zigBinary, 0755); err != nil {
+				return fmt.Errorf("[bundler] failed to chmod zig binary: %w", err)
+			}
+		} else {
+			sourceDir := s.findExtractedSourceDir(installPath, name, version)
+			if sourceDir == "" {
+				sourceDir = installPath
+			}
+
+			if err := s.buildBuildTool(name, version, sourceDir, installPath); err != nil {
+				return fmt.Errorf("[bundler] failed to build %s@%s: %w", name, version, err)
+			}
+		}
+
 		s.logInfo("Installing build tool %s@%s", name, version)
 	}
 
-	if name == "zig" {
-		zigBinary := s.findZigBinary(installPath)
-		if zigBinary == "" {
-			return fmt.Errorf("[bundler] zig binary not found in %s", installPath)
-		}
-		if err := os.Chmod(zigBinary, 0755); err != nil {
-			return fmt.Errorf("[bundler] failed to chmod zig binary: %w", err)
-		}
-	}
-
 	if err := s.siloRepo.IncrementBuildToolRef(name, version, phpVersion); err != nil {
-		return fmt.Errorf("[bundler] failed to increment build-tool ref: %w", err)
+		return fmt.Errorf("[bundler] failed to increment build-tool ref for %s@%s: %w", name, version, err)
 	}
 
 	return nil
+}
+
+func (s *bundlerRepository) findExtractedSourceDir(installPath, name, version string) string {
+	entries, err := os.ReadDir(installPath)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			expectedDir := name + "-" + version
+			if entry.Name() == expectedDir {
+				return filepath.Join(installPath, entry.Name())
+			}
+		}
+	}
+	return ""
+}
+
+func (s *bundlerRepository) buildBuildTool(name, version, sourceDir, installPath string) error {
+	strategy := s.forgeSvc.GetBuildStrategyForTool(name)
+	if strategy == "" {
+		return fmt.Errorf("[bundler] no build strategy for tool %s", name)
+	}
+
+	cc, cflags, cxx, err := s.getCompilerForVersion(version, "")
+	if err != nil {
+		cc = ""
+		cflags = []string{}
+		cxx = ""
+	}
+
+	config := domain.ForgeConfig{
+		Name:           name,
+		Version:        version,
+		Prefix:         installPath,
+		Jobs:           s.jobs,
+		CC:             cc,
+		CFLAGS:         cflags,
+		CXX:            cxx,
+		ConfigureFlags: []string{},
+		Env:            map[string]string{},
+		Verbose:        s.verbose,
+	}
+
+	_, err = s.forgeSvc.BuildWithStrategy(config, strategy, sourceDir)
+	return err
 }
 
 func (s *bundlerRepository) findZigBinary(dir string) string {

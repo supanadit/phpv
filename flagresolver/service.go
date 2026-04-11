@@ -4,13 +4,14 @@ import (
 	"errors"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/utils"
 )
 
 var ErrUnknownExtension = errors.New("unknown extension")
 var ErrExtensionConflict = errors.New("extension conflict")
 
 type Repository interface {
+	GetConfigureFlags(name string, version string) []string
+	GetPHPConfigureFlags(phpVersion string, extensions []string) []string
 	GetExtensionDef(name string) (domain.ExtensionDef, bool)
 	IsExtensionValidForPHPVersion(name string, phpVersion string) bool
 	GetConflictingExtensions(name string) []string
@@ -29,60 +30,31 @@ func NewService(repo Repository) *Service {
 }
 
 func (s *Service) GetConfigureFlags(name string, version string) []string {
-	switch name {
-	case "m4":
-		return []string{"--disable-maintainer-mode"}
-	case "php":
-		return []string{
-			"--disable-all",
-			"--enable-cli",
-			"--with-openssl",
-			"--with-curl",
-			"--with-zlib",
-			"--with-libxml2",
-			"--with-onig",
-		}
-	case "openssl":
-		flags := []string{"shared", "no-ssl3"}
-		if v := utils.ParseVersion(version); v.Major >= 3 {
-			flags = append(flags, "no-legacy")
-		}
-		return flags
-	case "curl":
-		return []string{"--with-openssl", "--without-brotli", "--disable-ldap"}
-	case "libxml2":
-		return []string{"--disable-shared", "--enable-static", "--without-lzma", "--without-python"}
-	case "zlib", "oniguruma", "re2c", "autoconf", "automake", "libtool", "flex", "bison", "perl", "cmake":
-		return []string{}
-	}
-	return []string{}
+	return s.repo.GetConfigureFlags(name, version)
 }
 
 func (s *Service) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
-	flags := []string{
-		"--disable-all",
-		"--enable-cli",
-	}
+	return s.repo.GetPHPConfigureFlags(phpVersion, extensions)
+}
 
-	if len(extensions) == 0 {
-		return flags
-	}
+func (s *Service) GetExtensionDef(name string) (domain.ExtensionDef, bool) {
+	return s.repo.GetExtensionDef(name)
+}
 
-	v := utils.ParseVersion(phpVersion)
+func (s *Service) IsExtensionValidForPHPVersion(name string, phpVersion string) bool {
+	return s.repo.IsExtensionValidForPHPVersion(name, phpVersion)
+}
 
-	for _, ext := range extensions {
-		if extDef, ok := s.repo.GetExtensionDef(ext); ok {
-			if s.repo.IsExtensionValidForPHPVersion(ext, phpVersion) {
-				flags = append(flags, extDef.Flag)
-			}
-		}
-	}
+func (s *Service) GetConflictingExtensions(name string) []string {
+	return s.repo.GetConflictingExtensions(name)
+}
 
-	if contains(extensions, "opcache") && v.Major >= 7 {
-		flags = append(flags, "--enable-opcache")
-	}
+func (s *Service) GetExtensionDependency(name string) (string, bool) {
+	return s.repo.GetExtensionDependency(name)
+}
 
-	return flags
+func (s *Service) GetExtensionDependencyWithVersion(ext, phpVersion string) (string, string, bool) {
+	return s.repo.GetExtensionDependencyWithVersion(ext, phpVersion)
 }
 
 func (s *Service) ValidateExtensions(extensions []string, phpVersion string) error {
@@ -102,21 +74,4 @@ func (s *Service) CheckExtensionConflicts(extensions []string) ([]string, [][]st
 		return conflicts, conflictPairs, ErrExtensionConflict
 	}
 	return nil, nil, nil
-}
-
-func (s *Service) GetExtensionDependency(ext string) (string, bool) {
-	return s.repo.GetExtensionDependency(ext)
-}
-
-func (s *Service) GetExtensionDependencyWithVersion(ext, phpVersion string) (string, string, bool) {
-	return s.repo.GetExtensionDependencyWithVersion(ext, phpVersion)
-}
-
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/supanadit/phpv/bundler"
 	"github.com/supanadit/phpv/download"
 	"github.com/supanadit/phpv/extension"
+	"github.com/supanadit/phpv/flagresolver"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/internal/repository/http"
@@ -47,6 +48,7 @@ func main() {
 			NewAssemblerRepository,
 			NewForgeRepository,
 			NewExtensionRepository,
+			NewFlagRepository,
 			NewBundlerServiceConfig,
 			NewPatternRepository,
 		),
@@ -127,6 +129,10 @@ func NewExtensionRepository() extension.Repository {
 	return memory.NewExtensionRepository()
 }
 
+func NewFlagRepository(extRepo extension.Repository) flagresolver.Repository {
+	return memory.NewFlagRepository(extRepo)
+}
+
 func NewPatternRepository() pattern.PatternRepository {
 	return memory.NewPatternRepository()
 }
@@ -142,7 +148,7 @@ func NewBundlerServiceConfig(
 	fg forge.ForgeRepository,
 	dl download.DownloadRepository,
 	ul unload.UnloadRepository,
-	extRepo extension.Repository,
+	flagRepo flagresolver.Repository,
 	src source.SourceRepository,
 ) (bundler.BundlerServiceConfig, error) {
 	silo, err := sil.GetSilo()
@@ -162,17 +168,17 @@ func NewBundlerServiceConfig(
 	logger = utils.NewLogger(utils.LogLevelInfo)
 
 	return bundler.BundlerServiceConfig{
-		Assembler:     asm,
-		Advisor:       adv,
-		Forge:         fg,
-		Download:      dl,
-		Unload:        ul,
-		ExtensionRepo: extRepo,
-		Source:        src,
-		Silo:          silo,
-		SiloRepo:      sil,
-		Verbose:       verbose,
-		Logger:        logger,
+		Assembler:        asm,
+		Advisor:          adv,
+		Forge:            fg,
+		Download:         dl,
+		Unload:           ul,
+		FlagResolverRepo: flagRepo,
+		Source:           src,
+		Silo:             silo,
+		SiloRepo:         sil,
+		Verbose:          verbose,
+		Logger:           logger,
 	}, nil
 }
 

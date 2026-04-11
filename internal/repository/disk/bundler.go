@@ -60,7 +60,7 @@ func NewBundlerRepository(cfg bundler.BundlerServiceConfig, patternSvc pattern.P
 
 	assemblerSvc := assembler.NewAssemblerServiceWithRepo(cfg.Assembler)
 	advisorSvc := advisor.NewAdvisorService(cfg.Advisor)
-	flagResolverSvc := flagresolver.NewService(cfg.ExtensionRepo)
+	flagResolverSvc := flagresolver.NewService(cfg.FlagResolverRepo)
 	forgeSvc := forge.NewService(cfg.Forge, flagResolverSvc)
 	downloadSvc := download.NewService(cfg.Download)
 	unloadSvc := unload.NewService(cfg.Unload)

@@ -10,7 +10,7 @@ import (
 func (r *ForgeRepository) detectStrategy(name, version string) domain.BuildStrategy {
 	switch name {
 	case "zlib":
-		return domain.StrategyMakeOnly
+		return domain.StrategyConfigureMake
 	case "cmake":
 		return domain.StrategyCMake
 	case "autoconf", "automake", "flex", "bison", "perl":

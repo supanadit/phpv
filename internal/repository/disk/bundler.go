@@ -181,8 +181,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 				depVersion = dep.Version[:idx]
 			}
 
-			contextMsg := ""
-			depInfo, err := s.buildPackageWithInfo(dep.Name, depVersion, exactVersion, depLibraryPaths, depCppFlags, depLdFlags, depPkgConfigPaths, contextMsg, buildTools[dep.Name], forceCompiler)
+			depInfo, err := s.buildPackage(dep.Name, depVersion, exactVersion, depLibraryPaths, depCppFlags, depLdFlags, depPkgConfigPaths, forceCompiler)
 			if err != nil {
 				firstErr = fmt.Errorf("[forge] failed to build %s@%s: %w", dep.Name, depVersion, err)
 				break

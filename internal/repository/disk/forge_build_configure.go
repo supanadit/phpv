@@ -2,7 +2,6 @@ package disk
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -106,33 +105,16 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 		r.logInfo("[forge] Warning: failed to patch configure.ac: %v", err)
 	}
 
-	var stdout io.Writer = os.Stdout
-	var stderr io.Writer = os.Stderr
-	var filter *utils.ErrorWarningFilter
-	if !config.Verbose {
-		stdout = io.Discard
-		filter = utils.NewErrorWarningFilter(os.Stderr)
-		stderr = filter
-	}
+	ctx := utils.NewExecContext(config.Verbose)
+	jobs := utils.GetJobs(config.Jobs)
 
-	// Only run autoreconf for m4 if the configure script is missing.
-	// The m4 source tarball includes a pre-generated configure, so autoreconf
-	// is normally not needed. Running it unconditionally creates a circular
-	// dependency: autoreconf requires autoconf, which requires m4.
 	if config.Name == "m4" {
 		if _, err := os.Stat(configurePath); os.IsNotExist(err) {
-			autoreconf := exec.Command("autoreconf", "-fi")
+			autoreconf := ctx.Command("autoreconf", "-fi")
 			autoreconf.Dir = sourcePath
 			autoreconf.Env = env
-			autoreconf.Stdout = stdout
-			autoreconf.Stderr = stderr
-			if config.Verbose {
-				fmt.Println("Running autoreconf for m4")
-			}
-			if err := autoreconf.Run(); err != nil {
-				if filter != nil {
-					filter.Flush()
-				}
+
+			if err := ctx.Run(autoreconf); err != nil {
 				return domain.Forge{}, fmt.Errorf("autoreconf failed: %w", err)
 			}
 		}
@@ -143,42 +125,30 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 
 	var configure *exec.Cmd
 	if useConfigure {
-		configure = exec.Command("./configure", args...)
+		configure = ctx.Command("./configure", args...)
 	} else if isOpensslConfig {
-		configure = exec.Command("./config", args...)
+		configure = ctx.Command("./config", args...)
 	} else if usesPerl {
 		target := getOpenSSLConfigureTarget()
 		perlArgs := []string{configurePath}
 		perlArgs = append(perlArgs, target)
 		perlArgs = append(perlArgs, args...)
-		configure = exec.Command("perl", perlArgs...)
+		configure = ctx.Command("perl", perlArgs...)
 	} else {
-		configure = exec.Command(configurePath, args...)
+		configure = ctx.Command(configurePath, args...)
 	}
 	configure.Dir = sourcePath
 	configure.Env = env
-	configure.Stdout = stdout
-	configure.Stderr = stderr
 
-	if config.Verbose {
-		fmt.Println("Running configure for", config.Name)
-	}
-	if err := configure.Run(); err != nil {
-		if filter != nil {
-			filter.Flush()
-		}
+	if err := ctx.Run(configure); err != nil {
 		return domain.Forge{}, fmt.Errorf("configure failed: %w", err)
 	}
 
-	if filter != nil {
-		filter.Flush()
-	}
-
-	if err := r.makeWithName(sourcePath, config.Jobs, env, config.Name, config.Verbose); err != nil {
+	if err := r.makeWithName(sourcePath, jobs, env, config.Name, config.Verbose); err != nil {
 		return domain.Forge{}, err
 	}
 
-	if err := r.makeInstall(sourcePath, config.Jobs, env, config.Verbose); err != nil {
+	if err := r.makeInstall(sourcePath, jobs, env, config.Verbose); err != nil {
 		return domain.Forge{}, err
 	}
 

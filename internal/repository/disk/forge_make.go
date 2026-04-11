@@ -2,88 +2,54 @@ package disk
 
 import (
 	"fmt"
-	"io"
-	"os"
 	"os/exec"
-	"runtime"
 
 	"github.com/supanadit/phpv/internal/utils"
 )
 
 func (r *ForgeRepository) makeWithName(sourcePath string, jobs int, env []string, pkgName string, verbose bool) error {
-	if jobs == 0 {
-		jobs = runtime.NumCPU()
-	}
-
 	if pkgName == "m4" {
 		env = append(env, "M4_MAINTAINER_MODE=no")
 	}
 
-	var stdout io.Writer = os.Stdout
-	var stderr io.Writer = os.Stderr
-	var filter *utils.ErrorWarningFilter
-	if !verbose {
-		stdout = io.Discard
-		filter = utils.NewErrorWarningFilter(os.Stderr)
-		stderr = filter
-	}
+	ctx := utils.NewExecContext(verbose)
+	jobs = utils.GetJobs(jobs)
 
-	mk := exec.Command("make", fmt.Sprintf("-j%d", jobs))
+	mk := ctx.Command("make", fmt.Sprintf("-j%d", jobs))
 	mk.Dir = sourcePath
 	mk.Env = env
-	mk.Stdout = stdout
-	mk.Stderr = stderr
 
-	if verbose {
-		fmt.Println("Running make for", sourcePath)
-	}
-	if err := mk.Run(); err != nil {
-		if filter != nil {
-			filter.Flush()
-		}
-		return fmt.Errorf("make failed: %w", err)
-	}
-
-	if filter != nil {
-		filter.Flush()
-	}
-
-	return nil
+	return ctx.Run(mk)
 }
 
 func (r *ForgeRepository) makeInstall(sourcePath string, jobs int, env []string, verbose bool) error {
-	if jobs == 0 {
-		jobs = runtime.NumCPU()
-	}
+	ctx := utils.NewExecContext(verbose)
+	jobs = utils.GetJobs(jobs)
 
-	var stdout io.Writer = os.Stdout
-	var stderr io.Writer = os.Stderr
-	var filter *utils.ErrorWarningFilter
-	if !verbose {
-		stdout = io.Discard
-		filter = utils.NewErrorWarningFilter(os.Stderr)
-		stderr = filter
-	}
-
-	mkInstall := exec.Command("make", fmt.Sprintf("-j%d", jobs), "install")
+	mkInstall := ctx.Command("make", fmt.Sprintf("-j%d", jobs), "install")
 	mkInstall.Dir = sourcePath
 	mkInstall.Env = env
-	mkInstall.Stdout = stdout
-	mkInstall.Stderr = stderr
 
-	if verbose {
-		fmt.Println("Running make install for", sourcePath)
-	}
-	if err := mkInstall.Run(); err != nil {
-		if filter != nil {
-			filter.Flush()
-		}
-		return fmt.Errorf("make install failed: %w", err)
-	}
+	return ctx.Run(mkInstall)
+}
 
-	if filter != nil {
-		filter.Flush()
-	}
+func (r *ForgeRepository) runMake(jobs int, env []string, verbose bool, args ...string) error {
+	ctx := utils.NewExecContext(verbose)
+	jobs = utils.GetJobs(jobs)
 
-	return nil
+	args = append([]string{fmt.Sprintf("-j%d", jobs)}, args...)
+	mk := ctx.Command("make", args...)
+
+	return ctx.Run(mk)
+}
+
+func (r *ForgeRepository) runCommand(name string, args []string, dir string, env []string) *exec.Cmd {
+	cmd := exec.Command(name, args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	if env != nil {
+		cmd.Env = env
+	}
+	return cmd
 }

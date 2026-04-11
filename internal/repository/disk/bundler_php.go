@@ -112,37 +112,7 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 			return err
 		}
 
-		if len(configureFlags) > 0 {
-			s.logInfo("  Flags: %s", strings.Join(configureFlags, " "))
-		} else {
-			s.logInfo("  Flags: (none)")
-		}
-		s.logInfo("  Path: %s", installDir)
-		if len(cppFlags) > 0 {
-			s.logInfo("  CPPFLAGS: %s", strings.Join(cppFlags, " "))
-		} else {
-			s.logInfo("  CPPFLAGS: (none)")
-		}
-		if len(ldFlags) > 0 {
-			s.logInfo("  LDFLAGS: %s", strings.Join(ldFlags, " "))
-		} else {
-			s.logInfo("  LDFLAGS: (none)")
-		}
-		if len(ldPath) > 0 {
-			s.logInfo("  LD_LIBRARY_PATH: %s", strings.Join(ldPath, ":"))
-		} else {
-			s.logInfo("  LD_LIBRARY_PATH: (none)")
-		}
-		if len(cflags) > 0 {
-			s.logInfo("  CFLAGS: %s", strings.Join(cflags, " "))
-		} else {
-			s.logInfo("  CFLAGS: (none)")
-		}
-		if len(pkgConfigPaths) > 0 {
-			s.logInfo("  PKG_CONFIG_PATH: %s", strings.Join(pkgConfigPaths, ":"))
-		} else {
-			s.logInfo("  PKG_CONFIG_PATH: (none)")
-		}
+		s.logBuildFlags(installDir, configureFlags, cppFlags, ldFlags, ldPath, cflags, pkgConfigPaths)
 
 		compilerName := "gcc"
 		compilerPath := ""

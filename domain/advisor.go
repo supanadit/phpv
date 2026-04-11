@@ -19,6 +19,7 @@ type AdvisorCheck struct {
 	Action          string
 	SystemAvailable bool
 	SystemPath      string
+	SystemVersion   string
 	Message         string
 	URL             string
 	SourceType      string

@@ -18,8 +18,18 @@ func registerPackages(svc *assembler.AssemblerService) {
 			Default: []domain.Dependency{},
 			Constraints: []domain.VersionConstraint{
 				{
-					VersionRange: ">=5.0.0",
+					VersionRange: ">=8.2.0",
 					Dependencies: []domain.Dependency{},
+				},
+				{
+					VersionRange: ">=5.0.0 <8.2.0",
+					Dependencies: []domain.Dependency{
+						{Name: "openssl", Version: "1.1.1w|>=1.1.0,<3.0.0"},
+						{Name: "libxml2", Version: "2.9.14|~2.9.0"},
+						{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
+						{Name: "oniguruma", Version: "6.9.9|~6.9.0"},
+						{Name: "curl", Version: "8.5.0|>=7.80.0"},
+					},
 				},
 				{
 					VersionRange: ">=4.4.0 <5.0.0",

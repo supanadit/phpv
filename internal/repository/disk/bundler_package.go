@@ -209,11 +209,11 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		return err
 	}
 
-	if check.SystemAvailable && !mustBuildFromSource(name, phpVersion) {
+	if check.SystemAvailable && check.Action == "skip" {
 		return nil
 	}
 
-	if check.SystemAvailable && mustBuildFromSource(name, phpVersion) {
+	if check.SystemAvailable && check.Action != "skip" {
 		s.logInfo("System %s available but PHP %s requires building from source", name, phpVersion)
 	}
 
@@ -319,14 +319,14 @@ func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion st
 	}
 
 	if check.SystemAvailable {
-		if mustBuildFromSource(name, phpVersion) {
-			if suggestion != "" {
-				s.logWarn("\n💡 %s@%s required by PHP %s but build from source failed.\n   Install system package to avoid building:\n   %s\n\n", name, version, phpVersion, suggestion)
-			}
-			return fmt.Errorf("[bundler] %s@%s required by PHP %s but build from source failed", name, version, phpVersion)
+		if check.Action == "skip" {
+			s.logInfo("Using system %s@%s at %s (build from source failed: %v)", name, version, check.SystemPath, err)
+			return nil
 		}
-		s.logInfo("Using system %s@%s at %s (build from source failed: %v)", name, version, check.SystemPath, err)
-		return nil
+		if suggestion != "" {
+			s.logWarn("\n💡 %s@%s required by PHP %s but build from source failed.\n   Install system package to avoid building:\n   %s\n\n", name, version, phpVersion, suggestion)
+		}
+		return fmt.Errorf("[bundler] %s@%s required by PHP %s but build from source failed", name, version, phpVersion)
 	}
 
 	if suggestion != "" {
@@ -416,13 +416,13 @@ func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion strin
 		BuiltFromSource: true,
 	}
 
-	if check.SystemAvailable && !mustBuildFromSource(name, phpVersion) {
+	if check.SystemAvailable && check.Action == "skip" {
 		depInfo.BuiltFromSource = false
 		depInfo.SystemPath = check.SystemPath
 		return depInfo, nil
 	}
 
-	if check.SystemAvailable && mustBuildFromSource(name, phpVersion) {
+	if check.SystemAvailable && check.Action != "skip" {
 		s.logInfo("System %s available but PHP %s requires building from source", name, phpVersion)
 	}
 
@@ -441,7 +441,7 @@ func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion strin
 		}
 		archive := archivePathFromURL(s.silo.Root, name, version, urls[0])
 		if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
-			if mustBuildFromSource(name, phpVersion) {
+			if check.Action != "skip" {
 				s.logWarn("  Download failed (PHP %s requires build from source), trying source build...", phpVersion)
 			} else {
 				s.logWarn("  Download failed, falling back to source build")

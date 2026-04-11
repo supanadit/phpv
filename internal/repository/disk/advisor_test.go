@@ -43,7 +43,7 @@ func TestCheckSystemPackage_Libraries(t *testing.T) {
 
 	for _, tt := range libraryTests {
 		t.Run(tt.name, func(t *testing.T) {
-			available, path := repo.checkSystemPackage(tt.pkgName)
+			available, path, _ := repo.checkSystemPackage(tt.pkgName)
 			t.Logf("checkSystemPackage(%q) = available=%v, path=%q", tt.pkgName, available, path)
 
 			if available != tt.wantAvailable {
@@ -53,7 +53,7 @@ func TestCheckSystemPackage_Libraries(t *testing.T) {
 	}
 
 	t.Run("oniguruma detection depends on system", func(t *testing.T) {
-		available, path := repo.checkSystemPackage("oniguruma")
+		available, path, _ := repo.checkSystemPackage("oniguruma")
 		t.Logf("oniguruma: available=%v, path=%q", available, path)
 	})
 }
@@ -64,7 +64,7 @@ func TestCheckSystemLibrary_WithRealSystem(t *testing.T) {
 	}
 
 	t.Run("libxml2 detected via headers", func(t *testing.T) {
-		available, path := repo.checkSystemLibrary("libxml2", "libxml-2.0")
+		available, path, _ := repo.checkSystemLibrary("libxml2", "libxml-2.0")
 		if !available {
 			t.Log("libxml2 not found via pkg-config or headers")
 		} else {
@@ -73,7 +73,7 @@ func TestCheckSystemLibrary_WithRealSystem(t *testing.T) {
 	})
 
 	t.Run("openssl detected via pkg-config", func(t *testing.T) {
-		available, path := repo.checkSystemLibrary("openssl", "openssl")
+		available, path, _ := repo.checkSystemLibrary("openssl", "openssl")
 		if !available {
 			t.Error("openssl should be available via pkg-config")
 		} else {
@@ -91,7 +91,7 @@ func TestAdvisorRepository_ExecutableDetection(t *testing.T) {
 
 	for _, exe := range executables {
 		t.Run(exe, func(t *testing.T) {
-			available, _ := repo.checkSystemPackage(exe)
+			available, _, _ := repo.checkSystemPackage(exe)
 			if !available {
 				t.Errorf("Expected %s to be available on system", exe)
 			}
@@ -104,7 +104,7 @@ func TestAdvisorRepository_NonExistentExecutable(t *testing.T) {
 		exec: &defaultExecutor{},
 	}
 
-	available, _ := repo.checkSystemPackage("nonexistent_command_xyz_123")
+	available, _, _ := repo.checkSystemPackage("nonexistent_command_xyz_123")
 	if available {
 		t.Error("nonexistent command should not be available")
 	}
@@ -119,7 +119,7 @@ func TestAdvisorRepository_LibraryPaths(t *testing.T) {
 
 	for _, lib := range libs {
 		t.Run(lib, func(t *testing.T) {
-			available, _ := repo.checkSystemLibrary(lib, lib)
+			available, _, _ := repo.checkSystemLibrary(lib, lib)
 			t.Logf("Library %s: available=%v", lib, available)
 		})
 	}
@@ -130,7 +130,7 @@ func TestAdvisorRepository_CheckSystemLibrary_NotFound(t *testing.T) {
 		exec: &defaultExecutor{},
 	}
 
-	available, _ := repo.checkSystemLibrary("nonexistent_library_xyz", "nonexistent_library_xyz")
+	available, _, _ := repo.checkSystemLibrary("nonexistent_library_xyz", "nonexistent_library_xyz")
 	if available {
 		t.Error("nonexistent library should not be available")
 	}

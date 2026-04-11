@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/advisor"
+	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/pattern"
@@ -42,6 +43,14 @@ func (e *defaultExecutor) PkgConfig(pkg string) (string, string, error) {
 	return cflags, ldflags, nil
 }
 
+func (e *defaultExecutor) PkgConfigModVersion(pkg string) (string, error) {
+	out, err := exec.Command("pkg-config", "--modversion", pkg).Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 func (e *defaultExecutor) PkgConfigExists(pkg string) bool {
 	env := os.Environ()
 	pkgConfigPath := os.Getenv("PKG_CONFIG_PATH")
@@ -72,6 +81,7 @@ type AdvisorRepository struct {
 	root            string
 	exec            *defaultExecutor
 	patternRegistry *pattern.PatternRegistry
+	assembler       assembler.AssemblerRepository
 }
 
 var (
@@ -92,7 +102,7 @@ var (
 	}
 )
 
-func NewAdvisorRepository() advisor.AdvisorRepository {
+func NewAdvisorRepository(asm assembler.AssemblerRepository) advisor.AdvisorRepository {
 	fs := afero.NewOsFs()
 	root := viper.GetString("PHPV_ROOT")
 	registry := pattern.NewPatternRegistry()
@@ -102,13 +112,16 @@ func NewAdvisorRepository() advisor.AdvisorRepository {
 		root:            root,
 		exec:            &defaultExecutor{},
 		patternRegistry: registry,
+		assembler:       asm,
 	}
 }
 
 func (r *AdvisorRepository) Check(name string, version string, phpVersion string) (domain.AdvisorCheck, error) {
 	state := determineState(r.fs, r.root, name, version, phpVersion)
-	systemAvailable, systemPath := r.checkSystemPackage(name)
-	action, url, sourceType := determineActionAndURL(state, systemAvailable, r.patternRegistry, name, version, phpVersion)
+	systemAvailable, systemPath, systemVersion := r.checkSystemPackage(name)
+
+	shouldBuildFromSource := r.shouldBuildFromSource(name, phpVersion)
+	action, url, sourceType := determineActionAndURL(state, systemAvailable, shouldBuildFromSource, r.patternRegistry, name, version, phpVersion)
 	message := buildMessage(name, version, state, action)
 
 	suggestion := ""
@@ -126,6 +139,7 @@ func (r *AdvisorRepository) Check(name string, version string, phpVersion string
 		Action:          action,
 		SystemAvailable: systemAvailable,
 		SystemPath:      systemPath,
+		SystemVersion:   systemVersion,
 		Message:         message,
 		URL:             url,
 		SourceType:      sourceType,
@@ -133,29 +147,34 @@ func (r *AdvisorRepository) Check(name string, version string, phpVersion string
 	}, nil
 }
 
-func (r *AdvisorRepository) checkSystemPackage(name string) (bool, string) {
+func (r *AdvisorRepository) checkSystemPackage(name string) (bool, string, string) {
 	if pkgConfigName, isLib := libraryPackages[name]; isLib {
 		return r.checkSystemLibrary(name, pkgConfigName)
 	}
-	return r.checkSystemExecutable(name)
+	_, path, _ := r.checkSystemExecutable(name)
+	if path != "" {
+		return true, path, ""
+	}
+	return false, "", ""
 }
 
-func (r *AdvisorRepository) checkSystemExecutable(name string) (bool, string) {
+func (r *AdvisorRepository) checkSystemExecutable(name string) (bool, string, string) {
 	path, err := r.exec.Which(name)
 	if err != nil {
-		return false, ""
+		return false, "", ""
 	}
-	return true, path
+	return true, path, ""
 }
 
-func (r *AdvisorRepository) checkSystemLibrary(name, pkgConfigName string) (bool, string) {
+func (r *AdvisorRepository) checkSystemLibrary(name, pkgConfigName string) (bool, string, string) {
 	if r.exec.PkgConfigExists(pkgConfigName) {
-		return true, "pkg-config:" + pkgConfigName
+		version, _ := r.exec.PkgConfigModVersion(pkgConfigName)
+		return true, "pkg-config:" + pkgConfigName, version
 	}
 	if r.checkHeaderExists(name) {
-		return true, "headers:" + name
+		return true, "headers:" + name, ""
 	}
-	return false, ""
+	return false, "", ""
 }
 
 func (r *AdvisorRepository) checkHeaderExists(name string) bool {
@@ -275,10 +294,60 @@ func mustBuildFromSource(name, phpVersion string) bool {
 	return false
 }
 
-func determineActionAndURL(state domain.PackageState, systemAvailable bool, registry *pattern.PatternRegistry, name, version, phpVersion string) (string, string, string) {
+func (r *AdvisorRepository) shouldBuildFromSource(name, phpVersion string) bool {
+	if phpVersion == "" {
+		return false
+	}
+
+	if r.assembler == nil {
+		return mustBuildFromSource(name, phpVersion)
+	}
+
+	deps, err := r.assembler.GetDependencies("php", phpVersion)
+	if err != nil {
+		return false
+	}
+
+	for _, dep := range deps {
+		if dep.Name != name {
+			continue
+		}
+
+		constraint := extractConstraint(dep.Version)
+		if constraint == "" {
+			return false
+		}
+
+		pkgConfigName, isLib := libraryPackages[name]
+		if !isLib {
+			return false
+		}
+
+		_, _, systemVersion := r.checkSystemLibrary(name, pkgConfigName)
+		if systemVersion == "" {
+			return true
+		}
+
+		if !utils.MatchVersionRange(constraint, systemVersion) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func extractConstraint(version string) string {
+	idx := strings.Index(version, "|")
+	if idx == -1 {
+		return ""
+	}
+	return strings.TrimSpace(version[idx+1:])
+}
+
+func determineActionAndURL(state domain.PackageState, systemAvailable, shouldBuild bool, registry *pattern.PatternRegistry, name, version, phpVersion string) (string, string, string) {
 	switch state {
 	case domain.StateSourceMissing:
-		if systemAvailable && !mustBuildFromSource(name, phpVersion) {
+		if systemAvailable && !shouldBuild {
 			return "skip", "", domain.SourceTypeBinary
 		}
 

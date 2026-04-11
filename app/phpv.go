@@ -113,8 +113,8 @@ func NewUnloadRepository() unload.UnloadRepository {
 	return disk.NewUnloadRepository()
 }
 
-func NewAdvisorRepository() advisor.AdvisorRepository {
-	return disk.NewAdvisorRepository()
+func NewAdvisorRepository(asm assembler.AssemblerRepository) advisor.AdvisorRepository {
+	return disk.NewAdvisorRepository(asm)
 }
 
 func NewAssemblerRepository() assembler.AssemblerRepository {

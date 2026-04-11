@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        php_version: ['7.4', '8.2', '8.4', '8.5']
+        php_version: ['8.2', '8.4', '8.5']
 
     # Setting the root at the job level or step level for isolation
     env:
@@ -32,7 +32,7 @@ jobs:
       - name: Install dependencies
         run: |
           if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-            sudo apt-get update && sudo apt-get install -y build-essential libssl-dev libxml2-dev libsqlite3-dev
+            sudo apt-get update && sudo apt-get install -y build-essential libssl-dev libxml2-dev libsqlite3-dev libtool
           else
             brew install openssl sqlite
           fi

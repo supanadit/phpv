@@ -10,8 +10,8 @@ func NewService(repo domain.FlagResolverRepository) *Service {
 	return &Service{repo: repo}
 }
 
-func (s *Service) GetConfigureFlags(name string) []string {
-	return s.repo.GetConfigureFlags(name)
+func (s *Service) GetConfigureFlags(name string, version string) []string {
+	return s.repo.GetConfigureFlags(name, version)
 }
 
 func (s *Service) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {

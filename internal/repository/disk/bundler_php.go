@@ -12,7 +12,7 @@ import (
 	"github.com/supanadit/phpv/pattern"
 )
 
-func (s *bundlerRepository) buildPHP(name, version string, extensions []string, ldPath, cppFlags, ldFlags []string, forceCompiler string, forceRebuild bool) error {
+func (s *bundlerRepository) buildPHP(name, version string, extensions []string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, forceCompiler string, forceRebuild bool) error {
 	check, err := s.advisorSvc.Check(name, version, "")
 	if err != nil {
 		return err
@@ -133,6 +133,16 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 		} else {
 			s.logInfo("  LD_LIBRARY_PATH: (none)")
 		}
+		if len(cflags) > 0 {
+			s.logInfo("  CFLAGS: %s", strings.Join(cflags, " "))
+		} else {
+			s.logInfo("  CFLAGS: (none)")
+		}
+		if len(pkgConfigPaths) > 0 {
+			s.logInfo("  PKG_CONFIG_PATH: %s", strings.Join(pkgConfigPaths, ":"))
+		} else {
+			s.logInfo("  PKG_CONFIG_PATH: (none)")
+		}
 
 		compilerName := "gcc"
 		compilerPath := ""
@@ -162,6 +172,7 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 			CC:              cc,
 			CFLAGS:          cflags,
 			CXX:             cxx,
+			PkgConfigPaths:  pkgConfigPaths,
 			Verbose:         s.verbose,
 		}
 

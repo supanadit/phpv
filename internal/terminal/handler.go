@@ -301,6 +301,35 @@ func (h *TerminalHandler) AutoDetectResolve(constraint string) (string, error) {
 	return exactVersion, nil
 }
 
+func (h *TerminalHandler) resolveActivePHP() (string, error) {
+	if phpvCurrent := os.Getenv("PHPV_CURRENT"); phpvCurrent != "" {
+		return h.resolveInstalledVersion(phpvCurrent)
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	if _, version, err := utils.FindPhpvrcFromPath(cwd); err == nil && version != "" {
+		return h.resolveInstalledVersion(version)
+	}
+
+	if _, version, err := utils.FindComposerJSONFromPath(cwd); err == nil && version != "" {
+		return h.resolveInstalledVersion(version)
+	}
+
+	defaultVer, err := h.Silo.GetDefault()
+	if err != nil {
+		return "", err
+	}
+	if defaultVer != "" {
+		return h.resolveInstalledVersion(defaultVer)
+	}
+
+	return "", fmt.Errorf("no active PHP version. Set default with 'phpv default <version>' or run 'phpv use <version>'")
+}
+
 func (h *TerminalHandler) SetDefault(constraint string) error {
 	exactVersion, err := h.resolveInstalledVersion(constraint)
 	if err != nil {
@@ -659,15 +688,12 @@ func (h *TerminalHandler) ListAvailableFormatted() (*ListResult, error) {
 }
 
 func (h *TerminalHandler) PECLInstall(archivePath string) (*PECLInstallResult, error) {
-	defaultVer, err := h.Silo.GetDefault()
+	activeVer, err := h.resolveActivePHP()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get default PHP version: %w", err)
-	}
-	if defaultVer == "" {
-		return nil, fmt.Errorf("no default PHP version set. Run 'phpv use <version>' first")
+		return nil, err
 	}
 
-	ext, err := h.BundlerRepo.PECLInstall(archivePath, defaultVer)
+	ext, err := h.BundlerRepo.PECLInstall(archivePath, activeVer)
 	if err != nil {
 		return nil, err
 	}
@@ -676,7 +702,7 @@ func (h *TerminalHandler) PECLInstall(archivePath string) (*PECLInstallResult, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to get silo: %w", err)
 	}
-	extensionsDir := filepath.Join(utils.PHPOutputPath(silo, defaultVer), "lib", "extensions", ext.Name)
+	extensionsDir := filepath.Join(utils.PHPOutputPath(silo, activeVer), "lib", "extensions", ext.Name)
 
 	return &PECLInstallResult{
 		Name:       ext.Name,
@@ -686,25 +712,19 @@ func (h *TerminalHandler) PECLInstall(archivePath string) (*PECLInstallResult, e
 }
 
 func (h *TerminalHandler) PECLList() ([]string, error) {
-	defaultVer, err := h.Silo.GetDefault()
+	activeVer, err := h.resolveActivePHP()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get default PHP version: %w", err)
-	}
-	if defaultVer == "" {
-		return nil, fmt.Errorf("no default PHP version set. Run 'phpv use <version>' first")
+		return nil, err
 	}
 
-	return h.BundlerRepo.PECLList(defaultVer)
+	return h.BundlerRepo.PECLList(activeVer)
 }
 
 func (h *TerminalHandler) PECLUninstall(name string) error {
-	defaultVer, err := h.Silo.GetDefault()
+	activeVer, err := h.resolveActivePHP()
 	if err != nil {
-		return fmt.Errorf("failed to get default PHP version: %w", err)
-	}
-	if defaultVer == "" {
-		return fmt.Errorf("no default PHP version set. Run 'phpv use <version>' first")
+		return err
 	}
 
-	return h.BundlerRepo.PECLUninstall(name, defaultVer)
+	return h.BundlerRepo.PECLUninstall(name, activeVer)
 }

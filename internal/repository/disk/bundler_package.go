@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -16,6 +17,24 @@ func (s *bundlerRepository) logInfo(msg string, args ...interface{}) {
 	if s.logger != nil {
 		s.logger.Info(msg, args...)
 	}
+}
+
+func getZigTarget() string {
+	goarch := runtime.GOARCH
+	switch goarch {
+	case "amd64":
+		goarch = "x86_64"
+	case "arm64":
+		goarch = "aarch64"
+	}
+
+	goos := runtime.GOOS
+	abi := "-gnu"
+	if goos == "darwin" {
+		abi = "-macos"
+	}
+
+	return goarch + "-" + goos + abi
 }
 
 func (s *bundlerRepository) logWarn(msg string, args ...interface{}) {
@@ -54,7 +73,8 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 
 	if zigPath := os.Getenv("PHPV_ZIG_PATH"); zigPath != "" {
 		if _, err := os.Stat(zigPath); err == nil {
-			return zigPath + " cc", []string{"-fPIC", "-Wno-error"}, zigPath + " c++", nil
+			target := getZigTarget()
+			return zigPath + " cc -target " + target, []string{"-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"}, zigPath + " c++ -target " + target, nil
 		}
 	}
 
@@ -76,7 +96,8 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 		}
 	}
 
-	return zigBinary + " cc", []string{"-fPIC", "-Wno-error"}, zigBinary + " c++", nil
+	target := getZigTarget()
+	return zigBinary + " cc -target " + target, []string{"-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"}, zigBinary + " c++ -target " + target, nil
 }
 
 func (s *bundlerRepository) installBuildTool(name, version, phpVersion string) error {
@@ -203,17 +224,17 @@ func (s *bundlerRepository) isToolInstalled(name, installPath string) bool {
 	}
 }
 
-func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, contextMsg string, isBuildTool bool, forceCompiler string) error {
+func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, contextMsg string, isBuildTool bool, forceCompiler string) error {
 	check, err := s.advisorSvc.Check(name, version, phpVersion)
 	if err != nil {
 		return err
 	}
 
-	if check.SystemAvailable && !mustBuildFromSource(name, phpVersion) {
+	if check.SystemAvailable && check.Action == "skip" {
 		return nil
 	}
 
-	if check.SystemAvailable && mustBuildFromSource(name, phpVersion) {
+	if check.SystemAvailable && check.Action != "skip" {
 		s.logInfo("System %s available but PHP %s requires building from source", name, phpVersion)
 	}
 
@@ -233,7 +254,7 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		archive := archivePathFromURL(s.silo.Root, name, version, urls[0])
 		if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
 			s.logWarn("  Download failed, falling back to source build")
-			return s.buildFromSourceOrSystem(name, version, phpVersion, ldPath, cppFlags, ldFlags, check.Suggestion, forceCompiler)
+			return s.buildFromSourceOrSystem(name, version, phpVersion, ldPath, cppFlags, ldFlags, pkgConfigPaths, check.Suggestion, forceCompiler)
 		}
 		fallthrough
 	case "extract":
@@ -248,7 +269,7 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		}
 		fallthrough
 	case "build", "rebuild":
-		err := s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, forceCompiler)
+		err := s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, pkgConfigPaths, forceCompiler)
 		if err != nil {
 			s.logError("✗ Failed to build %s@%s: %v", name, version, err)
 			if check.Suggestion != "" {
@@ -276,7 +297,7 @@ func (s *bundlerRepository) findCachedArchive(pkg, ver string) string {
 	return filepath.Join(cacheDir, "archive")
 }
 
-func (s *bundlerRepository) buildFromSource(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, forceCompiler string) error {
+func (s *bundlerRepository) buildFromSource(name, version, phpVersion string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, forceCompiler string) error {
 	sources, err := s.sourceSvc.GetSources(name, version)
 	if err != nil {
 		return fmt.Errorf("[bundler] failed to get sources for %s@%s: %w", name, version, err)
@@ -298,7 +319,7 @@ func (s *bundlerRepository) buildFromSource(name, version, phpVersion string, ld
 			continue
 		}
 
-		return s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, forceCompiler)
+		return s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, pkgConfigPaths, forceCompiler)
 	}
 
 	if lastErr != nil {
@@ -307,8 +328,8 @@ func (s *bundlerRepository) buildFromSource(name, version, phpVersion string, ld
 	return nil
 }
 
-func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, suggestion string, forceCompiler string) error {
-	err := s.buildFromSource(name, version, phpVersion, ldPath, cppFlags, ldFlags, forceCompiler)
+func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, suggestion string, forceCompiler string) error {
+	err := s.buildFromSource(name, version, phpVersion, ldPath, cppFlags, ldFlags, pkgConfigPaths, forceCompiler)
 	if err == nil {
 		return nil
 	}
@@ -319,14 +340,14 @@ func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion st
 	}
 
 	if check.SystemAvailable {
-		if mustBuildFromSource(name, phpVersion) {
-			if suggestion != "" {
-				s.logWarn("\n💡 %s@%s required by PHP %s but build from source failed.\n   Install system package to avoid building:\n   %s\n\n", name, version, phpVersion, suggestion)
-			}
-			return fmt.Errorf("[bundler] %s@%s required by PHP %s but build from source failed", name, version, phpVersion)
+		if check.Action == "skip" {
+			s.logInfo("Using system %s@%s at %s (build from source failed: %v)", name, version, check.SystemPath, err)
+			return nil
 		}
-		s.logInfo("Using system %s@%s at %s (build from source failed: %v)", name, version, check.SystemPath, err)
-		return nil
+		if suggestion != "" {
+			s.logWarn("\n💡 %s@%s required by PHP %s but build from source failed.\n   Install system package to avoid building:\n   %s\n\n", name, version, phpVersion, suggestion)
+		}
+		return fmt.Errorf("[bundler] %s@%s required by PHP %s but build from source failed", name, version, phpVersion)
 	}
 
 	if suggestion != "" {
@@ -336,7 +357,7 @@ func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion st
 	return err
 }
 
-func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, forceCompiler string) error {
+func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, forceCompiler string) error {
 	installDir := utils.DependencyPath(s.silo, phpVersion, name, version)
 	sourceDir := utils.GetSourceDirPath(s.silo, name, version)
 
@@ -349,7 +370,7 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 		return err
 	}
 
-	configureFlags := s.forgeSvc.GetConfigureFlags(name)
+	configureFlags := s.forgeSvc.GetConfigureFlags(name, version)
 
 	if len(configureFlags) > 0 {
 		s.logInfo("  Flags: %s", strings.Join(configureFlags, " "))
@@ -371,6 +392,16 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 		s.logInfo("  LD_LIBRARY_PATH: %s", strings.Join(ldPath, ":"))
 	} else {
 		s.logInfo("  LD_LIBRARY_PATH: (none)")
+	}
+	if len(cflags) > 0 {
+		s.logInfo("  CFLAGS: %s", strings.Join(cflags, " "))
+	} else {
+		s.logInfo("  CFLAGS: (none)")
+	}
+	if len(pkgConfigPaths) > 0 {
+		s.logInfo("  PKG_CONFIG_PATH: %s", strings.Join(pkgConfigPaths, ":"))
+	} else {
+		s.logInfo("  PKG_CONFIG_PATH: (none)")
 	}
 
 	compilerName := "gcc"
@@ -397,6 +428,7 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 		CC:              cc,
 		CFLAGS:          cflags,
 		CXX:             cxx,
+		PkgConfigPaths:  pkgConfigPaths,
 		Verbose:         s.verbose,
 	}
 
@@ -404,7 +436,7 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 	return err
 }
 
-func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion string, ldPath, cppFlags, ldFlags []string, contextMsg string, isBuildTool bool, forceCompiler string) (*domain.DependencyInfo, error) {
+func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, contextMsg string, isBuildTool bool, forceCompiler string) (*domain.DependencyInfo, error) {
 	check, err := s.advisorSvc.Check(name, version, phpVersion)
 	if err != nil {
 		return nil, err
@@ -416,13 +448,13 @@ func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion strin
 		BuiltFromSource: true,
 	}
 
-	if check.SystemAvailable && !mustBuildFromSource(name, phpVersion) {
+	if check.SystemAvailable && check.Action == "skip" {
 		depInfo.BuiltFromSource = false
 		depInfo.SystemPath = check.SystemPath
 		return depInfo, nil
 	}
 
-	if check.SystemAvailable && mustBuildFromSource(name, phpVersion) {
+	if check.SystemAvailable && check.Action != "skip" {
 		s.logInfo("System %s available but PHP %s requires building from source", name, phpVersion)
 	}
 
@@ -441,12 +473,12 @@ func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion strin
 		}
 		archive := archivePathFromURL(s.silo.Root, name, version, urls[0])
 		if _, err := s.downloadSvc.DownloadWithFallbacks(urls, archive); err != nil {
-			if mustBuildFromSource(name, phpVersion) {
+			if check.Action != "skip" {
 				s.logWarn("  Download failed (PHP %s requires build from source), trying source build...", phpVersion)
 			} else {
 				s.logWarn("  Download failed, falling back to source build")
 			}
-			err := s.buildFromSourceOrSystem(name, version, phpVersion, ldPath, cppFlags, ldFlags, check.Suggestion, forceCompiler)
+			err := s.buildFromSourceOrSystem(name, version, phpVersion, ldPath, cppFlags, ldFlags, pkgConfigPaths, check.Suggestion, forceCompiler)
 			if err != nil {
 				return nil, err
 			}
@@ -465,7 +497,7 @@ func (s *bundlerRepository) buildPackageWithInfo(name, version, phpVersion strin
 		}
 		fallthrough
 	case "build", "rebuild":
-		err := s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, forceCompiler)
+		err := s.compilePackage(name, version, phpVersion, ldPath, cppFlags, ldFlags, pkgConfigPaths, forceCompiler)
 		if err != nil {
 			s.logError("✗ Failed to build %s@%s: %v", name, version, err)
 			if check.Suggestion != "" {

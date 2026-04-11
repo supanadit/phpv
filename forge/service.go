@@ -30,8 +30,8 @@ func (s *Service) BuildWithStrategy(config domain.ForgeConfig, strategy domain.B
 	return s.forgeRepository.BuildWithStrategy(config, strategy, sourceDir)
 }
 
-func (s *Service) GetConfigureFlags(name string) []string {
-	return s.flagResolver.GetConfigureFlags(name)
+func (s *Service) GetConfigureFlags(name string, version string) []string {
+	return s.flagResolver.GetConfigureFlags(name, version)
 }
 
 func (s *Service) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {

@@ -6,9 +6,36 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"runtime"
+	"strings"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/utils"
 )
+
+func getOpenSSLConfigureTarget() string {
+	goarch := runtime.GOARCH
+	switch goarch {
+	case "amd64":
+		goarch = "x86_64"
+	case "arm64":
+		goarch = "aarch64"
+	}
+	switch runtime.GOOS {
+	case "linux":
+		return "linux-" + goarch
+	case "darwin":
+		if goarch == "x86_64" {
+			return "darwin64-x86_64-cc"
+		} else if goarch == "aarch64" {
+			return "darwin64-arm64-cc"
+		}
+		return "darwin-" + goarch + "-cc"
+	default:
+		return ""
+	}
+}
 
 func (r *ForgeRepository) findConfigureInSubdir(basePath, name string) string {
 	entries, err := os.ReadDir(basePath)
@@ -39,11 +66,7 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 
 	if _, err := os.Stat(configurePath); os.IsNotExist(err) {
 		if config.Name == "openssl" || config.Name == "ossl" {
-			if _, err := os.Stat(configPath); err == nil {
-				configurePath = configPath
-				useConfigure = false
-				isOpensslConfig = true
-			} else if _, err := os.Stat(ConfigurePath); err == nil {
+			if _, err := os.Stat(ConfigurePath); err == nil {
 				configurePath = ConfigurePath
 				useConfigure = false
 				usesPerl = true
@@ -51,8 +74,12 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 				configurePath = found
 				useConfigure = false
 				usesPerl = true
+			} else if _, err := os.Stat(configPath); err == nil {
+				configurePath = configPath
+				useConfigure = false
+				isOpensslConfig = true
 			} else {
-				return domain.Forge{}, fmt.Errorf("configure script not found for %s (checked ./config, ./Configure, and subdirectories)", config.Name)
+				return domain.Forge{}, fmt.Errorf("configure script not found for %s (checked ./Configure, ./config, and subdirectories)", config.Name)
 			}
 		} else if _, err := os.Stat(ConfigurePath); os.IsNotExist(err) {
 			if found := r.findConfigureInSubdir(sourcePath, "Configure"); found != "" {
@@ -75,10 +102,17 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 
 	r.touchAutotools(sourcePath)
 
-	var stdout, stderr io.Writer = os.Stdout, os.Stderr
+	if err := r.patchAutoconfAC_INIT(sourcePath, config.Name, config.Version); err != nil {
+		r.logInfo("[forge] Warning: failed to patch configure.ac: %v", err)
+	}
+
+	var stdout io.Writer = os.Stdout
+	var stderr io.Writer = os.Stderr
+	var filter *utils.ErrorWarningFilter
 	if !config.Verbose {
 		stdout = io.Discard
-		stderr = io.Discard
+		filter = utils.NewErrorWarningFilter(os.Stderr)
+		stderr = filter
 	}
 
 	if config.Name == "m4" {
@@ -91,6 +125,9 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 			fmt.Println("Running autoreconf for m4")
 		}
 		if err := autoreconf.Run(); err != nil {
+			if filter != nil {
+				filter.Flush()
+			}
 			return domain.Forge{}, fmt.Errorf("autoreconf failed: %w", err)
 		}
 	}
@@ -104,7 +141,9 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 	} else if isOpensslConfig {
 		configure = exec.Command("./config", args...)
 	} else if usesPerl {
+		target := getOpenSSLConfigureTarget()
 		perlArgs := []string{configurePath}
+		perlArgs = append(perlArgs, target)
 		perlArgs = append(perlArgs, args...)
 		configure = exec.Command("perl", perlArgs...)
 	} else {
@@ -119,7 +158,14 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 		fmt.Println("Running configure for", config.Name)
 	}
 	if err := configure.Run(); err != nil {
+		if filter != nil {
+			filter.Flush()
+		}
 		return domain.Forge{}, fmt.Errorf("configure failed: %w", err)
+	}
+
+	if filter != nil {
+		filter.Flush()
 	}
 
 	if err := r.makeWithName(sourcePath, config.Jobs, env, config.Name, config.Verbose); err != nil {
@@ -131,4 +177,42 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 	}
 
 	return domain.Forge{Prefix: prefix}, nil
+}
+
+func (r *ForgeRepository) patchAutoconfAC_INIT(sourcePath, name, version string) error {
+	configureAC := filepath.Join(sourcePath, "configure.ac")
+	if _, err := os.Stat(configureAC); os.IsNotExist(err) {
+		return nil
+	}
+
+	content, err := os.ReadFile(configureAC)
+	if err != nil {
+		return fmt.Errorf("failed to read configure.ac: %w", err)
+	}
+
+	oldContent := string(content)
+	replacement := fmt.Sprintf("AC_INIT([%s], [%s], [bug-report])", name, version)
+
+	newContent := oldContent
+	if strings.Contains(oldContent, "AC_INIT()") {
+		newContent = strings.Replace(oldContent, "AC_INIT()", replacement, 1)
+	} else if strings.Contains(oldContent, "AC_INIT([])") {
+		newContent = strings.Replace(oldContent, "AC_INIT([])", replacement, 1)
+	} else if strings.Contains(oldContent, "AC_INIT") {
+		acInitPattern := `AC_INIT\(([^\)]*)\)`
+		re := regexp.MustCompile(acInitPattern)
+		match := re.FindStringSubmatch(oldContent)
+		if match != nil && strings.Trim(match[1], " ") == "" {
+			newContent = re.ReplaceAllString(oldContent, replacement)
+		}
+	}
+
+	if newContent != oldContent {
+		if err := os.WriteFile(configureAC, []byte(newContent), 0o644); err != nil {
+			return fmt.Errorf("failed to write configure.ac: %w", err)
+		}
+		r.logInfo("[forge] Patched configure.ac AC_INIT for %s@%s", name, version)
+	}
+
+	return nil
 }

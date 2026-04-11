@@ -11,7 +11,7 @@ func NewFlagResolverRepository() domain.FlagResolverRepository {
 
 type flagResolverRepo struct{}
 
-func (r *flagResolverRepo) GetConfigureFlags(name string) []string {
+func (r *flagResolverRepo) GetConfigureFlags(name string, version string) []string {
 	switch name {
 	case "m4":
 		return []string{"--disable-maintainer-mode"}
@@ -26,11 +26,15 @@ func (r *flagResolverRepo) GetConfigureFlags(name string) []string {
 			"--with-onig",
 		}
 	case "openssl":
-		return []string{"shared", "no-ssl3", "no-legacy"}
+		flags := []string{"shared", "no-ssl3"}
+		if v := utils.ParseVersion(version); v.Major >= 3 {
+			flags = append(flags, "no-legacy")
+		}
+		return flags
 	case "curl":
 		return []string{"--with-openssl", "--without-brotli", "--disable-ldap"}
 	case "libxml2":
-		return []string{"--with-zlib=/usr", "--without-lzma"}
+		return []string{"--disable-shared", "--enable-static", "--without-lzma", "--without-python"}
 	case "zlib", "oniguruma", "re2c", "autoconf", "automake", "libtool", "flex", "bison", "perl", "cmake":
 		return []string{}
 	}

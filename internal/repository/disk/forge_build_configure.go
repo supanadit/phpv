@@ -6,7 +6,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strings"
 
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/utils"
@@ -100,6 +102,10 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 
 	r.touchAutotools(sourcePath)
 
+	if err := r.patchAutoconfAC_INIT(sourcePath, config.Name, config.Version); err != nil {
+		r.logInfo("[forge] Warning: failed to patch configure.ac: %v", err)
+	}
+
 	var stdout io.Writer = os.Stdout
 	var stderr io.Writer = os.Stderr
 	var filter *utils.ErrorWarningFilter
@@ -171,4 +177,42 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 	}
 
 	return domain.Forge{Prefix: prefix}, nil
+}
+
+func (r *ForgeRepository) patchAutoconfAC_INIT(sourcePath, name, version string) error {
+	configureAC := filepath.Join(sourcePath, "configure.ac")
+	if _, err := os.Stat(configureAC); os.IsNotExist(err) {
+		return nil
+	}
+
+	content, err := os.ReadFile(configureAC)
+	if err != nil {
+		return fmt.Errorf("failed to read configure.ac: %w", err)
+	}
+
+	oldContent := string(content)
+	replacement := fmt.Sprintf("AC_INIT([%s], [%s], [bug-report])", name, version)
+
+	newContent := oldContent
+	if strings.Contains(oldContent, "AC_INIT()") {
+		newContent = strings.Replace(oldContent, "AC_INIT()", replacement, 1)
+	} else if strings.Contains(oldContent, "AC_INIT([])") {
+		newContent = strings.Replace(oldContent, "AC_INIT([])", replacement, 1)
+	} else if strings.Contains(oldContent, "AC_INIT") {
+		acInitPattern := `AC_INIT\(([^\)]*)\)`
+		re := regexp.MustCompile(acInitPattern)
+		match := re.FindStringSubmatch(oldContent)
+		if match != nil && strings.Trim(match[1], " ") == "" {
+			newContent = re.ReplaceAllString(oldContent, replacement)
+		}
+	}
+
+	if newContent != oldContent {
+		if err := os.WriteFile(configureAC, []byte(newContent), 0o644); err != nil {
+			return fmt.Errorf("failed to write configure.ac: %w", err)
+		}
+		r.logInfo("[forge] Patched configure.ac AC_INIT for %s@%s", name, version)
+	}
+
+	return nil
 }

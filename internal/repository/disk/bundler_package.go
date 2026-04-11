@@ -74,7 +74,7 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 	if zigPath := os.Getenv("PHPV_ZIG_PATH"); zigPath != "" {
 		if _, err := os.Stat(zigPath); err == nil {
 			target := getZigTarget()
-			return zigPath + " cc -target " + target, []string{"-fPIC", "-Wno-error", "-fno-sanitize=undefined"}, zigPath + " c++ -target " + target, nil
+			return zigPath + " cc -target " + target, []string{"-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"}, zigPath + " c++ -target " + target, nil
 		}
 	}
 
@@ -97,7 +97,7 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 	}
 
 	target := getZigTarget()
-	return zigBinary + " cc -target " + target, []string{"-fPIC", "-Wno-error", "-fno-sanitize=undefined"}, zigBinary + " c++ -target " + target, nil
+	return zigBinary + " cc -target " + target, []string{"-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"}, zigBinary + " c++ -target " + target, nil
 }
 
 func (s *bundlerRepository) installBuildTool(name, version, phpVersion string) error {
@@ -392,6 +392,16 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 		s.logInfo("  LD_LIBRARY_PATH: %s", strings.Join(ldPath, ":"))
 	} else {
 		s.logInfo("  LD_LIBRARY_PATH: (none)")
+	}
+	if len(cflags) > 0 {
+		s.logInfo("  CFLAGS: %s", strings.Join(cflags, " "))
+	} else {
+		s.logInfo("  CFLAGS: (none)")
+	}
+	if len(pkgConfigPaths) > 0 {
+		s.logInfo("  PKG_CONFIG_PATH: %s", strings.Join(pkgConfigPaths, ":"))
+	} else {
+		s.logInfo("  PKG_CONFIG_PATH: (none)")
 	}
 
 	compilerName := "gcc"

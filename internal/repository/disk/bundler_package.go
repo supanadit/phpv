@@ -101,7 +101,12 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 }
 
 func (s *bundlerRepository) installBuildTool(name, version, phpVersion string) error {
-	pat, err := s.patternRegistry.MatchPatternByType(name, domain.SourceTypeBinary, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
+	sourceType := domain.SourceTypeSource
+	if name == "zig" {
+		sourceType = domain.SourceTypeBinary
+	}
+
+	pat, err := s.patternRegistry.MatchPatternByType(name, sourceType, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
 	if err != nil {
 		return err
 	}

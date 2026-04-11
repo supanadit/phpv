@@ -1,12 +1,15 @@
 package flagresolver
 
-import "github.com/supanadit/phpv/domain"
+import "errors"
+
+var ErrUnknownExtension = errors.New("unknown extension")
+var ErrExtensionConflict = errors.New("extension conflict")
 
 type Service struct {
-	repo domain.FlagResolverRepository
+	repo Repository
 }
 
-func NewService(repo domain.FlagResolverRepository) *Service {
+func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 
@@ -24,7 +27,7 @@ func (s *Service) ValidateExtensions(extensions []string, phpVersion string) err
 		return err
 	}
 	if len(unknown) > 0 {
-		return &domain.UnknownExtensionError{Extension: unknown[0]}
+		return ErrUnknownExtension
 	}
 	return nil
 }
@@ -32,10 +35,7 @@ func (s *Service) ValidateExtensions(extensions []string, phpVersion string) err
 func (s *Service) CheckExtensionConflicts(extensions []string) ([]string, [][]string, error) {
 	conflicts, conflictPairs := s.repo.CheckExtensionConflicts(extensions)
 	if len(conflicts) > 0 {
-		return conflicts, conflictPairs, &domain.ExtensionConflictError{
-			Extension:   conflicts[0],
-			Conflicting: findConflictingFor(conflictPairs, conflicts[0]),
-		}
+		return conflicts, conflictPairs, ErrExtensionConflict
 	}
 	return nil, nil, nil
 }

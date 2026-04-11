@@ -1,11 +1,6 @@
-package domain
+package flagresolver
 
-type ConfigureFlag struct {
-	Name  string
-	Flags []string
-}
-
-type FlagResolverRepository interface {
+type Repository interface {
 	GetConfigureFlags(name string, version string) []string
 	GetPHPConfigureFlags(phpVersion string, extensions []string) []string
 	ValidateExtensions(extensions []string, phpVersion string) ([]string, error)

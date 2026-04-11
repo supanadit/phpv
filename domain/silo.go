@@ -13,19 +13,6 @@ const (
 	StateFailed
 )
 
-func (s InstallState) String() string {
-	switch s {
-	case StateInProgress:
-		return "in_progress"
-	case StateInstalled:
-		return "installed"
-	case StateFailed:
-		return "failed"
-	default:
-		return "none"
-	}
-}
-
 type DependencyInfo struct {
 	Name            string `json:"name"`
 	Version         string `json:"version"`

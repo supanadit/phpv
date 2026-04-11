@@ -51,7 +51,7 @@ type bundlerRepository struct {
 	extensions      []string
 }
 
-func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo domain.FlagResolverRepository) bundler.BundlerRepository {
+func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo flagresolver.Repository) bundler.BundlerRepository {
 	registry := pattern.NewPatternRegistry()
 	registry.RegisterPatterns(pattern.DefaultURLPatterns)
 

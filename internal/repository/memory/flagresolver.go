@@ -1,11 +1,11 @@
 package memory
 
 import (
-	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/flagresolver"
 	"github.com/supanadit/phpv/internal/utils"
 )
 
-func NewFlagResolverRepository() domain.FlagResolverRepository {
+func NewFlagResolverRepository() flagresolver.Repository {
 	return &flagResolverRepo{}
 }
 
@@ -90,7 +90,7 @@ func (r *flagResolverRepo) ValidateExtensions(extensions []string, phpVersion st
 		}
 	}
 	if len(unknown) > 0 {
-		return unknown, &domain.UnknownExtensionError{Extension: unknown[0]}
+		return unknown, flagresolver.ErrUnknownExtension
 	}
 	return nil, nil
 }

@@ -9,8 +9,8 @@ import (
 	"github.com/supanadit/phpv/advisor"
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/bundler"
-	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/download"
+	"github.com/supanadit/phpv/flagresolver"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/internal/repository/http"
@@ -121,7 +121,7 @@ func NewAssemblerRepository() assembler.AssemblerRepository {
 	return memory.NewMemoryAssemblerRepository()
 }
 
-func NewFlagResolverRepository() domain.FlagResolverRepository {
+func NewFlagResolverRepository() flagresolver.Repository {
 	return memory.NewFlagResolverRepository()
 }
 
@@ -172,7 +172,7 @@ func run(
 	shutdowner fx.Shutdowner,
 	sil *disk.SiloRepository,
 	cfg bundler.BundlerServiceConfig,
-	flagResolverRepo domain.FlagResolverRepository,
+	flagResolverRepo flagresolver.Repository,
 	src source.SourceRepository,
 ) {
 	if err := sil.EnsurePaths(); err != nil {

@@ -280,29 +280,3 @@ func (s *AssemblerService) GetGraph(packageName string, version string) (domain.
 
 	return result, nil
 }
-
-type assemblerRepository struct {
-	*AssemblerService
-}
-
-func NewAssemblerRepository() AssemblerRepository {
-	return &assemblerRepository{
-		AssemblerService: NewAssemblerService(),
-	}
-}
-
-func (r *assemblerRepository) GetGraph(packageName string, version string) (domain.DependencyGraph, error) {
-	return r.AssemblerService.GetGraph(packageName, version)
-}
-
-func (r *assemblerRepository) GetDependencies(packageName string, version string) ([]domain.Dependency, error) {
-	return r.AssemblerService.GetDependencies(packageName, version)
-}
-
-func (r *assemblerRepository) GetOrderedDependencies(packageName string, version string) ([]domain.Dependency, error) {
-	return r.AssemblerService.GetOrderedDependencies(packageName, version)
-}
-
-func (r *assemblerRepository) GetDependencyLevels(packageName string, version string) ([][]domain.Dependency, error) {
-	return r.AssemblerService.GetDependencyLevels(packageName, version)
-}

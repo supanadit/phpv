@@ -365,6 +365,12 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 		return fmt.Errorf("[forge] failed to create install directory: %w", err)
 	}
 
+	if isBuildTool, ok := buildTools[name]; ok && isBuildTool {
+		if err := s.installBuildTool(name, version, phpVersion); err != nil {
+			return fmt.Errorf("[bundler] failed to install build tool %s@%s: %w", name, version, err)
+		}
+	}
+
 	cc, cflags, cxx, err := s.getCompilerForVersion(phpVersion, forceCompiler)
 	if err != nil {
 		return err

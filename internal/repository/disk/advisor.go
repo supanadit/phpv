@@ -10,6 +10,7 @@ import (
 	"github.com/supanadit/phpv/advisor"
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/pattern"
 )
@@ -18,7 +19,7 @@ type AdvisorRepository struct {
 	fs              afero.Fs
 	root            string
 	exec            *defaultExecutor
-	patternRegistry *pattern.PatternRegistry
+	patternRegistry *pattern.Service
 	assembler       assembler.AssemblerRepository
 }
 
@@ -52,8 +53,8 @@ var (
 func NewAdvisorRepository(asm assembler.AssemblerRepository) advisor.AdvisorRepository {
 	fs := afero.NewOsFs()
 	root := viper.GetString("PHPV_ROOT")
-	registry := pattern.NewPatternRegistry()
-	registry.RegisterPatterns(pattern.DefaultURLPatterns)
+	registry := pattern.NewService()
+	registry.RegisterPatterns(memory.DefaultPatterns)
 	return &AdvisorRepository{
 		fs:              fs,
 		root:            root,
@@ -332,7 +333,7 @@ func extractConstraint(version string) string {
 	return strings.TrimSpace(version[idx+1:])
 }
 
-func determineActionAndURL(state domain.PackageState, systemAvailable, shouldBuild bool, registry *pattern.PatternRegistry, name, version, phpVersion string) (string, string, string) {
+func determineActionAndURL(state domain.PackageState, systemAvailable, shouldBuild bool, registry *pattern.Service, name, version, phpVersion string) (string, string, string) {
 	switch state {
 	case domain.StateSourceMissing:
 		if systemAvailable && !shouldBuild {

@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/utils"
-	"github.com/supanadit/phpv/pattern"
 )
 
 func (s *bundlerRepository) buildPHP(name, version string, extensions []string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, forceCompiler string, forceRebuild bool) error {
@@ -39,17 +38,17 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 
 	case "download":
 		if !forceRebuild {
-			pat, err := s.patternRegistry.MatchPatternByType(name, check.SourceType, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
+			pat, err := s.patternSvc.MatchPatternByType(name, check.SourceType, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
 			if err != nil {
 				if check.SourceType == domain.SourceTypeBinary && name == "php" {
-					pat, err = s.patternRegistry.MatchPatternByType(name, domain.SourceTypeSource, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
+					pat, err = s.patternSvc.MatchPatternByType(name, domain.SourceTypeSource, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
 				}
 				if err != nil {
 					return fmt.Errorf("failed to find URL pattern for %s@%s: %w", name, version, err)
 				}
 			}
 
-			urls, err := pattern.BuildURLs(pat, utils.ParseVersion(version))
+			urls, err := s.patternSvc.BuildURLs(pat, utils.ParseVersion(version))
 			if err != nil {
 				return fmt.Errorf("failed to build URL for PHP: %w", err)
 			}

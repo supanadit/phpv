@@ -17,6 +17,7 @@ import (
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/terminal"
 	"github.com/supanadit/phpv/internal/utils"
+	"github.com/supanadit/phpv/pattern"
 	"github.com/supanadit/phpv/source"
 	"github.com/supanadit/phpv/unload"
 	"go.uber.org/fx"
@@ -47,6 +48,7 @@ func main() {
 			NewForgeRepository,
 			NewFlagResolverRepository,
 			NewBundlerServiceConfig,
+			NewPatternRepository,
 		),
 		fx.Invoke(run),
 	}
@@ -125,6 +127,10 @@ func NewFlagResolverRepository() flagresolver.Repository {
 	return memory.NewFlagResolverRepository()
 }
 
+func NewPatternRepository() pattern.PatternRepository {
+	return memory.NewPatternRepository()
+}
+
 func NewForgeRepository(dl download.DownloadRepository, ul unload.UnloadRepository, sil *disk.SiloRepository, src source.SourceRepository) forge.ForgeRepository {
 	return disk.NewForgeRepository(dl, ul, sil, src, nil)
 }
@@ -173,6 +179,7 @@ func run(
 	sil *disk.SiloRepository,
 	cfg bundler.BundlerServiceConfig,
 	flagResolverRepo flagresolver.Repository,
+	pattern pattern.PatternRepository,
 	src source.SourceRepository,
 ) {
 	if err := sil.EnsurePaths(); err != nil {
@@ -181,7 +188,7 @@ func run(
 		return
 	}
 
-	bundlerRepo := disk.NewBundlerRepository(cfg, flagResolverRepo)
+	bundlerRepo := disk.NewBundlerRepository(cfg, flagResolverRepo, pattern)
 	handler := terminal.NewHandler(bundlerRepo, sil, src)
 
 	if err := terminal.ExecuteCobra(handler, shutdowner); err != nil {

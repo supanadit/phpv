@@ -8,7 +8,6 @@ import (
 
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/utils"
-	"github.com/supanadit/phpv/pattern"
 )
 
 func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, forceCompiler string) (*domain.DependencyInfo, error) {
@@ -38,11 +37,11 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		return depInfo, nil
 	case "download":
 		s.logInfo("Downloading %s@%s...", name, version)
-		pat, err := s.patternRegistry.MatchPatternByType(name, check.SourceType, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
+		pat, err := s.patternSvc.MatchPatternByType(name, check.SourceType, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
 		if err != nil {
 			return nil, err
 		}
-		urls, err := pattern.BuildURLs(pat, utils.ParseVersion(version))
+		urls, err := s.patternSvc.BuildURLs(pat, utils.ParseVersion(version))
 		if err != nil {
 			return nil, fmt.Errorf("[bundler] failed to build URL for %s@%s: %w", name, version, err)
 		}

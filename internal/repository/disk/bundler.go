@@ -40,7 +40,7 @@ type bundlerRepository struct {
 	downloadSvc     *download.Service
 	unloadSvc       *unload.Service
 	sourceSvc       *source.Service
-	patternRegistry *pattern.PatternRegistry
+	patternSvc      pattern.PatternRepository
 	flagResolverSvc *flagresolver.Service
 	silo            *domain.Silo
 	siloRepo        *SiloRepository
@@ -51,9 +51,7 @@ type bundlerRepository struct {
 	extensions      []string
 }
 
-func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo flagresolver.Repository) bundler.BundlerRepository {
-	registry := pattern.NewPatternRegistry()
-	registry.RegisterPatterns(pattern.DefaultURLPatterns)
+func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo flagresolver.Repository, patternSvc pattern.PatternRepository) bundler.BundlerRepository {
 
 	jobs := cfg.Jobs
 	if jobs == 0 {
@@ -86,7 +84,7 @@ func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo fla
 		downloadSvc:     downloadSvc,
 		unloadSvc:       unloadSvc,
 		sourceSvc:       sourceSvc,
-		patternRegistry: registry,
+		patternSvc:      patternSvc,
 		flagResolverSvc: flagResolverSvc,
 		silo:            cfg.Silo,
 		siloRepo:        siloRepo,

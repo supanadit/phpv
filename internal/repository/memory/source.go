@@ -10,12 +10,12 @@ import (
 )
 
 type SourceRepository struct {
-	patternRegistry *pattern.PatternRegistry
+	patternRegistry *pattern.Service
 }
 
 func NewSourceRepository() *SourceRepository {
-	registry := pattern.NewPatternRegistry()
-	registry.RegisterPatterns(pattern.DefaultURLPatterns)
+	registry := pattern.NewService()
+	registry.RegisterPatterns(DefaultPatterns)
 	return &SourceRepository{
 		patternRegistry: registry,
 	}
@@ -24,7 +24,7 @@ func NewSourceRepository() *SourceRepository {
 func (r *SourceRepository) buildSource(name, version, sourceType string) domain.Source {
 	v := utils.ParseVersion(version)
 	urlPattern, _ := r.patternRegistry.MatchPattern(name, v)
-	url, _ := pattern.BuildURL(urlPattern, v)
+	url, _ := r.patternRegistry.BuildURL(urlPattern, v)
 	return domain.Source{Name: name, Version: version, URL: url, Type: sourceType}
 }
 
@@ -36,7 +36,7 @@ func (r *SourceRepository) GetSources(name, version string) ([]domain.Source, er
 	}
 	var sources []domain.Source
 	for _, p := range patterns {
-		url, err := pattern.BuildURL(p, v)
+		url, err := r.patternRegistry.BuildURL(p, v)
 		if err != nil {
 			continue
 		}

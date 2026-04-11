@@ -1,11 +1,11 @@
-package pattern
+package memory
 
-import "github.com/supanadit/phpv/domain"
+import (
+	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/pattern"
+)
 
-// DefaultURLPatterns provides download URLs for all supported packages.
-// Checksums are SHA256 and verified during download for security.
-
-var DefaultURLPatterns = []domain.URLPattern{
+var DefaultPatterns = []domain.URLPattern{
 	{
 		Name:       "php",
 		Type:       domain.SourceTypeSource,
@@ -365,4 +365,10 @@ var DefaultURLPatterns = []domain.URLPattern{
 		Constraint: func(v *domain.Version) bool { return v.Major == 0 && v.Minor >= 13 },
 		Template:   "https://ziglang.org/download/{version}/zig-macos-aarch64-{version}.tar.xz",
 	},
+}
+
+func NewPatternRepository() pattern.PatternRepository {
+	svc := pattern.NewService()
+	svc.RegisterPatterns(DefaultPatterns)
+	return svc
 }

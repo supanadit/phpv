@@ -9,24 +9,34 @@ import (
 	"github.com/supanadit/phpv/internal/utils"
 )
 
-type PatternRegistry struct {
+type PatternRepository interface {
+	RegisterPatterns(patterns []domain.URLPattern)
+	MatchPattern(name string, v *domain.Version) (domain.URLPattern, error)
+	MatchPatterns(name string, v *domain.Version) ([]domain.URLPattern, error)
+	MatchPatternByType(name, sourceType, targetOS, targetArch string, v *domain.Version) (domain.URLPattern, error)
+	BuildURL(pattern domain.URLPattern, v *domain.Version) (string, error)
+	BuildURLs(pattern domain.URLPattern, v *domain.Version) ([]string, error)
+	BuildURLByType(name, version, sourceType string) (string, error)
+}
+
+type Service struct {
 	index map[string][]domain.URLPattern
 }
 
-func NewPatternRegistry() *PatternRegistry {
-	return &PatternRegistry{
+func NewService() *Service {
+	return &Service{
 		index: make(map[string][]domain.URLPattern),
 	}
 }
 
-func (r *PatternRegistry) RegisterPatterns(patterns []domain.URLPattern) {
+func (s *Service) RegisterPatterns(patterns []domain.URLPattern) {
 	for _, p := range patterns {
-		r.index[p.Name] = append(r.index[p.Name], p)
+		s.index[p.Name] = append(s.index[p.Name], p)
 	}
 }
 
-func (r *PatternRegistry) MatchPattern(name string, v *domain.Version) (domain.URLPattern, error) {
-	patterns, err := r.MatchPatterns(name, v)
+func (s *Service) MatchPattern(name string, v *domain.Version) (domain.URLPattern, error) {
+	patterns, err := s.MatchPatterns(name, v)
 	if err != nil {
 		return domain.URLPattern{}, err
 	}
@@ -36,8 +46,8 @@ func (r *PatternRegistry) MatchPattern(name string, v *domain.Version) (domain.U
 	return patterns[0], nil
 }
 
-func (r *PatternRegistry) MatchPatterns(name string, v *domain.Version) ([]domain.URLPattern, error) {
-	patterns, ok := r.index[name]
+func (s *Service) MatchPatterns(name string, v *domain.Version) ([]domain.URLPattern, error) {
+	patterns, ok := s.index[name]
 	if !ok {
 		return nil, fmt.Errorf("no URL pattern found for %s", name)
 	}
@@ -50,8 +60,8 @@ func (r *PatternRegistry) MatchPatterns(name string, v *domain.Version) ([]domai
 	return matches, nil
 }
 
-func (r *PatternRegistry) MatchPatternByType(name, sourceType, targetOS, targetArch string, v *domain.Version) (domain.URLPattern, error) {
-	patterns, ok := r.index[name]
+func (s *Service) MatchPatternByType(name, sourceType, targetOS, targetArch string, v *domain.Version) (domain.URLPattern, error) {
+	patterns, ok := s.index[name]
 	if !ok {
 		return domain.URLPattern{}, fmt.Errorf("no URL pattern found for %s", name)
 	}
@@ -96,27 +106,7 @@ func (r *PatternRegistry) MatchPatternByType(name, sourceType, targetOS, targetA
 	return domain.URLPattern{}, fmt.Errorf("no matching URL pattern for %s@%s type=%s os=%s arch=%s", name, v.Raw, sourceType, targetOS, targetArch)
 }
 
-func (r *PatternRegistry) BuildURLByType(name, version, sourceType string) (string, error) {
-	targetOS := viper.GetString("PHPV_TARGET_OS")
-	targetArch := viper.GetString("PHPV_TARGET_ARCH")
-
-	if targetOS == "" {
-		targetOS = "linux"
-	}
-	if targetArch == "" {
-		targetArch = "x86_64"
-	}
-
-	v := utils.ParseVersion(version)
-	pattern, err := r.MatchPatternByType(name, sourceType, targetOS, targetArch, v)
-	if err != nil {
-		return "", err
-	}
-
-	return BuildURL(pattern, v)
-}
-
-func BuildURL(pattern domain.URLPattern, v *domain.Version) (string, error) {
+func (s *Service) BuildURL(pattern domain.URLPattern, v *domain.Version) (string, error) {
 	url := pattern.Template
 	url = strings.ReplaceAll(url, "{version}", v.Raw)
 
@@ -131,10 +121,10 @@ func BuildURL(pattern domain.URLPattern, v *domain.Version) (string, error) {
 	return url, nil
 }
 
-func BuildURLs(pattern domain.URLPattern, v *domain.Version) ([]string, error) {
+func (s *Service) BuildURLs(pattern domain.URLPattern, v *domain.Version) ([]string, error) {
 	var urls []string
 
-	url, err := BuildURL(pattern, v)
+	url, err := s.BuildURL(pattern, v)
 	if err != nil {
 		return nil, err
 	}
@@ -152,4 +142,24 @@ func BuildURLs(pattern domain.URLPattern, v *domain.Version) ([]string, error) {
 	}
 
 	return urls, nil
+}
+
+func (s *Service) BuildURLByType(name, version, sourceType string) (string, error) {
+	targetOS := viper.GetString("PHPV_TARGET_OS")
+	targetArch := viper.GetString("PHPV_TARGET_ARCH")
+
+	if targetOS == "" {
+		targetOS = "linux"
+	}
+	if targetArch == "" {
+		targetArch = "x86_64"
+	}
+
+	v := utils.ParseVersion(version)
+	pattern, err := s.MatchPatternByType(name, sourceType, targetOS, targetArch, v)
+	if err != nil {
+		return "", err
+	}
+
+	return s.BuildURL(pattern, v)
 }

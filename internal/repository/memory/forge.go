@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/download"
-	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/internal/repository/http"
 	"github.com/supanadit/phpv/source"
 	"github.com/supanadit/phpv/unload"
@@ -21,10 +20,10 @@ type BuildRepository struct {
 	unloadRepository   unload.UnloadRepository
 }
 
-func NewForgeRepository() *BuildRepository {
+func NewForgeRepository(ur unload.UnloadRepository) *BuildRepository {
 	return &BuildRepository{
 		downloadRepository: http.NewDownloadRepository(),
-		unloadRepository:   disk.NewUnloadRepository(),
+		unloadRepository:   ur,
 	}
 }
 

@@ -1,6 +1,10 @@
 package flagresolver
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/supanadit/phpv/internal/utils"
+)
 
 var ErrUnknownExtension = errors.New("unknown extension")
 var ErrExtensionConflict = errors.New("extension conflict")
@@ -14,11 +18,60 @@ func NewService(repo Repository) *Service {
 }
 
 func (s *Service) GetConfigureFlags(name string, version string) []string {
-	return s.repo.GetConfigureFlags(name, version)
+	switch name {
+	case "m4":
+		return []string{"--disable-maintainer-mode"}
+	case "php":
+		return []string{
+			"--disable-all",
+			"--enable-cli",
+			"--with-openssl",
+			"--with-curl",
+			"--with-zlib",
+			"--with-libxml2",
+			"--with-onig",
+		}
+	case "openssl":
+		flags := []string{"shared", "no-ssl3"}
+		if v := utils.ParseVersion(version); v.Major >= 3 {
+			flags = append(flags, "no-legacy")
+		}
+		return flags
+	case "curl":
+		return []string{"--with-openssl", "--without-brotli", "--disable-ldap"}
+	case "libxml2":
+		return []string{"--disable-shared", "--enable-static", "--without-lzma", "--without-python"}
+	case "zlib", "oniguruma", "re2c", "autoconf", "automake", "libtool", "flex", "bison", "perl", "cmake":
+		return []string{}
+	}
+	return []string{}
 }
 
 func (s *Service) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
-	return s.repo.GetPHPConfigureFlags(phpVersion, extensions)
+	flags := []string{
+		"--disable-all",
+		"--enable-cli",
+	}
+
+	if len(extensions) == 0 {
+		return flags
+	}
+
+	v := utils.ParseVersion(phpVersion)
+
+	for _, ext := range extensions {
+		if extDef, ok := s.repo.GetExtensionDef(ext); ok {
+			if s.repo.IsExtensionValidForPHPVersion(ext, phpVersion) {
+				flags = append(flags, extDef.Flag)
+			}
+		}
+	}
+
+	if contains(extensions, "opcache") && v.Major >= 7 {
+		flags = append(flags, "--enable-opcache")
+	}
+
+	return flags
 }
 
 func (s *Service) ValidateExtensions(extensions []string, phpVersion string) error {
@@ -48,14 +101,11 @@ func (s *Service) GetExtensionDependencyWithVersion(ext, phpVersion string) (str
 	return s.repo.GetExtensionDependencyWithVersion(ext, phpVersion)
 }
 
-func findConflictingFor(pairs [][]string, ext string) []string {
-	var result []string
-	for _, pair := range pairs {
-		if pair[0] == ext {
-			result = append(result, pair[1])
-		} else if pair[1] == ext {
-			result = append(result, pair[0])
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
 		}
 	}
-	return result
+	return false
 }

@@ -1,24 +1,18 @@
 package memory
 
 import (
+	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/extension"
 	"github.com/supanadit/phpv/internal/utils"
 )
 
-type VersionConstraintDef struct {
-	VersionRange string
-	Version      string
+func NewExtensionRepository() extension.Repository {
+	return &extensionRepo{}
 }
 
-type extensionDef struct {
-	Flag      string
-	MinPHP    string
-	MaxPHP    string
-	Conflicts []string
-	Package   string
-	Versions  []VersionConstraintDef
-}
+type extensionRepo struct{}
 
-var bundledExtensions = map[string]extensionDef{
+var bundledExtensions = map[string]domain.ExtensionDef{
 	"bcmath": {
 		Flag:   "--enable-bcmath",
 		MinPHP: "5.0",
@@ -40,7 +34,7 @@ var bundledExtensions = map[string]extensionDef{
 		Flag:    "--with-curl",
 		MinPHP:  "5.0",
 		Package: "curl",
-		Versions: []VersionConstraintDef{
+		Versions: []domain.VersionConstraintDef{
 			{VersionRange: ">=8.0.0", Version: "8.10.1|>=8.0.0"},
 			{VersionRange: ">=7.0.0 <8.0.0", Version: "7.88.1|>=7.80.0"},
 			{VersionRange: ">=5.6.0 <7.0.0", Version: "7.20.0|>=7.20.0,<7.21.0"},
@@ -120,7 +114,7 @@ var bundledExtensions = map[string]extensionDef{
 		Flag:    "--with-libxml",
 		MinPHP:  "5.0",
 		Package: "libxml2",
-		Versions: []VersionConstraintDef{
+		Versions: []domain.VersionConstraintDef{
 			{VersionRange: ">=8.2.0", Version: "2.12.7|~2.12.0"},
 			{VersionRange: ">=8.0.0 <8.2.0", Version: "2.11.7|~2.11.0"},
 			{VersionRange: ">=5.0.0 <8.0.0", Version: "2.9.14|~2.9.0"},
@@ -130,7 +124,7 @@ var bundledExtensions = map[string]extensionDef{
 		Flag:    "--enable-mbstring",
 		MinPHP:  "5.0",
 		Package: "oniguruma",
-		Versions: []VersionConstraintDef{
+		Versions: []domain.VersionConstraintDef{
 			{VersionRange: ">=8.0.0", Version: "6.9.9|~6.9.0"},
 			{VersionRange: ">=7.4.0 <8.0.0", Version: "6.9.8|~6.9.0"},
 			{VersionRange: ">=5.0.0 <7.4.0", Version: "5.9.6|~5.9.0"},
@@ -159,7 +153,7 @@ var bundledExtensions = map[string]extensionDef{
 		Flag:    "--with-openssl",
 		MinPHP:  "5.0",
 		Package: "openssl",
-		Versions: []VersionConstraintDef{
+		Versions: []domain.VersionConstraintDef{
 			{VersionRange: ">=8.2.0", Version: "3.3.2|>=3.0.0,<4.0.0"},
 			{VersionRange: ">=7.0.0 <8.2.0", Version: "1.1.1w|>=1.1.0,<1.2.0"},
 			{VersionRange: ">=5.0.0 <7.0.0", Version: "1.0.1u|>=1.0.0,<1.1.0"},
@@ -326,19 +320,19 @@ var bundledExtensions = map[string]extensionDef{
 		Flag:    "--with-zlib",
 		MinPHP:  "5.0",
 		Package: "zlib",
-		Versions: []VersionConstraintDef{
+		Versions: []domain.VersionConstraintDef{
 			{VersionRange: ">=8.0.0", Version: "1.3.1|>=1.3.0"},
 			{VersionRange: ">=5.0.0 <8.0.0", Version: "1.2.13|>=1.2.0,<1.3.0"},
 		},
 	},
 }
 
-func GetBundledExtensionDef(name string) (extensionDef, bool) {
+func (r *extensionRepo) GetExtensionDef(name string) (domain.ExtensionDef, bool) {
 	ext, ok := bundledExtensions[name]
 	return ext, ok
 }
 
-func IsExtensionValidForPHPVersion(name string, phpVersion string) bool {
+func (r *extensionRepo) IsExtensionValidForPHPVersion(name string, phpVersion string) bool {
 	ext, ok := bundledExtensions[name]
 	if !ok {
 		return false
@@ -363,7 +357,7 @@ func IsExtensionValidForPHPVersion(name string, phpVersion string) bool {
 	return true
 }
 
-func GetConflictingExtensions(name string) []string {
+func (r *extensionRepo) GetConflictingExtensions(name string) []string {
 	ext, ok := bundledExtensions[name]
 	if !ok {
 		return nil
@@ -371,7 +365,7 @@ func GetConflictingExtensions(name string) []string {
 	return ext.Conflicts
 }
 
-func GetExtensionDependency(name string) (string, bool) {
+func (r *extensionRepo) GetExtensionDependency(name string) (string, bool) {
 	ext, ok := bundledExtensions[name]
 	if !ok || ext.Package == "" {
 		return "", false
@@ -379,7 +373,7 @@ func GetExtensionDependency(name string) (string, bool) {
 	return ext.Package, true
 }
 
-func GetExtensionDependencyWithVersion(extName, phpVersion string) (string, string, bool) {
+func (r *extensionRepo) GetExtensionDependencyWithVersion(extName, phpVersion string) (string, string, bool) {
 	ext, ok := bundledExtensions[extName]
 	if !ok || ext.Package == "" {
 		return "", "", false
@@ -392,4 +386,55 @@ func GetExtensionDependencyWithVersion(extName, phpVersion string) (string, stri
 	}
 
 	return "", "", false
+}
+
+func (r *extensionRepo) ValidateExtensions(extensions []string, phpVersion string) ([]string, error) {
+	var unknown []string
+	for _, ext := range extensions {
+		if _, ok := bundledExtensions[ext]; !ok {
+			unknown = append(unknown, ext)
+		} else if !r.IsExtensionValidForPHPVersion(ext, phpVersion) {
+			unknown = append(unknown, ext)
+		}
+	}
+	if len(unknown) > 0 {
+		return unknown, nil
+	}
+	return nil, nil
+}
+
+func (r *extensionRepo) CheckExtensionConflicts(extensions []string) ([]string, [][]string) {
+	var conflicts []string
+	var conflictPairs [][]string
+
+	extSet := make(map[string]bool)
+	for _, ext := range extensions {
+		extSet[ext] = true
+	}
+
+	for _, ext := range extensions {
+		conflictsList := r.GetConflictingExtensions(ext)
+		for _, conflict := range conflictsList {
+			if extSet[conflict] {
+				conflictPairs = append(conflictPairs, []string{ext, conflict})
+				if !contains(conflicts, ext) {
+					conflicts = append(conflicts, ext)
+				}
+				if !contains(conflicts, conflict) {
+					conflicts = append(conflicts, conflict)
+				}
+			}
+		}
+	}
+
+	return conflicts, conflictPairs
+}
+
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }

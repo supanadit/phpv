@@ -5,6 +5,7 @@ import (
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/download"
+	"github.com/supanadit/phpv/extension"
 	"github.com/supanadit/phpv/flagresolver"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/internal/utils"
@@ -23,18 +24,19 @@ type BundlerRepository interface {
 }
 
 type BundlerServiceConfig struct {
-	Assembler  assembler.AssemblerRepository
-	Advisor    advisor.AdvisorRepository
-	Forge      forge.ForgeRepository
-	Download   download.DownloadRepository
-	Unload     unload.UnloadRepository
-	Source     source.SourceRepository
-	Silo       *domain.Silo
-	SiloRepo   silo.SiloRepository
-	Jobs       int
-	Verbose    bool
-	Logger     utils.Logger
-	Extensions []string
+	Assembler     assembler.AssemblerRepository
+	Advisor       advisor.AdvisorRepository
+	Forge         forge.ForgeRepository
+	Download      download.DownloadRepository
+	Unload        unload.UnloadRepository
+	ExtensionRepo extension.Repository
+	Source        source.SourceRepository
+	Silo          *domain.Silo
+	SiloRepo      silo.SiloRepository
+	Jobs          int
+	Verbose       bool
+	Logger        utils.Logger
+	Extensions    []string
 }
 
 type Service struct {
@@ -50,10 +52,10 @@ type Service struct {
 	logger          utils.Logger
 }
 
-func NewService(cfg BundlerServiceConfig, flagResolverRepo flagresolver.Repository) *Service {
+func NewService(cfg BundlerServiceConfig, extRepo extension.Repository) *Service {
 	assemblerSvc := assembler.NewAssemblerServiceWithRepo(cfg.Assembler)
 	advisorSvc := advisor.NewAdvisorService(cfg.Advisor)
-	flagResolverSvc := flagresolver.NewService(flagResolverRepo)
+	flagResolverSvc := flagresolver.NewService(extRepo)
 	forgeSvc := forge.NewService(cfg.Forge, flagResolverSvc)
 	downloadSvc := download.NewService(cfg.Download)
 	unloadSvc := unload.NewService(cfg.Unload)

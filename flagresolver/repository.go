@@ -1,10 +1,13 @@
 package flagresolver
 
+import "github.com/supanadit/phpv/domain"
+
 type Repository interface {
-	GetConfigureFlags(name string, version string) []string
-	GetPHPConfigureFlags(phpVersion string, extensions []string) []string
+	GetExtensionDef(name string) (domain.ExtensionDef, bool)
+	IsExtensionValidForPHPVersion(name string, phpVersion string) bool
+	GetConflictingExtensions(name string) []string
+	GetExtensionDependency(name string) (string, bool)
+	GetExtensionDependencyWithVersion(extName, phpVersion string) (string, string, bool)
 	ValidateExtensions(extensions []string, phpVersion string) ([]string, error)
 	CheckExtensionConflicts(extensions []string) ([]string, [][]string)
-	GetExtensionDependency(ext string) (string, bool)
-	GetExtensionDependencyWithVersion(ext, phpVersion string) (string, string, bool)
 }

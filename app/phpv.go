@@ -10,7 +10,7 @@ import (
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/bundler"
 	"github.com/supanadit/phpv/download"
-	"github.com/supanadit/phpv/flagresolver"
+	"github.com/supanadit/phpv/extension"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/internal/repository/http"
@@ -46,7 +46,7 @@ func main() {
 			NewAdvisorRepository,
 			NewAssemblerRepository,
 			NewForgeRepository,
-			NewFlagResolverRepository,
+			NewExtensionRepository,
 			NewBundlerServiceConfig,
 			NewPatternRepository,
 		),
@@ -123,8 +123,8 @@ func NewAssemblerRepository() assembler.AssemblerRepository {
 	return memory.NewMemoryAssemblerRepository()
 }
 
-func NewFlagResolverRepository() flagresolver.Repository {
-	return memory.NewFlagResolverRepository()
+func NewExtensionRepository() extension.Repository {
+	return memory.NewExtensionRepository()
 }
 
 func NewPatternRepository() pattern.PatternRepository {
@@ -142,6 +142,7 @@ func NewBundlerServiceConfig(
 	fg forge.ForgeRepository,
 	dl download.DownloadRepository,
 	ul unload.UnloadRepository,
+	extRepo extension.Repository,
 	src source.SourceRepository,
 ) (bundler.BundlerServiceConfig, error) {
 	silo, err := sil.GetSilo()
@@ -161,16 +162,17 @@ func NewBundlerServiceConfig(
 	logger = utils.NewLogger(utils.LogLevelInfo)
 
 	return bundler.BundlerServiceConfig{
-		Assembler: asm,
-		Advisor:   adv,
-		Forge:     fg,
-		Download:  dl,
-		Unload:    ul,
-		Source:    src,
-		Silo:      silo,
-		SiloRepo:  sil,
-		Verbose:   verbose,
-		Logger:    logger,
+		Assembler:     asm,
+		Advisor:       adv,
+		Forge:         fg,
+		Download:      dl,
+		Unload:        ul,
+		ExtensionRepo: extRepo,
+		Source:        src,
+		Silo:          silo,
+		SiloRepo:      sil,
+		Verbose:       verbose,
+		Logger:        logger,
 	}, nil
 }
 
@@ -178,7 +180,6 @@ func run(
 	shutdowner fx.Shutdowner,
 	sil *disk.SiloRepository,
 	cfg bundler.BundlerServiceConfig,
-	flagResolverRepo flagresolver.Repository,
 	pattern pattern.PatternRepository,
 	src source.SourceRepository,
 ) {
@@ -188,7 +189,7 @@ func run(
 		return
 	}
 
-	bundlerRepo := disk.NewBundlerRepository(cfg, flagResolverRepo, pattern)
+	bundlerRepo := disk.NewBundlerRepository(cfg, pattern)
 	handler := terminal.NewHandler(bundlerRepo, sil, src)
 
 	if err := terminal.ExecuteCobra(handler, shutdowner); err != nil {

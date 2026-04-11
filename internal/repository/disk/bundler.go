@@ -51,7 +51,7 @@ type bundlerRepository struct {
 	extensions      []string
 }
 
-func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo flagresolver.Repository, patternSvc pattern.PatternRepository) bundler.BundlerRepository {
+func NewBundlerRepository(cfg bundler.BundlerServiceConfig, patternSvc pattern.PatternRepository) bundler.BundlerRepository {
 
 	jobs := cfg.Jobs
 	if jobs == 0 {
@@ -60,7 +60,7 @@ func NewBundlerRepository(cfg bundler.BundlerServiceConfig, flagResolverRepo fla
 
 	assemblerSvc := assembler.NewAssemblerServiceWithRepo(cfg.Assembler)
 	advisorSvc := advisor.NewAdvisorService(cfg.Advisor)
-	flagResolverSvc := flagresolver.NewService(flagResolverRepo)
+	flagResolverSvc := flagresolver.NewService(cfg.ExtensionRepo)
 	forgeSvc := forge.NewService(cfg.Forge, flagResolverSvc)
 	downloadSvc := download.NewService(cfg.Download)
 	unloadSvc := unload.NewService(cfg.Unload)

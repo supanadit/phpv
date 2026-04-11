@@ -33,7 +33,7 @@ func (r *ForgeRepository) SetLogger(logger utils.Logger) {
 	r.logger = logger
 }
 
-func (r *ForgeRepository) GetConfigureFlags(name string) []string {
+func (r *ForgeRepository) GetConfigureFlags(name string, version string) []string {
 	return nil
 }
 

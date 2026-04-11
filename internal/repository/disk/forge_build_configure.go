@@ -40,11 +40,7 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 
 	if _, err := os.Stat(configurePath); os.IsNotExist(err) {
 		if config.Name == "openssl" || config.Name == "ossl" {
-			if _, err := os.Stat(configPath); err == nil {
-				configurePath = configPath
-				useConfigure = false
-				isOpensslConfig = true
-			} else if _, err := os.Stat(ConfigurePath); err == nil {
+			if _, err := os.Stat(ConfigurePath); err == nil {
 				configurePath = ConfigurePath
 				useConfigure = false
 				usesPerl = true
@@ -52,8 +48,12 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 				configurePath = found
 				useConfigure = false
 				usesPerl = true
+			} else if _, err := os.Stat(configPath); err == nil {
+				configurePath = configPath
+				useConfigure = false
+				isOpensslConfig = true
 			} else {
-				return domain.Forge{}, fmt.Errorf("configure script not found for %s (checked ./config, ./Configure, and subdirectories)", config.Name)
+				return domain.Forge{}, fmt.Errorf("configure script not found for %s (checked ./Configure, ./config, and subdirectories)", config.Name)
 			}
 		} else if _, err := os.Stat(ConfigurePath); os.IsNotExist(err) {
 			if found := r.findConfigureInSubdir(sourcePath, "Configure"); found != "" {

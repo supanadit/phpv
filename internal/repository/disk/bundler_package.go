@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -16,6 +17,24 @@ func (s *bundlerRepository) logInfo(msg string, args ...interface{}) {
 	if s.logger != nil {
 		s.logger.Info(msg, args...)
 	}
+}
+
+func getZigTarget() string {
+	goarch := runtime.GOARCH
+	switch goarch {
+	case "amd64":
+		goarch = "x86_64"
+	case "arm64":
+		goarch = "aarch64"
+	}
+
+	goos := runtime.GOOS
+	abi := "-gnu"
+	if goos == "darwin" {
+		abi = "-macos"
+	}
+
+	return goarch + "-" + goos + abi
 }
 
 func (s *bundlerRepository) logWarn(msg string, args ...interface{}) {
@@ -54,7 +73,8 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 
 	if zigPath := os.Getenv("PHPV_ZIG_PATH"); zigPath != "" {
 		if _, err := os.Stat(zigPath); err == nil {
-			return zigPath + " cc", []string{"-fPIC", "-Wno-error"}, zigPath + " c++", nil
+			target := getZigTarget()
+			return zigPath + " cc -target " + target, []string{"-fPIC", "-Wno-error", "-fno-sanitize=undefined"}, zigPath + " c++ -target " + target, nil
 		}
 	}
 
@@ -76,7 +96,8 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 		}
 	}
 
-	return zigBinary + " cc", []string{"-fPIC", "-Wno-error"}, zigBinary + " c++", nil
+	target := getZigTarget()
+	return zigBinary + " cc -target " + target, []string{"-fPIC", "-Wno-error", "-fno-sanitize=undefined"}, zigBinary + " c++ -target " + target, nil
 }
 
 func (s *bundlerRepository) installBuildTool(name, version, phpVersion string) error {
@@ -349,7 +370,7 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 		return err
 	}
 
-	configureFlags := s.forgeSvc.GetConfigureFlags(name)
+	configureFlags := s.forgeSvc.GetConfigureFlags(name, version)
 
 	if len(configureFlags) > 0 {
 		s.logInfo("  Flags: %s", strings.Join(configureFlags, " "))

@@ -34,7 +34,7 @@ func (r *flagResolverRepo) GetConfigureFlags(name string, version string) []stri
 	case "curl":
 		return []string{"--with-openssl", "--without-brotli", "--disable-ldap"}
 	case "libxml2":
-		return []string{"--disable-shared", "--enable-static", "--without-lzma"}
+		return []string{"--disable-shared", "--enable-static", "--without-lzma", "--without-python"}
 	case "zlib", "oniguruma", "re2c", "autoconf", "automake", "libtool", "flex", "bison", "perl", "cmake":
 		return []string{}
 	}

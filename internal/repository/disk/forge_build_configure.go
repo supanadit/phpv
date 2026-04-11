@@ -6,10 +6,34 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/utils"
 )
+
+func getOpenSSLConfigureTarget() string {
+	goarch := runtime.GOARCH
+	switch goarch {
+	case "amd64":
+		goarch = "x86_64"
+	case "arm64":
+		goarch = "aarch64"
+	}
+	switch runtime.GOOS {
+	case "linux":
+		return "linux-" + goarch
+	case "darwin":
+		if goarch == "x86_64" {
+			return "darwin64-x86_64-cc"
+		} else if goarch == "aarch64" {
+			return "darwin64-arm64-cc"
+		}
+		return "darwin-" + goarch + "-cc"
+	default:
+		return ""
+	}
+}
 
 func (r *ForgeRepository) findConfigureInSubdir(basePath, name string) string {
 	entries, err := os.ReadDir(basePath)
@@ -111,7 +135,9 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 	} else if isOpensslConfig {
 		configure = exec.Command("./config", args...)
 	} else if usesPerl {
+		target := getOpenSSLConfigureTarget()
 		perlArgs := []string{configurePath}
+		perlArgs = append(perlArgs, target)
 		perlArgs = append(perlArgs, args...)
 		configure = exec.Command("perl", perlArgs...)
 	} else {

@@ -178,7 +178,7 @@ func (s *bundlerRepository) installBuildTool(name, version, phpVersion string) e
 				sourceDir = installPath
 			}
 
-			if err := s.buildBuildTool(name, version, sourceDir, installPath); err != nil {
+			if err := s.buildBuildTool(name, version, sourceDir, installPath, phpVersion); err != nil {
 				return fmt.Errorf("[bundler] failed to build %s@%s: %w", name, version, err)
 			}
 		}
@@ -209,17 +209,20 @@ func (s *bundlerRepository) findExtractedSourceDir(installPath, name, version st
 	return ""
 }
 
-func (s *bundlerRepository) buildBuildTool(name, version, sourceDir, installPath string) error {
+func (s *bundlerRepository) buildBuildTool(name, version, sourceDir, installPath string, phpVersion string) error {
 	strategy := s.forgeSvc.GetBuildStrategyForTool(name)
 	if strategy == "" {
 		return fmt.Errorf("[bundler] no build strategy for tool %s", name)
 	}
 
-	cc, cflags, cxx, err := s.getCompilerForVersion(version, "")
-	if err != nil {
-		cc = ""
-		cflags = []string{}
-		cxx = ""
+	cc, cflags, cxx, err := s.getCompilerForVersion(phpVersion, "")
+	if err != nil || cc == "" {
+		cc, cflags, cxx, err = s.getCompilerForVersion(phpVersion, "zig")
+		if err != nil {
+			cc = ""
+			cflags = []string{}
+			cxx = ""
+		}
 	}
 
 	config := domain.ForgeConfig{

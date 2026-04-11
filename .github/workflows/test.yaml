@@ -46,7 +46,7 @@ jobs:
 
       - name: Install PHP ${{ matrix.php_version }}
         # phpv uses the PHPV_ROOT env var to decide where to install
-        run: phpv install ${{ matrix.php_version }}
+        run: phpv install ${{ matrix.php_version }} -v
 
       - name: Verify Isolated Installation
         run: |

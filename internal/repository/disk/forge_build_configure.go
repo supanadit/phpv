@@ -115,20 +115,26 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 		stderr = filter
 	}
 
+	// Only run autoreconf for m4 if the configure script is missing.
+	// The m4 source tarball includes a pre-generated configure, so autoreconf
+	// is normally not needed. Running it unconditionally creates a circular
+	// dependency: autoreconf requires autoconf, which requires m4.
 	if config.Name == "m4" {
-		autoreconf := exec.Command("autoreconf", "-fi")
-		autoreconf.Dir = sourcePath
-		autoreconf.Env = env
-		autoreconf.Stdout = stdout
-		autoreconf.Stderr = stderr
-		if config.Verbose {
-			fmt.Println("Running autoreconf for m4")
-		}
-		if err := autoreconf.Run(); err != nil {
-			if filter != nil {
-				filter.Flush()
+		if _, err := os.Stat(configurePath); os.IsNotExist(err) {
+			autoreconf := exec.Command("autoreconf", "-fi")
+			autoreconf.Dir = sourcePath
+			autoreconf.Env = env
+			autoreconf.Stdout = stdout
+			autoreconf.Stderr = stderr
+			if config.Verbose {
+				fmt.Println("Running autoreconf for m4")
 			}
-			return domain.Forge{}, fmt.Errorf("autoreconf failed: %w", err)
+			if err := autoreconf.Run(); err != nil {
+				if filter != nil {
+					filter.Flush()
+				}
+				return domain.Forge{}, fmt.Errorf("autoreconf failed: %w", err)
+			}
 		}
 	}
 

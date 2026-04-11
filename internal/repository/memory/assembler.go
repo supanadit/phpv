@@ -119,7 +119,7 @@ func registerPackages(svc *assembler.AssemblerService) {
 						{Name: "m4", Version: "1.4.19"},
 						{Name: "autoconf", Version: "2.71"},
 						{Name: "automake", Version: "1.16.5"},
-						{Name: "libtool", Version: "2.4.7"},
+						{Name: "libtool", Version: "2.5.4"},
 					},
 				},
 				{
@@ -168,7 +168,7 @@ func registerPackages(svc *assembler.AssemblerService) {
 						{Name: "m4", Version: "1.4.19"},
 						{Name: "autoconf", Version: "2.71"},
 						{Name: "automake", Version: "1.16.5"},
-						{Name: "libtool", Version: "2.4.7"},
+						{Name: "libtool", Version: "2.5.4"},
 					},
 				},
 				{
@@ -211,7 +211,7 @@ func registerPackages(svc *assembler.AssemblerService) {
 						{Name: "m4", Version: "1.4.19"},
 						{Name: "autoconf", Version: "2.71"},
 						{Name: "automake", Version: "1.16.5"},
-						{Name: "libtool", Version: "2.4.7"},
+						{Name: "libtool", Version: "2.5.4"},
 					},
 				},
 				{
@@ -249,7 +249,7 @@ func registerPackages(svc *assembler.AssemblerService) {
 						{Name: "m4", Version: "1.4.19"},
 						{Name: "autoconf", Version: "2.71"},
 						{Name: "automake", Version: "1.16.5"},
-						{Name: "libtool", Version: "2.4.7"},
+						{Name: "libtool", Version: "2.5.4"},
 					},
 				},
 				{
@@ -296,7 +296,7 @@ func registerPackages(svc *assembler.AssemblerService) {
 						{Name: "m4", Version: "1.4.19"},
 						{Name: "autoconf", Version: "2.71"},
 						{Name: "automake", Version: "1.16.5"},
-						{Name: "libtool", Version: "2.4.7"},
+						{Name: "libtool", Version: "2.5.4"},
 					},
 				},
 				{

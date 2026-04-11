@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/utils"
 )
 
 func (r *ForgeRepository) findConfigureInSubdir(basePath, name string) string {
@@ -75,10 +76,13 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 
 	r.touchAutotools(sourcePath)
 
-	var stdout, stderr io.Writer = os.Stdout, os.Stderr
+	var stdout io.Writer = os.Stdout
+	var stderr io.Writer = os.Stderr
+	var filter *utils.ErrorWarningFilter
 	if !config.Verbose {
 		stdout = io.Discard
-		stderr = io.Discard
+		filter = utils.NewErrorWarningFilter(os.Stderr)
+		stderr = filter
 	}
 
 	if config.Name == "m4" {
@@ -91,6 +95,9 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 			fmt.Println("Running autoreconf for m4")
 		}
 		if err := autoreconf.Run(); err != nil {
+			if filter != nil {
+				filter.Flush()
+			}
 			return domain.Forge{}, fmt.Errorf("autoreconf failed: %w", err)
 		}
 	}
@@ -119,7 +126,14 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 		fmt.Println("Running configure for", config.Name)
 	}
 	if err := configure.Run(); err != nil {
+		if filter != nil {
+			filter.Flush()
+		}
 		return domain.Forge{}, fmt.Errorf("configure failed: %w", err)
+	}
+
+	if filter != nil {
+		filter.Flush()
 	}
 
 	if err := r.makeWithName(sourcePath, config.Jobs, env, config.Name, config.Verbose); err != nil {

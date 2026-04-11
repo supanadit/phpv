@@ -8,6 +8,7 @@ import (
 	"runtime"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/utils"
 )
 
 func (r *ForgeRepository) buildMakeOnly(sourcePath, prefix string, config domain.ForgeConfig, env []string) (domain.Forge, error) {
@@ -16,10 +17,13 @@ func (r *ForgeRepository) buildMakeOnly(sourcePath, prefix string, config domain
 		jobs = runtime.NumCPU()
 	}
 
-	var stdout, stderr io.Writer = os.Stdout, os.Stderr
+	var stdout io.Writer = os.Stdout
+	var stderr io.Writer = os.Stderr
+	var filter *utils.ErrorWarningFilter
 	if !config.Verbose {
 		stdout = io.Discard
-		stderr = io.Discard
+		filter = utils.NewErrorWarningFilter(os.Stderr)
+		stderr = filter
 	}
 
 	mk := exec.Command("make", fmt.Sprintf("-j%d", jobs))
@@ -32,7 +36,14 @@ func (r *ForgeRepository) buildMakeOnly(sourcePath, prefix string, config domain
 		fmt.Println("Running make for", config.Name)
 	}
 	if err := mk.Run(); err != nil {
+		if filter != nil {
+			filter.Flush()
+		}
 		return domain.Forge{}, fmt.Errorf("make failed: %w", err)
+	}
+
+	if filter != nil {
+		filter.Flush()
 	}
 
 	mkInstall := exec.Command("make", "install")
@@ -45,7 +56,14 @@ func (r *ForgeRepository) buildMakeOnly(sourcePath, prefix string, config domain
 		fmt.Println("Running make install for", config.Name)
 	}
 	if err := mkInstall.Run(); err != nil {
+		if filter != nil {
+			filter.Flush()
+		}
 		return domain.Forge{}, fmt.Errorf("make install failed: %w", err)
+	}
+
+	if filter != nil {
+		filter.Flush()
 	}
 
 	return domain.Forge{Prefix: prefix}, nil

@@ -2,10 +2,7 @@ package disk
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/spf13/afero"
@@ -16,176 +13,6 @@ import (
 	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/pattern"
 )
-
-type defaultExecutor struct{}
-
-func (e *defaultExecutor) Which(cmd string) (string, error) {
-	out, err := exec.Command("which", cmd).Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
-}
-
-func (e *defaultExecutor) PkgConfig(pkg string) (string, string, error) {
-	out, err := exec.Command("pkg-config", "--libs", "--cflags", pkg).Output()
-	if err != nil {
-		return "", "", err
-	}
-	parts := strings.SplitN(strings.TrimSpace(string(out)), " ", 2)
-	cflags := ""
-	ldflags := ""
-	if len(parts) >= 1 {
-		ldflags = parts[0]
-	}
-	if len(parts) >= 2 {
-		cflags = parts[1]
-	}
-	return cflags, ldflags, nil
-}
-
-func (e *defaultExecutor) PkgConfigModVersion(pkg string) (string, error) {
-	out, err := exec.Command("pkg-config", "--modversion", pkg).Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
-}
-
-func (e *defaultExecutor) PkgConfigExists(pkg string) bool {
-	env := os.Environ()
-	pkgConfigPath := os.Getenv("PKG_CONFIG_PATH")
-	standardPaths := utils.GetSystemPkgConfigPaths()
-	for _, p := range standardPaths {
-		if pkgConfigPath == "" {
-			pkgConfigPath = p
-		} else {
-			pkgConfigPath = p + ":" + pkgConfigPath
-		}
-	}
-	for i, v := range env {
-		if strings.HasPrefix(v, "PKG_CONFIG_PATH=") {
-			env[i] = "PKG_CONFIG_PATH=" + pkgConfigPath
-			break
-		}
-	}
-	if !strings.Contains(strings.Join(env, ""), "PKG_CONFIG_PATH") {
-		env = append(env, "PKG_CONFIG_PATH="+pkgConfigPath)
-	}
-	cmd := exec.Command("pkg-config", "--exists", pkg)
-	cmd.Env = env
-	return cmd.Run() == nil
-}
-
-var buildToolVersionParsers = map[string]func(string) string{
-	"m4":       parseM4Version,
-	"autoconf": parseAutoconfVersion,
-	"automake": parseAutomakeVersion,
-	"bison":    parseBisonVersion,
-	"flex":     parseFlexVersion,
-	"libtool":  parseLibtoolVersion,
-	"perl":     parsePerlVersion,
-	"re2c":     parseRe2cVersion,
-	"zig":      parseZigVersion,
-}
-
-func parseM4Version(output string) string {
-	re := regexp.MustCompile(`\(GNU M4\) (\d+\.\d+(?:\.\d+)?)`)
-	matches := re.FindStringSubmatch(output)
-	if len(matches) >= 2 {
-		return matches[1]
-	}
-	return ""
-}
-
-func parseAutoconfVersion(output string) string {
-	re := regexp.MustCompile(`\(GNU Autoconf\) (\d+\.\d+(?:\.\d+)?)`)
-	matches := re.FindStringSubmatch(output)
-	if len(matches) >= 2 {
-		return matches[1]
-	}
-	return ""
-}
-
-func parseAutomakeVersion(output string) string {
-	re := regexp.MustCompile(`\(GNU Automake\) (\d+\.\d+(?:\.\d+)?)`)
-	matches := re.FindStringSubmatch(output)
-	if len(matches) >= 2 {
-		return matches[1]
-	}
-	return ""
-}
-
-func parseBisonVersion(output string) string {
-	re := regexp.MustCompile(`\(GNU Bison\) (\d+\.\d+(?:\.\d+)?)`)
-	matches := re.FindStringSubmatch(output)
-	if len(matches) >= 2 {
-		return matches[1]
-	}
-	return ""
-}
-
-func parseFlexVersion(output string) string {
-	re := regexp.MustCompile(`flex (\d+\.\d+(?:\.\d+)?)`)
-	matches := re.FindStringSubmatch(output)
-	if len(matches) >= 2 {
-		return matches[1]
-	}
-	return ""
-}
-
-func parseLibtoolVersion(output string) string {
-	re := regexp.MustCompile(`\(GNU libtool\) (\d+\.\d+(?:\.\d+)?)`)
-	matches := re.FindStringSubmatch(output)
-	if len(matches) >= 2 {
-		return matches[1]
-	}
-	return ""
-}
-
-func parsePerlVersion(output string) string {
-	re := regexp.MustCompile(`This is perl 5, version (\d+)`)
-	matches := re.FindStringSubmatch(output)
-	if len(matches) >= 2 {
-		minor := matches[1]
-		return "5." + minor
-	}
-	re2 := regexp.MustCompile(`v?(\d+\.\d+\.\d+)`)
-	matches2 := re2.FindStringSubmatch(output)
-	if len(matches2) >= 2 {
-		return matches2[1]
-	}
-	return ""
-}
-
-func parseRe2cVersion(output string) string {
-	parts := strings.Fields(output)
-	if len(parts) >= 2 {
-		return parts[1]
-	}
-	return ""
-}
-
-func parseZigVersion(output string) string {
-	parts := strings.Fields(output)
-	if len(parts) >= 2 {
-		return parts[1]
-	}
-	return ""
-}
-
-func (e *defaultExecutor) GetVersion(name string) string {
-	cmd := exec.Command(name, "--version")
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	parser := buildToolVersionParsers[name]
-	if parser == nil {
-		return ""
-	}
-	return parser(strings.TrimSpace(string(out)))
-}
 
 type AdvisorRepository struct {
 	fs              afero.Fs
@@ -318,11 +145,6 @@ func (r *AdvisorRepository) checkHeaderExists(name string) bool {
 		}
 	}
 	return false
-}
-
-func (e *defaultExecutor) PathExists(path string) bool {
-	_, err := exec.Command("test", "-f", path).CombinedOutput()
-	return err == nil
 }
 
 func determineState(fs afero.Fs, root, name, version, phpVersion string) domain.PackageState {

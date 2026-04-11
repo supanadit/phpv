@@ -8,6 +8,8 @@ import (
 type ForgeRepository interface {
 	Build(config domain.ForgeConfig, sourceDir string) (domain.Forge, error)
 	BuildWithStrategy(config domain.ForgeConfig, strategy domain.BuildStrategy, sourceDir string) (domain.Forge, error)
+	ChmodBuildScripts(sourcePath string)
+	TouchAutotools(sourcePath string)
 }
 
 type Service struct {
@@ -47,4 +49,12 @@ func (s *Service) GetBuildStrategyForTool(name string) domain.BuildStrategy {
 	default:
 		return domain.StrategyMakeOnly
 	}
+}
+
+func (s *Service) ChmodBuildScripts(sourcePath string) {
+	s.forgeRepository.ChmodBuildScripts(sourcePath)
+}
+
+func (s *Service) TouchAutotools(sourcePath string) {
+	s.forgeRepository.TouchAutotools(sourcePath)
 }

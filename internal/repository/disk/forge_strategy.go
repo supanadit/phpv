@@ -47,7 +47,7 @@ func (r *ForgeRepository) BuildWithStrategy(config domain.ForgeConfig, strategy 
 
 	r.ensureFs()
 
-	r.chmodBuildScripts(sourceDir)
+	r.ChmodBuildScripts(sourceDir)
 
 	env := r.buildEnv(config)
 

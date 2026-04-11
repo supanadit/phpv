@@ -98,7 +98,7 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 		return domain.Forge{}, fmt.Errorf("failed to chmod configure: %w", err)
 	}
 
-	r.touchAutotools(sourcePath)
+	r.TouchAutotools(sourcePath)
 
 	var stdout io.Writer = os.Stdout
 	var stderr io.Writer = os.Stderr

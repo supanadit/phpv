@@ -225,6 +225,39 @@ func (s *bundlerRepository) buildBuildTool(name, version, sourceDir, installPath
 		}
 	}
 
+	s.forgeSvc.ChmodBuildScripts(sourceDir)
+	s.forgeSvc.TouchAutotools(sourceDir)
+
+	configureFlags := s.forgeSvc.GetConfigureFlags(name, version)
+
+	if len(configureFlags) > 0 {
+		s.logInfo("  Flags: %s", strings.Join(configureFlags, " "))
+	} else {
+		s.logInfo("  Flags: (none)")
+	}
+	s.logInfo("  Path: %s", installPath)
+	s.logInfo("  CPPFLAGS: (none)")
+	s.logInfo("  LDFLAGS: (none)")
+	s.logInfo("  LD_LIBRARY_PATH: (none)")
+	if len(cflags) > 0 {
+		s.logInfo("  CFLAGS: %s", strings.Join(cflags, " "))
+	} else {
+		s.logInfo("  CFLAGS: (none)")
+	}
+	s.logInfo("  PKG_CONFIG_PATH: (none)")
+
+	compilerName := "gcc"
+	compilerPath := ""
+	if strings.Contains(cc, "zig") {
+		compilerName = "zig"
+		compilerPath = strings.Split(cc, " ")[0]
+	}
+	atMsg := ""
+	if compilerPath != "" {
+		atMsg = " at " + compilerPath
+	}
+	s.logInfo("  Compiling %s@%s with %s%s", name, version, compilerName, atMsg)
+
 	config := domain.ForgeConfig{
 		Name:           name,
 		Version:        version,
@@ -233,7 +266,7 @@ func (s *bundlerRepository) buildBuildTool(name, version, sourceDir, installPath
 		CC:             cc,
 		CFLAGS:         cflags,
 		CXX:            cxx,
-		ConfigureFlags: []string{},
+		ConfigureFlags: configureFlags,
 		Env:            map[string]string{},
 		Verbose:        s.verbose,
 	}

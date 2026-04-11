@@ -131,12 +131,13 @@ func (r *ForgeRepository) hasExecutable(dir, name string) bool {
 	return false
 }
 
-func (r *ForgeRepository) chmodBuildScripts(sourcePath string) {
+func (r *ForgeRepository) ChmodBuildScripts(sourcePath string) {
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "build")).Run()
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "ext")).Run()
+	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "build-aux")).Run()
 }
 
-func (r *ForgeRepository) touchAutotools(sourcePath string) {
+func (r *ForgeRepository) TouchAutotools(sourcePath string) {
 	autotoolsFiles := []string{
 		"aclocal.m4",
 		"Makefile.in",

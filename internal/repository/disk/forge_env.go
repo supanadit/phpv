@@ -42,11 +42,11 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 		env = append(env, "PKG_CONFIG_PATH="+strings.Join(allPkgConfigPaths, ":"))
 	}
 
-	for _, v := range config.CPPFLAGS {
-		env = append(env, "CPPFLAGS="+v)
+	if len(config.CPPFLAGS) > 0 {
+		env = append(env, "CPPFLAGS="+strings.Join(config.CPPFLAGS, " "))
 	}
-	for _, v := range config.LDFLAGS {
-		env = append(env, "LDFLAGS="+v)
+	if len(config.LDFLAGS) > 0 {
+		env = append(env, "LDFLAGS="+strings.Join(config.LDFLAGS, " "))
 	}
 	if len(config.LD_LIBRARY_PATH) > 0 {
 		env = append(env, "LD_LIBRARY_PATH="+strings.Join(config.LD_LIBRARY_PATH, ":"))

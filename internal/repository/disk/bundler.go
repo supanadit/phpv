@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 
 	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/advisor"
@@ -162,9 +161,6 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 		levels = append(extLevels, levels...)
 	}
 
-	sem := make(chan struct{}, s.jobs)
-	var mu sync.Mutex
-	var wg sync.WaitGroup
 	var firstErr error
 
 	completed := make(map[string]bool)
@@ -175,63 +171,42 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 	var builtDeps []domain.DependencyInfo
 
 	for levelIdx, level := range levels {
-		wg.Add(len(level))
 		for _, dep := range level {
-			go func(dep domain.Dependency) {
-				defer wg.Done()
-				sem <- struct{}{}
-				defer func() { <-sem }()
+			if firstErr != nil {
+				break
+			}
 
-				mu.Lock()
-				if firstErr != nil {
-					mu.Unlock()
-					return
-				}
-				mu.Unlock()
+			depVersion := dep.Version
+			if idx := strings.Index(dep.Version, "|"); idx != -1 {
+				depVersion = dep.Version[:idx]
+			}
 
-				depVersion := dep.Version
-				if idx := strings.Index(dep.Version, "|"); idx != -1 {
-					depVersion = dep.Version[:idx]
-				}
+			contextMsg := ""
+			depInfo, err := s.buildPackageWithInfo(dep.Name, depVersion, exactVersion, depLibraryPaths, depCppFlags, depLdFlags, depPkgConfigPaths, contextMsg, buildTools[dep.Name], forceCompiler)
+			if err != nil {
+				firstErr = fmt.Errorf("[forge] failed to build %s@%s: %w", dep.Name, depVersion, err)
+				break
+			}
 
-				contextMsg := ""
-				depInfo, err := s.buildPackageWithInfo(dep.Name, depVersion, exactVersion, depLibraryPaths, depCppFlags, depLdFlags, depPkgConfigPaths, contextMsg, buildTools[dep.Name], forceCompiler)
-				if err != nil {
-					mu.Lock()
-					if firstErr == nil {
-						firstErr = fmt.Errorf("[forge] failed to build %s@%s: %w", dep.Name, depVersion, err)
-					}
-					mu.Unlock()
-					return
+			completed[dep.Name+"@"+depVersion] = true
+			if !buildTools[dep.Name] && depInfo.BuiltFromSource {
+				depPath := utils.DependencyPath(s.silo, exactVersion, dep.Name, depVersion)
+				depLibraryPaths = append(depLibraryPaths, filepath.Join(depPath, "lib"))
+				depCppFlags = append(depCppFlags, fmt.Sprintf("-I%s/include", depPath))
+				depLdFlags = append(depLdFlags, fmt.Sprintf("-L%s/lib", depPath))
+				lib64PcPath := filepath.Join(depPath, "lib64", "pkgconfig")
+				libPcPath := filepath.Join(depPath, "lib", "pkgconfig")
+				if _, err := os.Stat(libPcPath); err == nil {
+					depPkgConfigPaths = append(depPkgConfigPaths, libPcPath)
 				}
-
-				mu.Lock()
-				if firstErr != nil {
-					mu.Unlock()
-					return
+				if _, err := os.Stat(lib64PcPath); err == nil {
+					depPkgConfigPaths = append(depPkgConfigPaths, lib64PcPath)
 				}
-				completed[dep.Name+"@"+depVersion] = true
-				if !buildTools[dep.Name] && depInfo.BuiltFromSource {
-					depPath := utils.DependencyPath(s.silo, exactVersion, dep.Name, depVersion)
-					depLibraryPaths = append(depLibraryPaths, filepath.Join(depPath, "lib"))
-					depCppFlags = append(depCppFlags, fmt.Sprintf("-I%s/include", depPath))
-					depLdFlags = append(depLdFlags, fmt.Sprintf("-L%s/lib", depPath))
-					lib64PcPath := filepath.Join(depPath, "lib64", "pkgconfig")
-					libPcPath := filepath.Join(depPath, "lib", "pkgconfig")
-					if _, err := os.Stat(libPcPath); err == nil {
-						depPkgConfigPaths = append(depPkgConfigPaths, libPcPath)
-					}
-					if _, err := os.Stat(lib64PcPath); err == nil {
-						depPkgConfigPaths = append(depPkgConfigPaths, lib64PcPath)
-					}
-				}
-				if depInfo != nil {
-					builtDeps = append(builtDeps, *depInfo)
-				}
-				mu.Unlock()
-			}(dep)
+			}
+			if depInfo != nil {
+				builtDeps = append(builtDeps, *depInfo)
+			}
 		}
-		wg.Wait()
 
 		if firstErr != nil {
 			s.siloRepo.MarkFailed(exactVersion)

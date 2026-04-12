@@ -99,8 +99,9 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 		MinPHP: "5.0",
 	},
 	"intl": {
-		Flag:   "--enable-intl",
-		MinPHP: "5.0",
+		Flag:    "--enable-intl",
+		MinPHP:  "5.0",
+		Package: "icu",
 	},
 	"json": {
 		Flag:   "--enable-json",

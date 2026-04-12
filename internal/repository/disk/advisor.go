@@ -30,6 +30,11 @@ var (
 		"curl":      "libcurl",
 		"zlib":      "zlib",
 		"oniguruma": "oniguruma",
+		"icu":       "icu-uc",
+	}
+
+	multiPkgConfigPackages = map[string][]string{
+		"icu": {"icu-uc", "icu-io", "icu-i18n"},
 	}
 
 	installSuggestions = map[string]string{
@@ -38,6 +43,7 @@ var (
 		"curl":      "sudo apt install libcurl4-openssl-dev  # or: sudo dnf install libcurl-devel",
 		"zlib":      "sudo apt install zlib1g-dev  # or: sudo dnf install zlib-devel",
 		"oniguruma": "sudo apt install libonig-dev  # or: sudo dnf install oniguruma-devel",
+		"icu":       "sudo apt install libicu-dev  # or: sudo dnf install libicu-devel",
 		"m4":        "sudo apt install m4",
 		"autoconf":  "sudo apt install autoconf",
 		"automake":  "sudo apt install automake",
@@ -141,6 +147,9 @@ func (r *AdvisorRepository) checkSystemExecutable(name string) (bool, string, st
 }
 
 func (r *AdvisorRepository) checkSystemLibrary(name, pkgConfigName string) (bool, string, string) {
+	if pkgConfigNames, isMulti := multiPkgConfigPackages[name]; isMulti {
+		return r.checkMultiplePkgConfig(name, pkgConfigNames)
+	}
 	if r.exec.PkgConfigExists(pkgConfigName) {
 		version, _ := r.exec.PkgConfigModVersion(pkgConfigName)
 		return true, "pkg-config:" + pkgConfigName, version
@@ -149,6 +158,17 @@ func (r *AdvisorRepository) checkSystemLibrary(name, pkgConfigName string) (bool
 		return true, "headers:" + name, ""
 	}
 	return false, "", ""
+}
+
+func (r *AdvisorRepository) checkMultiplePkgConfig(name string, pkgConfigNames []string) (bool, string, string) {
+	for _, pkgConfigName := range pkgConfigNames {
+		if !r.exec.PkgConfigExists(pkgConfigName) {
+			return false, "", ""
+		}
+	}
+	primaryName := pkgConfigNames[0]
+	version, _ := r.exec.PkgConfigModVersion(primaryName)
+	return true, "pkg-config:" + strings.Join(pkgConfigNames, ","), version
 }
 
 func (r *AdvisorRepository) checkHeaderExists(name string) bool {

@@ -339,7 +339,7 @@ System libraries are auto-detected. phpv will use system packages when available
 ```bash
 # Debian/Ubuntu
 sudo apt-get install build-essential libssl-dev libcurl4-openssl-dev \
-    libxml2-dev libonig-dev libzip-dev libsqlite3-dev pkg-config \
+    libxml2-dev libonig-dev libzip-dev libsqlite3-dev libicu-dev pkg-config \
     cmake perl m4 autoconf automake libtool re2c bison xz-utils
 
 # Fedora/RHEL

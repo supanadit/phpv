@@ -103,7 +103,7 @@ func GetSystemPkgConfigPaths() []string {
 		"/opt/homebrew/lib/pkgconfig",
 	}
 
-	archSuffix := runtime.GOARCH + "-linux-gnu"
+	archSuffix := GetArch() + "-linux-gnu"
 
 	linuxGnuPaths := []string{
 		filepath.Join("/usr/lib", archSuffix, "pkgconfig"),

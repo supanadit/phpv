@@ -93,6 +93,10 @@ func (h *TerminalHandler) pharInstallOrUpdate(name string, version string, isUpd
 		return nil, fmt.Errorf("failed to move phar to final location: %w", err)
 	}
 
+	if err := h.regeneratePharShims(silo); err != nil {
+		return nil, fmt.Errorf("failed to regenerate shims: %w", err)
+	}
+
 	return &domain.PharResult{
 		Name:    name,
 		Version: exactVersion,
@@ -166,4 +170,16 @@ func (h *TerminalHandler) PharWhich(name string) (string, error) {
 		return shim.DetectPiePath(), nil
 	}
 	return "", nil
+}
+
+func (h *TerminalHandler) regeneratePharShims(silo *domain.Silo) error {
+	shimPath := utils.BinPath(silo)
+	composerPath := shim.DetectComposerPath()
+	piePath := shim.DetectPiePath()
+
+	return shim.WriteShims(shim.ShimConfig{
+		BinPath:      shimPath,
+		ComposerPath: composerPath,
+		PiePath:      piePath,
+	})
 }

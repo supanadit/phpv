@@ -41,10 +41,12 @@ func (h *TerminalHandler) Use(constraint string) (*UseResult, error) {
 
 	shimPath := utils.BinPath(silo)
 	composerPath := shim.DetectComposerPath()
+	piePath := shim.DetectPiePath()
 
 	if err := shim.WriteShims(shim.ShimConfig{
 		BinPath:      shimPath,
 		ComposerPath: composerPath,
+		PiePath:      piePath,
 	}); err != nil {
 		return nil, fmt.Errorf("failed to write shims: %w", err)
 	}
@@ -73,10 +75,12 @@ func (h *TerminalHandler) UseSystem() (*UseResult, error) {
 
 	shimPath := utils.BinPath(silo)
 	composerPath := shim.DetectComposerPath()
+	piePath := shim.DetectPiePath()
 
 	if err := shim.WriteShims(shim.ShimConfig{
 		BinPath:      shimPath,
 		ComposerPath: composerPath,
+		PiePath:      piePath,
 	}); err != nil {
 		return nil, fmt.Errorf("failed to write shims: %w", err)
 	}

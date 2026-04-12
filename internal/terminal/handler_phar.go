@@ -14,6 +14,7 @@ import (
 )
 
 const composerPharURLTemplate = "https://getcomposer.org/download/%s/composer.phar"
+const piePharURLTemplate = "https://github.com/php/pie/releases/latest/download/pie.phar"
 
 func (h *TerminalHandler) PharInstall(name string, version string) (*domain.PharResult, error) {
 	return h.pharInstallOrUpdate(name, version, false)
@@ -24,7 +25,7 @@ func (h *TerminalHandler) PharUpdate(name string, version string) (*domain.PharR
 }
 
 func (h *TerminalHandler) pharInstallOrUpdate(name string, version string, isUpdate bool) (*domain.PharResult, error) {
-	if name != "composer" {
+	if name != "composer" && name != "pie" {
 		return nil, fmt.Errorf("unsupported phar: %s", name)
 	}
 
@@ -33,18 +34,25 @@ func (h *TerminalHandler) pharInstallOrUpdate(name string, version string, isUpd
 		exactVersion = "latest-stable"
 	}
 
-	url := fmt.Sprintf(composerPharURLTemplate, exactVersion)
-
+	var url string
+	var destPath string
 	silo, err := h.Silo.GetSilo()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get silo: %w", err)
 	}
 
-	destPath := filepath.Join(utils.PharPath(silo), "composer.phar")
+	switch name {
+	case "composer":
+		url = fmt.Sprintf(composerPharURLTemplate, exactVersion)
+		destPath = filepath.Join(utils.PharPath(silo), "composer.phar")
+	case "pie":
+		url = piePharURLTemplate
+		destPath = filepath.Join(utils.PharPath(silo), "pie.phar")
+	}
 
 	if isUpdate {
 		if _, err := os.Stat(destPath); os.IsNotExist(err) {
-			return nil, fmt.Errorf("composer is not installed, use 'phpv phar install composer' instead")
+			return nil, fmt.Errorf("%s is not installed, use 'phpv phar install %s' instead", name, name)
 		}
 	}
 
@@ -94,7 +102,7 @@ func (h *TerminalHandler) pharInstallOrUpdate(name string, version string, isUpd
 }
 
 func (h *TerminalHandler) PharRemove(name string) error {
-	if name != "composer" {
+	if name != "composer" && name != "pie" {
 		return fmt.Errorf("unsupported phar: %s", name)
 	}
 
@@ -103,14 +111,20 @@ func (h *TerminalHandler) PharRemove(name string) error {
 		return fmt.Errorf("failed to get silo: %w", err)
 	}
 
-	destPath := filepath.Join(utils.PharPath(silo), "composer.phar")
+	var destPath string
+	switch name {
+	case "composer":
+		destPath = filepath.Join(utils.PharPath(silo), "composer.phar")
+	case "pie":
+		destPath = filepath.Join(utils.PharPath(silo), "pie.phar")
+	}
 
 	if _, err := os.Stat(destPath); os.IsNotExist(err) {
-		return fmt.Errorf("composer is not installed")
+		return fmt.Errorf("%s is not installed", name)
 	}
 
 	if err := os.Remove(destPath); err != nil {
-		return fmt.Errorf("failed to remove composer: %w", err)
+		return fmt.Errorf("failed to remove %s: %w", name, err)
 	}
 
 	return nil
@@ -142,8 +156,14 @@ func (h *TerminalHandler) PharList() ([]string, error) {
 }
 
 func (h *TerminalHandler) PharWhich(name string) (string, error) {
-	if name != "composer" {
+	if name != "composer" && name != "pie" {
 		return "", fmt.Errorf("unsupported phar: %s", name)
 	}
-	return shim.DetectComposerPath(), nil
+	switch name {
+	case "composer":
+		return shim.DetectComposerPath(), nil
+	case "pie":
+		return shim.DetectPiePath(), nil
+	}
+	return "", nil
 }

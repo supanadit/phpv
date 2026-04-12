@@ -91,9 +91,57 @@ fi
 exec "${PHPV_OUTPUT}/bin/php" "$COMPOSER_PATH" "$@"
 `
 
+const pieShimTemplate = `#!/bin/bash
+# Dynamic shim for pie - runs pie phar through phpv PHP
+PHPV_ROOT="${PHPV_ROOT:-$HOME/.phpv}"
+if [ -f "$PHPV_ROOT/.phpv_system" ]; then
+    PHP_PATH="$(command -v php 2>/dev/null)"
+    if [ -z "$PHP_PATH" ]; then
+        echo "Error: System PHP not found" >&2
+        exit 1
+    fi
+    PIE_PATH="{{ .PiePath }}"
+    if [ -z "$PIE_PATH" ]; then
+        echo "Error: pie not found. Please install pie first." >&2
+        echo "Hint: phpv phar install pie" >&2
+        exit 1
+    fi
+    exec "$PHP_PATH" "$PIE_PATH" "$@"
+fi
+if [ -n "$PHPV_CURRENT" ]; then
+    PHPV_VERSION="$PHPV_CURRENT"
+elif [ -f .phpvrc ] && [ -s .phpvrc ]; then
+    PHPV_VERSION="$(phpv auto-detect-resolve "$(cat .phpvrc)" 2>/dev/null)"
+    if [ -z "$PHPV_VERSION" ]; then
+        PHPV_VERSION="$(cat .phpvrc)"
+    fi
+else
+    PHPV_VERSION="$(phpv auto-detect-resolve 2>/dev/null || cat "$PHPV_ROOT/default" 2>/dev/null)"
+fi
+if [ -z "$PHPV_VERSION" ]; then
+    echo "Error: No PHP version selected. Run 'phpv use <version>' first." >&2
+    exit 1
+fi
+PHPV_OUTPUT="$PHPV_ROOT/versions/$PHPV_VERSION/output"
+if [ ! -d "$PHPV_OUTPUT" ]; then
+    echo "Error: PHP version $PHPV_VERSION not found. Run 'phpv install $PHPV_VERSION' first." >&2
+    exit 1
+fi
+export PHPV_CURRENT="$PHPV_VERSION"
+export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:${LD_LIBRARY_PATH}"
+PIE_PATH="{{ .PiePath }}"
+if [ -z "$PIE_PATH" ]; then
+    echo "Error: pie not found. Please install pie first." >&2
+    echo "Hint: phpv phar install pie" >&2
+    exit 1
+fi
+exec "${PHPV_OUTPUT}/bin/php" "$PIE_PATH" "$@"
+`
+
 type ShimConfig struct {
 	BinPath      string
 	ComposerPath string
+	PiePath      string
 }
 
 func DetectComposerPath() string {
@@ -127,6 +175,37 @@ func DetectComposerPath() string {
 	return strings.TrimSpace(string(out))
 }
 
+func DetectPiePath() string {
+	phpvRoot := os.Getenv("PHPV_ROOT")
+	if phpvRoot == "" {
+		phpvRoot = filepath.Join(os.Getenv("HOME"), ".phpv")
+	}
+	phpvBin := filepath.Join(phpvRoot, "bin")
+	phpvPhar := filepath.Join(phpvRoot, "phar")
+
+	localPie := filepath.Join(phpvPhar, "pie.phar")
+	if _, err := os.Stat(localPie); err == nil {
+		return localPie
+	}
+
+	pathEnv := os.Getenv("PATH")
+	var filteredParts []string
+	for _, part := range strings.Split(pathEnv, ":") {
+		if part != phpvBin && !strings.HasPrefix(part, phpvRoot+"/") {
+			filteredParts = append(filteredParts, part)
+		}
+	}
+	filteredPath := strings.Join(filteredParts, ":")
+
+	cmd := exec.Command("which", "pie")
+	cmd.Env = append(os.Environ(), "PATH="+filteredPath)
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 func WriteShims(cfg ShimConfig) error {
 	phpShims := []string{
 		"php",
@@ -145,9 +224,18 @@ func WriteShims(cfg ShimConfig) error {
 
 	composerPath := cfg.ComposerPath
 	shimPath := filepath.Join(cfg.BinPath, "composer")
-	content := strings.Replace(composerShimTemplate, "{{ .ComposerPath }}", composerPath, 1)
+	content := strings.ReplaceAll(composerShimTemplate, "{{ .ComposerPath }}", composerPath)
 	if err := os.WriteFile(shimPath, []byte(content), 0755); err != nil {
 		return fmt.Errorf("failed to write shim composer: %w", err)
+	}
+
+	if cfg.PiePath != "" {
+		piePath := cfg.PiePath
+		shimPath := filepath.Join(cfg.BinPath, "pie")
+		content := strings.ReplaceAll(pieShimTemplate, "{{ .PiePath }}", piePath)
+		if err := os.WriteFile(shimPath, []byte(content), 0755); err != nil {
+			return fmt.Errorf("failed to write shim pie: %w", err)
+		}
 	}
 
 	return nil

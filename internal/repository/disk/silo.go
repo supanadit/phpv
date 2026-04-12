@@ -51,6 +51,7 @@ func (r *SiloRepository) EnsurePaths() error {
 		utils.SourcePath(r.silo),
 		utils.VersionPath(r.silo),
 		utils.BinPath(r.silo),
+		utils.PharPath(r.silo),
 	}
 
 	for _, path := range paths {

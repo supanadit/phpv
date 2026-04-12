@@ -68,6 +68,7 @@ func (r *AdvisorRepository) Check(name string, version string, phpVersion string
 	state := determineState(r.fs, r.root, name, version, phpVersion)
 	systemAvailable, systemPath, systemVersion := r.checkSystemPackage(name)
 
+	constraint := r.getDependencyConstraint(name, phpVersion)
 	shouldBuildFromSource := r.shouldBuildFromSource(name, phpVersion)
 	action, url, sourceType := determineActionAndURL(state, systemAvailable, shouldBuildFromSource, r.patternRegistry, name, version, phpVersion)
 	message := buildMessage(name, version, state, action)
@@ -88,11 +89,35 @@ func (r *AdvisorRepository) Check(name string, version string, phpVersion string
 		SystemAvailable: systemAvailable,
 		SystemPath:      systemPath,
 		SystemVersion:   systemVersion,
+		Constraint:      constraint,
 		Message:         message,
 		URL:             url,
 		SourceType:      sourceType,
 		Suggestion:      suggestion,
 	}, nil
+}
+
+func (r *AdvisorRepository) getDependencyConstraint(name, phpVersion string) string {
+	if _, isBuildTool := buildTools[name]; isBuildTool {
+		return r.getBuildToolConstraint(name, phpVersion)
+	}
+
+	if r.assembler == nil {
+		return ""
+	}
+
+	deps, err := r.assembler.GetDependencies("php", phpVersion)
+	if err != nil {
+		return ""
+	}
+
+	for _, dep := range deps {
+		if dep.Name != name {
+			continue
+		}
+		return extractConstraint(dep.Version)
+	}
+	return ""
 }
 
 func (r *AdvisorRepository) checkSystemPackage(name string) (bool, string, string) {

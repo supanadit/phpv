@@ -29,7 +29,7 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 	}
 
 	if check.SystemAvailable && check.Action != "skip" {
-		s.logInfo("System %s available but PHP %s requires building from source", name, phpVersion)
+		s.logInfo("System %s@%s available but doesn't satisfy constraint %s for PHP %s", name, check.SystemVersion, check.Constraint, phpVersion)
 	}
 
 	switch check.Action {

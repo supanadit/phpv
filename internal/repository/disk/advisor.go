@@ -209,35 +209,6 @@ func checkBuilt(name, versionPath, version string, fs afero.Fs) bool {
 	return exists
 }
 
-func mustBuildFromSource(name, phpVersion string) bool {
-	if phpVersion == "" {
-		return false
-	}
-	v := utils.ParseVersion(phpVersion)
-
-	switch name {
-	case "openssl":
-		if v.Major < 8 {
-			return true
-		}
-		if v.Major == 8 && v.Minor == 0 {
-			return true
-		}
-		if v.Major == 8 && v.Minor == 1 && v.Patch < 33 {
-			return true
-		}
-	case "libxml2":
-		if v.Major < 8 {
-			return true
-		}
-	case "curl":
-		if v.Major < 8 {
-			return true
-		}
-	}
-	return false
-}
-
 func (r *AdvisorRepository) shouldBuildFromSource(name, phpVersion string) bool {
 	if phpVersion == "" {
 		return false
@@ -248,7 +219,7 @@ func (r *AdvisorRepository) shouldBuildFromSource(name, phpVersion string) bool 
 	}
 
 	if r.assembler == nil {
-		return mustBuildFromSource(name, phpVersion)
+		return false
 	}
 
 	deps, err := r.assembler.GetDependencies("php", phpVersion)

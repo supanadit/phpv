@@ -133,17 +133,7 @@ func MatchVersionRange(rangeStr string, version string) bool {
 		parts = strings.Split(rangeStr, " ")
 	}
 
-	versionConstraint := parseConstraintPart(strings.TrimSpace(rangeStr))
 	versionToMatch := parseConstraintPart(version)
-
-	switch versionConstraint.operator {
-	case "=", ">=", "<=", ">", "<":
-		if len(parts) == 1 {
-			return satisfyConstraint(versionToMatch, versionConstraint)
-		}
-	case "~", "^":
-		return satisfyConstraint(versionToMatch, versionConstraint)
-	}
 
 	for _, part := range parts {
 		part = strings.TrimSpace(part)

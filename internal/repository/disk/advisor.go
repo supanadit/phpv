@@ -206,6 +206,8 @@ func determineState(fs afero.Fs, root, name, version, phpVersion string) domain.
 	var versionPath string
 	if name == "php" {
 		versionPath = filepath.Join(root, "versions", version, "output")
+	} else if _, isBuildTool := buildTools[name]; isBuildTool && phpVersion != "" {
+		versionPath = filepath.Join(root, "build-tools", name, version)
 	} else if phpVersion != "" {
 		versionPath = filepath.Join(root, "versions", phpVersion, "dependency", name, version)
 	} else {
@@ -325,19 +327,46 @@ func (r *AdvisorRepository) getBuildToolConstraint(name, phpVersion string) stri
 		return ""
 	}
 
+	if r.assembler == nil {
+		return ""
+	}
+
+	constraint := r.getDirectDependencyConstraint("php", phpVersion, name)
+	if constraint != "" {
+		return constraint
+	}
+
 	deps, err := r.assembler.GetDependencies("php", phpVersion)
 	if err != nil {
 		return ""
 	}
 
 	for _, dep := range deps {
-		if dep.Name != name {
-			continue
+		depVersion := dep.Version
+		if idx := strings.Index(dep.Version, "|"); idx != -1 {
+			depVersion = dep.Version[:idx]
 		}
-
-		return extractConstraint(dep.Version)
+		constraint := r.getDirectDependencyConstraint(dep.Name, depVersion, name)
+		if constraint != "" {
+			return constraint
+		}
 	}
 
+	return ""
+}
+
+func (r *AdvisorRepository) getDirectDependencyConstraint(pkgName, pkgVersion, toolName string) string {
+	deps, err := r.assembler.GetDependencies(pkgName, pkgVersion)
+	if err != nil {
+		return ""
+	}
+
+	for _, dep := range deps {
+		if dep.Name != toolName {
+			continue
+		}
+		return extractConstraint(dep.Version)
+	}
 	return ""
 }
 

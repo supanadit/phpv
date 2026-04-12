@@ -166,7 +166,7 @@ func (s *bundlerRepository) logBuildFlags(installDir string, configureFlags, cpp
 		s.logInfo("  Flags: (none)")
 	}
 	s.logInfo("  Path: %s", installDir)
-	
+
 	ar, ranlib, nm, ld := "(default)", "(default)", "(default)", "(default)"
 	if strings.Contains(cc, "zig") {
 		zigBinary := strings.Split(cc, " ")[0]
@@ -178,7 +178,7 @@ func (s *bundlerRepository) logBuildFlags(installDir string, configureFlags, cpp
 			ld = filepath.Join(wrapperDir, "ld")
 		}
 	}
-	
+
 	s.logInfo("  AR: %s", ar)
 	s.logInfo("  RANLIB: %s", ranlib)
 	s.logInfo("  NM: %s", nm)
@@ -227,8 +227,9 @@ func (s *bundlerRepository) logBuildFlags(installDir string, configureFlags, cpp
 }
 
 func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, forceCompiler string) error {
-	installDir := utils.DependencyPath(s.silo, phpVersion, name, version)
 	sourceDir := utils.GetSourceDirPath(s.silo, name, version)
+
+	installDir := s.getInstallDir(name, version, phpVersion)
 
 	if err := os.MkdirAll(installDir, 0o755); err != nil {
 		return fmt.Errorf("[forge] failed to create install directory: %w", err)
@@ -258,6 +259,7 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 	config := domain.ForgeConfig{
 		Name:            name,
 		Version:         version,
+		PHPVersion:      phpVersion,
 		Prefix:          installDir,
 		Jobs:            s.jobs,
 		CPPFLAGS:        cppFlags,
@@ -274,4 +276,23 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 
 	_, err = s.forgeSvc.Build(config, sourceDir)
 	return err
+}
+
+var buildToolsList = map[string]bool{
+	"m4":       true,
+	"autoconf": true,
+	"automake": true,
+	"libtool":  true,
+	"perl":     true,
+	"bison":    true,
+	"flex":     true,
+	"re2c":     true,
+	"zig":      true,
+}
+
+func (s *bundlerRepository) getInstallDir(name, version, phpVersion string) string {
+	if buildToolsList[name] {
+		return utils.BuildToolPath(s.silo, name, version)
+	}
+	return utils.DependencyPath(s.silo, phpVersion, name, version)
 }

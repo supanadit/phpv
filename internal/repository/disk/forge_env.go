@@ -19,6 +19,14 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 	buildToolsPath := filepath.Join(r.siloRepo.silo.Root, "build-tools")
 	buildToolsBinPath := r.buildToolsBinPath(buildToolsPath)
 
+	if config.PHPVersion != "" {
+		depRootPath := filepath.Join(r.siloRepo.silo.Root, "versions", config.PHPVersion, "dependency")
+		depBinPaths := r.discoverDependencyBinPaths(depRootPath)
+		if depBinPaths != "" {
+			buildToolsBinPath = depBinPaths + ":" + buildToolsBinPath
+		}
+	}
+
 	// When using Zig as CC, create wrapper scripts for ar, ranlib, nm, and ld
 	// so that configure scripts can discover them in PATH.
 	if strings.Contains(config.CC, "zig") {
@@ -81,11 +89,52 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 	if len(config.CXXFLAGS) > 0 {
 		env = append(env, "CXXFLAGS="+strings.Join(config.CXXFLAGS, " "))
 	}
+
+	// Set autotools environment variables to use bundled versions
+	r.setAutotoolsEnv(config, buildToolsBinPath, &env)
+
 	for k, v := range config.Env {
 		env = append(env, k+"="+v)
 	}
 
 	return env
+}
+
+func (r *ForgeRepository) setAutotoolsEnv(config domain.ForgeConfig, buildToolsBinPath string, env *[]string) {
+	tools := map[string]string{
+		"AUTOCONF":        "autoconf",
+		"AUTOMAKE":        "automake",
+		"ACLOCAL":         "aclocal",
+		"ACLOCAL_AMFLAGS": "",
+		"LIBTOOLIZE":      "libtoolize",
+		"AUTOHEADER":      "autoheader",
+		"AUTOM4TE":        "autom4te",
+		"AUTORECONF":      "autoreconf",
+	}
+
+	for envVar, toolName := range tools {
+		if toolName == "" {
+			*env = append(*env, envVar+"=")
+			continue
+		}
+		if path := r.findToolInPath(toolName, buildToolsBinPath); path != "" {
+			*env = append(*env, envVar+"="+path)
+		}
+	}
+}
+
+func (r *ForgeRepository) findToolInPath(toolName, path string) string {
+	parts := strings.Split(path, ":")
+	for _, dir := range parts {
+		if dir == "" {
+			continue
+		}
+		toolPath := filepath.Join(dir, toolName)
+		if _, err := os.Stat(toolPath); err == nil {
+			return toolPath
+		}
+	}
+	return ""
 }
 
 // ensureZigToolWrappers creates wrapper scripts for ar, ranlib, nm, and ld
@@ -210,6 +259,7 @@ func (r *ForgeRepository) hasExecutable(dir, name string) bool {
 func (r *ForgeRepository) chmodBuildScripts(sourcePath string) {
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "build")).Run()
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "ext")).Run()
+	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "build-aux")).Run()
 }
 
 func (r *ForgeRepository) touchAutotools(sourcePath string) {

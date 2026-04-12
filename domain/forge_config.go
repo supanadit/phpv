@@ -12,6 +12,7 @@ const (
 type ForgeConfig struct {
 	Name            string
 	Version         string
+	PHPVersion      string
 	Prefix          string
 	ConfigureFlags  []string
 	Env             map[string]string

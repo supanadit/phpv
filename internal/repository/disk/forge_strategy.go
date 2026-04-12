@@ -16,7 +16,7 @@ func (r *ForgeRepository) detectStrategy(name, version string) domain.BuildStrat
 	case "autoconf", "automake", "flex", "bison", "perl":
 		return domain.StrategyMakeOnly
 	case "libtool":
-		return domain.StrategyConfigureMake
+		return domain.StrategyAutogen
 	case "openssl":
 		return domain.StrategyConfigureMake
 	case "php":

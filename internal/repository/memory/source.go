@@ -65,7 +65,7 @@ func (r *SourceRepository) GetVersions() ([]domain.Source, error) {
 	sourceType := domain.SourceTypeSource
 	binaryType := domain.SourceTypeBinary
 
-	versions := r.buildRangeVersions(8, 5, 0, 4, "php", sourceType)
+	versions := r.buildRangeVersions(8, 5, 0, 5, "php", sourceType)
 	versions = append(versions, r.buildRangeVersions(8, 4, 0, 19, "php", sourceType)...)
 	versions = append(versions, r.buildRangeVersions(8, 3, 0, 27, "php", sourceType)...)
 	versions = append(versions, r.buildRangeVersions(8, 2, 0, 29, "php", sourceType)...)

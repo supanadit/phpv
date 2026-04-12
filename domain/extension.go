@@ -20,6 +20,16 @@ type Extension struct {
 	Version string
 }
 
+type ExtensionInfo struct {
+	Name        string
+	Flag        string
+	MinPHP      string
+	MaxPHP      string
+	Package     string
+	HasConflict bool
+	Conflicts   []string
+}
+
 type ExtensionType string
 
 const (

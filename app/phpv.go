@@ -188,6 +188,7 @@ func run(
 	cfg bundler.BundlerServiceConfig,
 	pattern pattern.PatternRepository,
 	src source.SourceRepository,
+	ext extension.Repository,
 ) {
 	if err := sil.EnsurePaths(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -196,7 +197,7 @@ func run(
 	}
 
 	bundlerRepo := disk.NewBundlerRepository(cfg, pattern)
-	handler := terminal.NewHandler(bundlerRepo, sil, src)
+	handler := terminal.NewHandler(bundlerRepo, sil, src, ext)
 
 	if err := terminal.ExecuteCobra(handler, shutdowner); err != nil {
 		return

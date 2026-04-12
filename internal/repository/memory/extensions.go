@@ -430,6 +430,41 @@ func (r *extensionRepo) CheckExtensionConflicts(extensions []string) ([]string, 
 	return conflicts, conflictPairs
 }
 
+func (r *extensionRepo) ListExtensions() []domain.ExtensionInfo {
+	extensions := make([]domain.ExtensionInfo, 0, len(bundledExtensions))
+	for name, ext := range bundledExtensions {
+		extensions = append(extensions, domain.ExtensionInfo{
+			Name:        name,
+			Flag:        ext.Flag,
+			MinPHP:      ext.MinPHP,
+			MaxPHP:      ext.MaxPHP,
+			Package:     ext.Package,
+			HasConflict: len(ext.Conflicts) > 0,
+			Conflicts:   ext.Conflicts,
+		})
+	}
+	return extensions
+}
+
+func (r *extensionRepo) ListExtensionsForPHP(phpVersion string) []domain.ExtensionInfo {
+	extensions := make([]domain.ExtensionInfo, 0, len(bundledExtensions))
+	for name, ext := range bundledExtensions {
+		if !r.IsExtensionValidForPHPVersion(name, phpVersion) {
+			continue
+		}
+		extensions = append(extensions, domain.ExtensionInfo{
+			Name:        name,
+			Flag:        ext.Flag,
+			MinPHP:      ext.MinPHP,
+			MaxPHP:      ext.MaxPHP,
+			Package:     ext.Package,
+			HasConflict: len(ext.Conflicts) > 0,
+			Conflicts:   ext.Conflicts,
+		})
+	}
+	return extensions
+}
+
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
 		if s == item {

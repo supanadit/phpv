@@ -243,11 +243,50 @@ func (m *mockSourceRepo) GetSources(name, version string) ([]domain.Source, erro
 	return []domain.Source{}, nil
 }
 
+type mockExtensionRepo struct{}
+
+func (m *mockExtensionRepo) GetExtensionDef(name string) (domain.ExtensionDef, bool) {
+	return domain.ExtensionDef{}, false
+}
+
+func (m *mockExtensionRepo) IsExtensionValidForPHPVersion(name string, phpVersion string) bool {
+	return true
+}
+
+func (m *mockExtensionRepo) GetConflictingExtensions(name string) []string {
+	return nil
+}
+
+func (m *mockExtensionRepo) GetExtensionDependency(name string) (string, bool) {
+	return "", false
+}
+
+func (m *mockExtensionRepo) GetExtensionDependencyWithVersion(extName, phpVersion string) (string, string, bool) {
+	return "", "", false
+}
+
+func (m *mockExtensionRepo) ValidateExtensions(extensions []string, phpVersion string) ([]string, error) {
+	return nil, nil
+}
+
+func (m *mockExtensionRepo) CheckExtensionConflicts(extensions []string) ([]string, [][]string) {
+	return nil, nil
+}
+
+func (m *mockExtensionRepo) ListExtensions() []domain.ExtensionInfo {
+	return nil
+}
+
+func (m *mockExtensionRepo) ListExtensionsForPHP(phpVersion string) []domain.ExtensionInfo {
+	return nil
+}
+
 func newTestHandler() *TerminalHandler {
 	siloRepo := newMockSiloRepo()
 	srcRepo := &mockSourceRepo{}
+	extRepo := &mockExtensionRepo{}
 
-	return NewHandler(&mockBundlerRepo{}, siloRepo, srcRepo)
+	return NewHandler(&mockBundlerRepo{}, siloRepo, srcRepo, extRepo)
 }
 
 func TestNewHandler(t *testing.T) {
@@ -333,7 +372,7 @@ func TestUse_ShimGeneration(t *testing.T) {
 
 	mockBundler := &mockBundlerRepo{}
 	srcRepo := &mockSourceRepo{}
-	handler := NewHandler(mockBundler, mockSilo, srcRepo)
+	handler := NewHandler(mockBundler, mockSilo, srcRepo, &mockExtensionRepo{})
 
 	result, err := handler.Use("8.4.0")
 	if err != nil {
@@ -689,7 +728,7 @@ func TestShellUse_ConstraintResolution(t *testing.T) {
 
 	mockBundler := &mockBundlerRepo{}
 	srcRepo := &mockSourceRepo{}
-	handler := NewHandler(mockBundler, mockSilo, srcRepo)
+	handler := NewHandler(mockBundler, mockSilo, srcRepo, &mockExtensionRepo{})
 
 	err := handler.ShellUse("8.4")
 	if err != nil {
@@ -705,7 +744,7 @@ func TestAutoDetect_NoComposer(t *testing.T) {
 	mockSilo := newMockSiloRepo()
 	mockBundler := &mockBundlerRepo{}
 	srcRepo := &mockSourceRepo{}
-	handler := NewHandler(mockBundler, mockSilo, srcRepo)
+	handler := NewHandler(mockBundler, mockSilo, srcRepo, &mockExtensionRepo{})
 
 	oldCwd, err := os.Getwd()
 	if err != nil {
@@ -726,7 +765,7 @@ func TestAutoDetect_EmptyConfig(t *testing.T) {
 	mockSilo := newMockSiloRepo()
 	mockBundler := &mockBundlerRepo{}
 	srcRepo := &mockSourceRepo{}
-	handler := NewHandler(mockBundler, mockSilo, srcRepo)
+	handler := NewHandler(mockBundler, mockSilo, srcRepo, &mockExtensionRepo{})
 
 	oldCwd, err := os.Getwd()
 	if err != nil {
@@ -749,7 +788,7 @@ func TestAutoDetectResolve_NotInstalled(t *testing.T) {
 	mockSilo := newMockSiloRepo()
 	mockBundler := &mockBundlerRepo{}
 	srcRepo := &mockSourceRepo{}
-	handler := NewHandler(mockBundler, mockSilo, srcRepo)
+	handler := NewHandler(mockBundler, mockSilo, srcRepo, &mockExtensionRepo{})
 
 	oldCwd, err := os.Getwd()
 	if err != nil {

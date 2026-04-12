@@ -24,6 +24,7 @@ func ExecuteCobra(handler *TerminalHandler, shutdowner fx.Shutdowner) error {
 	registerExtraCommands(rootCmd, handler)
 	registerPeclCommands(rootCmd, handler)
 	registerPharCommands(rootCmd, handler)
+	registerExtensionCommands(rootCmd, handler)
 
 	if err := rootCmd.Execute(); err != nil {
 		shutdowner.Shutdown(fx.ExitCode(1))

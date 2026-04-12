@@ -17,6 +17,8 @@ type Repository interface {
 	GetExtensionDependencyWithVersion(extName, phpVersion string) (string, string, bool)
 	ValidateExtensions(extensions []string, phpVersion string) ([]string, error)
 	CheckExtensionConflicts(extensions []string) ([]string, [][]string)
+	ListExtensions() []domain.ExtensionInfo
+	ListExtensionsForPHP(phpVersion string) []domain.ExtensionInfo
 }
 
 type Service struct {

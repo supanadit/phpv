@@ -1,6 +1,7 @@
 package disk
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +18,23 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 
 	buildToolsPath := filepath.Join(r.siloRepo.silo.Root, "build-tools")
 	buildToolsBinPath := r.buildToolsBinPath(buildToolsPath)
+
+	// When using Zig as CC, create wrapper scripts for ar, ranlib, nm, and ld
+	// so that configure scripts can discover them in PATH.
+	if strings.Contains(config.CC, "zig") {
+		zigBinary := strings.Split(config.CC, " ")[0] // extract zig binary path from "zig cc -target ..."
+		wrapperDir := r.ensureZigToolWrappers(zigBinary)
+		if wrapperDir != "" {
+			buildToolsBinPath = wrapperDir + ":" + buildToolsBinPath
+			env = append(env, "AR="+filepath.Join(wrapperDir, "ar"))
+			env = append(env, "RANLIB="+filepath.Join(wrapperDir, "ranlib"))
+			env = append(env, "NM="+filepath.Join(wrapperDir, "nm"))
+			ldPath := filepath.Join(wrapperDir, "ld")
+			if _, err := os.Stat(ldPath); err == nil {
+				env = append(env, "LD="+ldPath)
+			}
+		}
+	}
 
 	for i, v := range env {
 		if after, ok := strings.CutPrefix(v, "PATH="); ok {
@@ -68,6 +86,64 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 	}
 
 	return env
+}
+
+// ensureZigToolWrappers creates wrapper scripts for ar, ranlib, nm, and ld
+// in a directory next to the zig binary, so that GNU autotools configure scripts
+// can find them in PATH. Zig provides these as subcommands (e.g. "zig ar")
+// but configure expects standalone executables.
+// Returns the directory containing the wrapper scripts.
+func (r *ForgeRepository) ensureZigToolWrappers(zigBinary string) string {
+	wrapperDir := filepath.Join(filepath.Dir(zigBinary), "wrappers")
+	if err := os.MkdirAll(wrapperDir, 0o755); err != nil {
+		return ""
+	}
+
+	// Tools that zig provides as subcommands
+	zigTools := map[string]string{
+		"ar":     "ar",
+		"ranlib": "ranlib",
+	}
+
+	for toolName, zigSubcmd := range zigTools {
+		wrapperPath := filepath.Join(wrapperDir, toolName)
+		if _, err := os.Stat(wrapperPath); err == nil {
+			continue // already exists
+		}
+		script := fmt.Sprintf("#!/bin/sh\nexec \"%s\" %s \"$@\"\n", zigBinary, zigSubcmd)
+		if err := os.WriteFile(wrapperPath, []byte(script), 0o755); err != nil {
+			continue
+		}
+	}
+
+	// For 'nm', zig doesn't provide a subcommand so fall back to system nm
+	nmWrapper := filepath.Join(wrapperDir, "nm")
+	if _, err := os.Stat(nmWrapper); os.IsNotExist(err) {
+		if systemNm, err := exec.LookPath("nm"); err == nil {
+			script := fmt.Sprintf("#!/bin/sh\nexec \"%s\" \"$@\"\n", systemNm)
+			os.WriteFile(nmWrapper, []byte(script), 0o755)
+		}
+	}
+
+	// For 'ld', prefer the system linker since zig's internal linker isn't
+	// directly exposed as a standalone 'ld' command. The system 'ld' is
+	// typically provided by binutils and is needed by configure scripts.
+	ldWrapper := filepath.Join(wrapperDir, "ld")
+	if _, err := os.Stat(ldWrapper); os.IsNotExist(err) {
+		// Try to find system ld
+		if systemLd, err := exec.LookPath("ld"); err == nil {
+			script := fmt.Sprintf("#!/bin/sh\nexec \"%s\" \"$@\"\n", systemLd)
+			os.WriteFile(ldWrapper, []byte(script), 0o755)
+		} else {
+			// Fallback: use zig cc as linker (zig can link via cc)
+			target := ""
+			// Extract target from zig's CC string if available
+			script := fmt.Sprintf("#!/bin/sh\nexec \"%s\" cc %s-Wl,\"$@\"\n", zigBinary, target)
+			os.WriteFile(ldWrapper, []byte(script), 0o755)
+		}
+	}
+
+	return wrapperDir
 }
 
 func hasEnvVar(env []string, prefix string) bool {

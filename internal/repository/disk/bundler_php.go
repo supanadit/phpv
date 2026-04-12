@@ -111,7 +111,7 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 			return err
 		}
 
-		s.logBuildFlags(installDir, configureFlags, cppFlags, ldFlags, ldPath, cflags, pkgConfigPaths)
+		s.logBuildFlags(installDir, configureFlags, cppFlags, ldFlags, ldPath, cflags, pkgConfigPaths, cflags, cc, cxx)
 
 		compilerName := "gcc"
 		compilerPath := ""
@@ -141,6 +141,7 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 			CC:              cc,
 			CFLAGS:          cflags,
 			CXX:             cxx,
+			CXXFLAGS:        cflags,
 			PkgConfigPaths:  pkgConfigPaths,
 			Verbose:         s.verbose,
 		}

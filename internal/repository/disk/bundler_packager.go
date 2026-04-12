@@ -159,13 +159,46 @@ func (s *bundlerRepository) buildFromSourceOrSystem(name, version, phpVersion st
 	return err
 }
 
-func (s *bundlerRepository) logBuildFlags(installDir string, configureFlags, cppFlags, ldFlags, ldPath, cflags, pkgConfigPaths []string) {
+func (s *bundlerRepository) logBuildFlags(installDir string, configureFlags, cppFlags, ldFlags, ldPath, cflags, pkgConfigPaths, cxxflags []string, cc, cxx string) {
 	if len(configureFlags) > 0 {
 		s.logInfo("  Flags: %s", strings.Join(configureFlags, " "))
 	} else {
 		s.logInfo("  Flags: (none)")
 	}
 	s.logInfo("  Path: %s", installDir)
+	
+	ar, ranlib, nm, ld := "(default)", "(default)", "(default)", "(default)"
+	if strings.Contains(cc, "zig") {
+		zigBinary := strings.Split(cc, " ")[0]
+		wrapperDir := filepath.Join(filepath.Dir(zigBinary), "wrappers")
+		ar = filepath.Join(wrapperDir, "ar")
+		ranlib = filepath.Join(wrapperDir, "ranlib")
+		nm = filepath.Join(wrapperDir, "nm")
+		if _, err := os.Stat(filepath.Join(wrapperDir, "ld")); err == nil {
+			ld = filepath.Join(wrapperDir, "ld")
+		}
+	}
+	
+	s.logInfo("  AR: %s", ar)
+	s.logInfo("  RANLIB: %s", ranlib)
+	s.logInfo("  NM: %s", nm)
+	s.logInfo("  LD: %s", ld)
+
+	if cc != "" {
+		s.logInfo("  CC: %s", cc)
+	} else {
+		s.logInfo("  CC: (default)")
+	}
+	if cxx != "" {
+		s.logInfo("  CXX: %s", cxx)
+	} else {
+		s.logInfo("  CXX: (default)")
+	}
+	if len(cxxflags) > 0 {
+		s.logInfo("  CXXFLAGS: %s", strings.Join(cxxflags, " "))
+	} else {
+		s.logInfo("  CXXFLAGS: (none)")
+	}
 	if len(cppFlags) > 0 {
 		s.logInfo("  CPPFLAGS: %s", strings.Join(cppFlags, " "))
 	} else {
@@ -208,7 +241,7 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 
 	configureFlags := s.forgeSvc.GetConfigureFlags(name, version)
 
-	s.logBuildFlags(installDir, configureFlags, cppFlags, ldFlags, ldPath, cflags, pkgConfigPaths)
+	s.logBuildFlags(installDir, configureFlags, cppFlags, ldFlags, ldPath, cflags, pkgConfigPaths, cflags, cc, cxx)
 
 	compilerName := "gcc"
 	compilerPath := ""
@@ -234,6 +267,7 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 		CC:              cc,
 		CFLAGS:          cflags,
 		CXX:             cxx,
+		CXXFLAGS:        cflags,
 		PkgConfigPaths:  pkgConfigPaths,
 		Verbose:         s.verbose,
 	}

@@ -260,6 +260,24 @@ func (r *ForgeRepository) chmodBuildScripts(sourcePath string) {
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "build")).Run()
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "ext")).Run()
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "build-aux")).Run()
+
+	autotoolsScripts := []string{
+		"install-sh",
+		"depcomp",
+		"ylwrap",
+		"compile",
+		"config.guess",
+		"config.sub",
+		"configure",
+		"missing",
+		"mkinstalldirs",
+	}
+	for _, script := range autotoolsScripts {
+		scriptPath := filepath.Join(sourcePath, script)
+		if _, err := os.Stat(scriptPath); err == nil {
+			os.Chmod(scriptPath, 0o755)
+		}
+	}
 }
 
 func (r *ForgeRepository) touchAutotools(sourcePath string) {

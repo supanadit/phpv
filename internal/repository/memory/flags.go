@@ -20,7 +20,7 @@ var packageFlags = map[string][]string{
 	"php":       {"--disable-all", "--enable-cli", "--with-openssl", "--with-curl", "--with-zlib", "--with-libxml2", "--with-onig"},
 	"openssl":   {"shared", "no-ssl3"},
 	"curl":      {"--with-openssl", "--without-brotli", "--disable-ldap"},
-	"libxml2":   {"--disable-shared", "--enable-static", "--without-lzma", "--without-python"},
+	"libxml2":   {"--disable-shared", "--enable-static", "--without-lzma", "--without-python", "--disable-dependency-tracking"},
 	"zlib":      {},
 	"oniguruma": {},
 	"re2c":      {},

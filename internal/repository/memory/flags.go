@@ -23,6 +23,7 @@ var packageFlags = map[string][]string{
 	"libxml2":   {"--disable-shared", "--enable-static", "--without-lzma", "--without-python", "--disable-dependency-tracking"},
 	"zlib":      {},
 	"oniguruma": {},
+	"icu":       {},
 	"re2c":      {},
 	"autoconf":  {},
 	"automake":  {},

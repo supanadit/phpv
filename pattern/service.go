@@ -113,6 +113,12 @@ func (s *Service) BuildURL(pattern domain.URLPattern, v *domain.Version) (string
 	majorMinor := fmt.Sprintf("%d.%d", v.Major, v.Minor)
 	url = strings.ReplaceAll(url, "{major}.{minor}", majorMinor)
 
+	major := fmt.Sprintf("%d", v.Major)
+	url = strings.ReplaceAll(url, "{major}", major)
+
+	minor := fmt.Sprintf("%d", v.Minor)
+	url = strings.ReplaceAll(url, "{minor}", minor)
+
 	if pattern.ExtensionFunc != nil {
 		ext := pattern.ExtensionFunc(v)
 		url = strings.ReplaceAll(url, "{ext}", ext)

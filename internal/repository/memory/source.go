@@ -176,6 +176,12 @@ func (r *SourceRepository) GetVersions() ([]domain.Source, error) {
 	versions = append(versions, r.buildSource("zig", "0.14.0", binaryType))
 	versions = append(versions, r.buildSource("zig", "0.13.0", binaryType))
 
+	versions = append(versions, r.buildSource("icu", "75.1", sourceType))
+	versions = append(versions, r.buildSource("icu", "74.2", sourceType))
+	versions = append(versions, r.buildSource("icu", "73.2", sourceType))
+	versions = append(versions, r.buildSource("icu", "72.1", sourceType))
+	versions = append(versions, r.buildSource("icu", "71.1", sourceType))
+
 	sort.Slice(versions, func(i, j int) bool {
 		return versions[i].Version > versions[j].Version
 	})

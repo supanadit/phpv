@@ -9,7 +9,7 @@ import (
 	"github.com/supanadit/phpv/domain"
 )
 
-var versionRegex = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)([a-z]*)$`)
+var versionRegex = regexp.MustCompile(`^(\d+)\.(\d+)(?:\.(\d+))?([a-z]*)$`)
 
 func ParseVersion(version string) *domain.Version {
 	matches := versionRegex.FindStringSubmatch(version)

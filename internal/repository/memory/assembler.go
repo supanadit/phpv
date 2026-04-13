@@ -29,6 +29,7 @@ func registerPackages(svc *assembler.AssemblerService) {
 						{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
 						{Name: "oniguruma", Version: "6.9.9|~6.9.0"},
 						{Name: "curl", Version: "8.5.0|>=7.80.0"},
+						{Name: "icu", Version: "74.2|>=74.2"},
 					},
 				},
 				{
@@ -393,6 +394,11 @@ func registerPackages(svc *assembler.AssemblerService) {
 			Constraints: []domain.VersionConstraint{
 				{VersionRange: ">=3.0", Dependencies: []domain.Dependency{}},
 			},
+		},
+		{
+			Package:     "icu",
+			Default:     []domain.Dependency{},
+			Constraints: []domain.VersionConstraint{},
 		},
 		{
 			Package:     "zig",

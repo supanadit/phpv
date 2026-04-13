@@ -134,6 +134,9 @@ func (r *ForgeRepository) findToolInPath(toolName, path string) string {
 			return toolPath
 		}
 	}
+	if fullPath, err := exec.LookPath(toolName); err == nil {
+		return fullPath
+	}
 	return ""
 }
 

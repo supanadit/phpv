@@ -78,18 +78,11 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 			} else {
 				return domain.Forge{}, fmt.Errorf("configure script not found for %s (checked ./Configure, ./config, and subdirectories)", config.Name)
 			}
-		} else if _, err := os.Stat(ConfigurePath); os.IsNotExist(err) {
-			if found := r.findConfigureInSubdir(sourcePath, "Configure"); found != "" {
-				configurePath = found
-				useConfigure = false
-				usesPerl = true
-			} else {
-				return domain.Forge{}, fmt.Errorf("configure script not found at %s (or Configure)", configurePath)
-			}
-		} else {
-			configurePath = ConfigurePath
+		} else if found := r.findConfigureInSubdir(sourcePath, "configure"); found != "" {
+			configurePath = found
 			useConfigure = false
-			usesPerl = true
+		} else {
+			return domain.Forge{}, fmt.Errorf("configure script not found at %s (or Configure)", configurePath)
 		}
 	}
 

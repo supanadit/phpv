@@ -365,6 +365,24 @@ var DefaultPatterns = []domain.URLPattern{
 		Constraint: func(v *domain.Version) bool { return v.Major == 0 && v.Minor >= 13 },
 		Template:   "https://ziglang.org/download/{version}/zig-macos-aarch64-{version}.tar.xz",
 	},
+	{
+		Name:       "icu",
+		Type:       domain.SourceTypeSource,
+		Constraint: func(v *domain.Version) bool { return v.Major == 75 && v.Minor == 1 },
+		Template:   "https://github.com/unicode-org/icu/releases/download/release-{major}-{minor}/icu4c-{major}_{minor}-src.tgz",
+	},
+	{
+		Name:       "icu",
+		Type:       domain.SourceTypeSource,
+		Constraint: func(v *domain.Version) bool { return v.Major == 74 && v.Minor == 2 },
+		Template:   "https://github.com/unicode-org/icu/releases/download/release-{major}-{minor}/icu4c-{major}_{minor}-src.tgz",
+	},
+	{
+		Name:       "icu",
+		Type:       domain.SourceTypeSource,
+		Constraint: func(v *domain.Version) bool { return true },
+		Template:   "https://github.com/unicode-org/icu/releases/download/release-{major}-{minor}/icu4c-{major}_{minor}-src.tgz",
+	},
 }
 
 func NewPatternRepository() pattern.PatternRepository {

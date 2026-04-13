@@ -406,8 +406,14 @@ func determineActionAndURL(state domain.PackageState, systemAvailable, shouldBui
 	case domain.StateSourceDownloaded:
 		return "extract", "", domain.SourceTypeSource
 	case domain.StateSourceExtracted:
+		if systemAvailable && !shouldBuild {
+			return "skip", "", domain.SourceTypeBinary
+		}
 		return "build", "", domain.SourceTypeSource
 	case domain.StateSourceMissingBuilt:
+		if systemAvailable && !shouldBuild {
+			return "skip", "", domain.SourceTypeBinary
+		}
 		return "rebuild", "", domain.SourceTypeSource
 	case domain.StateBuilt:
 		return "skip", "", ""

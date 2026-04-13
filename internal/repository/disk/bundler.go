@@ -169,7 +169,6 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 	var builtDeps []domain.DependencyInfo
 
 	for levelIdx, level := range levels {
-		fmt.Printf("DEBUG: Processing level %d: %v\n", levelIdx, level)
 		for _, dep := range level {
 			if firstErr != nil {
 				break
@@ -180,7 +179,6 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 				depVersion = dep.Version[:idx]
 			}
 
-			fmt.Printf("DEBUG: Building dep %s@%s\n", dep.Name, depVersion)
 			depInfo, err := s.buildPackage(dep.Name, depVersion, exactVersion, depLibraryPaths, depCppFlags, depLdFlags, depPkgConfigPaths, forceCompiler)
 			if err != nil {
 				firstErr = fmt.Errorf("[forge] failed to build %s@%s: %w", dep.Name, depVersion, err)
@@ -266,7 +264,6 @@ func (s *bundlerRepository) resolveExtensionDependencies(extensions []string, ph
 
 	for _, ext := range extensions {
 		pkg, version, ok := s.flagResolverSvc.GetExtensionDependencyWithVersion(ext, phpVersion)
-		fmt.Printf("DEBUG resolveExtensionDependencies: ext=%q pkg=%q version=%q ok=%v\n", ext, pkg, version, ok)
 		if ok && !seen[pkg] {
 			seen[pkg] = true
 			depMap[pkg] = domain.Dependency{Name: pkg, Version: version}

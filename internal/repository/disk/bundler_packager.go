@@ -12,7 +12,6 @@ import (
 
 func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, forceCompiler string) (*domain.DependencyInfo, error) {
 	check, err := s.advisorSvc.Check(name, version, phpVersion)
-	fmt.Printf("DEBUG buildPackage: name=%s version=%s phpVersion=%s check=%+v err=%v\n", name, version, phpVersion, check, err)
 	if err != nil {
 		return nil, err
 	}

@@ -67,7 +67,34 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		}
 		dest := utils.GetSourceDirPath(s.silo, name, version)
 		if _, err := s.unloadSvc.Unpack(archive, dest); err != nil {
-			return nil, fmt.Errorf("[unload] failed to extract %s@%s: %w", name, version, err)
+			s.logWarn("  Archive corrupted or incomplete, removing and re-downloading...")
+			if removeErr := s.fs.Remove(archive); removeErr != nil {
+				return nil, fmt.Errorf("[bundler] failed to remove corrupt archive: %w", removeErr)
+			}
+			sources, srcErr := s.sourceSvc.GetSources(name, version)
+			if srcErr != nil {
+				return nil, fmt.Errorf("[bundler] failed to get sources: %w", srcErr)
+			}
+			var lastErr error
+			for _, src := range sources {
+				downloadArchive := archivePathFromURL(s.silo.Root, name, version, src.URL)
+				var dlErr error
+				if _, dlErr = s.downloadSvc.Download(src.URL, downloadArchive); dlErr != nil {
+					lastErr = dlErr
+					continue
+				}
+				var unpackErr error
+				if _, unpackErr = s.unloadSvc.Unpack(downloadArchive, dest); unpackErr == nil {
+					break
+				}
+				lastErr = unpackErr
+				if removeErr := s.fs.Remove(downloadArchive); removeErr != nil {
+					break
+				}
+			}
+			if lastErr != nil {
+				return nil, fmt.Errorf("[bundler] failed to re-download and extract %s@%s: %w", name, version, lastErr)
+			}
 		}
 		fallthrough
 	case "build", "rebuild":

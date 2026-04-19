@@ -93,9 +93,9 @@ func (r *DownloadRepository) Download(url, destination string) (*domain.Download
 	stat, err := r.fs.Stat(destination)
 	if err == nil && stat.Size() > 0 && supportResume {
 		downloadedSize = stat.Size()
-		file, err = r.fs.OpenFile(destination, os.O_APPEND|os.O_WRONLY, 0o644)
+		file, err = r.fs.OpenFile(destination, os.O_CREATE|os.O_RDWR, 0o644)
 		if err != nil {
-			return nil, fmt.Errorf("[download] failed to open file for append: %w", err)
+			return nil, fmt.Errorf("[download] failed to open file: %w", err)
 		}
 	} else {
 		if err == nil && stat.Size() > 0 {

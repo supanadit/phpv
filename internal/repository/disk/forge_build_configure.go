@@ -35,6 +35,24 @@ func getOpenSSLConfigureTarget() string {
 	}
 }
 
+func getConfigureHostTriple() string {
+	goarch := runtime.GOARCH
+	switch goarch {
+	case "amd64":
+		goarch = "x86_64"
+	case "arm64":
+		goarch = "aarch64"
+	}
+	switch runtime.GOOS {
+	case "linux":
+		return goarch + "-pc-linux-gnu"
+	case "darwin":
+		return goarch + "-apple-darwin"
+	default:
+		return goarch + "-pc-linux-gnu"
+	}
+}
+
 func (r *ForgeRepository) findConfigureInSubdir(basePath, name string) string {
 	entries, err := os.ReadDir(basePath)
 	if err != nil {
@@ -52,6 +70,16 @@ func (r *ForgeRepository) findConfigureInSubdir(basePath, name string) string {
 		}
 	}
 	return ""
+}
+
+func (r *ForgeRepository) isAutotoolsConfigure(sourcePath string) bool {
+	files := []string{"configure.ac", "configure.in", "aclocal.m4"}
+	for _, f := range files {
+		if _, err := os.Stat(filepath.Join(sourcePath, f)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config domain.ForgeConfig, env []string) (domain.Forge, error) {
@@ -113,6 +141,10 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 
 	var configure *exec.Cmd
 	if useConfigure {
+		if config.CC != "" && strings.Contains(config.CC, "zig") && r.isAutotoolsConfigure(sourcePath) {
+			hostTriple := getConfigureHostTriple()
+			args = append(args, "--build="+hostTriple, "--host="+hostTriple)
+		}
 		configure = ctx.Command("./configure", args...)
 	} else if isOpensslConfig {
 		configure = ctx.Command("./config", args...)

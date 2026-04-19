@@ -18,7 +18,7 @@ type flagRepo struct {
 var packageFlags = map[string][]string{
 	"m4":        {"--disable-maintainer-mode"},
 	"php":       {"--disable-all", "--enable-cli", "--with-openssl", "--with-curl", "--with-zlib", "--with-libxml2", "--with-onig"},
-	"openssl":   {"shared", "no-ssl3"},
+	"openssl":   {"shared", "no-ssl3", "no-tests"},
 	"curl":      {"--with-openssl", "--without-brotli", "--disable-ldap"},
 	"libxml2":   {"--disable-shared", "--enable-static", "--without-lzma", "--without-python", "--disable-dependency-tracking"},
 	"zlib":      {},

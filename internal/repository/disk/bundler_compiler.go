@@ -3,6 +3,7 @@ package disk
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 
@@ -27,6 +28,33 @@ func getZigTarget() string {
 	return goarch + "-" + goos + abi
 }
 
+func getZigTargetForGlibc(glibcVersion string) string {
+	goarch := runtime.GOARCH
+	switch goarch {
+	case "amd64":
+		goarch = "x86_64"
+	case "arm64":
+		goarch = "aarch64"
+	}
+
+	goos := runtime.GOOS
+	if goos == "darwin" {
+		return goarch + "-" + goos
+	}
+
+	return goarch + "-linux-gnu." + glibcVersion
+}
+
+func findSystemCXX() string {
+	if path, err := exec.LookPath("g++"); err == nil {
+		return path
+	}
+	if path, err := exec.LookPath("c++"); err == nil {
+		return path
+	}
+	return ""
+}
+
 func (s *bundlerRepository) needsAlternativeCC(phpVersion string, forceCompiler string) bool {
 	if forceCompiler == "zig" {
 		return true
@@ -49,17 +77,26 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 		return "", []string{}, "", nil
 	}
 
+	v := utils.ParseVersion(phpVersion)
+	target := getZigTarget()
+
+	if v.Major < 8 {
+		target = getZigTargetForGlibc("2.27")
+	}
+
 	if zigPath := os.Getenv("PHPV_ZIG_PATH"); zigPath != "" {
 		if _, err := os.Stat(zigPath); err == nil {
-			target := getZigTarget()
-			return zigPath + " cc -target " + target, []string{"-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"}, zigPath + " c++ -target " + target, nil
+			systemCxx := findSystemCXX()
+			if systemCxx == "" {
+				systemCxx = zigPath + " c++ -target " + target
+			}
+			return zigPath + " cc -target " + target, []string{"-std=gnu11", "-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"}, systemCxx, nil
 		}
 	}
 
 	zigBinary := utils.GetZigCompilerPath(s.silo.Root, phpVersion)
 
 	if _, err := os.Stat(zigBinary); os.IsNotExist(err) {
-		v := utils.ParseVersion(phpVersion)
 		zigVersion := "0.14.0"
 		if v.Major < 7 {
 			zigVersion = "0.13.0"
@@ -74,6 +111,9 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 		}
 	}
 
-	target := getZigTarget()
-	return zigBinary + " cc -target " + target, []string{"-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"}, zigBinary + " c++ -target " + target, nil
+	systemCxx := findSystemCXX()
+	if systemCxx == "" {
+		systemCxx = zigBinary + " c++ -target " + target
+	}
+	return zigBinary + " cc -target " + target, []string{"-std=gnu11", "-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"}, systemCxx, nil
 }

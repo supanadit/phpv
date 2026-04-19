@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/utils"
@@ -120,6 +121,17 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 		perlArgs := []string{configurePath}
 		perlArgs = append(perlArgs, target)
 		perlArgs = append(perlArgs, args...)
+
+		if len(config.CFLAGS) > 0 {
+			perlArgs = append(perlArgs, "CFLAGS="+strings.Join(config.CFLAGS, " "))
+		}
+		if len(config.CXXFLAGS) > 0 {
+			perlArgs = append(perlArgs, "CXXFLAGS="+strings.Join(config.CXXFLAGS, " "))
+		}
+		if len(config.LDFLAGS) > 0 {
+			perlArgs = append(perlArgs, "LDFLAGS="+strings.Join(config.LDFLAGS, " "))
+		}
+
 		configure = ctx.Command("perl", perlArgs...)
 	} else {
 		configure = ctx.Command(configurePath, args...)

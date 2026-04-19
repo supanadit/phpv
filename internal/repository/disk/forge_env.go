@@ -27,7 +27,7 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 		}
 	}
 
-	// When using Zig as CC, create wrapper scripts for ar, ranlib, nm, and ld
+// When using Zig as CC, create wrapper scripts for ar, ranlib, nm, and ld
 	// so that configure scripts can discover them in PATH.
 	if strings.Contains(config.CC, "zig") {
 		zigBinary := strings.Split(config.CC, " ")[0] // extract zig binary path from "zig cc -target ..."
@@ -37,10 +37,6 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 			env = append(env, "AR="+filepath.Join(wrapperDir, "ar"))
 			env = append(env, "RANLIB="+filepath.Join(wrapperDir, "ranlib"))
 			env = append(env, "NM="+filepath.Join(wrapperDir, "nm"))
-			ldPath := filepath.Join(wrapperDir, "ld")
-			if _, err := os.Stat(ldPath); err == nil {
-				env = append(env, "LD="+ldPath)
-			}
 		}
 	}
 
@@ -188,9 +184,7 @@ func (r *ForgeRepository) ensureZigToolWrappers(zigBinary string) string {
 			os.WriteFile(ldWrapper, []byte(script), 0o755)
 		} else {
 			// Fallback: use zig cc as linker (zig can link via cc)
-			target := ""
-			// Extract target from zig's CC string if available
-			script := fmt.Sprintf("#!/bin/sh\nexec \"%s\" cc %s-Wl,\"$@\"\n", zigBinary, target)
+			script := fmt.Sprintf("#!/bin/sh\nexec \"%s\" cc \"$@\"\n", zigBinary)
 			os.WriteFile(ldWrapper, []byte(script), 0o755)
 		}
 	}

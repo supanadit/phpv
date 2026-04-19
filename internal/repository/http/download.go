@@ -93,7 +93,7 @@ func (r *DownloadRepository) Download(url, destination string) (*domain.Download
 	stat, err := r.fs.Stat(destination)
 	if err == nil && stat.Size() > 0 && supportResume {
 		downloadedSize = stat.Size()
-		file, err = r.fs.OpenFile(destination, os.O_CREATE|os.O_RDWR, 0o644)
+		file, err = r.fs.OpenFile(destination, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0o644)
 		if err != nil {
 			return nil, fmt.Errorf("[download] failed to open file: %w", err)
 		}
@@ -134,6 +134,10 @@ func (r *DownloadRepository) Download(url, destination string) (*domain.Download
 			}
 			if _, err := file.Seek(0, 0); err != nil {
 				return nil, fmt.Errorf("[download] failed to seek file: %w", err)
+			}
+			// Ensure position is at start after truncate+seek
+			if _, err := file.Seek(0, 0); err != nil {
+				return nil, fmt.Errorf("[download] failed to reposition file: %w", err)
 			}
 		}
 	case http.StatusPartialContent:

@@ -75,12 +75,12 @@ func TestBundlerRepository_FreshClean_EmptyInputs(t *testing.T) {
 		fs:   fs,
 	}
 
-	err := repo.freshClean("", "8.4.0")
+	err := repo.freshClean("", "8.4.0", nil)
 	if err != nil {
 		t.Errorf("freshClean should not fail with empty package name: %v", err)
 	}
 
-	err = repo.freshClean("php", "")
+	err = repo.freshClean("php", "", nil)
 	if err != nil {
 		t.Errorf("freshClean should not fail with empty version: %v", err)
 	}

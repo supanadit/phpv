@@ -137,12 +137,6 @@ func (s *bundlerRepository) Rebuild(version string, compiler string, extensions 
 }
 
 func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler string, extensions []string, fresh bool) (domain.Forge, error) {
-	if fresh {
-		if err := s.freshClean(name, exactVersion); err != nil {
-			return domain.Forge{}, fmt.Errorf("[bundler] failed to clean existing installation: %w", err)
-		}
-	}
-
 	if err := s.siloRepo.MarkInProgress(exactVersion); err != nil {
 		return domain.Forge{}, fmt.Errorf("[bundler] failed to mark installation in progress: %w", err)
 	}
@@ -157,6 +151,12 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 	if len(extDeps) > 0 {
 		extLevels := [][]domain.Dependency{extDeps}
 		levels = append(extLevels, levels...)
+	}
+
+	if fresh {
+		if err := s.freshClean(name, exactVersion, levels); err != nil {
+			return domain.Forge{}, fmt.Errorf("[bundler] failed to clean existing installation: %w", err)
+		}
 	}
 
 	var firstErr error
@@ -278,10 +278,22 @@ func (s *bundlerRepository) resolveExtensionDependencies(extensions []string, ph
 	return deps
 }
 
-func (s *bundlerRepository) freshClean(name, exactVersion string) error {
+func (s *bundlerRepository) freshClean(name, exactVersion string, levels [][]domain.Dependency) error {
 	pathsToClean := []string{
 		utils.PHPVersionPath(s.silo, exactVersion),
 		utils.GetSourcePath(s.silo, name, exactVersion),
+	}
+
+	for _, level := range levels {
+		for _, dep := range level {
+			depVersion := dep.Version
+			if idx := strings.Index(dep.Version, "|"); idx != -1 {
+				depVersion = dep.Version[:idx]
+			}
+			sourcePath := utils.GetSourcePath(s.silo, dep.Name, depVersion)
+			sourceDirPath := utils.GetSourceDirPath(s.silo, dep.Name, depVersion)
+			pathsToClean = append(pathsToClean, sourcePath, sourceDirPath)
+		}
 	}
 
 	for _, path := range pathsToClean {

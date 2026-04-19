@@ -11,7 +11,12 @@ func (r *ForgeRepository) buildMakeOnly(sourcePath, prefix string, config domain
 	ctx := utils.NewExecContext(config.Verbose)
 	jobs := utils.GetJobs(config.Jobs)
 
-	mk := ctx.Command("make", fmt.Sprintf("-j%d", jobs))
+	makeArgs := []string{fmt.Sprintf("-j%d", jobs)}
+	if config.Name == "automake" || config.Name == "autoconf" {
+		makeArgs = []string{"-j1"}
+	}
+
+	mk := ctx.Command("make", makeArgs...)
 	mk.Dir = sourcePath
 	mk.Env = env
 
@@ -19,7 +24,7 @@ func (r *ForgeRepository) buildMakeOnly(sourcePath, prefix string, config domain
 		return domain.Forge{}, fmt.Errorf("make failed: %w", err)
 	}
 
-	if err := r.makeInstall(sourcePath, jobs, env, config.Verbose); err != nil {
+	if err := r.makeInstall(sourcePath, jobs, env, config.Verbose, config.Name); err != nil {
 		return domain.Forge{}, fmt.Errorf("make install failed: %w", err)
 	}
 

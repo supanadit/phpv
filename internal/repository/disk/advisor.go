@@ -234,12 +234,30 @@ func determineState(fs afero.Fs, root, name, version, phpVersion string) domain.
 		return domain.StateSourceDownloaded
 	}
 
+	if cacheExists && !sourceExists && versionExists {
+		if builtCheck {
+			return domain.StateBuilt
+		}
+		return domain.StateSourceDownloaded
+	}
+
 	if cacheExists && sourceExists && !versionExists {
+		return domain.StateSourceExtracted
+	}
+
+	if !cacheExists && sourceExists && !versionExists {
 		return domain.StateSourceExtracted
 	}
 
 	if !cacheExists && !sourceExists && !versionExists {
 		return domain.StateSourceMissing
+	}
+
+	if !cacheExists && !sourceExists && versionExists {
+		if builtCheck {
+			return domain.StateBuilt
+		}
+		return domain.StateSourceMissingBuilt
 	}
 
 	return domain.StateUnknown

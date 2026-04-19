@@ -121,6 +121,12 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 
 	r.touchAutotools(sourcePath)
 
+	// For automake, touch all generated files to prevent make from trying
+	// to regenerate them (which would require automake itself to be installed).
+	if config.Name == "automake" {
+		r.touchAllGeneratedFiles(sourcePath)
+	}
+
 	ctx := utils.NewExecContext(config.Verbose)
 	jobs := utils.GetJobs(config.Jobs)
 
@@ -137,6 +143,7 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 	}
 
 	args := []string{fmt.Sprintf("--prefix=%s", prefix)}
+
 	args = append(args, config.ConfigureFlags...)
 
 	var configure *exec.Cmd
@@ -179,7 +186,7 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 		return domain.Forge{}, err
 	}
 
-	if err := r.makeInstall(sourcePath, jobs, env, config.Verbose); err != nil {
+	if err := r.makeInstall(sourcePath, jobs, env, config.Verbose, config.Name); err != nil {
 		return domain.Forge{}, err
 	}
 

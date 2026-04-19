@@ -9,6 +9,75 @@ import (
 	"github.com/supanadit/phpv/internal/utils"
 )
 
+func TestBundlerRepository_FreshClean_CleansDependencySources(t *testing.T) {
+	baseDir := t.TempDir()
+	silo := &domain.Silo{Root: baseDir}
+	fs := afero.NewOsFs()
+
+	exactVersion := "8.0.30"
+
+	versionPath := utils.PHPVersionPath(silo, exactVersion)
+	phpSourcePath := utils.GetSourcePath(silo, "php", exactVersion)
+	opensslSourcePath := utils.GetSourcePath(silo, "openssl", "1.1.1w")
+	opensslSourceDirPath := utils.GetSourceDirPath(silo, "openssl", "1.1.1w")
+	zlibSourcePath := utils.GetSourcePath(silo, "zlib", "1.3.1")
+	zlibSourceDirPath := utils.GetSourceDirPath(silo, "zlib", "1.3.1")
+
+	if err := fs.MkdirAll(versionPath, 0755); err != nil {
+		t.Fatalf("failed to create version path: %v", err)
+	}
+	if err := fs.MkdirAll(phpSourcePath, 0755); err != nil {
+		t.Fatalf("failed to create php source path: %v", err)
+	}
+	if err := fs.MkdirAll(opensslSourcePath, 0755); err != nil {
+		t.Fatalf("failed to create openssl source path: %v", err)
+	}
+	if err := fs.MkdirAll(opensslSourceDirPath, 0755); err != nil {
+		t.Fatalf("failed to create openssl source dir path: %v", err)
+	}
+	if err := fs.MkdirAll(zlibSourcePath, 0755); err != nil {
+		t.Fatalf("failed to create zlib source path: %v", err)
+	}
+	if err := fs.MkdirAll(zlibSourceDirPath, 0755); err != nil {
+		t.Fatalf("failed to create zlib source dir path: %v", err)
+	}
+
+	levels := [][]domain.Dependency{
+		{
+			{Name: "openssl", Version: "1.1.1w"},
+			{Name: "zlib", Version: "1.3.1"},
+		},
+	}
+
+	repo := &bundlerRepository{
+		silo: silo,
+		fs:   fs,
+	}
+
+	if err := repo.freshClean("php", exactVersion, levels); err != nil {
+		t.Fatalf("freshClean failed: %v", err)
+	}
+
+	if exists, _ := afero.Exists(fs, versionPath); exists {
+		t.Errorf("version path should have been removed")
+	}
+	if exists, _ := afero.Exists(fs, phpSourcePath); exists {
+		t.Errorf("php source path should have been removed")
+	}
+	if exists, _ := afero.Exists(fs, opensslSourcePath); exists {
+		t.Errorf("openssl source path should have been removed")
+	}
+	if exists, _ := afero.Exists(fs, opensslSourceDirPath); exists {
+		t.Errorf("openssl source dir path should have been removed")
+	}
+	if exists, _ := afero.Exists(fs, zlibSourcePath); exists {
+		t.Errorf("zlib source path should have been removed")
+	}
+	if exists, _ := afero.Exists(fs, zlibSourceDirPath); exists {
+		t.Errorf("zlib source dir path should have been removed")
+	}
+}
+
 func TestBundlerRepository_FreshClean(t *testing.T) {
 	baseDir := t.TempDir()
 	silo := &domain.Silo{Root: baseDir}
@@ -46,7 +115,7 @@ func TestBundlerRepository_FreshClean(t *testing.T) {
 		fs:   fs,
 	}
 
-	if err := repo.freshClean("php", exactVersion); err != nil {
+	if err := repo.freshClean("php", exactVersion, nil); err != nil {
 		t.Fatalf("freshClean failed: %v", err)
 	}
 
@@ -73,7 +142,7 @@ func TestBundlerRepository_FreshClean_NonExistent(t *testing.T) {
 		fs:   fs,
 	}
 
-	if err := repo.freshClean("php", "9.0.0"); err != nil {
+	if err := repo.freshClean("php", "9.0.0", nil); err != nil {
 		t.Errorf("freshClean should not fail for non-existent paths: %v", err)
 	}
 }
@@ -101,7 +170,7 @@ func TestBundlerRepository_FreshClean_OnlyRemovesPHPVersion(t *testing.T) {
 		fs:   fs,
 	}
 
-	if err := repo.freshClean("php", exactVersion); err != nil {
+	if err := repo.freshClean("php", exactVersion, nil); err != nil {
 		t.Fatalf("freshClean failed: %v", err)
 	}
 
@@ -135,7 +204,7 @@ func TestBundlerRepository_FreshClean_PreservesCache(t *testing.T) {
 		fs:   fs,
 	}
 
-	if err := repo.freshClean("php", exactVersion); err != nil {
+	if err := repo.freshClean("php", exactVersion, nil); err != nil {
 		t.Fatalf("freshClean failed: %v", err)
 	}
 
@@ -174,7 +243,7 @@ func TestBundlerRepository_FreshClean_PreservesOtherSources(t *testing.T) {
 		fs:   fs,
 	}
 
-	if err := repo.freshClean("php", exactVersion); err != nil {
+	if err := repo.freshClean("php", exactVersion, nil); err != nil {
 		t.Fatalf("freshClean failed: %v", err)
 	}
 
@@ -210,7 +279,7 @@ func TestBundlerRepository_FreshClean_PreservesBuildTools(t *testing.T) {
 		fs:   fs,
 	}
 
-	if err := repo.freshClean("php", exactVersion); err != nil {
+	if err := repo.freshClean("php", exactVersion, nil); err != nil {
 		t.Fatalf("freshClean failed: %v", err)
 	}
 

@@ -226,6 +226,28 @@ func (s *bundlerRepository) logBuildFlags(installDir string, configureFlags, cpp
 	}
 }
 
+var cOnlyWarnings = map[string]bool{
+	"-Wno-deprecated-non-prototype":    true,
+	"-Wno-implicit-function-declaration": true,
+	"-Wstrict-prototypes":              true,
+}
+
+func cxxFlagsFromCFlags(cflags []string) []string {
+	cxxflags := make([]string, 0, len(cflags))
+	for _, f := range cflags {
+		if f == "-std=gnu11" {
+			cxxflags = append(cxxflags, "-std=gnu++11")
+		} else if f == "-std=c11" {
+			cxxflags = append(cxxflags, "-std=c++11")
+		} else if cOnlyWarnings[f] {
+			continue
+		} else {
+			cxxflags = append(cxxflags, f)
+		}
+	}
+	return cxxflags
+}
+
 func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, forceCompiler string) error {
 	sourceDir := utils.GetSourceDirPath(s.silo, name, version)
 
@@ -235,14 +257,49 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 		return fmt.Errorf("[forge] failed to create install directory: %w", err)
 	}
 
-	cc, cflags, cxx, err := s.getCompilerForVersion(phpVersion, forceCompiler)
+	cc, cflags, cxx, zigLdFlags, err := s.getCompilerForVersion(phpVersion, forceCompiler)
 	if err != nil {
 		return err
 	}
 
+	var libs []string
+	if len(zigLdFlags) > 0 {
+		for _, f := range zigLdFlags {
+			if strings.HasPrefix(f, "/") && strings.HasSuffix(f, ".a") {
+				libs = append(libs, f)
+			} else {
+				ldFlags = append(ldFlags, f)
+			}
+		}
+	}
+
+	// Note: system include paths (-I/usr/include etc.) are NOT added to CPPFLAGS
+	// because they can conflict with packages that have their own headers (e.g., ICU).
+	// Zig cc uses its own bundled libc headers by default. When system headers are
+	// needed (e.g., curl finding system OpenSSL), the configure flags like
+	// --with-ssl=/usr already provide explicit include paths.
+
 	configureFlags := s.forgeSvc.GetConfigureFlags(name, version)
 
-	s.logBuildFlags(installDir, configureFlags, cppFlags, ldFlags, ldPath, cflags, pkgConfigPaths, cflags, cc, cxx)
+	configureFlags = s.resolveDependencyFlags(name, phpVersion, configureFlags)
+
+	// When using zig cc with system OpenSSL, zig doesn't search /usr/include
+	// by default. We need to explicitly add system include/library paths.
+	if strings.Contains(cc, "zig") && name == "curl" {
+		for _, flag := range configureFlags {
+			if strings.HasPrefix(flag, "--with-ssl=") || strings.HasPrefix(flag, "--with-openssl=") {
+				val := flag[strings.Index(flag, "=")+1:]
+				if val == "/usr" || val == "/usr/local" {
+					cppFlags = append(cppFlags, fmt.Sprintf("-I%s/include", val))
+					ldFlags = append(ldFlags, fmt.Sprintf("-L%s/lib", val))
+				}
+			}
+		}
+	}
+
+	cxxflags := cxxFlagsFromCFlags(cflags)
+
+	s.logBuildFlags(installDir, configureFlags, cppFlags, ldFlags, ldPath, cflags, pkgConfigPaths, cxxflags, cc, cxx)
 
 	compilerName := "gcc"
 	compilerPath := ""
@@ -269,9 +326,10 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 		CC:              cc,
 		CFLAGS:          cflags,
 		CXX:             cxx,
-		CXXFLAGS:        cflags,
+		CXXFLAGS:        cxxflags,
 		PkgConfigPaths:  pkgConfigPaths,
 		Verbose:         s.verbose,
+		Libs:            libs,
 	}
 
 	_, err = s.forgeSvc.Build(config, sourceDir)
@@ -288,6 +346,117 @@ var buildToolsList = map[string]bool{
 	"flex":     true,
 	"re2c":     true,
 	"zig":      true,
+}
+
+var systemPrefixes = []string{"/usr", "/usr/local"}
+
+func findSystemPrefix(headerRelPath string) string {
+	for _, prefix := range systemPrefixes {
+		if _, err := os.Stat(filepath.Join(prefix, headerRelPath)); err == nil {
+			return prefix
+		}
+	}
+	return ""
+}
+
+func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flags []string) []string {
+	result := make([]string, 0, len(flags))
+	for _, flag := range flags {
+		if flag == "--with-openssl" || flag == "--with-ssl" {
+			resolved := false
+			deps, err := s.assemblerSvc.GetDependencies("php", phpVersion)
+			if err == nil {
+				for _, dep := range deps {
+					if dep.Name == "openssl" {
+						ver := dep.Version
+						if idx := strings.Index(ver, "|"); idx != -1 {
+							ver = ver[:idx]
+						}
+						opensslPath := utils.DependencyPath(s.silo, phpVersion, "openssl", ver)
+						if fi, err := os.Stat(opensslPath); err == nil && fi.IsDir() {
+							includeDir := filepath.Join(opensslPath, "include", "openssl")
+							if _, err := os.Stat(includeDir); err == nil {
+								result = append(result, "--with-ssl="+opensslPath)
+								resolved = true
+							}
+						}
+						break
+					}
+				}
+			}
+			if !resolved {
+				depPath := utils.DependencyPath(s.silo, phpVersion, "openssl", "")
+				if entries, err := os.ReadDir(depPath); err == nil && len(entries) > 0 {
+					for _, entry := range entries {
+						candidatePath := filepath.Join(depPath, entry.Name())
+						includeDir := filepath.Join(candidatePath, "include", "openssl")
+						if _, err := os.Stat(includeDir); err == nil {
+							result = append(result, "--with-ssl="+candidatePath)
+							resolved = true
+							break
+						}
+					}
+				}
+			}
+			if !resolved {
+				if prefix := findSystemPrefix(filepath.Join("include", "openssl", "ssl.h")); prefix != "" {
+					result = append(result, "--with-ssl="+prefix)
+					resolved = true
+				}
+			}
+			if !resolved {
+				result = append(result, flag)
+			}
+		} else if flag == "--with-zlib" && (name == "libxml2" || name == "curl") {
+			resolved := false
+			deps, err := s.assemblerSvc.GetDependencies("php", phpVersion)
+			if err == nil {
+				for _, dep := range deps {
+					if dep.Name == "zlib" {
+						ver := dep.Version
+						if idx := strings.Index(ver, "|"); idx != -1 {
+							ver = ver[:idx]
+						}
+						zlibPath := utils.DependencyPath(s.silo, phpVersion, "zlib", ver)
+						if fi, err := os.Stat(zlibPath); err == nil && fi.IsDir() {
+							includeFile := filepath.Join(zlibPath, "include", "zlib.h")
+							if _, err := os.Stat(includeFile); err == nil {
+								result = append(result, "--with-zlib="+zlibPath)
+								resolved = true
+							}
+						}
+						break
+					}
+				}
+			}
+			if !resolved {
+				depPath := utils.DependencyPath(s.silo, phpVersion, "zlib", "")
+				if entries, err := os.ReadDir(depPath); err == nil && len(entries) > 0 {
+					for _, entry := range entries {
+						candidatePath := filepath.Join(depPath, entry.Name())
+						includeFile := filepath.Join(candidatePath, "include", "zlib.h")
+						if _, err := os.Stat(includeFile); err == nil {
+							result = append(result, "--with-zlib="+candidatePath)
+							resolved = true
+							break
+						}
+					}
+				}
+			}
+			if !resolved {
+				if prefix := findSystemPrefix(filepath.Join("include", "zlib.h")); prefix != "" {
+					result = append(result, "--with-zlib="+prefix)
+					resolved = true
+				}
+			}
+			if !resolved {
+				result = append(result, flag)
+			}
+		} else {
+			result = append(result, flag)
+		}
+	}
+	return result
 }
 
 func (s *bundlerRepository) getInstallDir(name, version, phpVersion string) string {

@@ -13,20 +13,40 @@ func (r *ForgeRepository) makeWithName(sourcePath string, jobs int, env []string
 	}
 
 	ctx := utils.NewExecContext(verbose)
-	jobs = utils.GetJobs(jobs)
 
-	mk := ctx.Command("make", fmt.Sprintf("-j%d", jobs))
+	if pkgName == "automake" || pkgName == "autoconf" || pkgName == "libtool" {
+		jobs = 1
+	} else {
+		jobs = utils.GetJobs(jobs)
+	}
+
+	args := []string{fmt.Sprintf("-j%d", jobs)}
+	if pkgName == "automake" || pkgName == "autoconf" || pkgName == "libtool" {
+		args = append(args, "MAKEINFO=true", "HELP2MAN=true")
+	}
+
+	mk := ctx.Command("make", args...)
 	mk.Dir = sourcePath
 	mk.Env = env
 
 	return ctx.Run(mk)
 }
 
-func (r *ForgeRepository) makeInstall(sourcePath string, jobs int, env []string, verbose bool) error {
+func (r *ForgeRepository) makeInstall(sourcePath string, jobs int, env []string, verbose bool, pkgName string) error {
 	ctx := utils.NewExecContext(verbose)
 	jobs = utils.GetJobs(jobs)
 
-	mkInstall := ctx.Command("make", fmt.Sprintf("-j%d", jobs), "install")
+	installTarget := "install"
+	if pkgName == "openssl" || pkgName == "ossl" {
+		installTarget = "install_sw"
+	}
+
+	args := []string{fmt.Sprintf("-j%d", jobs), installTarget}
+	if pkgName == "automake" || pkgName == "autoconf" || pkgName == "libtool" {
+		args = append(args, "MAKEINFO=true", "HELP2MAN=true")
+	}
+
+	mkInstall := ctx.Command("make", args...)
 	mkInstall.Dir = sourcePath
 	mkInstall.Env = env
 

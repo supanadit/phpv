@@ -39,7 +39,7 @@ func (r *ForgeRepository) buildCMake(sourcePath, prefix string, config domain.Fo
 		return domain.Forge{}, fmt.Errorf("make failed: %w", err)
 	}
 
-	if err := r.makeInstall(buildDir, jobs, env, config.Verbose); err != nil {
+	if err := r.makeInstall(buildDir, jobs, env, config.Verbose, config.Name); err != nil {
 		return domain.Forge{}, fmt.Errorf("make install failed: %w", err)
 	}
 

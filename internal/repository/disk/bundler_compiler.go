@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/supanadit/phpv/internal/utils"
 )
@@ -55,6 +56,43 @@ func findSystemCXX() string {
 	return ""
 }
 
+func findSystemLibStdCxx() []string {
+	var flags []string
+
+	libstdcxxA, err := exec.Command("g++", "-print-file-name=libstdc++.a").Output()
+	if err == nil {
+		libPath := strings.TrimSpace(string(libstdcxxA))
+		if _, err := os.Stat(libPath); err == nil {
+			flags = append(flags, libPath)
+		}
+	}
+
+	libgccEhA, err := exec.Command("g++", "-print-file-name=libgcc_eh.a").Output()
+	if err == nil {
+		libPath := strings.TrimSpace(string(libgccEhA))
+		if _, err := os.Stat(libPath); err == nil {
+			flags = append(flags, libPath)
+		}
+	}
+
+	if len(flags) > 0 {
+		return flags
+	}
+
+	libstdcxxSo, err := exec.Command("g++", "-print-file-name=libstdc++.so").Output()
+	if err == nil {
+		libPath := strings.TrimSpace(string(libstdcxxSo))
+		if idx := strings.LastIndex(libPath, "/"); idx != -1 {
+			dir := libPath[:idx]
+			if _, err := os.Stat(dir); err == nil {
+				flags = append(flags, "-L"+dir, "-lstdc++")
+			}
+		}
+	}
+
+	return flags
+}
+
 func (s *bundlerRepository) needsAlternativeCC(phpVersion string, forceCompiler string) bool {
 	if forceCompiler == "zig" {
 		return true
@@ -72,16 +110,21 @@ func (s *bundlerRepository) needsAlternativeCC(phpVersion string, forceCompiler 
 	return false
 }
 
-func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompiler string) (cc string, cflags []string, cxx string, err error) {
+func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompiler string) (cc string, cflags []string, cxx string, ldFlags []string, err error) {
 	if !s.needsAlternativeCC(phpVersion, forceCompiler) {
-		return "", []string{}, "", nil
+		return "", []string{}, "", nil, nil
 	}
 
 	v := utils.ParseVersion(phpVersion)
 	target := getZigTarget()
 
 	if v.Major < 8 {
-		target = getZigTargetForGlibc("2.27")
+		target = getZigTargetForGlibc("2.39")
+	}
+
+	ldFlags = nil
+	if strings.Contains(target, "linux") {
+		ldFlags = findSystemLibStdCxx()
 	}
 
 	if zigPath := os.Getenv("PHPV_ZIG_PATH"); zigPath != "" {
@@ -90,7 +133,7 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 			if systemCxx == "" {
 				systemCxx = zigPath + " c++ -target " + target
 			}
-			return zigPath + " cc -target " + target, []string{"-std=gnu11", "-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"}, systemCxx, nil
+			return zigPath + " cc -target " + target, []string{"-std=gnu11", "-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"}, systemCxx, ldFlags, nil
 		}
 	}
 
@@ -102,7 +145,7 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 			zigVersion = "0.13.0"
 		}
 		if err := s.installBuildTool("zig", zigVersion, phpVersion); err != nil {
-			return "", nil, "", fmt.Errorf("[bundler] failed to install zig: %w", err)
+			return "", nil, "", nil, fmt.Errorf("[bundler] failed to install zig: %w", err)
 		}
 		zigBinary = utils.GetZigCompilerPath(s.silo.Root, phpVersion)
 	} else {
@@ -115,5 +158,6 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 	if systemCxx == "" {
 		systemCxx = zigBinary + " c++ -target " + target
 	}
-	return zigBinary + " cc -target " + target, []string{"-std=gnu11", "-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"}, systemCxx, nil
+	cflags = []string{"-std=gnu11", "-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"}
+	return zigBinary + " cc -target " + target, cflags, systemCxx, ldFlags, nil
 }

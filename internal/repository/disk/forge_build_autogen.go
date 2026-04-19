@@ -50,7 +50,7 @@ func (r *ForgeRepository) buildAutogen(sourcePath, prefix string, config domain.
 		return domain.Forge{}, err
 	}
 
-	if err := r.makeInstall(sourcePath, jobs, env, config.Verbose); err != nil {
+	if err := r.makeInstall(sourcePath, jobs, env, config.Verbose, config.Name); err != nil {
 		return domain.Forge{}, err
 	}
 

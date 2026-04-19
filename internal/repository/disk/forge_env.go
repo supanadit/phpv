@@ -65,29 +65,44 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 	}
 
 	if len(config.CPPFLAGS) > 0 {
-		env = append(env, "CPPFLAGS="+strings.Join(config.CPPFLAGS, " "))
+		env = setEnvVar(env, "CPPFLAGS", strings.Join(config.CPPFLAGS, " "))
 	}
 	if len(config.LDFLAGS) > 0 {
-		env = append(env, "LDFLAGS="+strings.Join(config.LDFLAGS, " "))
+		env = setEnvVar(env, "LDFLAGS", strings.Join(config.LDFLAGS, " "))
 	}
 	if len(config.LD_LIBRARY_PATH) > 0 {
-		env = append(env, "LD_LIBRARY_PATH="+strings.Join(config.LD_LIBRARY_PATH, ":"))
+		env = setEnvVar(env, "LD_LIBRARY_PATH", strings.Join(config.LD_LIBRARY_PATH, ":"))
 	}
 	if config.CC != "" {
-		env = append(env, "CC="+config.CC)
+		env = setEnvVar(env, "CC", config.CC)
 	}
 	if len(config.CFLAGS) > 0 {
-		env = append(env, "CFLAGS="+strings.Join(config.CFLAGS, " "))
+		env = setEnvVar(env, "CFLAGS", strings.Join(config.CFLAGS, " "))
 	}
 	if config.CXX != "" {
-		env = append(env, "CXX="+config.CXX)
+		env = setEnvVar(env, "CXX", config.CXX)
 	}
 	if len(config.CXXFLAGS) > 0 {
-		env = append(env, "CXXFLAGS="+strings.Join(config.CXXFLAGS, " "))
+		env = setEnvVar(env, "CXXFLAGS", strings.Join(config.CXXFLAGS, " "))
 	}
 
 	// Set autotools environment variables to use bundled versions
 	r.setAutotoolsEnv(config, buildToolsBinPath, &env)
+
+	if len(config.Libs) > 0 {
+		existingLibs := ""
+		for _, v := range env {
+			if after, ok := strings.CutPrefix(v, "LIBS="); ok {
+				existingLibs = after
+				break
+			}
+		}
+		libsValue := strings.Join(config.Libs, " ")
+		if existingLibs != "" {
+			libsValue = libsValue + " " + existingLibs
+		}
+		env = setEnvVar(env, "LIBS", libsValue)
+	}
 
 	for k, v := range config.Env {
 		env = append(env, k+"="+v)
@@ -201,6 +216,17 @@ func hasEnvVar(env []string, prefix string) bool {
 	return false
 }
 
+func setEnvVar(env []string, key, value string) []string {
+	prefix := key + "="
+	for i, v := range env {
+		if strings.HasPrefix(v, prefix) {
+			env[i] = prefix + value
+			return env
+		}
+	}
+	return append(env, prefix+value)
+}
+
 func (r *ForgeRepository) buildToolsBinPath(buildToolsPath string) string {
 	var binPaths []string
 
@@ -257,6 +283,7 @@ func (r *ForgeRepository) chmodBuildScripts(sourcePath string) {
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "build")).Run()
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "ext")).Run()
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "build-aux")).Run()
+	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "lib")).Run()
 
 	autotoolsScripts := []string{
 		"install-sh",
@@ -290,4 +317,35 @@ func (r *ForgeRepository) touchAutotools(sourcePath string) {
 			os.Chtimes(file, time.Now(), time.Now())
 		}
 	}
+}
+
+// touchAllGeneratedFiles touches all generated files in the source tree to prevent
+// make from regenerating them during build. This is needed for packages like
+// automake that ship pre-generated autotools files but have timestamp issues.
+// Strategy: touch .am files first, then .in files, so .in files are always newer.
+func (r *ForgeRepository) touchAllGeneratedFiles(sourcePath string) {
+	now := time.Now()
+	// First pass: touch .am files
+	filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !info.IsDir() && strings.HasSuffix(path, ".am") {
+			os.Chtimes(path, now, now)
+		}
+		return nil
+	})
+	// Small delay to ensure .in files are newer
+	time.Sleep(time.Second)
+	now = time.Now()
+	// Second pass: touch .in files
+	filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !info.IsDir() && strings.HasSuffix(path, ".in") {
+			os.Chtimes(path, now, now)
+		}
+		return nil
+	})
 }

@@ -26,5 +26,6 @@ type ForgeConfig struct {
 	CXX             string
 	CXXFLAGS        []string
 	PkgConfigPaths  []string
+	Libs            []string
 	Verbose         bool
 }

@@ -27,7 +27,7 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 		}
 	}
 
-// When using Zig as CC, create wrapper scripts for ar, ranlib, nm, and ld
+	// When using Zig as CC, create wrapper scripts for ar, ranlib, nm, and ld
 	// so that configure scripts can discover them in PATH.
 	if strings.Contains(config.CC, "zig") {
 		zigBinary := strings.Split(config.CC, " ")[0] // extract zig binary path from "zig cc -target ..."

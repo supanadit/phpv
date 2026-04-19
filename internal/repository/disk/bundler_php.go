@@ -113,52 +113,52 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 			return err
 		}
 
-if len(zigLdFlags) > 0 {
-		for _, f := range zigLdFlags {
-			if strings.HasPrefix(f, "/") && strings.HasSuffix(f, ".a") {
-				// static libs go to LIBS, not LDFLAGS
-			} else {
-				ldFlags = append(ldFlags, f)
+		if len(zigLdFlags) > 0 {
+			for _, f := range zigLdFlags {
+				if strings.HasPrefix(f, "/") && strings.HasSuffix(f, ".a") {
+					// static libs go to LIBS, not LDFLAGS
+				} else {
+					ldFlags = append(ldFlags, f)
+				}
 			}
 		}
-	}
 
-	cxxflags := cxxFlagsFromCFlags(cflags)
+		cxxflags := cxxFlagsFromCFlags(cflags)
 
-	s.logBuildFlags(installDir, configureFlags, cppFlags, ldFlags, ldPath, cflags, pkgConfigPaths, cxxflags, cc, cxx)
+		s.logBuildFlags(installDir, configureFlags, cppFlags, ldFlags, ldPath, cflags, pkgConfigPaths, cxxflags, cc, cxx)
 
-	compilerName := "gcc"
-	compilerPath := ""
-	if strings.Contains(cc, "zig") {
-		compilerName = "zig"
-		compilerPath = strings.Split(cc, " ")[0]
-	}
-	atMsg := ""
-	if compilerPath != "" {
-		atMsg = " at " + compilerPath
-	}
-	compileMsg := fmt.Sprintf("  Compiling php@%s with %s%s", version, compilerName, atMsg)
-	if len(extensions) > 0 {
-		compileMsg += fmt.Sprintf(" and extension %s", strings.Join(extensions, ","))
-	}
-	s.logInfo("%s", compileMsg)
+		compilerName := "gcc"
+		compilerPath := ""
+		if strings.Contains(cc, "zig") {
+			compilerName = "zig"
+			compilerPath = strings.Split(cc, " ")[0]
+		}
+		atMsg := ""
+		if compilerPath != "" {
+			atMsg = " at " + compilerPath
+		}
+		compileMsg := fmt.Sprintf("  Compiling php@%s with %s%s", version, compilerName, atMsg)
+		if len(extensions) > 0 {
+			compileMsg += fmt.Sprintf(" and extension %s", strings.Join(extensions, ","))
+		}
+		s.logInfo("%s", compileMsg)
 
-	config := domain.ForgeConfig{
-		Name:            name,
-		Version:         version,
-		Prefix:          installDir,
-		Jobs:            s.jobs,
-		CPPFLAGS:        cppFlags,
-		LDFLAGS:         ldFlags,
-		LD_LIBRARY_PATH: ldPath,
-		ConfigureFlags:  configureFlags,
-		CC:              cc,
-		CFLAGS:          cflags,
-		CXX:             cxx,
-		CXXFLAGS:        cxxflags,
-		PkgConfigPaths:  pkgConfigPaths,
-		Verbose:         s.verbose,
-	}
+		config := domain.ForgeConfig{
+			Name:            name,
+			Version:         version,
+			Prefix:          installDir,
+			Jobs:            s.jobs,
+			CPPFLAGS:        cppFlags,
+			LDFLAGS:         ldFlags,
+			LD_LIBRARY_PATH: ldPath,
+			ConfigureFlags:  configureFlags,
+			CC:              cc,
+			CFLAGS:          cflags,
+			CXX:             cxx,
+			CXXFLAGS:        cxxflags,
+			PkgConfigPaths:  pkgConfigPaths,
+			Verbose:         s.verbose,
+		}
 
 		sourceDir := utils.GetSourceDirPath(s.silo, name, version)
 		_, err = s.forgeSvc.Build(config, sourceDir)

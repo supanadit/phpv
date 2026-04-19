@@ -254,9 +254,9 @@ func (s *bundlerRepository) logBuildFlags(installDir string, configureFlags, cpp
 }
 
 var cOnlyWarnings = map[string]bool{
-	"-Wno-deprecated-non-prototype":    true,
+	"-Wno-deprecated-non-prototype":      true,
 	"-Wno-implicit-function-declaration": true,
-	"-Wstrict-prototypes":              true,
+	"-Wstrict-prototypes":                true,
 }
 
 func cxxFlagsFromCFlags(cflags []string) []string {

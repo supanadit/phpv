@@ -5,3 +5,5 @@ phpv-test
 .crush
 .opencode/*
 .pecl/*
+.claw
+.sandbox-home

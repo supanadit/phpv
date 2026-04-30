@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -239,6 +240,12 @@ func (r *UnloadRepository) extractTar(tr *tar.Reader, destination string, stripP
 		f.Close()
 		if err != nil {
 			return extracted, err
+		}
+
+		if header.Mode != 0 {
+			if chmodErr := r.fs.Chmod(path, os.FileMode(header.Mode)); chmodErr != nil {
+				return extracted, chmodErr
+			}
 		}
 		extracted++
 	}

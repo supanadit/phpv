@@ -259,6 +259,8 @@ func (s *bundlerRepository) resolveExtensionDependencies(extensions []string, ph
 		return nil
 	}
 
+	extensions = s.expandImpliedExtensions(extensions)
+
 	depMap := make(map[string]domain.Dependency)
 	seen := make(map[string]bool)
 
@@ -276,6 +278,30 @@ func (s *bundlerRepository) resolveExtensionDependencies(extensions []string, ph
 	}
 
 	return deps
+}
+
+func (s *bundlerRepository) expandImpliedExtensions(extensions []string) []string {
+	visited := make(map[string]bool)
+	var result []string
+
+	var add func(name string)
+	add = func(name string) {
+		if visited[name] {
+			return
+		}
+		visited[name] = true
+		result = append(result, name)
+		if extDef, ok := s.flagResolverSvc.GetExtensionDef(name); ok {
+			for _, implied := range extDef.Implied {
+				add(implied)
+			}
+		}
+	}
+
+	for _, ext := range extensions {
+		add(ext)
+	}
+	return result
 }
 
 func (s *bundlerRepository) freshClean(name, exactVersion string, levels [][]domain.Dependency) error {

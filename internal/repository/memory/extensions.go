@@ -187,6 +187,7 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 		Flag:      "--with-pdo-mysql",
 		MinPHP:    "5.0",
 		Conflicts: []string{"mysql", "mysqli"},
+		Implied:   []string{"zlib"},
 	},
 	"pdo_oci": {
 		Flag:   "--with-pdo-oci",

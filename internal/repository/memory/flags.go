@@ -19,7 +19,7 @@ var packageFlags = map[string][]string{
 	"m4":        {"--disable-maintainer-mode"},
 	"php":       {"--disable-all", "--enable-cli", "--with-openssl", "--with-curl", "--with-zlib", "--with-libxml2", "--with-onig", "--disable-maintainer-mode"},
 	"openssl":   {"shared", "no-ssl3", "no-tests"},
-	"curl":      {"--with-ssl", "--without-brotli", "--disable-ldap", "--without-libpsl"},
+	"curl":      {"--with-ssl", "--without-brotli", "--disable-ldap", "--without-libpsl", "--without-libidn2", "--without-zstd", "--without-nghttp2", "--without-zlib"},
 	"libxml2":   {"--disable-shared", "--enable-static", "--without-lzma", "--without-python", "--disable-dependency-tracking", "--with-zlib"},
 	"zlib":      {},
 	"oniguruma": {},
@@ -62,6 +62,7 @@ func (r *flagRepo) GetPHPConfigureFlags(phpVersion string, extensions []string) 
 		return flags
 	}
 
+	extensions = r.expandImplied(extensions)
 	v := utils.ParseVersion(phpVersion)
 
 	for _, ext := range extensions {
@@ -101,6 +102,30 @@ func (r *flagRepo) GetExtensionDependencyWithVersion(extName, phpVersion string)
 
 func (r *flagRepo) ValidateExtensions(extensions []string, phpVersion string) ([]string, error) {
 	return r.extRepo.ValidateExtensions(extensions, phpVersion)
+}
+
+func (r *flagRepo) expandImplied(extensions []string) []string {
+	visited := make(map[string]bool)
+	var result []string
+
+	var add func(name string)
+	add = func(name string) {
+		if visited[name] {
+			return
+		}
+		visited[name] = true
+		result = append(result, name)
+		if extDef, ok := r.extRepo.GetExtensionDef(name); ok {
+			for _, implied := range extDef.Implied {
+				add(implied)
+			}
+		}
+	}
+
+	for _, ext := range extensions {
+		add(ext)
+	}
+	return result
 }
 
 func (r *flagRepo) CheckExtensionConflicts(extensions []string) ([]string, [][]string) {

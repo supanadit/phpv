@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/domain"
@@ -81,6 +82,8 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 			if _, err := s.unloadSvc.Unpack(archive, sourceDir); err != nil {
 				return fmt.Errorf("failed to extract PHP source: %w", err)
 			}
+
+			s.touchPHPGeneratedFiles(sourceDir)
 		}
 		fallthrough
 
@@ -171,4 +174,38 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 	}
 
 	return nil
+}
+
+func (s *bundlerRepository) touchPHPGeneratedFiles(sourceDir string) {
+	now := time.Now()
+	zendDir := filepath.Join(sourceDir, "Zend")
+
+	generatedFiles := []string{
+		filepath.Join(zendDir, "zend_vm_execute.h"),
+		filepath.Join(zendDir, "zend_vm_opcodes.c"),
+		filepath.Join(zendDir, "zend_vm_opcodes.h"),
+		filepath.Join(zendDir, "zend_vm_handlers.h"),
+		filepath.Join(zendDir, "zend_vm_trace_handlers.h"),
+		filepath.Join(zendDir, "zend_vm_trace_lines.h"),
+		filepath.Join(zendDir, "zend_vm_trace_map.h"),
+	}
+
+	for _, f := range generatedFiles {
+		if _, err := os.Stat(f); err == nil {
+			os.Chtimes(f, now, now)
+		}
+	}
+
+	time.Sleep(time.Second)
+	now = time.Now()
+	generatorFiles := []string{
+		filepath.Join(zendDir, "zend_vm_gen.php"),
+		filepath.Join(zendDir, "zend_vm_def.h"),
+		filepath.Join(zendDir, "zend_vm_execute.skl"),
+	}
+	for _, f := range generatorFiles {
+		if _, err := os.Stat(f); err == nil {
+			os.Chtimes(f, now.Add(-time.Second), now.Add(-time.Second))
+		}
+	}
 }

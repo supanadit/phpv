@@ -7,6 +7,7 @@ type ExtensionDef struct {
 	Conflicts []string
 	Package   string
 	Versions  []VersionConstraintDef
+	Implied   []string
 }
 
 type VersionConstraintDef struct {

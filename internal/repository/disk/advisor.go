@@ -317,6 +317,15 @@ func (r *AdvisorRepository) shouldBuildFromSource(name, phpVersion string) bool 
 		}
 	}
 
+	// Fallback for extension-level deps not listed in PHP's assembler dependencies
+	// (PHP >=8.2.0 has empty assembler deps; extension deps come from --ext flags).
+	if pkgConfigName, isLib := libraryPackages[name]; isLib {
+		_, _, systemVersion := r.checkSystemLibrary(name, pkgConfigName)
+		if systemVersion == "" {
+			return true
+		}
+	}
+
 	return false
 }
 

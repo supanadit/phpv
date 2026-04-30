@@ -111,8 +111,10 @@ func (s *bundlerRepository) needsAlternativeCC(phpVersion string, forceCompiler 
 }
 
 func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompiler string) (cc string, cflags []string, cxx string, ldFlags []string, err error) {
+	systemCxx := findSystemCXX()
+
 	if !s.needsAlternativeCC(phpVersion, forceCompiler) {
-		return "", []string{}, "", nil, nil
+		return "", []string{}, systemCxx, nil, nil
 	}
 
 	v := utils.ParseVersion(phpVersion)
@@ -129,7 +131,6 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 
 	if zigPath := os.Getenv("PHPV_ZIG_PATH"); zigPath != "" {
 		if _, err := os.Stat(zigPath); err == nil {
-			systemCxx := findSystemCXX()
 			if systemCxx == "" {
 				systemCxx = zigPath + " c++ -target " + target
 			}
@@ -154,7 +155,6 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 		}
 	}
 
-	systemCxx := findSystemCXX()
 	if systemCxx == "" {
 		systemCxx = zigBinary + " c++ -target " + target
 	}

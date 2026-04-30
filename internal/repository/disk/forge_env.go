@@ -40,9 +40,23 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 		}
 	}
 
+	// Strip the phpv shim bin directory from PATH so that build tools
+	// (e.g. make, autoconf) do not accidentally invoke phpv shims (php,
+	// phpize, ...) instead of a real PHP binary. The shims would fail with
+	// "No PHP version selected" because no version is active yet during an
+	// install. We filter both "$siloRoot/bin" and any path containing
+	// "/.phpv/bin" to be safe.
+	phpvBinDir := filepath.Join(r.siloRepo.silo.Root, "bin")
 	for i, v := range env {
 		if after, ok := strings.CutPrefix(v, "PATH="); ok {
-			env[i] = "PATH=" + buildToolsBinPath + ":" + after
+			var filtered []string
+			for _, part := range strings.Split(after, ":") {
+				if part == phpvBinDir || strings.HasSuffix(part, "/.phpv/bin") {
+					continue
+				}
+				filtered = append(filtered, part)
+			}
+			env[i] = "PATH=" + buildToolsBinPath + ":" + strings.Join(filtered, ":")
 			break
 		}
 	}
@@ -284,6 +298,7 @@ func (r *ForgeRepository) chmodBuildScripts(sourcePath string) {
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "ext")).Run()
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "build-aux")).Run()
 	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "lib")).Run()
+	exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, "scripts")).Run()
 
 	autotoolsScripts := []string{
 		"install-sh",

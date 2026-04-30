@@ -40,7 +40,13 @@ if [ ! -d "$PHPV_OUTPUT" ]; then
     exit 1
 fi
 export PHPV_CURRENT="$PHPV_VERSION"
-export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:${LD_LIBRARY_PATH}"
+PHPV_DEPS="$PHPV_ROOT/versions/$PHPV_VERSION/dependency"
+if [ -d "$PHPV_DEPS" ]; then
+    for dep_lib in "$PHPV_DEPS"/*/*/lib; do
+        [ -d "$dep_lib" ] && LD_LIBRARY_PATH="$dep_lib:$LD_LIBRARY_PATH"
+    done
+fi
+export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:$LD_LIBRARY_PATH"
 exec "${PHPV_OUTPUT}/bin/%s" "$@"
 `
 
@@ -81,7 +87,13 @@ if [ ! -d "$PHPV_OUTPUT" ]; then
     exit 1
 fi
 export PHPV_CURRENT="$PHPV_VERSION"
-export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:${LD_LIBRARY_PATH}"
+PHPV_DEPS="$PHPV_ROOT/versions/$PHPV_VERSION/dependency"
+if [ -d "$PHPV_DEPS" ]; then
+    for dep_lib in "$PHPV_DEPS"/*/*/lib; do
+        [ -d "$dep_lib" ] && LD_LIBRARY_PATH="$dep_lib:$LD_LIBRARY_PATH"
+    done
+fi
+export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:$LD_LIBRARY_PATH"
 COMPOSER_PATH="{{ .ComposerPath }}"
 if [ -z "$COMPOSER_PATH" ]; then
     echo "Error: composer not found. Please install composer first." >&2
@@ -128,7 +140,13 @@ if [ ! -d "$PHPV_OUTPUT" ]; then
     exit 1
 fi
 export PHPV_CURRENT="$PHPV_VERSION"
-export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:${LD_LIBRARY_PATH}"
+PHPV_DEPS="$PHPV_ROOT/versions/$PHPV_VERSION/dependency"
+if [ -d "$PHPV_DEPS" ]; then
+    for dep_lib in "$PHPV_DEPS"/*/*/lib; do
+        [ -d "$dep_lib" ] && LD_LIBRARY_PATH="$dep_lib:$LD_LIBRARY_PATH"
+    done
+fi
+export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:$LD_LIBRARY_PATH"
 PIE_PATH="{{ .PiePath }}"
 if [ -z "$PIE_PATH" ]; then
     echo "Error: pie not found. Please install pie first." >&2

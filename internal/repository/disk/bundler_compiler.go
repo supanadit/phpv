@@ -111,9 +111,8 @@ func (s *bundlerRepository) needsAlternativeCC(phpVersion string, forceCompiler 
 }
 
 func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompiler string) (cc string, cflags []string, cxx string, ldFlags []string, err error) {
-	systemCxx := findSystemCXX()
-
 	if !s.needsAlternativeCC(phpVersion, forceCompiler) {
+		systemCxx := findSystemCXX()
 		return "", []string{}, systemCxx, nil, nil
 	}
 
@@ -124,17 +123,10 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 		target = getZigTargetForGlibc("2.39")
 	}
 
-	ldFlags = nil
-	if strings.Contains(target, "linux") {
-		ldFlags = findSystemLibStdCxx()
-	}
-
 	if zigPath := os.Getenv("PHPV_ZIG_PATH"); zigPath != "" {
 		if _, err := os.Stat(zigPath); err == nil {
-			if systemCxx == "" {
-				systemCxx = zigPath + " c++ -target " + target
-			}
-			return zigPath + " cc -target " + target, []string{"-std=gnu11", "-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"}, systemCxx, ldFlags, nil
+			cxx = zigPath + " c++ -target " + target
+			return zigPath + " cc -target " + target, []string{"-std=gnu11", "-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"}, cxx, nil, nil
 		}
 	}
 
@@ -155,9 +147,7 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 		}
 	}
 
-	if systemCxx == "" {
-		systemCxx = zigBinary + " c++ -target " + target
-	}
+	cxx = zigBinary + " c++ -target " + target
 	cflags = []string{"-std=gnu11", "-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"}
-	return zigBinary + " cc -target " + target, cflags, systemCxx, ldFlags, nil
+	return zigBinary + " cc -target " + target, cflags, cxx, nil, nil
 }

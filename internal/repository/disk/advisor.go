@@ -177,7 +177,7 @@ func (r *AdvisorRepository) checkHeaderExists(name string) bool {
 		"openssl":   {"/usr/include/openssl/ssl.h"},
 		"curl":      {"/usr/include/curl/curl.h"},
 		"zlib":      {"/usr/include/zlib.h"},
-		"oniguruma": {"/usr/include/oniguruma/onigmo.h", "/usr/include/oniguruma/oniguruma.h"},
+		"oniguruma": {"/usr/include/oniguruma/onigmo.h", "/usr/include/oniguruma/oniguruma.h", "/usr/include/oniguruma.h"},
 	}
 
 	paths, ok := headerPaths[name]
@@ -307,12 +307,12 @@ func (r *AdvisorRepository) shouldBuildFromSource(name, phpVersion string) bool 
 			return false
 		}
 
-		_, _, systemVersion := r.checkSystemLibrary(name, pkgConfigName)
-		if systemVersion == "" {
+		available, _, systemVersion := r.checkSystemLibrary(name, pkgConfigName)
+		if !available {
 			return true
 		}
 
-		if !utils.MatchVersionRange(constraint, systemVersion) {
+		if systemVersion != "" && !utils.MatchVersionRange(constraint, systemVersion) {
 			return true
 		}
 	}
@@ -320,8 +320,8 @@ func (r *AdvisorRepository) shouldBuildFromSource(name, phpVersion string) bool 
 	// Fallback for extension-level deps not listed in PHP's assembler dependencies
 	// (PHP >=8.2.0 has empty assembler deps; extension deps come from --ext flags).
 	if pkgConfigName, isLib := libraryPackages[name]; isLib {
-		_, _, systemVersion := r.checkSystemLibrary(name, pkgConfigName)
-		if systemVersion == "" {
+		available, _, _ := r.checkSystemLibrary(name, pkgConfigName)
+		if !available {
 			return true
 		}
 	}

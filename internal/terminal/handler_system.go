@@ -400,7 +400,7 @@ func (h *TerminalHandler) doctorCheckSystemLibs(osInfo utils.OSInfo) []DoctorChe
 		{"openssl", "openssl", []string{"/usr/include/openssl/ssl.h"}},
 		{"curl", "libcurl", []string{"/usr/include/curl/curl.h"}},
 		{"zlib", "zlib", []string{"/usr/include/zlib.h"}},
-		{"oniguruma", "oniguruma", []string{"/usr/include/oniguruma/onigmo.h", "/usr/include/oniguruma/oniguruma.h"}},
+		{"oniguruma", "oniguruma", []string{"/usr/include/oniguruma/onigmo.h", "/usr/include/oniguruma/oniguruma.h", "/usr/include/oniguruma.h"}},
 		{"icu", "icu-uc", []string{"/usr/include/unicode/umachine.h"}},
 	}
 
@@ -408,10 +408,15 @@ func (h *TerminalHandler) doctorCheckSystemLibs(osInfo utils.OSInfo) []DoctorChe
 	for _, lib := range libs {
 		item := DoctorCheckItem{Name: lib.name}
 
-		// Try pkg-config first
+		// Try pkg-config with system paths (same logic as advisor's PkgConfigExists)
+		sysPkgPaths := utils.GetSystemPkgConfigPaths()
+		pkgEnv := append(os.Environ(), "PKG_CONFIG_PATH="+strings.Join(sysPkgPaths, ":"))
+
 		cmd := exec.Command("pkg-config", "--exists", lib.pkgConfig)
+		cmd.Env = pkgEnv
 		if cmd.Run() == nil {
 			verCmd := exec.Command("pkg-config", "--modversion", lib.pkgConfig)
+			verCmd.Env = pkgEnv
 			if verOut, err := verCmd.Output(); err == nil {
 				item.Version = strings.TrimSpace(string(verOut))
 			}

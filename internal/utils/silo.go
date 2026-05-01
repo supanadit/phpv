@@ -97,6 +97,7 @@ func GetSystemPkgConfigPaths() []string {
 	var paths []string
 
 	basePaths := []string{
+		"/usr/lib64/pkgconfig",
 		"/usr/lib/pkgconfig",
 		"/usr/share/pkgconfig",
 		"/usr/local/lib/pkgconfig",

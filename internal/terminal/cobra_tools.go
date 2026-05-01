@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/supanadit/phpv/internal/utils"
 )
 
 func registerToolsCommands(root *cobra.Command, handler *TerminalHandler) {
@@ -78,22 +79,74 @@ func registerToolsCommands(root *cobra.Command, handler *TerminalHandler) {
 	}
 
 	doctorCmd := &cobra.Command{
-		Use:   "doctor",
+		Use:   "doctor [version]",
 		Short: "Check system dependencies",
-		Long:  `Check if the system has all the required dependencies for building PHP.`,
-		Args:  cobra.NoArgs,
+		Long:  `Check if the system has all the required dependencies for building PHP. Optionally analyze extension availability for a specific PHP version.`,
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := handler.Doctor()
+			version := ""
+			if len(args) > 0 {
+				version = args[0]
+				// Resolve version constraint to exact version for extension analysis
+				if sources, err := handler.Source.GetVersions(); err == nil {
+					var phpVersions []string
+					for _, src := range sources {
+						if src.Name == "php" {
+							phpVersions = append(phpVersions, src.Version)
+						}
+					}
+					if resolved, err := utils.ResolveVersionConstraint(phpVersions, version); err == nil {
+						version = resolved
+					}
+				}
+			}
+
+			result, err := handler.DoctorV2(version)
 			if err != nil {
 				return err
 			}
-			if len(result.Issues) > 0 {
-				fmt.Println("Issues found:")
-				for _, issue := range result.Issues {
-					fmt.Printf("  [%s] %s\n", issue.Category, issue.Message)
+
+			fmt.Println("═══ Build Tools ═══")
+			for _, t := range result.BuildTools {
+				if t.Available {
+					fmt.Printf("  ✓ %-14s %s\n", t.Name, t.Version)
+				} else {
+					fmt.Printf("  ✗ %-14s %s\n", t.Name, t.Suggestion)
 				}
 			}
-			fmt.Println("Doctor check complete")
+
+			fmt.Println("\n═══ System Libraries ═══")
+			for _, l := range result.LibChecks {
+				if l.Available {
+					fmt.Printf("  ✓ %-14s %s\n", l.Name, l.Version)
+				} else {
+					fmt.Printf("  ✗ %-14s %s\n", l.Name, l.Suggestion)
+				}
+			}
+
+			if version != "" && len(result.Extensions) > 0 {
+				fmt.Printf("\n═══ PHP %s Extensions ═══\n", version)
+				for _, e := range result.Extensions {
+					switch e.Status {
+					case "builtin":
+						fmt.Printf("  · %-18s built-in\n", e.Extension)
+					case "system":
+						if e.ExpectedVer != "" {
+							fmt.Printf("  ✓ %-18s system (%s, need %s)\n", e.Extension, e.SystemVer, e.ExpectedVer)
+						} else {
+							fmt.Printf("  ✓ %-18s system (%s)\n", e.Extension, e.SystemVer)
+						}
+					case "build":
+						fmt.Printf("  ◷ %-18s buildable (phpv builds %s)\n", e.Extension, e.Package)
+					case "mismatch":
+						fmt.Printf("  ⚠ %-18s version mismatch: system %s, need %s\n", e.Extension, e.SystemVer, e.ExpectedVer)
+					case "missing":
+						fmt.Printf("  ✗ %-18s %s\n", e.Extension, e.Suggestion)
+					}
+				}
+			}
+
+			fmt.Println("\n" + result.Summary)
 			return nil
 		},
 	}

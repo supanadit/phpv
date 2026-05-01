@@ -114,6 +114,270 @@ func (h *TerminalHandler) CleanBuildTools(dryRun bool) (*CleanBuildToolsResult, 
 	}, nil
 }
 
+func (h *TerminalHandler) DoctorV2(version string) (*DoctorResultV2, error) {
+	buildTools := h.doctorCheckBuildTools()
+	libChecks := h.doctorCheckSystemLibs()
+
+	var extChecks []DoctorExtCheck
+	if version != "" {
+		extChecks = h.doctorAnalyzeExtensions(version)
+	}
+
+	missingTools := 0
+	for _, t := range buildTools {
+		if !t.Available {
+			missingTools++
+		}
+	}
+	missingLibs := 0
+	for _, l := range libChecks {
+		if !l.Available {
+			missingLibs++
+		}
+	}
+
+	summary := fmt.Sprintf("Build tools: %d missing | Libraries: %d missing", missingTools, missingLibs)
+	if len(extChecks) > 0 {
+		missingExt := 0
+		for _, e := range extChecks {
+			if e.Status == "missing" {
+				missingExt++
+			}
+		}
+		summary += fmt.Sprintf(" | Extensions: %d missing", missingExt)
+	}
+
+	return &DoctorResultV2{
+		BuildTools: buildTools,
+		LibChecks:  libChecks,
+		Extensions: extChecks,
+		Summary:    summary,
+	}, nil
+}
+
+func (h *TerminalHandler) doctorCheckBuildTools() []DoctorCheckItem {
+	tools := []struct {
+		name    string
+		version []string // version flag variations
+	}{
+		{"make", []string{"--version"}},
+		{"gcc", []string{"--version"}},
+		{"g++", []string{"--version"}},
+		{"pkg-config", []string{"--version"}},
+		{"bison", []string{"--version"}},
+		{"flex", []string{"--version"}},
+		{"re2c", []string{"--version"}},
+		{"autoconf", []string{"--version"}},
+		{"automake", []string{"--version"}},
+		{"libtool", []string{"--version"}},
+		{"m4", []string{"--version"}},
+		{"perl", []string{"--version"}},
+		{"cmake", []string{"--version"}},
+		{"xz", []string{"--version"}},
+	}
+
+	suggestions := map[string]string{
+		"make":       "sudo dnf install make  # or: sudo apt install build-essential",
+		"gcc":        "sudo dnf install gcc  # or: sudo apt install build-essential",
+		"g++":        "sudo dnf install gcc-c++  # or: sudo apt install build-essential",
+		"pkg-config": "sudo dnf install pkgconfig  # or: sudo apt install pkg-config",
+		"bison":      "sudo dnf install bison  # or: sudo apt install bison",
+		"flex":       "sudo dnf install flex  # or: sudo apt install flex",
+		"re2c":       "sudo dnf install re2c  # or: sudo apt install re2c",
+		"autoconf":   "sudo dnf install autoconf  # or: sudo apt install autoconf",
+		"automake":   "sudo dnf install automake  # or: sudo apt install automake",
+		"libtool":    "sudo dnf install libtool  # or: sudo apt install libtool",
+		"m4":         "sudo dnf install m4  # or: sudo apt install m4",
+		"perl":       "sudo dnf install perl  # or: sudo apt install perl",
+		"cmake":      "sudo dnf install cmake  # or: sudo apt install cmake",
+		"xz":         "sudo dnf install xz  # or: sudo apt install xz",
+	}
+
+	var items []DoctorCheckItem
+	for _, tool := range tools {
+		item := DoctorCheckItem{Name: tool.name}
+		path, err := exec.LookPath(tool.name)
+		if err != nil {
+			item.Available = false
+			item.Suggestion = suggestions[tool.name]
+			items = append(items, item)
+			continue
+		}
+		item.Available = true
+		ver := getToolVersion(path, tool.version)
+		if ver != "" {
+			item.Version = ver
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+func getToolVersion(path string, flags []string) string {
+	for _, flag := range flags {
+		cmd := exec.Command(path, flag)
+		out, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+		line := string(out)
+		// Take first non-empty line, strip common prefixes
+		for _, l := range strings.Split(line, "\n") {
+			l = strings.TrimSpace(l)
+			if l == "" {
+				continue
+			}
+			// Return first few words as version ID
+			parts := strings.Fields(l)
+			if len(parts) > 2 {
+				return parts[0] + " " + parts[1] + " " + parts[2]
+			}
+			if len(parts) > 0 {
+				return parts[0]
+			}
+		}
+	}
+	return ""
+}
+
+func (h *TerminalHandler) doctorCheckSystemLibs() []DoctorCheckItem {
+	libs := []struct {
+		name        string
+		pkgConfig   string
+		headerPaths []string
+	}{
+		{"libxml2", "libxml-2.0", []string{"/usr/include/libxml2/libxml/parser.h"}},
+		{"openssl", "openssl", []string{"/usr/include/openssl/ssl.h"}},
+		{"curl", "libcurl", []string{"/usr/include/curl/curl.h"}},
+		{"zlib", "zlib", []string{"/usr/include/zlib.h"}},
+		{"oniguruma", "oniguruma", []string{"/usr/include/oniguruma/onigmo.h", "/usr/include/oniguruma/oniguruma.h"}},
+		{"icu", "icu-uc", []string{"/usr/include/unicode/umachine.h"}},
+	}
+
+	suggestions := map[string]string{
+		"libxml2":   "sudo dnf install libxml2-devel  # or: sudo apt install libxml2-dev",
+		"openssl":   "sudo dnf install openssl-devel  # or: sudo apt install libssl-dev",
+		"curl":      "sudo dnf install libcurl-devel  # or: sudo apt install libcurl4-openssl-dev",
+		"zlib":      "sudo dnf install zlib-devel  # or: sudo apt install zlib1g-dev",
+		"oniguruma": "sudo dnf install oniguruma-devel  # or: sudo apt install libonig-dev",
+		"icu":       "sudo dnf install libicu-devel  # or: sudo apt install libicu-dev",
+	}
+
+	var items []DoctorCheckItem
+	for _, lib := range libs {
+		item := DoctorCheckItem{Name: lib.name}
+
+		// Try pkg-config first
+		cmd := exec.Command("pkg-config", "--exists", lib.pkgConfig)
+		if cmd.Run() == nil {
+			verCmd := exec.Command("pkg-config", "--modversion", lib.pkgConfig)
+			if verOut, err := verCmd.Output(); err == nil {
+				item.Version = strings.TrimSpace(string(verOut))
+			}
+			item.Available = true
+			items = append(items, item)
+			continue
+		}
+
+		// Fallback to header check
+		for _, hPath := range lib.headerPaths {
+			if _, err := os.Stat(hPath); err == nil {
+				item.Available = true
+				item.Version = "(headers only)"
+				break
+			}
+		}
+
+		if !item.Available {
+			item.Suggestion = suggestions[lib.name]
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+func (h *TerminalHandler) doctorAnalyzeExtensions(version string) []DoctorExtCheck {
+	var checks []DoctorExtCheck
+
+	exts := h.ExtensionRepo.ListExtensionsForPHP(version)
+	for _, ext := range exts {
+		check := DoctorExtCheck{
+			Extension: ext.Name,
+			Flag:      ext.Flag,
+			Package:   ext.Package,
+		}
+
+			if ext.Package == "" {
+			check.Status = "builtin"
+			checks = append(checks, check)
+			continue
+		}
+
+		// Check if system provides the backing library via pkg-config
+		pkgConfigName := ext.Package
+		switch ext.Package {
+		case "libxml2":
+			pkgConfigName = "libxml-2.0"
+		case "curl":
+			pkgConfigName = "libcurl"
+		case "oniguruma":
+			pkgConfigName = "oniguruma"
+		case "icu":
+			pkgConfigName = "icu-uc"
+		}
+
+		cmd := exec.Command("pkg-config", "--exists", pkgConfigName)
+		if cmd.Run() == nil {
+			verCmd := exec.Command("pkg-config", "--modversion", pkgConfigName)
+			if verOut, err := verCmd.Output(); err == nil {
+				check.SystemVer = strings.TrimSpace(string(verOut))
+			}
+			check.Status = "system"
+
+			// Look up version constraint for this extension + PHP version
+			if _, verWithConstraint, ok := h.ExtensionRepo.GetExtensionDependencyWithVersion(ext.Name, version); ok {
+				if idx := strings.Index(verWithConstraint, "|"); idx != -1 {
+					constraint := verWithConstraint[idx+1:]
+					check.ExpectedVer = constraint
+					if check.SystemVer != "" && !utils.MatchVersionRange(constraint, check.SystemVer) {
+						check.Status = "mismatch"
+					}
+				}
+			}
+
+			checks = append(checks, check)
+			continue
+		}
+
+		// phpv can build these from source
+		buildablePkgs := map[string]string{
+			"libxml2":   "phpv builds libxml2 from source",
+			"openssl":   "phpv builds openssl from source",
+			"curl":      "phpv builds curl from source",
+			"zlib":      "phpv builds zlib from source",
+			"oniguruma": "phpv builds oniguruma from source",
+			"icu":       "phpv builds icu from source",
+		}
+		if msg, ok := buildablePkgs[ext.Package]; ok {
+			check.Status = "build"
+			check.Suggestion = msg
+			checks = append(checks, check)
+			continue
+		}
+
+		// Not available on system, not buildable by phpv
+		switch ext.Package {
+		case "bzip2":
+			check.Suggestion = "sudo dnf install bzip2-devel  # or: sudo apt install libbz2-dev"
+		default:
+			check.Suggestion = "sudo dnf install " + ext.Package + "-devel  # or: sudo apt install " + ext.Package + "-dev"
+		}
+		check.Status = "missing"
+		checks = append(checks, check)
+	}
+	return checks
+}
+
 func (h *TerminalHandler) Doctor() (*DoctorResult, error) {
 	var issues []DoctorIssue
 	var warnings []DoctorWarning

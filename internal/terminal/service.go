@@ -21,6 +21,7 @@ type TerminalService interface {
 	CleanBuildTools(dryRun bool) (*CleanBuildToolsResult, error)
 	Upgrade(constraint string) (*UpgradeResult, error)
 	Doctor() (*DoctorResult, error)
+	DoctorV2(version string) (*DoctorResultV2, error)
 	GetInitCode(shell string) (string, error)
 	GetPHPvRoot() string
 	PECLInstall(archivePath string) (*PECLInstallResult, error)
@@ -72,6 +73,30 @@ type DoctorWarning struct {
 	Message  string
 }
 
+type DoctorCheckItem struct {
+	Name       string
+	Available  bool
+	Version    string
+	Suggestion string
+}
+
+type DoctorExtCheck struct {
+	Extension   string
+	Flag        string
+	Package     string
+	Status      string // "builtin", "system", "build", "mismatch", "missing"
+	SystemVer   string
+	ExpectedVer string
+	Suggestion  string
+}
+
+type DoctorResultV2 struct {
+	BuildTools  []DoctorCheckItem
+	LibChecks   []DoctorCheckItem
+	Extensions  []DoctorExtCheck
+	Summary     string
+}
+
 type InstallResult struct {
 	Version    string
 	Forge      domain.Forge
@@ -101,8 +126,4 @@ type UseResultV2 struct {
 	Message      string
 }
 
-type DoctorResultV2 struct {
-	Issues   []DoctorIssue
-	Warnings []DoctorWarning
-	Summary  string
-}
+

@@ -90,10 +90,19 @@ type DoctorExtCheck struct {
 	Suggestion  string
 }
 
+type DoctorPHPInstall struct {
+	Version     string
+	Installed   bool
+	BinaryPath  string
+	ConfigFlags string
+	EnabledExts []string
+}
+
 type DoctorResultV2 struct {
 	BuildTools  []DoctorCheckItem
 	LibChecks   []DoctorCheckItem
 	Extensions  []DoctorExtCheck
+	PHPInstall  *DoctorPHPInstall
 	Summary     string
 }
 

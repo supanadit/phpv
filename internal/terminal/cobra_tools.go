@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/supanadit/phpv/internal/utils"
@@ -121,6 +122,21 @@ func registerToolsCommands(root *cobra.Command, handler *TerminalHandler) {
 					fmt.Printf("  ✓ %-14s %s\n", l.Name, l.Version)
 				} else {
 					fmt.Printf("  ✗ %-14s %s\n", l.Name, l.Suggestion)
+				}
+			}
+
+			if version != "" && result.PHPInstall != nil {
+				fmt.Printf("\n═══ PHP %s Installation ═══\n", version)
+				if result.PHPInstall.Installed {
+					fmt.Printf("  ✓ Installed at: %s\n", result.PHPInstall.BinaryPath)
+					if result.PHPInstall.ConfigFlags != "" {
+						fmt.Printf("  Configure: %s\n", result.PHPInstall.ConfigFlags)
+					}
+					if n := len(result.PHPInstall.EnabledExts); n > 0 {
+						fmt.Printf("  Enabled extensions (%d): %s\n", n, strings.Join(result.PHPInstall.EnabledExts, ", "))
+					}
+				} else {
+					fmt.Printf("  ✗ Not installed\n")
 				}
 			}
 

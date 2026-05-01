@@ -156,8 +156,10 @@ func (h *TerminalHandler) DoctorV2(version string) (*DoctorResultV2, error) {
 	libChecks := h.doctorCheckSystemLibs(osInfo)
 
 	var extChecks []DoctorExtCheck
+	var phpInstall *DoctorPHPInstall
 	if version != "" {
 		extChecks = h.doctorAnalyzeExtensions(version, osInfo)
+		phpInstall = h.doctorCheckPHPInstall(version)
 	}
 
 	missingTools := 0
@@ -188,6 +190,7 @@ func (h *TerminalHandler) DoctorV2(version string) (*DoctorResultV2, error) {
 		BuildTools: buildTools,
 		LibChecks:  libChecks,
 		Extensions: extChecks,
+		PHPInstall: phpInstall,
 		Summary:    summary,
 	}, nil
 }
@@ -391,6 +394,67 @@ func (h *TerminalHandler) doctorAnalyzeExtensions(version string, osInfo utils.O
 		checks = append(checks, check)
 	}
 	return checks
+}
+
+func (h *TerminalHandler) doctorCheckPHPInstall(version string) *DoctorPHPInstall {
+	silo, err := h.Silo.GetSilo()
+	if err != nil {
+		return &DoctorPHPInstall{Version: version, Installed: false}
+	}
+
+	phpBinary := filepath.Join(utils.PHPOutputPath(silo, version), "bin", "php")
+	if _, err := os.Stat(phpBinary); os.IsNotExist(err) {
+		return &DoctorPHPInstall{Version: version, Installed: false}
+	}
+
+	result := &DoctorPHPInstall{
+		Version:    version,
+		Installed:  true,
+		BinaryPath: phpBinary,
+	}
+
+	// Get configure flags
+	cmd := exec.Command(phpBinary, "-i")
+	out, err := cmd.Output()
+	if err == nil {
+		for _, line := range strings.Split(string(out), "\n") {
+			if strings.Contains(line, "Configure Command") {
+				if idx := strings.Index(line, "=>"); idx != -1 {
+					cfg := strings.TrimSpace(line[idx+2:])
+					if len(cfg) > 200 {
+						cfg = cfg[:200] + "..."
+					}
+					result.ConfigFlags = cfg
+				}
+				break
+			}
+		}
+	}
+
+	// Get loaded extensions from php -m
+	cmd = exec.Command(phpBinary, "-m")
+	out, err = cmd.Output()
+	if err == nil {
+		started := false
+		for _, line := range strings.Split(string(out), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "[PHP Modules]" {
+				started = true
+				continue
+			}
+			if line == "" || line == "[Zend Modules]" {
+				if started {
+					break
+				}
+				continue
+			}
+			if started {
+				result.EnabledExts = append(result.EnabledExts, line)
+			}
+		}
+	}
+
+	return result
 }
 
 func (h *TerminalHandler) Doctor() (*DoctorResult, error) {

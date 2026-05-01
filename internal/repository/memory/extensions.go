@@ -211,8 +211,9 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 		MinPHP: "5.0",
 	},
 	"phar": {
-		Flag:   "--enable-phar",
-		MinPHP: "5.0",
+		Flag:    "--enable-phar",
+		MinPHP:  "5.0",
+		Implied: []string{"json"},
 	},
 	"posix": {
 		Flag:   "--enable-posix",

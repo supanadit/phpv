@@ -136,6 +136,7 @@ var doctorPkgNames = map[string]map[string]string{
 	"oniguruma":  {"brew": "oniguruma", "apt": "libonig-dev", "*": "oniguruma-devel"},
 	"icu":        {"brew": "icu4c", "apt": "libicu-dev", "*": "libicu-devel"},
 	"bzip2":      {"brew": "bzip2", "apt": "libbz2-dev", "*": "bzip2-devel"},
+	"zig":        {"brew": "zig", "*": "zig"},
 }
 
 func doctorSuggestion(name string, osInfo utils.OSInfo) string {
@@ -152,7 +153,7 @@ func doctorSuggestion(name string, osInfo utils.OSInfo) string {
 
 func (h *TerminalHandler) DoctorV2(version string) (*DoctorResultV2, error) {
 	osInfo := utils.DetectOSInfo()
-	buildTools := h.doctorCheckBuildTools(osInfo)
+	buildTools := h.doctorCheckBuildTools(osInfo, version)
 	libChecks := h.doctorCheckSystemLibs(osInfo)
 
 	var extChecks []DoctorExtCheck
@@ -195,25 +196,67 @@ func (h *TerminalHandler) DoctorV2(version string) (*DoctorResultV2, error) {
 	}, nil
 }
 
-func (h *TerminalHandler) doctorCheckBuildTools(osInfo utils.OSInfo) []DoctorCheckItem {
-	tools := []struct {
+func usesZig(version string) bool {
+	if version == "" {
+		return false
+	}
+	v := utils.ParseVersion(version)
+	if v.Major < 8 {
+		return true
+	}
+	if v.Major == 8 && v.Minor == 0 {
+		return true
+	}
+	return false
+}
+
+func (h *TerminalHandler) doctorCheckBuildTools(osInfo utils.OSInfo, version string) []DoctorCheckItem {
+	useZig := usesZig(version)
+
+	var tools []struct {
 		name    string
-		version []string // version flag variations
-	}{
-		{"make", []string{"--version"}},
-		{"gcc", []string{"--version"}},
-		{"g++", []string{"--version"}},
-		{"pkg-config", []string{"--version"}},
-		{"bison", []string{"--version"}},
-		{"flex", []string{"--version"}},
-		{"re2c", []string{"--version"}},
-		{"autoconf", []string{"--version"}},
-		{"automake", []string{"--version"}},
-		{"libtool", []string{"--version"}},
-		{"m4", []string{"--version"}},
-		{"perl", []string{"--version"}},
-		{"cmake", []string{"--version"}},
-		{"xz", []string{"--version"}},
+		version []string
+	}
+
+	if useZig {
+		tools = []struct {
+			name    string
+			version []string
+		}{
+			{"make", []string{"--version"}},
+			{"zig", []string{"version"}},
+			{"pkg-config", []string{"--version"}},
+			{"bison", []string{"--version"}},
+			{"flex", []string{"--version"}},
+			{"re2c", []string{"--version"}},
+			{"autoconf", []string{"--version"}},
+			{"automake", []string{"--version"}},
+			{"libtool", []string{"--version"}},
+			{"m4", []string{"--version"}},
+			{"perl", []string{"--version"}},
+			{"cmake", []string{"--version"}},
+			{"xz", []string{"--version"}},
+		}
+	} else {
+		tools = []struct {
+			name    string
+			version []string
+		}{
+			{"make", []string{"--version"}},
+			{"gcc", []string{"--version"}},
+			{"g++", []string{"--version"}},
+			{"pkg-config", []string{"--version"}},
+			{"bison", []string{"--version"}},
+			{"flex", []string{"--version"}},
+			{"re2c", []string{"--version"}},
+			{"autoconf", []string{"--version"}},
+			{"automake", []string{"--version"}},
+			{"libtool", []string{"--version"}},
+			{"m4", []string{"--version"}},
+			{"perl", []string{"--version"}},
+			{"cmake", []string{"--version"}},
+			{"xz", []string{"--version"}},
+		}
 	}
 
 	var items []DoctorCheckItem

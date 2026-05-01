@@ -108,6 +108,9 @@ func registerToolsCommands(root *cobra.Command, handler *TerminalHandler) {
 			}
 
 			fmt.Println("═══ Build Tools ═══")
+			if version != "" && utils.ParseVersion(version).Major < 8 {
+				fmt.Println("  (PHP < 8.0 uses zig cc — gcc/g++ not required)")
+			}
 			for _, t := range result.BuildTools {
 				if t.Available {
 					fmt.Printf("  ✓ %-14s %s\n", t.Name, t.Version)

@@ -10,6 +10,7 @@ import (
 	"github.com/supanadit/phpv/advisor"
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/extension"
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/pattern"
@@ -21,6 +22,7 @@ type AdvisorRepository struct {
 	exec            *defaultExecutor
 	patternRegistry *pattern.Service
 	assembler       assembler.AssemblerRepository
+	extensionRepo   extension.Repository
 }
 
 var (
@@ -31,6 +33,17 @@ var (
 		"zlib":      "zlib",
 		"oniguruma": "oniguruma",
 		"icu":       "icu-uc",
+	}
+
+	// Maps backing library packages back to the extension that depends on them.
+	// Used to look up version constraints in shouldBuildFromSource fallback.
+	packageExtensionMap = map[string]string{
+		"libxml2":   "libxml",
+		"openssl":   "openssl",
+		"curl":      "curl",
+		"zlib":      "zlib",
+		"oniguruma": "mbstring",
+		"icu":       "intl",
 	}
 
 	multiPkgConfigPackages = map[string][]string{
@@ -56,7 +69,7 @@ var (
 	}
 )
 
-func NewAdvisorRepository(asm assembler.AssemblerRepository) advisor.AdvisorRepository {
+func NewAdvisorRepository(asm assembler.AssemblerRepository, extRepo extension.Repository) advisor.AdvisorRepository {
 	fs := afero.NewOsFs()
 	root := viper.GetString("PHPV_ROOT")
 	registry := pattern.NewService()
@@ -67,6 +80,7 @@ func NewAdvisorRepository(asm assembler.AssemblerRepository) advisor.AdvisorRepo
 		exec:            &defaultExecutor{},
 		patternRegistry: registry,
 		assembler:       asm,
+		extensionRepo:   extRepo,
 	}
 }
 
@@ -320,9 +334,25 @@ func (r *AdvisorRepository) shouldBuildFromSource(name, phpVersion string) bool 
 	// Fallback for extension-level deps not listed in PHP's assembler dependencies
 	// (PHP >=8.2.0 has empty assembler deps; extension deps come from --ext flags).
 	if pkgConfigName, isLib := libraryPackages[name]; isLib {
-		available, _, _ := r.checkSystemLibrary(name, pkgConfigName)
+		available, _, systemVersion := r.checkSystemLibrary(name, pkgConfigName)
 		if !available {
 			return true
+		}
+		// Check extension-level version constraint
+		if extName, ok := packageExtensionMap[name]; ok && r.extensionRepo != nil {
+			if extDef, ok2 := r.extensionRepo.GetExtensionDef(extName); ok2 {
+				for _, v := range extDef.Versions {
+					if utils.MatchVersionRange(v.VersionRange, phpVersion) {
+						if idx := strings.Index(v.Version, "|"); idx != -1 {
+							constraint := v.Version[idx+1:]
+							if systemVersion != "" && !utils.MatchVersionRange(constraint, systemVersion) {
+								return true
+							}
+						}
+						break
+					}
+				}
+			}
 		}
 	}
 
@@ -431,6 +461,9 @@ func determineActionAndURL(state domain.PackageState, systemAvailable, shouldBui
 		}
 		return "unknown", "", domain.SourceTypeSource
 	case domain.StateSourceDownloaded:
+		if systemAvailable && !shouldBuild {
+			return "skip", "", domain.SourceTypeBinary
+		}
 		return "extract", "", domain.SourceTypeSource
 	case domain.StateSourceExtracted:
 		if systemAvailable && !shouldBuild {

@@ -114,13 +114,50 @@ func (h *TerminalHandler) CleanBuildTools(dryRun bool) (*CleanBuildToolsResult, 
 	}, nil
 }
 
+var doctorPkgNames = map[string]map[string]string{
+	"make":       {"brew": "make", "apt": "build-essential", "*": "make"},
+	"gcc":        {"brew": "gcc", "apt": "build-essential", "*": "gcc"},
+	"g++":        {"brew": "gcc", "apt": "build-essential", "*": "gcc-c++"},
+	"pkg-config": {"brew": "pkg-config", "apt": "pkg-config", "*": "pkgconfig"},
+	"bison":      {"*": "bison"},
+	"flex":       {"*": "flex"},
+	"re2c":       {"*": "re2c"},
+	"autoconf":   {"*": "autoconf"},
+	"automake":   {"*": "automake"},
+	"libtool":    {"brew": "libtool", "*": "libtool"},
+	"m4":         {"*": "m4"},
+	"perl":       {"*": "perl"},
+	"cmake":      {"brew": "cmake", "*": "cmake"},
+	"xz":         {"brew": "xz", "*": "xz"},
+	"libxml2":    {"brew": "libxml2", "apt": "libxml2-dev", "*": "libxml2-devel"},
+	"openssl":    {"brew": "openssl", "apt": "libssl-dev", "*": "openssl-devel"},
+	"curl":       {"brew": "curl", "apt": "libcurl4-openssl-dev", "*": "libcurl-devel"},
+	"zlib":       {"brew": "zlib", "apt": "zlib1g-dev", "*": "zlib-devel"},
+	"oniguruma":  {"brew": "oniguruma", "apt": "libonig-dev", "*": "oniguruma-devel"},
+	"icu":        {"brew": "icu4c", "apt": "libicu-dev", "*": "libicu-devel"},
+	"bzip2":      {"brew": "bzip2", "apt": "libbz2-dev", "*": "bzip2-devel"},
+}
+
+func doctorSuggestion(name string, osInfo utils.OSInfo) string {
+	names, ok := doctorPkgNames[name]
+	if !ok {
+		return osInfo.InstallCmd + " " + name
+	}
+	pkg, ok := names[osInfo.PkgMgr]
+	if !ok {
+		pkg = names["*"]
+	}
+	return osInfo.InstallCmd + " " + pkg
+}
+
 func (h *TerminalHandler) DoctorV2(version string) (*DoctorResultV2, error) {
-	buildTools := h.doctorCheckBuildTools()
-	libChecks := h.doctorCheckSystemLibs()
+	osInfo := utils.DetectOSInfo()
+	buildTools := h.doctorCheckBuildTools(osInfo)
+	libChecks := h.doctorCheckSystemLibs(osInfo)
 
 	var extChecks []DoctorExtCheck
 	if version != "" {
-		extChecks = h.doctorAnalyzeExtensions(version)
+		extChecks = h.doctorAnalyzeExtensions(version, osInfo)
 	}
 
 	missingTools := 0
@@ -155,7 +192,7 @@ func (h *TerminalHandler) DoctorV2(version string) (*DoctorResultV2, error) {
 	}, nil
 }
 
-func (h *TerminalHandler) doctorCheckBuildTools() []DoctorCheckItem {
+func (h *TerminalHandler) doctorCheckBuildTools(osInfo utils.OSInfo) []DoctorCheckItem {
 	tools := []struct {
 		name    string
 		version []string // version flag variations
@@ -176,30 +213,13 @@ func (h *TerminalHandler) doctorCheckBuildTools() []DoctorCheckItem {
 		{"xz", []string{"--version"}},
 	}
 
-	suggestions := map[string]string{
-		"make":       "sudo dnf install make  # or: sudo apt install build-essential",
-		"gcc":        "sudo dnf install gcc  # or: sudo apt install build-essential",
-		"g++":        "sudo dnf install gcc-c++  # or: sudo apt install build-essential",
-		"pkg-config": "sudo dnf install pkgconfig  # or: sudo apt install pkg-config",
-		"bison":      "sudo dnf install bison  # or: sudo apt install bison",
-		"flex":       "sudo dnf install flex  # or: sudo apt install flex",
-		"re2c":       "sudo dnf install re2c  # or: sudo apt install re2c",
-		"autoconf":   "sudo dnf install autoconf  # or: sudo apt install autoconf",
-		"automake":   "sudo dnf install automake  # or: sudo apt install automake",
-		"libtool":    "sudo dnf install libtool  # or: sudo apt install libtool",
-		"m4":         "sudo dnf install m4  # or: sudo apt install m4",
-		"perl":       "sudo dnf install perl  # or: sudo apt install perl",
-		"cmake":      "sudo dnf install cmake  # or: sudo apt install cmake",
-		"xz":         "sudo dnf install xz  # or: sudo apt install xz",
-	}
-
 	var items []DoctorCheckItem
 	for _, tool := range tools {
 		item := DoctorCheckItem{Name: tool.name}
 		path, err := exec.LookPath(tool.name)
 		if err != nil {
 			item.Available = false
-			item.Suggestion = suggestions[tool.name]
+			item.Suggestion = doctorSuggestion(tool.name, osInfo)
 			items = append(items, item)
 			continue
 		}
@@ -240,7 +260,7 @@ func getToolVersion(path string, flags []string) string {
 	return ""
 }
 
-func (h *TerminalHandler) doctorCheckSystemLibs() []DoctorCheckItem {
+func (h *TerminalHandler) doctorCheckSystemLibs(osInfo utils.OSInfo) []DoctorCheckItem {
 	libs := []struct {
 		name        string
 		pkgConfig   string
@@ -255,12 +275,12 @@ func (h *TerminalHandler) doctorCheckSystemLibs() []DoctorCheckItem {
 	}
 
 	suggestions := map[string]string{
-		"libxml2":   "sudo dnf install libxml2-devel  # or: sudo apt install libxml2-dev",
-		"openssl":   "sudo dnf install openssl-devel  # or: sudo apt install libssl-dev",
-		"curl":      "sudo dnf install libcurl-devel  # or: sudo apt install libcurl4-openssl-dev",
-		"zlib":      "sudo dnf install zlib-devel  # or: sudo apt install zlib1g-dev",
-		"oniguruma": "sudo dnf install oniguruma-devel  # or: sudo apt install libonig-dev",
-		"icu":       "sudo dnf install libicu-devel  # or: sudo apt install libicu-dev",
+		"libxml2":   doctorSuggestion("libxml2", osInfo),
+		"openssl":   doctorSuggestion("openssl", osInfo),
+		"curl":      doctorSuggestion("curl", osInfo),
+		"zlib":      doctorSuggestion("zlib", osInfo),
+		"oniguruma": doctorSuggestion("oniguruma", osInfo),
+		"icu":       doctorSuggestion("icu", osInfo),
 	}
 
 	var items []DoctorCheckItem
@@ -296,7 +316,7 @@ func (h *TerminalHandler) doctorCheckSystemLibs() []DoctorCheckItem {
 	return items
 }
 
-func (h *TerminalHandler) doctorAnalyzeExtensions(version string) []DoctorExtCheck {
+func (h *TerminalHandler) doctorAnalyzeExtensions(version string, osInfo utils.OSInfo) []DoctorExtCheck {
 	var checks []DoctorExtCheck
 
 	exts := h.ExtensionRepo.ListExtensionsForPHP(version)
@@ -366,12 +386,7 @@ func (h *TerminalHandler) doctorAnalyzeExtensions(version string) []DoctorExtChe
 		}
 
 		// Not available on system, not buildable by phpv
-		switch ext.Package {
-		case "bzip2":
-			check.Suggestion = "sudo dnf install bzip2-devel  # or: sudo apt install libbz2-dev"
-		default:
-			check.Suggestion = "sudo dnf install " + ext.Package + "-devel  # or: sudo apt install " + ext.Package + "-dev"
-		}
+		check.Suggestion = doctorSuggestion(ext.Package, osInfo)
 		check.Status = "missing"
 		checks = append(checks, check)
 	}

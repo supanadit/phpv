@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/supanadit/phpv/domain"
 )
@@ -145,4 +146,76 @@ func GetArch() string {
 		return "aarch64"
 	}
 	return a
+}
+
+type OSInfo struct {
+	GOOS       string
+	Distro     string
+	PkgMgr     string
+	InstallCmd string
+}
+
+func DetectOSInfo() OSInfo {
+	info := OSInfo{GOOS: runtime.GOOS}
+
+	switch runtime.GOOS {
+	case "darwin":
+		info.Distro = "macos"
+		info.PkgMgr = "brew"
+		info.InstallCmd = "brew install"
+		return info
+
+	case "linux":
+		data, err := os.ReadFile("/etc/os-release")
+		if err != nil {
+			info.Distro = "linux"
+			info.PkgMgr = "dnf"
+			info.InstallCmd = "sudo dnf install"
+			return info
+		}
+
+		info.Distro = extractOSReleaseID(string(data))
+		switch info.Distro {
+		case "ubuntu", "debian", "linuxmint", "pop", "elementary", "kali", "raspbian":
+			info.PkgMgr = "apt"
+			info.InstallCmd = "sudo apt install"
+		case "fedora", "rhel", "centos", "rocky", "almalinux":
+			info.PkgMgr = "dnf"
+			info.InstallCmd = "sudo dnf install"
+		case "arch", "manjaro", "endeavour", "arcolinux":
+			info.PkgMgr = "pacman"
+			info.InstallCmd = "sudo pacman -S"
+		case "opensuse", "suse", "opensuse-tumbleweed":
+			info.PkgMgr = "zypper"
+			info.InstallCmd = "sudo zypper install"
+		case "alpine":
+			info.PkgMgr = "apk"
+			info.InstallCmd = "apk add"
+		case "void":
+			info.PkgMgr = "xbps"
+			info.InstallCmd = "sudo xbps-install"
+		default:
+			info.PkgMgr = "dnf"
+			info.InstallCmd = "sudo dnf install"
+		}
+		return info
+
+	default:
+		info.Distro = runtime.GOOS
+		info.PkgMgr = "pkg"
+		info.InstallCmd = "pkg install"
+		return info
+	}
+}
+
+func extractOSReleaseID(data string) string {
+	for _, line := range strings.Split(data, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "ID=") {
+			val := strings.TrimPrefix(line, "ID=")
+			val = strings.Trim(val, `'"`)
+			return strings.ToLower(val)
+		}
+	}
+	return "linux"
 }

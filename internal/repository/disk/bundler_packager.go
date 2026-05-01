@@ -391,6 +391,10 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 	for _, flag := range flags {
 		if flag == "--with-openssl" || flag == "--with-ssl" {
 			resolved := false
+			opensslFlag := "--with-openssl"
+			if name != "php" {
+				opensslFlag = "--with-ssl"
+			}
 			deps, err := s.assemblerSvc.GetDependencies("php", phpVersion)
 			if err == nil {
 				for _, dep := range deps {
@@ -403,7 +407,7 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 						if fi, err := os.Stat(opensslPath); err == nil && fi.IsDir() {
 							includeDir := filepath.Join(opensslPath, "include", "openssl")
 							if _, err := os.Stat(includeDir); err == nil {
-								result = append(result, "--with-ssl="+opensslPath)
+								result = append(result, opensslFlag+"="+opensslPath)
 								resolved = true
 							}
 						}
@@ -418,7 +422,7 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 						candidatePath := filepath.Join(depPath, entry.Name())
 						includeDir := filepath.Join(candidatePath, "include", "openssl")
 						if _, err := os.Stat(includeDir); err == nil {
-							result = append(result, "--with-ssl="+candidatePath)
+							result = append(result, opensslFlag+"="+candidatePath)
 							resolved = true
 							break
 						}
@@ -427,7 +431,7 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 			}
 			if !resolved {
 				if prefix := findSystemPrefix(filepath.Join("include", "openssl", "ssl.h")); prefix != "" {
-					result = append(result, "--with-ssl="+prefix)
+					result = append(result, opensslFlag+"="+prefix)
 					resolved = true
 				}
 			}

@@ -77,6 +77,7 @@ type DoctorCheckItem struct {
 	Name       string
 	Available  bool
 	Version    string
+	Category   string // "available", "autodownload", "buildable", "system"
 	Suggestion string
 }
 
@@ -103,6 +104,11 @@ type DoctorResultV2 struct {
 	LibChecks   []DoctorCheckItem
 	Extensions  []DoctorExtCheck
 	PHPInstall  *DoctorPHPInstall
+	Verdict     string   // "ready", "minor", "blocked"
+	VerdictMsg  string
+	CanBuildPHP8  bool
+	CanBuildPHP7  bool
+	QuickFix    string   // consolidated install command for all missing deps
 	Summary     string
 }
 

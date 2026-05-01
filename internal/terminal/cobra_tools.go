@@ -107,27 +107,87 @@ func registerToolsCommands(root *cobra.Command, handler *TerminalHandler) {
 				return err
 			}
 
-			fmt.Println("═══ Build Tools ═══")
-			if version != "" && utils.ParseVersion(version).Major < 8 {
-				fmt.Println("  (PHP < 8.0 uses zig cc — gcc/g++ not required)")
+			// ── Readiness ──
+			fmt.Println("═══ System Readiness ═══")
+			verdictIcon := "✓"
+			if result.Verdict == "blocked" {
+				verdictIcon = "✗"
+			} else if result.Verdict == "minor" {
+				verdictIcon = "⚡"
 			}
-			for _, t := range result.BuildTools {
-				if t.Available {
-					fmt.Printf("  ✓ %-14s %s\n", t.Name, t.Version)
-				} else {
-					fmt.Printf("  ✗ %-14s %s\n", t.Name, t.Suggestion)
+			fmt.Printf("  %s %s\n", verdictIcon, result.VerdictMsg)
+
+			if result.CanBuildPHP8 {
+				fmt.Println("  ✓ PHP 8.1+ buildable    (gcc available)")
+			} else {
+				fmt.Println("  ✗ PHP 8.1+ not buildable (gcc missing)")
+			}
+			if result.CanBuildPHP7 {
+				zigMsg := "zig available"
+				if !toolAvailable(result.BuildTools, "zig") {
+					zigMsg = "zig auto-downloaded"
+				}
+				fmt.Printf("  ✓ PHP 7.x buildable     (%s)\n", zigMsg)
+			} else {
+				fmt.Println("  ✗ PHP 7.x not buildable  (zig missing)")
+			}
+
+			if result.QuickFix != "" {
+				fmt.Printf("\n═══ Quick Fix ═══\n")
+				fmt.Printf("  %s\n", result.QuickFix)
+			}
+
+			if version == "" && result.Verdict != "blocked" {
+				fmt.Printf("\n═══ Recommendation ═══\n")
+				if result.CanBuildPHP8 {
+					fmt.Println("  phpv install 8")
+					fmt.Println("    Uses system gcc (fastest build).")
+					fmt.Println("    Add --ext openssl,curl,mbstring,intl for common extensions.")
+				} else if result.CanBuildPHP7 {
+					fmt.Println("  phpv install 7")
+					fmt.Println("    Uses zig compiler (bundled).")
 				}
 			}
 
-			fmt.Println("\n═══ System Libraries ═══")
-			for _, l := range result.LibChecks {
-				if l.Available {
-					fmt.Printf("  ✓ %-14s %s\n", l.Name, l.Version)
-				} else {
-					fmt.Printf("  ✗ %-14s %s\n", l.Name, l.Suggestion)
+			// ── Group all items by category ──
+			allItems := append(result.BuildTools, result.LibChecks...)
+			var available, phpvHandles, sysReq []DoctorCheckItem
+			for _, item := range allItems {
+				switch item.Category {
+				case "available":
+					available = append(available, item)
+				case "autodownload", "buildable":
+					phpvHandles = append(phpvHandles, item)
+				default:
+					sysReq = append(sysReq, item)
 				}
 			}
 
+			// ── Available on System ──
+			if len(available) > 0 {
+				fmt.Printf("\n═══ Available on System (%d) ═══\n", len(available))
+				for _, item := range available {
+					fmt.Printf("  ✓ %-14s %s\n", item.Name, item.Version)
+				}
+			}
+
+			// ── phpv Will Handle ──
+			if len(phpvHandles) > 0 {
+				fmt.Printf("\n═══ phpv Will Handle (%d) ═══\n", len(phpvHandles))
+				for _, item := range phpvHandles {
+					fmt.Printf("  ◷ %-14s %s\n", item.Name, item.Suggestion)
+				}
+			}
+
+			// ── System Packages Required ──
+			if len(sysReq) > 0 {
+				fmt.Printf("\n═══ System Packages Required (%d) ═══\n", len(sysReq))
+				for _, item := range sysReq {
+					fmt.Printf("  ✗ %-14s %s\n", item.Name, item.Suggestion)
+				}
+			}
+
+			// ── PHP Install (version-specific) ──
 			if version != "" && result.PHPInstall != nil {
 				fmt.Printf("\n═══ PHP %s Installation ═══\n", version)
 				if result.PHPInstall.Installed {
@@ -143,6 +203,7 @@ func registerToolsCommands(root *cobra.Command, handler *TerminalHandler) {
 				}
 			}
 
+			// ── Extension Analysis (version-specific) ──
 			if version != "" && len(result.Extensions) > 0 {
 				fmt.Printf("\n═══ PHP %s Extensions ═══\n", version)
 				for _, e := range result.Extensions {

@@ -139,6 +139,34 @@ var doctorPkgNames = map[string]map[string]string{
 	"zig":        {"brew": "zig", "*": "zig"},
 }
 
+// Tools that phpv auto-downloads (pre-built binary) — never a blocker
+var autodownloadTools = map[string]bool{
+	"zig":   true,
+	"cmake": true,
+}
+
+// Tools that phpv builds from source — not required on system
+var autoBuildTools = map[string]bool{
+	"m4":        true,
+	"autoconf":  true,
+	"automake":  true,
+	"libtool":   true,
+	"perl":      true,
+	"bison":     true,
+	"flex":      true,
+	"re2c":      true,
+}
+
+// Libraries that phpv builds from source — system package optional
+var autoBuildLibs = map[string]bool{
+	"libxml2":   true,
+	"openssl":   true,
+	"curl":      true,
+	"zlib":      true,
+	"oniguruma": true,
+	"icu":       true,
+}
+
 func doctorSuggestion(name string, osInfo utils.OSInfo) string {
 	names, ok := doctorPkgNames[name]
 	if !ok {
@@ -163,20 +191,51 @@ func (h *TerminalHandler) DoctorV2(version string) (*DoctorResultV2, error) {
 		phpInstall = h.doctorCheckPHPInstall(version)
 	}
 
-	missingTools := 0
-	for _, t := range buildTools {
-		if !t.Available {
-			missingTools++
-		}
-	}
-	missingLibs := 0
-	for _, l := range libChecks {
-		if !l.Available {
-			missingLibs++
+	// Count truly missing items (only "system" category)
+	sysMissing := 0
+	allItems := append(buildTools, libChecks...)
+	var sysPkgs []string
+	for _, item := range allItems {
+		if !item.Available && item.Category == "system" {
+			sysMissing++
+			pkg := strings.TrimPrefix(item.Suggestion, osInfo.InstallCmd+" ")
+			sysPkgs = append(sysPkgs, pkg)
 		}
 	}
 
-	summary := fmt.Sprintf("Build tools: %d missing | Libraries: %d missing", missingTools, missingLibs)
+	// Build consolidated quick-fix command (system packages only)
+	quickFix := ""
+	if len(sysPkgs) > 0 {
+		quickFix = osInfo.InstallCmd + " " + strings.Join(sysPkgs, " ")
+	}
+
+	// Determine buildable PHP versions from available compilers
+	hasGcc := toolAvailable(buildTools, "gcc")
+	hasMake := toolAvailable(buildTools, "make")
+
+	// zig and cmake are auto-downloaded — always available
+	hasZig := toolAvailable(buildTools, "zig") || autodownloadTools["zig"]
+
+	canBuildPHP8 := hasMake && hasGcc
+	canBuildPHP7 := hasMake && hasZig
+
+	// Compute verdict
+	verdict := "ready"
+	verdictMsg := "System is ready for PHP installation"
+	if sysMissing > 0 {
+		if !hasMake {
+			verdict = "blocked"
+			verdictMsg = "Missing core build tools (make). PHP cannot be built."
+		} else if !hasGcc && !hasZig {
+			verdict = "blocked"
+			verdictMsg = "No C compiler found (gcc or zig). PHP cannot be built."
+		} else {
+			verdict = "minor"
+			verdictMsg = fmt.Sprintf("%d system packages recommended. phpv handles the rest automatically.", sysMissing)
+		}
+	}
+
+	summary := fmt.Sprintf("System: %s | System packages needed: %d", verdict, sysMissing)
 	if len(extChecks) > 0 {
 		missingExt := 0
 		for _, e := range extChecks {
@@ -188,12 +247,26 @@ func (h *TerminalHandler) DoctorV2(version string) (*DoctorResultV2, error) {
 	}
 
 	return &DoctorResultV2{
-		BuildTools: buildTools,
-		LibChecks:  libChecks,
-		Extensions: extChecks,
-		PHPInstall: phpInstall,
-		Summary:    summary,
+		BuildTools:   buildTools,
+		LibChecks:    libChecks,
+		Extensions:   extChecks,
+		PHPInstall:   phpInstall,
+		Verdict:      verdict,
+		VerdictMsg:   verdictMsg,
+		CanBuildPHP8: canBuildPHP8,
+		CanBuildPHP7: canBuildPHP7,
+		QuickFix:     quickFix,
+		Summary:      summary,
 	}, nil
+}
+
+func toolAvailable(items []DoctorCheckItem, name string) bool {
+	for _, item := range items {
+		if item.Name == name {
+			return item.Available
+		}
+	}
+	return false
 }
 
 func usesZig(version string) bool {
@@ -265,11 +338,22 @@ func (h *TerminalHandler) doctorCheckBuildTools(osInfo utils.OSInfo, version str
 		path, err := exec.LookPath(tool.name)
 		if err != nil {
 			item.Available = false
-			item.Suggestion = doctorSuggestion(tool.name, osInfo)
+			switch {
+			case autodownloadTools[tool.name]:
+				item.Category = "autodownload"
+				item.Suggestion = "phpv will auto-download"
+			case autoBuildTools[tool.name]:
+				item.Category = "buildable"
+				item.Suggestion = "phpv will build from source"
+			default:
+				item.Category = "system"
+				item.Suggestion = doctorSuggestion(tool.name, osInfo)
+			}
 			items = append(items, item)
 			continue
 		}
 		item.Available = true
+		item.Category = "available"
 		ver := getToolVersion(path, tool.version)
 		if ver != "" {
 			item.Version = ver
@@ -320,15 +404,6 @@ func (h *TerminalHandler) doctorCheckSystemLibs(osInfo utils.OSInfo) []DoctorChe
 		{"icu", "icu-uc", []string{"/usr/include/unicode/umachine.h"}},
 	}
 
-	suggestions := map[string]string{
-		"libxml2":   doctorSuggestion("libxml2", osInfo),
-		"openssl":   doctorSuggestion("openssl", osInfo),
-		"curl":      doctorSuggestion("curl", osInfo),
-		"zlib":      doctorSuggestion("zlib", osInfo),
-		"oniguruma": doctorSuggestion("oniguruma", osInfo),
-		"icu":       doctorSuggestion("icu", osInfo),
-	}
-
 	var items []DoctorCheckItem
 	for _, lib := range libs {
 		item := DoctorCheckItem{Name: lib.name}
@@ -341,6 +416,7 @@ func (h *TerminalHandler) doctorCheckSystemLibs(osInfo utils.OSInfo) []DoctorChe
 				item.Version = strings.TrimSpace(string(verOut))
 			}
 			item.Available = true
+			item.Category = "available"
 			items = append(items, item)
 			continue
 		}
@@ -350,12 +426,14 @@ func (h *TerminalHandler) doctorCheckSystemLibs(osInfo utils.OSInfo) []DoctorChe
 			if _, err := os.Stat(hPath); err == nil {
 				item.Available = true
 				item.Version = "(headers only)"
+				item.Category = "available"
 				break
 			}
 		}
 
 		if !item.Available {
-			item.Suggestion = suggestions[lib.name]
+			item.Category = "buildable"
+			item.Suggestion = "phpv will build from source"
 		}
 		items = append(items, item)
 	}
@@ -373,7 +451,7 @@ func (h *TerminalHandler) doctorAnalyzeExtensions(version string, osInfo utils.O
 			Package:   ext.Package,
 		}
 
-			if ext.Package == "" {
+		if ext.Package == "" {
 			check.Status = "builtin"
 			checks = append(checks, check)
 			continue

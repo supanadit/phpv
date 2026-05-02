@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/config"
 	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/shim"
 )
@@ -673,10 +674,10 @@ func (h *TerminalHandler) Doctor() (*DoctorResult, error) {
 }
 
 func (h *TerminalHandler) GetInitCode(shell string) (string, error) {
-	phpvRoot := GetPHPvRoot()
+	phpvRoot := config.Get().RootDir()
 	return GetInitCodeForShell(shell, phpvRoot), nil
 }
 
 func (h *TerminalHandler) GetPHPvRoot() string {
-	return GetPHPvRoot()
+	return config.Get().RootDir()
 }

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/config"
 	"github.com/supanadit/phpv/internal/utils"
 )
 
@@ -33,7 +33,8 @@ func TestSiloRepository_GetSilo(t *testing.T) {
 
 func TestSiloRepository_EnsurePaths(t *testing.T) {
 	tmpDir := t.TempDir()
-	viper.Set("PHPV_ROOT", tmpDir)
+	config.SetForTesting(tmpDir)
+	defer config.ResetForTesting()
 
 	repo, err := NewSiloRepository()
 	if err != nil {
@@ -61,7 +62,8 @@ func TestSiloRepository_EnsurePaths(t *testing.T) {
 
 func TestSiloRepository_ArchiveOperations(t *testing.T) {
 	tmpDir := t.TempDir()
-	viper.Set("PHPV_ROOT", tmpDir)
+	config.SetForTesting(tmpDir)
+	defer config.ResetForTesting()
 
 	repo, err := NewSiloRepository()
 	if err != nil {
@@ -118,7 +120,8 @@ func TestSiloRepository_ArchiveOperations(t *testing.T) {
 
 func TestSiloRepository_SourceOperations(t *testing.T) {
 	tmpDir := t.TempDir()
-	viper.Set("PHPV_ROOT", tmpDir)
+	config.SetForTesting(tmpDir)
+	defer config.ResetForTesting()
 
 	repo, err := NewSiloRepository()
 	if err != nil {
@@ -175,7 +178,8 @@ func TestSiloRepository_SourceOperations(t *testing.T) {
 
 func TestSiloRepository_VersionOperations(t *testing.T) {
 	tmpDir := t.TempDir()
-	viper.Set("PHPV_ROOT", tmpDir)
+	config.SetForTesting(tmpDir)
+	defer config.ResetForTesting()
 
 	repo, err := NewSiloRepository()
 	if err != nil {
@@ -232,7 +236,8 @@ func TestSiloRepository_VersionOperations(t *testing.T) {
 
 func TestSiloRepository_FullClean(t *testing.T) {
 	tmpDir := t.TempDir()
-	viper.Set("PHPV_ROOT", tmpDir)
+	config.SetForTesting(tmpDir)
+	defer config.ResetForTesting()
 
 	repo, err := NewSiloRepository()
 	if err != nil {
@@ -273,7 +278,8 @@ func TestSiloRepository_FullClean(t *testing.T) {
 
 func TestSiloRepository_CleanAll(t *testing.T) {
 	tmpDir := t.TempDir()
-	viper.Set("PHPV_ROOT", tmpDir)
+	config.SetForTesting(tmpDir)
+	defer config.ResetForTesting()
 
 	repo, err := NewSiloRepository()
 	if err != nil {
@@ -311,7 +317,8 @@ func TestSiloRepository_CleanAll(t *testing.T) {
 
 func TestSiloRepository_ValidateInput(t *testing.T) {
 	tmpDir := t.TempDir()
-	viper.Set("PHPV_ROOT", tmpDir)
+	config.SetForTesting(tmpDir)
+	defer config.ResetForTesting()
 
 	repo, err := NewSiloRepository()
 	if err != nil {
@@ -343,7 +350,8 @@ func TestSiloRepository_ValidateInput(t *testing.T) {
 
 func TestSiloRepository_ListArchives(t *testing.T) {
 	tmpDir := t.TempDir()
-	viper.Set("PHPV_ROOT", tmpDir)
+	config.SetForTesting(tmpDir)
+	defer config.ResetForTesting()
 
 	repo, err := NewSiloRepository()
 	if err != nil {
@@ -372,7 +380,8 @@ func TestSiloRepository_ListArchives(t *testing.T) {
 
 func TestSiloRepository_ListSources(t *testing.T) {
 	tmpDir := t.TempDir()
-	viper.Set("PHPV_ROOT", tmpDir)
+	config.SetForTesting(tmpDir)
+	defer config.ResetForTesting()
 
 	repo, err := NewSiloRepository()
 	if err != nil {
@@ -397,7 +406,8 @@ func TestSiloRepository_ListSources(t *testing.T) {
 
 func TestSiloRepository_ListVersions(t *testing.T) {
 	tmpDir := t.TempDir()
-	viper.Set("PHPV_ROOT", tmpDir)
+	config.SetForTesting(tmpDir)
+	defer config.ResetForTesting()
 
 	repo, err := NewSiloRepository()
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/supanadit/phpv/internal/config"
 	"github.com/supanadit/phpv/internal/utils"
 )
 
@@ -82,8 +83,8 @@ func (c *CompilerService) GetCompilerInfo(compilerType CompilerType) CompilerInf
 				break
 			}
 		}
-		// Check for zig in phpv's managed tools
-		zigBinary := utils.GetZigCompilerPath(c.siloRoot, "8.4.0") // Use a default PHP version for path
+		// Check for zig in phpv's managed tools (use config)
+		zigBinary := utils.GetZigCompilerPath(config.Get().RootDir(), "8.4.0")
 		if _, err := os.Stat(zigBinary); err == nil {
 			path = zigBinary
 			break

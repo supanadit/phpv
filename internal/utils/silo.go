@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/config"
 )
 
 func RootPath(silo *domain.Silo) string {
@@ -231,4 +232,94 @@ func extractOSReleaseID(data string) string {
 		}
 	}
 	return "linux"
+}
+
+// GetConfig returns the global config singleton.
+// Kept for backwards compatibility - prefer using internal/config directly.
+func GetConfig() *config.Config {
+	return config.Get()
+}
+
+// GetZigTarget returns the zig target for the current platform.
+// Previously in arch.go.
+func GetZigTarget() string {
+	goarch := runtime.GOARCH
+	switch goarch {
+	case "amd64":
+		goarch = "x86_64"
+	case "arm64":
+		goarch = "aarch64"
+	}
+
+	goos := runtime.GOOS
+	abi := "-gnu"
+	if goos == "darwin" {
+		abi = "-macos"
+	}
+
+	return goarch + "-" + goos + abi
+}
+
+// GetZigTargetForGlibc returns the zig target with a specific glibc version.
+// Previously in arch.go.
+func GetZigTargetForGlibc(glibcVersion string) string {
+	goarch := runtime.GOARCH
+	switch goarch {
+	case "amd64":
+		goarch = "x86_64"
+	case "arm64":
+		goarch = "aarch64"
+	}
+
+	goos := runtime.GOOS
+	if goos == "darwin" {
+		return goarch + "-" + goos
+	}
+
+	return goarch + "-linux-gnu." + glibcVersion
+}
+
+// GetOpenSSLConfigureTarget returns the OpenSSL configure target.
+// Previously in arch.go.
+func GetOpenSSLConfigureTarget() string {
+	goarch := runtime.GOARCH
+	switch goarch {
+	case "amd64":
+		goarch = "x86_64"
+	case "arm64":
+		goarch = "aarch64"
+	}
+	switch runtime.GOOS {
+	case "linux":
+		return "linux-" + goarch
+	case "darwin":
+		if goarch == "x86_64" {
+			return "darwin64-x86_64-cc"
+		} else if goarch == "aarch64" {
+			return "darwin64-arm64-cc"
+		}
+		return "darwin-" + goarch + "-cc"
+	default:
+		return ""
+	}
+}
+
+// GetConfigureHostTriple returns the configure --host triple.
+// Previously in arch.go.
+func GetConfigureHostTriple() string {
+	goarch := runtime.GOARCH
+	switch goarch {
+	case "amd64":
+		goarch = "x86_64"
+	case "arm64":
+		goarch = "aarch64"
+	}
+	switch runtime.GOOS {
+	case "linux":
+		return goarch + "-pc-linux-gnu"
+	case "darwin":
+		return goarch + "-apple-darwin"
+	default:
+		return goarch + "-pc-linux-gnu"
+	}
 }

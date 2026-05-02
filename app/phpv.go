@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/advisor"
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/bundler"
@@ -13,6 +12,7 @@ import (
 	"github.com/supanadit/phpv/extension"
 	"github.com/supanadit/phpv/flagresolver"
 	"github.com/supanadit/phpv/forge"
+	"github.com/supanadit/phpv/internal/config"
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/internal/repository/http"
 	"github.com/supanadit/phpv/internal/repository/memory"
@@ -30,12 +30,8 @@ type silentLogger struct{}
 func (s *silentLogger) LogEvent(event fxevent.Event) {}
 
 func main() {
-	viper.AutomaticEnv()
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		panic("You must have a home directory set for phpv to work")
-	}
-	viper.SetDefault("PHPV_ROOT", homeDir+"/.phpv")
+	// Initialize config - reads PHPV_ROOT from env or uses default
+	_ = config.Get()
 
 	opts := []fx.Option{
 		fx.WithLogger(func() fxevent.Logger { return &silentLogger{} }),

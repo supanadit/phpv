@@ -3,13 +3,11 @@ package disk
 import (
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sync"
 
 	"github.com/spf13/afero"
-	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/config"
 	"github.com/supanadit/phpv/internal/utils"
 )
 
@@ -26,18 +24,10 @@ type SiloRepository struct {
 }
 
 func NewSiloRepository() (*SiloRepository, error) {
-	root := viper.GetString("PHPV_ROOT")
-	if root == "" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get user home directory: %w", err)
-		}
-		root = filepath.Join(homeDir, ".phpv")
-	}
-
+	cfg := config.Get()
 	return &SiloRepository{
 		fs:   afero.NewOsFs(),
-		silo: &domain.Silo{Root: root},
+		silo: &domain.Silo{Root: cfg.RootDir()},
 	}, nil
 }
 

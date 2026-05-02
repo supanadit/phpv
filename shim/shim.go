@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/supanadit/phpv/internal/config"
 )
 
 const dynamicShimTemplate = `#!/bin/bash
@@ -163,12 +165,10 @@ type ShimConfig struct {
 }
 
 func DetectComposerPath() string {
-	phpvRoot := os.Getenv("PHPV_ROOT")
-	if phpvRoot == "" {
-		phpvRoot = filepath.Join(os.Getenv("HOME"), ".phpv")
-	}
-	phpvBin := filepath.Join(phpvRoot, "bin")
-	phpvPhar := filepath.Join(phpvRoot, "phar")
+	cfg := config.Get()
+	phpvRoot := cfg.RootDir()
+	phpvBin := cfg.BinPath()
+	phpvPhar := cfg.PharPath()
 
 	localComposer := filepath.Join(phpvPhar, "composer.phar")
 	if _, err := os.Stat(localComposer); err == nil {
@@ -194,12 +194,10 @@ func DetectComposerPath() string {
 }
 
 func DetectPiePath() string {
-	phpvRoot := os.Getenv("PHPV_ROOT")
-	if phpvRoot == "" {
-		phpvRoot = filepath.Join(os.Getenv("HOME"), ".phpv")
-	}
-	phpvBin := filepath.Join(phpvRoot, "bin")
-	phpvPhar := filepath.Join(phpvRoot, "phar")
+	cfg := config.Get()
+	phpvRoot := cfg.RootDir()
+	phpvBin := cfg.BinPath()
+	phpvPhar := cfg.PharPath()
 
 	localPie := filepath.Join(phpvPhar, "pie.phar")
 	if _, err := os.Stat(localPie); err == nil {

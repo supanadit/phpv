@@ -40,6 +40,13 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 		}
 	}
 
+	if r.ensurePgConfigWrapper() {
+		wrappersPath := filepath.Join(r.siloRepo.silo.Root, "build-tools", "wrappers")
+		if _, err := os.Stat(filepath.Join(wrappersPath, "pg_config")); err == nil {
+			buildToolsBinPath = wrappersPath + ":" + buildToolsBinPath
+		}
+	}
+
 	// Strip the phpv shim bin directory from PATH so that build tools
 	// (e.g. make, autoconf) do not accidentally invoke phpv shims (php,
 	// phpize, ...) instead of a real PHP binary. The shims would fail with
@@ -233,6 +240,27 @@ func (r *ForgeRepository) ensureZigToolWrappers(zigBinary string) string {
 	}
 
 	return wrapperDir
+}
+
+func (r *ForgeRepository) ensurePgConfigWrapper() bool {
+	wrappersPath := filepath.Join(r.siloRepo.silo.Root, "build-tools", "wrappers")
+	pgConfigWrapper := filepath.Join(wrappersPath, "pg_config")
+
+	if _, err := os.Stat(pgConfigWrapper); err == nil {
+		return true
+	}
+
+	if pgConfig, err := exec.LookPath("pg_config"); err == nil {
+		if err := os.MkdirAll(wrappersPath, 0o755); err != nil {
+			return false
+		}
+		script := fmt.Sprintf("#!/bin/sh\nexec \"%s\" \"$@\"\n", pgConfig)
+		if err := os.WriteFile(pgConfigWrapper, []byte(script), 0o755); err != nil {
+			return false
+		}
+		return true
+	}
+	return false
 }
 
 func hasEnvVar(env []string, prefix string) bool {

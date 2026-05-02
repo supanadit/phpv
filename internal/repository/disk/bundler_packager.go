@@ -487,9 +487,25 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 				}
 				if !resolved {
 					if pgConfig, err := exec.LookPath("pg_config"); err == nil {
+						if prefixFromPgConfig := filepath.Dir(filepath.Dir(pgConfig)); prefixFromPgConfig != "." {
+							if _, err := os.Stat(filepath.Join(prefixFromPgConfig, "lib", "libpq.so")); err == nil {
+								result = append(result, "--with-pdo-pgsql="+prefixFromPgConfig)
+								resolved = true
+							} else if _, err := os.Stat(filepath.Join(prefixFromPgConfig, "lib64", "libpq.so")); err == nil {
+								result = append(result, "--with-pdo-pgsql="+prefixFromPgConfig)
+								resolved = true
+							}
+						}
+					}
+				}
+				if !resolved {
+					if pgConfig, err := exec.LookPath("pg_config"); err == nil {
 						if out, err := exec.Command(pgConfig, "--prefix").Output(); err == nil {
 							prefix := strings.TrimSpace(string(out))
 							if _, err := os.Stat(filepath.Join(prefix, "lib", "libpq.so")); err == nil {
+								result = append(result, "--with-pdo-pgsql="+prefix)
+								resolved = true
+							} else if _, err := os.Stat(filepath.Join(prefix, "lib64", "libpq.so")); err == nil {
 								result = append(result, "--with-pdo-pgsql="+prefix)
 								resolved = true
 							}
@@ -498,6 +514,9 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 				}
 				if !resolved {
 					if prefix := findSystemPrefix("lib/libpq.so"); prefix != "" {
+						result = append(result, "--with-pdo-pgsql="+prefix)
+						resolved = true
+					} else if prefix := findSystemPrefix("lib64/libpq.so"); prefix != "" {
 						result = append(result, "--with-pdo-pgsql="+prefix)
 						resolved = true
 					}
@@ -517,9 +536,25 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 				}
 				if !resolved {
 					if pgConfig, err := exec.LookPath("pg_config"); err == nil {
+						if prefixFromPgConfig := filepath.Dir(filepath.Dir(pgConfig)); prefixFromPgConfig != "." {
+							if _, err := os.Stat(filepath.Join(prefixFromPgConfig, "lib", "libpq.so")); err == nil {
+								result = append(result, "--with-pgsql="+prefixFromPgConfig)
+								resolved = true
+							} else if _, err := os.Stat(filepath.Join(prefixFromPgConfig, "lib64", "libpq.so")); err == nil {
+								result = append(result, "--with-pgsql="+prefixFromPgConfig)
+								resolved = true
+							}
+						}
+					}
+				}
+				if !resolved {
+					if pgConfig, err := exec.LookPath("pg_config"); err == nil {
 						if out, err := exec.Command(pgConfig, "--prefix").Output(); err == nil {
 							prefix := strings.TrimSpace(string(out))
 							if _, err := os.Stat(filepath.Join(prefix, "lib", "libpq.so")); err == nil {
+								result = append(result, "--with-pgsql="+prefix)
+								resolved = true
+							} else if _, err := os.Stat(filepath.Join(prefix, "lib64", "libpq.so")); err == nil {
 								result = append(result, "--with-pgsql="+prefix)
 								resolved = true
 							}
@@ -528,6 +563,9 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 				}
 				if !resolved {
 					if prefix := findSystemPrefix("lib/libpq.so"); prefix != "" {
+						result = append(result, "--with-pgsql="+prefix)
+						resolved = true
+					} else if prefix := findSystemPrefix("lib64/libpq.so"); prefix != "" {
 						result = append(result, "--with-pgsql="+prefix)
 						resolved = true
 					}

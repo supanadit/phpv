@@ -179,7 +179,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 				depLibraryPaths = append(depLibraryPaths, filepath.Join(depPath, "lib"))
 				depCppFlags = append(depCppFlags, fmt.Sprintf("-I%s/include", depPath))
 				depLdFlags = append(depLdFlags, fmt.Sprintf("-L%s/lib", depPath))
-				depLdFlags = append(depLdFlags, fmt.Sprintf("-Wl,-rpath-link,%s/lib", depPath))
+				depLdFlags = append(depLdFlags, fmt.Sprintf("-Wl,-rpath,%s/lib", depPath))
 				lib64PcPath := filepath.Join(depPath, "lib64", "pkgconfig")
 				libPcPath := filepath.Join(depPath, "lib", "pkgconfig")
 				if _, err := os.Stat(libPcPath); err == nil {
@@ -202,6 +202,39 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 		_ = levelIdx
 	}
 
+	wrapperMgr := NewVersionWrapperManager(s.fs, s.silo, exactVersion)
+	if err := wrapperMgr.Ensure(); err != nil {
+		s.logWarn("Warning: failed to ensure wrapper directory: %v", err)
+	}
+
+	for _, dep := range builtDeps {
+		if !dep.BuiltFromSource || dep.Name == "php" {
+			continue
+		}
+		if utils.BuildTools[dep.Name] {
+			continue
+		}
+
+		depVersion := dep.Version
+		if idx := strings.Index(dep.Version, "|"); idx != -1 {
+			depVersion = dep.Version[:idx]
+		}
+
+		if err := wrapperMgr.CreateDepLibSymlink(dep.Name, depVersion); err != nil {
+			s.logWarn("Warning: failed to create lib symlink for %s: %v", dep.Name, err)
+		}
+		if err := wrapperMgr.CreateDepIncludeSymlink(dep.Name, depVersion); err != nil {
+			s.logWarn("Warning: failed to create include symlink for %s: %v", dep.Name, err)
+		}
+	}
+
+	if err := wrapperMgr.CreatePgConfigWrapper(""); err != nil {
+		s.logWarn("Warning: failed to create pg_config wrapper: %v", err)
+	}
+	if err := wrapperMgr.CreatePkgConfigWrapper(); err != nil {
+		s.logWarn("Warning: failed to create pkg-config wrapper: %v", err)
+	}
+
 	if !utils.BuildTools["openssl"] {
 		depPath := utils.DependencyPath(s.silo, exactVersion, "openssl", "")
 		if entries, err := os.ReadDir(depPath); err == nil && len(entries) > 0 {
@@ -210,7 +243,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 			opensslLib := filepath.Join(opensslPath, "lib")
 			if _, err := os.Stat(opensslLib); err == nil {
 				depLdFlags = append([]string{
-					fmt.Sprintf("-Wl,-rpath-link,%s", opensslLib),
+					fmt.Sprintf("-Wl,-rpath,%s", opensslLib),
 				}, depLdFlags...)
 			}
 		}

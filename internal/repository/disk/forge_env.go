@@ -25,6 +25,11 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 		if depBinPaths != "" {
 			buildToolsBinPath = depBinPaths + ":" + buildToolsBinPath
 		}
+
+		versionWrapperBin := filepath.Join(r.siloRepo.silo.Root, "versions", config.PHPVersion, "wrapper", "bin")
+		if _, err := os.Stat(versionWrapperBin); err == nil {
+			buildToolsBinPath = versionWrapperBin + ":" + buildToolsBinPath
+		}
 	}
 
 	// When using Zig as CC, create wrapper scripts for ar, ranlib, nm, and ld
@@ -37,13 +42,6 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 			env = append(env, "AR="+filepath.Join(wrapperDir, "ar"))
 			env = append(env, "RANLIB="+filepath.Join(wrapperDir, "ranlib"))
 			env = append(env, "NM="+filepath.Join(wrapperDir, "nm"))
-		}
-	}
-
-	if r.ensurePgConfigWrapper() {
-		wrappersPath := filepath.Join(r.siloRepo.silo.Root, "build-tools", "wrappers")
-		if _, err := os.Stat(filepath.Join(wrappersPath, "pg_config")); err == nil {
-			buildToolsBinPath = wrappersPath + ":" + buildToolsBinPath
 		}
 	}
 
@@ -73,24 +71,76 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 		env = append(env, "PATH="+buildToolsBinPath)
 	}
 
-	systemPkgConfigPaths := utils.GetSystemPkgConfigPaths()
 	var allPkgConfigPaths []string
-	// Dependency pkg-config paths come FIRST so they take priority
-	// (e.g., custom openssl 1.1 must shadow system openssl 3.x)
-	if len(config.PkgConfigPaths) > 0 {
-		allPkgConfigPaths = append(allPkgConfigPaths, config.PkgConfigPaths...)
-	}
-	// System paths come SECOND so system libs like libpq are still findable
-	allPkgConfigPaths = append(allPkgConfigPaths, systemPkgConfigPaths...)
-	for i, v := range env {
-		if after, ok := strings.CutPrefix(v, "PKG_CONFIG_PATH="); ok {
-			allPkgConfigPaths = append(allPkgConfigPaths, strings.Split(after, ":")...)
-			env[i] = "PKG_CONFIG_PATH=" + strings.Join(allPkgConfigPaths, ":")
-			break
+	var opensslPath string
+
+	if config.Name == "php" && config.PHPVersion != "" {
+		wrapperPcPath := filepath.Join(r.siloRepo.silo.Root, "versions", config.PHPVersion, "wrapper", "lib", "pkgconfig")
+		wrapperBinPath := filepath.Join(r.siloRepo.silo.Root, "versions", config.PHPVersion, "wrapper", "bin")
+		wrapperPkgConfig := filepath.Join(wrapperBinPath, "pkg-config")
+
+		if _, err := os.Stat(wrapperPcPath); err == nil {
+			allPkgConfigPaths = append([]string{wrapperPcPath}, allPkgConfigPaths...)
+		}
+		if len(config.PkgConfigPaths) > 0 {
+			allPkgConfigPaths = append(allPkgConfigPaths, config.PkgConfigPaths...)
+		}
+		if _, err := os.Stat(wrapperPkgConfig); err == nil {
+			env = setEnvVar(env, "PKG_CONFIG", wrapperPkgConfig)
+		}
+		// CRITICAL: PKG_CONFIG_LIBDIR blocks system paths completely (not PKG_CONFIG_PATH)
+		if len(allPkgConfigPaths) > 0 {
+			env = setEnvVar(env, "PKG_CONFIG_LIBDIR", strings.Join(allPkgConfigPaths, ":"))
+		}
+		// Set PKG_CONFIG_SYSROOT_DIR to prevent pkg-config from searching outside
+		env = setEnvVar(env, "PKG_CONFIG_SYSROOT_DIR", "/")
+
+		// Find OpenSSL path for lt_cv_sys_lib_dlsearch_path_spec
+		depPath := utils.DependencyPath(r.siloRepo.silo, config.PHPVersion, "openssl", "")
+		if entries, err := os.ReadDir(depPath); err == nil && len(entries) > 0 {
+			opensslPath = filepath.Join(depPath, entries[0].Name(), "lib")
+		}
+	} else {
+		if len(config.PkgConfigPaths) > 0 {
+			allPkgConfigPaths = append(allPkgConfigPaths, config.PkgConfigPaths...)
+			env = setEnvVar(env, "PKG_CONFIG_LIBDIR", strings.Join(allPkgConfigPaths, ":"))
+		}
+		systemPkgConfigPaths := utils.GetSystemPkgConfigPaths()
+		allPkgConfigPaths = append(allPkgConfigPaths, systemPkgConfigPaths...)
+		// For non-PHP builds, we still set PKG_CONFIG_PATH
+		for i, v := range env {
+			if after, ok := strings.CutPrefix(v, "PKG_CONFIG_PATH="); ok {
+				existingPaths := strings.Split(after, ":")
+				for _, p := range existingPaths {
+					if p != "" && !containsPath(allPkgConfigPaths, p) {
+						allPkgConfigPaths = append(allPkgConfigPaths, p)
+					}
+				}
+				env[i] = "PKG_CONFIG_PATH=" + strings.Join(allPkgConfigPaths, ":")
+				break
+			}
+		}
+		if !hasEnvVar(env, "PKG_CONFIG_PATH") {
+			env = append(env, "PKG_CONFIG_PATH="+strings.Join(allPkgConfigPaths, ":"))
 		}
 	}
-	if !hasEnvVar(env, "PKG_CONFIG_PATH") {
-		env = append(env, "PKG_CONFIG_PATH="+strings.Join(allPkgConfigPaths, ":"))
+
+	// CRITICAL: Override libtool search paths to prevent -L/usr/lib64 from being added
+	if opensslPath != "" {
+		env = setEnvVar(env, "lt_cv_sys_lib_dlsearch_path_spec", opensslPath)
+	}
+
+	// CRITICAL: For PHP builds, inject paths into CC/CXX itself to ensure they appear first
+	// This prevents configure from adding system paths before ours
+	if config.Name == "php" && config.PHPVersion != "" && opensslPath != "" {
+		opensslInclude := filepath.Dir(opensslPath) + "/include"
+		// Prepend -I and -L to CC/CXX to ensure they take precedence
+		if config.CC != "" {
+			env = setEnvVar(env, "CC", fmt.Sprintf("%s -I%s -L%s", config.CC, opensslInclude, opensslPath))
+		}
+		if config.CXX != "" {
+			env = setEnvVar(env, "CXX", fmt.Sprintf("%s -I%s -L%s", config.CXX, opensslInclude, opensslPath))
+		}
 	}
 
 	if len(config.CPPFLAGS) > 0 {
@@ -242,30 +292,18 @@ func (r *ForgeRepository) ensureZigToolWrappers(zigBinary string) string {
 	return wrapperDir
 }
 
-func (r *ForgeRepository) ensurePgConfigWrapper() bool {
-	wrappersPath := filepath.Join(r.siloRepo.silo.Root, "build-tools", "wrappers")
-	pgConfigWrapper := filepath.Join(wrappersPath, "pg_config")
-
-	if _, err := os.Stat(pgConfigWrapper); err == nil {
-		return true
-	}
-
-	if pgConfig, err := exec.LookPath("pg_config"); err == nil {
-		if err := os.MkdirAll(wrappersPath, 0o755); err != nil {
-			return false
+func hasEnvVar(env []string, prefix string) bool {
+	for _, v := range env {
+		if _, found := strings.CutPrefix(v, prefix+"="); found {
+			return true
 		}
-		script := fmt.Sprintf("#!/bin/sh\nexec \"%s\" \"$@\"\n", pgConfig)
-		if err := os.WriteFile(pgConfigWrapper, []byte(script), 0o755); err != nil {
-			return false
-		}
-		return true
 	}
 	return false
 }
 
-func hasEnvVar(env []string, prefix string) bool {
-	for _, v := range env {
-		if _, found := strings.CutPrefix(v, prefix+"="); found {
+func containsPath(paths []string, target string) bool {
+	for _, p := range paths {
+		if p == target {
 			return true
 		}
 	}

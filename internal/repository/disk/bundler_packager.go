@@ -3,7 +3,6 @@ package disk
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -438,12 +437,6 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 				}
 			}
 			if !resolved {
-				if prefix := findSystemPrefix(filepath.Join("include", "openssl", "ssl.h")); prefix != "" {
-					result = append(result, opensslFlag+"="+prefix)
-					resolved = true
-				}
-			}
-			if !resolved {
 				result = append(result, flag)
 			}
 		} else if flag == "--with-zlib" && (name == "libxml2" || name == "curl") {
@@ -483,110 +476,108 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 				}
 			}
 			if !resolved {
-				if prefix := findSystemPrefix(filepath.Join("include", "zlib.h")); prefix != "" {
-					result = append(result, "--with-zlib="+prefix)
-					resolved = true
+				result = append(result, flag)
+			}
+		} else if strings.HasPrefix(flag, "--with-libxml") {
+			resolved := false
+			deps, err := s.assemblerSvc.GetDependencies("php", phpVersion)
+			if err == nil {
+				for _, dep := range deps {
+					if dep.Name == "libxml2" {
+						ver := dep.Version
+						if idx := strings.Index(ver, "|"); idx != -1 {
+							ver = ver[:idx]
+						}
+						libxml2Path := utils.DependencyPath(s.silo, phpVersion, "libxml2", ver)
+						if fi, err := os.Stat(libxml2Path); err == nil && fi.IsDir() {
+							pkgConfigPath := filepath.Join(libxml2Path, "lib", "pkgconfig", "libxml-2.0.pc")
+							if _, err := os.Stat(pkgConfigPath); err == nil {
+								result = append(result, flag+"="+libxml2Path)
+								resolved = true
+							}
+						}
+						break
+					}
+				}
+			}
+			if !resolved {
+				depPath := utils.DependencyPath(s.silo, phpVersion, "libxml2", "")
+				if entries, err := os.ReadDir(depPath); err == nil && len(entries) > 0 {
+					for _, entry := range entries {
+						candidatePath := filepath.Join(depPath, entry.Name())
+						pkgConfigPath := filepath.Join(candidatePath, "lib", "pkgconfig", "libxml-2.0.pc")
+						if _, err := os.Stat(pkgConfigPath); err == nil {
+							result = append(result, flag+"="+candidatePath)
+							resolved = true
+							break
+						}
+					}
+				}
+			}
+			if !resolved {
+				result = append(result, flag)
+			}
+		} else if strings.HasPrefix(flag, "--with-curl") || strings.HasPrefix(flag, "--with-curl=") {
+			resolved := false
+			deps, err := s.assemblerSvc.GetDependencies("php", phpVersion)
+			if err == nil {
+				for _, dep := range deps {
+					if dep.Name == "curl" {
+						ver := dep.Version
+						if idx := strings.Index(ver, "|"); idx != -1 {
+							ver = ver[:idx]
+						}
+						curlPath := utils.DependencyPath(s.silo, phpVersion, "curl", ver)
+						if fi, err := os.Stat(curlPath); err == nil && fi.IsDir() {
+							libCurlPath := filepath.Join(curlPath, "lib", "libcurl.so")
+							if _, err := os.Stat(libCurlPath); err == nil {
+								result = append(result, "--with-curl="+curlPath)
+								resolved = true
+							}
+						}
+						break
+					}
+				}
+			}
+			if !resolved {
+				depPath := utils.DependencyPath(s.silo, phpVersion, "curl", "")
+				if entries, err := os.ReadDir(depPath); err == nil && len(entries) > 0 {
+					for _, entry := range entries {
+						candidatePath := filepath.Join(depPath, entry.Name())
+						libCurlPath := filepath.Join(candidatePath, "lib", "libcurl.so")
+						if _, err := os.Stat(libCurlPath); err == nil {
+							result = append(result, "--with-curl="+candidatePath)
+							resolved = true
+							break
+						}
+					}
 				}
 			}
 			if !resolved {
 				result = append(result, flag)
 			}
 		} else if strings.HasPrefix(flag, "--with-pdo-pgsql") {
-			resolved := false
 			if flag == "--with-pdo-pgsql" || flag == "--with-pdo-pgsql=yes" {
-				wrappersPath := filepath.Join(s.silo.Root, "build-tools", "wrappers")
-				pgConfigPath := filepath.Join(wrappersPath, "pg_config")
+				wrapperPath := filepath.Join(s.silo.Root, "versions", phpVersion, "wrapper")
+				pgConfigPath := filepath.Join(wrapperPath, "bin", "pg_config")
 				if fi, err := os.Stat(pgConfigPath); err == nil && !fi.IsDir() {
-					result = append(result, "--with-pdo-pgsql="+wrappersPath)
-					resolved = true
+					result = append(result, "--with-pdo-pgsql="+wrapperPath)
+				} else {
+					result = append(result, flag)
 				}
-				if !resolved {
-					if pgConfig, err := exec.LookPath("pg_config"); err == nil {
-						if prefixFromPgConfig := filepath.Dir(filepath.Dir(pgConfig)); prefixFromPgConfig != "." {
-							if _, err := os.Stat(filepath.Join(prefixFromPgConfig, "lib", "libpq.so")); err == nil {
-								result = append(result, "--with-pdo-pgsql="+prefixFromPgConfig)
-								resolved = true
-							} else if _, err := os.Stat(filepath.Join(prefixFromPgConfig, "lib64", "libpq.so")); err == nil {
-								result = append(result, "--with-pdo-pgsql="+prefixFromPgConfig)
-								resolved = true
-							}
-						}
-					}
-				}
-				if !resolved {
-					if pgConfig, err := exec.LookPath("pg_config"); err == nil {
-						if out, err := exec.Command(pgConfig, "--prefix").Output(); err == nil {
-							prefix := strings.TrimSpace(string(out))
-							if _, err := os.Stat(filepath.Join(prefix, "lib", "libpq.so")); err == nil {
-								result = append(result, "--with-pdo-pgsql="+prefix)
-								resolved = true
-							} else if _, err := os.Stat(filepath.Join(prefix, "lib64", "libpq.so")); err == nil {
-								result = append(result, "--with-pdo-pgsql="+prefix)
-								resolved = true
-							}
-						}
-					}
-				}
-				if !resolved {
-					if prefix := findSystemPrefix("lib/libpq.so"); prefix != "" {
-						result = append(result, "--with-pdo-pgsql="+prefix)
-						resolved = true
-					} else if prefix := findSystemPrefix("lib64/libpq.so"); prefix != "" {
-						result = append(result, "--with-pdo-pgsql="+prefix)
-						resolved = true
-					}
-				}
-			}
-			if !resolved {
+			} else {
 				result = append(result, flag)
 			}
 		} else if strings.HasPrefix(flag, "--with-pgsql") {
-			resolved := false
 			if flag == "--with-pgsql" || flag == "--with-pgsql=yes" {
-				wrappersPath := filepath.Join(s.silo.Root, "build-tools", "wrappers")
-				pgConfigPath := filepath.Join(wrappersPath, "pg_config")
+				wrapperPath := filepath.Join(s.silo.Root, "versions", phpVersion, "wrapper")
+				pgConfigPath := filepath.Join(wrapperPath, "bin", "pg_config")
 				if fi, err := os.Stat(pgConfigPath); err == nil && !fi.IsDir() {
-					result = append(result, "--with-pgsql="+wrappersPath)
-					resolved = true
+					result = append(result, "--with-pgsql="+wrapperPath)
+				} else {
+					result = append(result, flag)
 				}
-				if !resolved {
-					if pgConfig, err := exec.LookPath("pg_config"); err == nil {
-						if prefixFromPgConfig := filepath.Dir(filepath.Dir(pgConfig)); prefixFromPgConfig != "." {
-							if _, err := os.Stat(filepath.Join(prefixFromPgConfig, "lib", "libpq.so")); err == nil {
-								result = append(result, "--with-pgsql="+prefixFromPgConfig)
-								resolved = true
-							} else if _, err := os.Stat(filepath.Join(prefixFromPgConfig, "lib64", "libpq.so")); err == nil {
-								result = append(result, "--with-pgsql="+prefixFromPgConfig)
-								resolved = true
-							}
-						}
-					}
-				}
-				if !resolved {
-					if pgConfig, err := exec.LookPath("pg_config"); err == nil {
-						if out, err := exec.Command(pgConfig, "--prefix").Output(); err == nil {
-							prefix := strings.TrimSpace(string(out))
-							if _, err := os.Stat(filepath.Join(prefix, "lib", "libpq.so")); err == nil {
-								result = append(result, "--with-pgsql="+prefix)
-								resolved = true
-							} else if _, err := os.Stat(filepath.Join(prefix, "lib64", "libpq.so")); err == nil {
-								result = append(result, "--with-pgsql="+prefix)
-								resolved = true
-							}
-						}
-					}
-				}
-				if !resolved {
-					if prefix := findSystemPrefix("lib/libpq.so"); prefix != "" {
-						result = append(result, "--with-pgsql="+prefix)
-						resolved = true
-					} else if prefix := findSystemPrefix("lib64/libpq.so"); prefix != "" {
-						result = append(result, "--with-pgsql="+prefix)
-						resolved = true
-					}
-				}
-			}
-			if !resolved {
+			} else {
 				result = append(result, flag)
 			}
 		} else {

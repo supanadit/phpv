@@ -306,6 +306,29 @@ func (r *AdvisorRepository) shouldBuildFromSource(name, phpVersion string) bool 
 		return false
 	}
 
+	// CRITICAL: Check if OpenSSL requires building from source first
+	// If so, we MUST also build curl and libxml2 from source to avoid OpenSSL version conflicts
+	opensslNeedsSource := false
+	for _, dep := range deps {
+		if dep.Name == "openssl" {
+			constraint := extractConstraint(dep.Version)
+			if constraint == "" {
+				continue
+			}
+			available, _, systemVersion := r.checkSystemLibrary("openssl", "openssl")
+			if !available || (systemVersion != "" && !utils.MatchVersionRange(constraint, systemVersion)) {
+				opensslNeedsSource = true
+			}
+			break
+		}
+	}
+
+	// Force curl and libxml2 to build from source if OpenSSL is being built from source
+	// This prevents system libraries compiled against OpenSSL 3.x from conflicting with our 1.1.1w
+	if opensslNeedsSource && (name == "curl" || name == "libxml2") {
+		return true
+	}
+
 	for _, dep := range deps {
 		if dep.Name != name {
 			continue

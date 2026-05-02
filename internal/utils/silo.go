@@ -81,6 +81,22 @@ func DependencyRootPath(silo *domain.Silo, phpVersion string) string {
 	return filepath.Join(PHPVersionPath(silo, phpVersion), "dependency")
 }
 
+func VersionWrapperPath(silo *domain.Silo, phpVersion string) string {
+	return filepath.Join(PHPVersionPath(silo, phpVersion), "wrapper")
+}
+
+func VersionWrapperBinPath(silo *domain.Silo, phpVersion string) string {
+	return filepath.Join(VersionWrapperPath(silo, phpVersion), "bin")
+}
+
+func VersionWrapperLibPath(silo *domain.Silo, phpVersion string) string {
+	return filepath.Join(VersionWrapperPath(silo, phpVersion), "lib")
+}
+
+func VersionWrapperIncludePath(silo *domain.Silo, phpVersion string) string {
+	return filepath.Join(VersionWrapperPath(silo, phpVersion), "include")
+}
+
 func BuildToolsPath(silo *domain.Silo) string {
 	return filepath.Join(silo.Root, "build-tools")
 }

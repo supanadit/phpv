@@ -179,6 +179,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 				depLibraryPaths = append(depLibraryPaths, filepath.Join(depPath, "lib"))
 				depCppFlags = append(depCppFlags, fmt.Sprintf("-I%s/include", depPath))
 				depLdFlags = append(depLdFlags, fmt.Sprintf("-L%s/lib", depPath))
+				depLdFlags = append(depLdFlags, fmt.Sprintf("-Wl,-rpath-link,%s/lib", depPath))
 				lib64PcPath := filepath.Join(depPath, "lib64", "pkgconfig")
 				libPcPath := filepath.Join(depPath, "lib", "pkgconfig")
 				if _, err := os.Stat(libPcPath); err == nil {
@@ -199,6 +200,20 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 			return domain.Forge{}, firstErr
 		}
 		_ = levelIdx
+	}
+
+	if !utils.BuildTools["openssl"] {
+		depPath := utils.DependencyPath(s.silo, exactVersion, "openssl", "")
+		if entries, err := os.ReadDir(depPath); err == nil && len(entries) > 0 {
+			entry := entries[len(entries)-1]
+			opensslPath := filepath.Join(depPath, entry.Name())
+			opensslLib := filepath.Join(opensslPath, "lib")
+			if _, err := os.Stat(opensslLib); err == nil {
+				depLdFlags = append([]string{
+					fmt.Sprintf("-Wl,-rpath-link,%s", opensslLib),
+				}, depLdFlags...)
+			}
+		}
 	}
 
 	if err := s.buildPHP(name, exactVersion, extensions, depLibraryPaths, depCppFlags, depLdFlags, depPkgConfigPaths, forceCompiler, false); err != nil {

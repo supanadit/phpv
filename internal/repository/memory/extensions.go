@@ -159,8 +159,10 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 		MinPHP:  "5.0",
 		Package: "openssl",
 		Versions: []domain.VersionConstraintDef{
-			{VersionRange: ">=8.2.0", Version: "3.3.2|>=3.0.0,<4.0.0"},
-			{VersionRange: ">=7.0.0 <8.2.0", Version: "1.1.1w|>=1.1.0,<1.2.0"},
+			{VersionRange: ">=8.4.0", Version: "1.1.1w|>=1.1.1,<4.0.0"},
+			{VersionRange: ">=8.1.0 <8.4.0", Version: "1.1.1w|>=1.0.2,<4.0.0"},
+			{VersionRange: ">=7.1.0 <8.1.0", Version: "1.0.2u|>=1.0.1,<3.0.0"},
+			{VersionRange: ">=7.0.0 <7.1.0", Version: "1.0.1u|>=0.9.8,<1.2.0"},
 			{VersionRange: ">=5.0.0 <7.0.0", Version: "1.0.1u|>=1.0.0,<1.1.0"},
 		},
 	},

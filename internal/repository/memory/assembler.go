@@ -18,18 +18,59 @@ func registerPackages(svc *assembler.AssemblerService) {
 			Default: []domain.Dependency{},
 			Constraints: []domain.VersionConstraint{
 				{
-					VersionRange: ">=8.2.0",
-					Dependencies: []domain.Dependency{},
-				},
-				{
-					VersionRange: ">=5.0.0 <8.2.0",
+					VersionRange: ">=8.4.0",
 					Dependencies: []domain.Dependency{
-						{Name: "openssl", Version: "1.1.1w|>=1.1.0,<3.0.0"},
+						{Name: "openssl", Version: "1.1.1w|>=1.1.1,<4.0.0"},
 						{Name: "libxml2", Version: "2.9.14|~2.9.0"},
 						{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
 						{Name: "oniguruma", Version: "6.9.9|~6.9.0"},
 						{Name: "curl", Version: "8.5.0|>=7.80.0"},
 						{Name: "icu", Version: "74.2|>=74.2"},
+					},
+				},
+				{
+					VersionRange: ">=8.1.0 <8.4.0",
+					Dependencies: []domain.Dependency{
+						{Name: "openssl", Version: "1.1.1w|>=1.0.2,<4.0.0"},
+						{Name: "libxml2", Version: "2.9.14|~2.9.0"},
+						{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
+						{Name: "oniguruma", Version: "6.9.9|~6.9.0"},
+						{Name: "curl", Version: "8.5.0|>=7.80.0"},
+						{Name: "icu", Version: "74.2|>=74.2"},
+					},
+				},
+				{
+					VersionRange: ">=7.1.0 <8.1.0",
+					Dependencies: []domain.Dependency{
+						{Name: "openssl", Version: "1.0.2u|>=1.0.1,<3.0.0"},
+						{Name: "libxml2", Version: "2.9.14|~2.9.0"},
+						{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
+						{Name: "oniguruma", Version: "6.9.9|~6.9.0"},
+						{Name: "curl", Version: "8.5.0|>=7.80.0"},
+						{Name: "icu", Version: "74.2|>=74.2"},
+					},
+				},
+				{
+					VersionRange: ">=7.0.0 <7.1.0",
+					Dependencies: []domain.Dependency{
+						{Name: "openssl", Version: "1.0.1u|>=0.9.8,<1.2.0"},
+						{Name: "libxml2", Version: "2.9.14|~2.9.0"},
+						{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
+						{Name: "oniguruma", Version: "6.9.9|~6.9.0"},
+						{Name: "curl", Version: "8.5.0|>=7.80.0"},
+						{Name: "icu", Version: "74.2|>=74.2"},
+					},
+				},
+				{
+					VersionRange: ">=5.0.0 <7.0.0",
+					Dependencies: []domain.Dependency{
+						{Name: "openssl", Version: "1.0.1u|>=1.0.0,<1.1.0"},
+						{Name: "libxml2", Version: "2.9.14|~2.9.0"},
+						{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
+						{Name: "oniguruma", Version: "5.9.6|~5.9.0"},
+						{Name: "curl", Version: "7.88.1|>=7.80.0"},
+						{Name: "flex", Version: "", Optional: true},
+						{Name: "bison", Version: "", Optional: true},
 					},
 				},
 				{
@@ -233,7 +274,7 @@ func registerPackages(svc *assembler.AssemblerService) {
 		{
 			Package: "curl",
 			Default: []domain.Dependency{
-				{Name: "openssl", Version: "1.1.1w|>=1.1.0,<3.0.0"},
+				{Name: "openssl", Version: "1.1.1w|>=1.1.1,<4.0.0"},
 				{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
 				{Name: "m4", Version: "1.4.19"},
 				{Name: "autoconf", Version: "2.69"},
@@ -244,7 +285,7 @@ func registerPackages(svc *assembler.AssemblerService) {
 				{
 					VersionRange: ">=8.0.0",
 					Dependencies: []domain.Dependency{
-						{Name: "openssl", Version: "1.1.1w|>=1.1.0,<3.0.0"},
+						{Name: "openssl", Version: "1.1.1w|>=1.1.1,<4.0.0"},
 						{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
 						{Name: "m4", Version: "1.4.19"},
 						{Name: "autoconf", Version: "2.72"},
@@ -255,7 +296,7 @@ func registerPackages(svc *assembler.AssemblerService) {
 				{
 					VersionRange: ">=7.80.0 <8.0.0",
 					Dependencies: []domain.Dependency{
-						{Name: "openssl", Version: "1.1.1w|>=1.1.0,<3.0.0"},
+						{Name: "openssl", Version: "1.1.1w|>=1.1.1,<4.0.0"},
 						{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
 						{Name: "m4", Version: "1.4.19"},
 						{Name: "autoconf", Version: "2.71"},

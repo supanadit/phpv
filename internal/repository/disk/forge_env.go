@@ -130,6 +130,12 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 		env = append(env, k+"="+v)
 	}
 
+	if (config.Name == "openssl" || config.Name == "ossl") && isOldOpenSSL(config.Version) {
+		if systemPerl := findSystemPerl(); systemPerl != "" {
+			env = setEnvVar(env, "PERL", systemPerl)
+		}
+	}
+
 	return env
 }
 
@@ -376,4 +382,24 @@ func (r *ForgeRepository) touchAllGeneratedFiles(sourcePath string) {
 		}
 		return nil
 	})
+}
+
+func isOldOpenSSL(version string) bool {
+	if strings.HasPrefix(version, "1.0.") || strings.HasPrefix(version, "0.9.") {
+		return true
+	}
+	return false
+}
+
+func findSystemPerl() string {
+	systemPerlPaths := []string{"/usr/bin/perl", "/usr/bin/perl5"}
+	for _, perlPath := range systemPerlPaths {
+		if fi, err := os.Stat(perlPath); err == nil && !fi.IsDir() {
+			currentPerl, err := exec.LookPath("perl")
+			if err == nil && currentPerl != perlPath {
+				return perlPath
+			}
+		}
+	}
+	return ""
 }

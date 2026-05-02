@@ -100,16 +100,16 @@ type DoctorPHPInstall struct {
 }
 
 type DoctorResultV2 struct {
-	BuildTools  []DoctorCheckItem
-	LibChecks   []DoctorCheckItem
-	Extensions  []DoctorExtCheck
-	PHPInstall  *DoctorPHPInstall
-	Verdict     string   // "ready", "minor", "blocked"
-	VerdictMsg  string
-	CanBuildPHP8  bool
-	CanBuildPHP7  bool
-	QuickFix    string   // consolidated install command for all missing deps
-	Summary     string
+	BuildTools   []DoctorCheckItem
+	LibChecks    []DoctorCheckItem
+	Extensions   []DoctorExtCheck
+	PHPInstall   *DoctorPHPInstall
+	Verdict      string // "ready", "minor", "blocked"
+	VerdictMsg   string
+	CanBuildPHP8 bool
+	CanBuildPHP7 bool
+	QuickFix     string // consolidated install command for all missing deps
+	Summary      string
 }
 
 type InstallResult struct {
@@ -140,5 +140,3 @@ type UseResultV2 struct {
 	OutputPath   string
 	Message      string
 }
-
-

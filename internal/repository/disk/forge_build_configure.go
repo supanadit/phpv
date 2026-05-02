@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
@@ -13,44 +12,11 @@ import (
 )
 
 func getOpenSSLConfigureTarget() string {
-	goarch := runtime.GOARCH
-	switch goarch {
-	case "amd64":
-		goarch = "x86_64"
-	case "arm64":
-		goarch = "aarch64"
-	}
-	switch runtime.GOOS {
-	case "linux":
-		return "linux-" + goarch
-	case "darwin":
-		if goarch == "x86_64" {
-			return "darwin64-x86_64-cc"
-		} else if goarch == "aarch64" {
-			return "darwin64-arm64-cc"
-		}
-		return "darwin-" + goarch + "-cc"
-	default:
-		return ""
-	}
+	return utils.GetOpenSSLConfigureTarget()
 }
 
 func getConfigureHostTriple() string {
-	goarch := runtime.GOARCH
-	switch goarch {
-	case "amd64":
-		goarch = "x86_64"
-	case "arm64":
-		goarch = "aarch64"
-	}
-	switch runtime.GOOS {
-	case "linux":
-		return goarch + "-pc-linux-gnu"
-	case "darwin":
-		return goarch + "-apple-darwin"
-	default:
-		return goarch + "-pc-linux-gnu"
-	}
+	return utils.GetConfigureHostTriple()
 }
 
 func (r *ForgeRepository) findConfigureInSubdir(basePath, name string) string {

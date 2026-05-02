@@ -5,45 +5,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/supanadit/phpv/internal/utils"
 )
 
 func getZigTarget() string {
-	goarch := runtime.GOARCH
-	switch goarch {
-	case "amd64":
-		goarch = "x86_64"
-	case "arm64":
-		goarch = "aarch64"
-	}
-
-	goos := runtime.GOOS
-	abi := "-gnu"
-	if goos == "darwin" {
-		abi = "-macos"
-	}
-
-	return goarch + "-" + goos + abi
+	return utils.GetZigTarget()
 }
 
 func getZigTargetForGlibc(glibcVersion string) string {
-	goarch := runtime.GOARCH
-	switch goarch {
-	case "amd64":
-		goarch = "x86_64"
-	case "arm64":
-		goarch = "aarch64"
-	}
-
-	goos := runtime.GOOS
-	if goos == "darwin" {
-		return goarch + "-" + goos
-	}
-
-	return goarch + "-linux-gnu." + glibcVersion
+	return utils.GetZigTargetForGlibc(glibcVersion)
 }
 
 func findSystemCXX() string {

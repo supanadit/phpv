@@ -21,18 +21,6 @@ import (
 	"github.com/supanadit/phpv/unload"
 )
 
-var buildTools = map[string]bool{
-	"m4":       true,
-	"autoconf": true,
-	"automake": true,
-	"libtool":  true,
-	"perl":     true,
-	"bison":    true,
-	"flex":     true,
-	"re2c":     true,
-	"zig":      true,
-}
-
 type bundlerRepository struct {
 	assemblerSvc    *assembler.AssemblerService
 	advisorSvc      *advisor.Service
@@ -186,7 +174,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 			}
 
 			completed[dep.Name+"@"+depVersion] = true
-			if !buildTools[dep.Name] && depInfo.BuiltFromSource {
+			if !utils.BuildTools[dep.Name] && depInfo.BuiltFromSource {
 				depPath := utils.DependencyPath(s.silo, exactVersion, dep.Name, depVersion)
 				depLibraryPaths = append(depLibraryPaths, filepath.Join(depPath, "lib"))
 				depCppFlags = append(depCppFlags, fmt.Sprintf("-I%s/include", depPath))

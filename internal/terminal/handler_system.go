@@ -147,14 +147,14 @@ var autodownloadTools = map[string]bool{
 
 // Tools that phpv builds from source — not required on system
 var autoBuildTools = map[string]bool{
-	"m4":        true,
-	"autoconf":  true,
-	"automake":  true,
-	"libtool":   true,
-	"perl":      true,
-	"bison":     true,
-	"flex":      true,
-	"re2c":      true,
+	"m4":       true,
+	"autoconf": true,
+	"automake": true,
+	"libtool":  true,
+	"perl":     true,
+	"bison":    true,
+	"flex":     true,
+	"re2c":     true,
 }
 
 // Libraries that phpv builds from source — system package optional

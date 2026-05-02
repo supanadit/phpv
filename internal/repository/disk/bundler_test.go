@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/utils"
 )
 
 func TestBundlerRepository_BuildTools(t *testing.T) {
@@ -21,16 +22,16 @@ func TestBundlerRepository_BuildTools(t *testing.T) {
 	}
 
 	for tool := range expectedTools {
-		if !buildTools[tool] {
+		if !utils.BuildTools[tool] {
 			t.Errorf("Expected %s to be a build tool", tool)
 		}
 	}
 
-	if buildTools["openssl"] {
+	if utils.BuildTools["openssl"] {
 		t.Error("openssl should not be a build tool")
 	}
 
-	if buildTools["libxml2"] {
+	if utils.BuildTools["libxml2"] {
 		t.Error("libxml2 should not be a build tool")
 	}
 }
@@ -58,8 +59,8 @@ func TestBundlerRepository_IsBuildTool(t *testing.T) {
 
 	for _, tc := range buildToolTests {
 		t.Run(tc.name, func(t *testing.T) {
-			if buildTools[tc.name] != tc.expected {
-				t.Errorf("buildTools[%s] = %v, expected %v", tc.name, buildTools[tc.name], tc.expected)
+			if utils.BuildTools[tc.name] != tc.expected {
+				t.Errorf("BuildTools[%s] = %v, expected %v", tc.name, utils.BuildTools[tc.name], tc.expected)
 			}
 		})
 	}

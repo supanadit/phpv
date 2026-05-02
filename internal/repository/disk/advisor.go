@@ -118,7 +118,7 @@ func (r *AdvisorRepository) Check(name string, version string, phpVersion string
 }
 
 func (r *AdvisorRepository) getDependencyConstraint(name, phpVersion string) string {
-	if _, isBuildTool := buildTools[name]; isBuildTool {
+	if _, isBuildTool := utils.BuildTools[name]; isBuildTool {
 		return r.getBuildToolConstraint(name, phpVersion)
 	}
 
@@ -220,7 +220,7 @@ func determineState(fs afero.Fs, root, name, version, phpVersion string) domain.
 	var versionPath string
 	if name == "php" {
 		versionPath = filepath.Join(root, "versions", version, "output")
-	} else if _, isBuildTool := buildTools[name]; isBuildTool && phpVersion != "" {
+	} else if _, isBuildTool := utils.BuildTools[name]; isBuildTool && phpVersion != "" {
 		versionPath = filepath.Join(root, "build-tools", name, version)
 	} else if phpVersion != "" {
 		versionPath = filepath.Join(root, "versions", phpVersion, "dependency", name, version)
@@ -293,7 +293,7 @@ func (r *AdvisorRepository) shouldBuildFromSource(name, phpVersion string) bool 
 		return false
 	}
 
-	if _, isBuildTool := buildTools[name]; isBuildTool {
+	if _, isBuildTool := utils.BuildTools[name]; isBuildTool {
 		return r.shouldBuildToolFromSource(name, phpVersion)
 	}
 

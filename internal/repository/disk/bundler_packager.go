@@ -363,17 +363,7 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 	return err
 }
 
-var buildToolsList = map[string]bool{
-	"m4":       true,
-	"autoconf": true,
-	"automake": true,
-	"libtool":  true,
-	"perl":     true,
-	"bison":    true,
-	"flex":     true,
-	"re2c":     true,
-	"zig":      true,
-}
+var buildToolsList = utils.BuildTools
 
 var systemPrefixes = []string{"/usr", "/usr/local"}
 

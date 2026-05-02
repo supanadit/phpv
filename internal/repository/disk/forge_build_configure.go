@@ -119,30 +119,36 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 			args = append(args, "--build="+hostTriple, "--host="+hostTriple)
 		}
 		configure = ctx.Command("./configure", args...)
+		configure.Dir = sourcePath
+		configure.Env = env
 	} else if isOpensslConfig {
 		configure = ctx.Command("./config", args...)
+		configure.Dir = sourcePath
+		configure.Env = env
 	} else if usesPerl {
 		target := getOpenSSLConfigureTarget()
 		perlArgs := []string{configurePath}
 		perlArgs = append(perlArgs, target)
 		perlArgs = append(perlArgs, args...)
 
+		configure = ctx.Command("perl", perlArgs...)
+		configure.Dir = sourcePath
+		baseEnv := env
 		if len(config.CFLAGS) > 0 {
-			perlArgs = append(perlArgs, "CFLAGS="+strings.Join(config.CFLAGS, " "))
+			baseEnv = append(baseEnv, "CFLAGS="+strings.Join(config.CFLAGS, " "))
 		}
 		if len(config.CXXFLAGS) > 0 {
-			perlArgs = append(perlArgs, "CXXFLAGS="+strings.Join(config.CXXFLAGS, " "))
+			baseEnv = append(baseEnv, "CXXFLAGS="+strings.Join(config.CXXFLAGS, " "))
 		}
 		if len(config.LDFLAGS) > 0 {
-			perlArgs = append(perlArgs, "LDFLAGS="+strings.Join(config.LDFLAGS, " "))
+			baseEnv = append(baseEnv, "LDFLAGS="+strings.Join(config.LDFLAGS, " "))
 		}
-
-		configure = ctx.Command("perl", perlArgs...)
+		configure.Env = baseEnv
 	} else {
 		configure = ctx.Command(configurePath, args...)
+		configure.Dir = sourcePath
+		configure.Env = env
 	}
-	configure.Dir = sourcePath
-	configure.Env = env
 
 	if err := ctx.Run(configure); err != nil {
 		return domain.Forge{}, fmt.Errorf("configure failed: %w", err)

@@ -199,16 +199,18 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 		MinPHP: "5.0",
 	},
 	"pdo_pgsql": {
-		Flag:   "--with-pdo-pgsql",
-		MinPHP: "5.0",
+		Flag:    "--with-pdo-pgsql",
+		MinPHP:  "5.0",
+		Package: "libpq",
 	},
 	"pdo_sqlite": {
 		Flag:   "--with-pdo-sqlite",
 		MinPHP: "5.0",
 	},
 	"pgsql": {
-		Flag:   "--with-pgsql",
-		MinPHP: "5.0",
+		Flag:    "--with-pgsql",
+		MinPHP:  "5.0",
+		Package: "libpq",
 	},
 	"phar": {
 		Flag:    "--enable-phar",

@@ -47,6 +47,7 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 	// install. We filter both "$siloRoot/bin" and any path containing
 	// "/.phpv/bin" to be safe.
 	phpvBinDir := filepath.Join(r.siloRepo.silo.Root, "bin")
+	pathSet := false
 	for i, v := range env {
 		if after, ok := strings.CutPrefix(v, "PATH="); ok {
 			var filtered []string
@@ -57,15 +58,22 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 				filtered = append(filtered, part)
 			}
 			env[i] = "PATH=" + buildToolsBinPath + ":" + strings.Join(filtered, ":")
+			pathSet = true
 			break
 		}
+	}
+	if !pathSet {
+		env = append(env, "PATH="+buildToolsBinPath)
 	}
 
 	systemPkgConfigPaths := utils.GetSystemPkgConfigPaths()
 	var allPkgConfigPaths []string
+	// Dependency pkg-config paths come FIRST so they take priority
+	// (e.g., custom openssl 1.1 must shadow system openssl 3.x)
 	if len(config.PkgConfigPaths) > 0 {
 		allPkgConfigPaths = append(allPkgConfigPaths, config.PkgConfigPaths...)
 	}
+	// System paths come SECOND so system libs like libpq are still findable
 	allPkgConfigPaths = append(allPkgConfigPaths, systemPkgConfigPaths...)
 	for i, v := range env {
 		if after, ok := strings.CutPrefix(v, "PKG_CONFIG_PATH="); ok {
@@ -280,6 +288,11 @@ func (r *ForgeRepository) buildToolsBinPath(buildToolsPath string) string {
 				binPaths = append(binPaths, nestedBin)
 			}
 		}
+	}
+
+	wrappersPath := filepath.Join(buildToolsPath, "wrappers")
+	if exists, _ := afero.DirExists(r.fs, wrappersPath); exists {
+		binPaths = append([]string{wrappersPath}, binPaths...)
 	}
 
 	return strings.Join(binPaths, ":")

@@ -470,6 +470,8 @@ func (h *TerminalHandler) doctorAnalyzeExtensions(version string, osInfo utils.O
 			pkgConfigName = "oniguruma"
 		case "icu":
 			pkgConfigName = "icu-uc"
+		case "libpq":
+			pkgConfigName = "libpq"
 		}
 
 		cmd := exec.Command("pkg-config", "--exists", pkgConfigName)

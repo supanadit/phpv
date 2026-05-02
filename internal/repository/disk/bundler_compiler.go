@@ -82,7 +82,20 @@ func (s *bundlerRepository) needsAlternativeCC(phpVersion string, forceCompiler 
 func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompiler string) (cc string, cflags []string, cxx string, ldFlags []string, err error) {
 	v := utils.ParseVersion(phpVersion)
 
-	if v.Major >= 5 && (forceCompiler == "" || forceCompiler == "gcc") {
+	if v.Major >= 5 && v.Major < 8 && (forceCompiler == "" || forceCompiler == "gcc") {
+		gccPath, err := exec.LookPath("gcc")
+		if err != nil {
+			return "", []string{}, "", nil, fmt.Errorf("[bundler] gcc not found in PATH: %w", err)
+		}
+		gxxPath, err := exec.LookPath("g++")
+		if err != nil {
+			return "", []string{}, "", nil, fmt.Errorf("[bundler] g++ not found in PATH: %w", err)
+		}
+		cflags = []string{"-std=gnu11", "-fPIC", "-Wno-error", "-Wno-array-parameter", "-Wno-deprecated-non-prototype", "-Wno-implicit-function-declaration", "-Wno-incompatible-pointer-types"}
+		return gccPath, cflags, gxxPath, nil, nil
+	}
+
+	if v.Major >= 8 && (forceCompiler == "" || forceCompiler == "gcc") {
 		gccPath, err := exec.LookPath("gcc")
 		if err != nil {
 			return "", []string{}, "", nil, fmt.Errorf("[bundler] gcc not found in PATH: %w", err)

@@ -256,16 +256,18 @@ func (s *bundlerRepository) logBuildFlags(installDir string, configureFlags, cpp
 var cOnlyWarnings = map[string]bool{
 	"-Wno-deprecated-non-prototype":      true,
 	"-Wno-implicit-function-declaration": true,
+	"-Wno-array-parameter":               true,
 	"-Wstrict-prototypes":                true,
+	"-Wno-incompatible-pointer-types":    true,
 }
 
 func cxxFlagsFromCFlags(cflags []string) []string {
 	cxxflags := make([]string, 0, len(cflags))
 	for _, f := range cflags {
 		if f == "-std=gnu11" {
-			cxxflags = append(cxxflags, "-std=gnu++11")
+			cxxflags = append(cxxflags, "-std=gnu++17")
 		} else if f == "-std=c11" {
-			cxxflags = append(cxxflags, "-std=c++11")
+			cxxflags = append(cxxflags, "-std=c++17")
 		} else if cOnlyWarnings[f] {
 			continue
 		} else {
@@ -467,6 +469,32 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 			if !resolved {
 				if prefix := findSystemPrefix(filepath.Join("include", "zlib.h")); prefix != "" {
 					result = append(result, "--with-zlib="+prefix)
+					resolved = true
+				}
+			}
+			if !resolved {
+				result = append(result, flag)
+			}
+		} else if strings.HasPrefix(flag, "--with-pdo-pgsql") {
+			resolved := false
+			if flag == "--with-pdo-pgsql" || flag == "--with-pdo-pgsql=yes" {
+				wrappersPath := filepath.Join(s.silo.Root, "build-tools", "wrappers")
+				pgConfigPath := filepath.Join(wrappersPath, "pg_config")
+				if fi, err := os.Stat(pgConfigPath); err == nil && !fi.IsDir() {
+					result = append(result, "--with-pdo-pgsql="+wrappersPath)
+					resolved = true
+				}
+			}
+			if !resolved {
+				result = append(result, flag)
+			}
+		} else if strings.HasPrefix(flag, "--with-pgsql") {
+			resolved := false
+			if flag == "--with-pgsql" || flag == "--with-pgsql=yes" {
+				wrappersPath := filepath.Join(s.silo.Root, "build-tools", "wrappers")
+				pgConfigPath := filepath.Join(wrappersPath, "pg_config")
+				if fi, err := os.Stat(pgConfigPath); err == nil && !fi.IsDir() {
+					result = append(result, "--with-pgsql="+wrappersPath)
 					resolved = true
 				}
 			}

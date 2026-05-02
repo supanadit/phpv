@@ -73,27 +73,29 @@ func (s *bundlerRepository) needsAlternativeCC(phpVersion string, forceCompiler 
 		return false
 	}
 	v := utils.ParseVersion(phpVersion)
-	if v.Major < 8 {
-		return true
-	}
-	if v.Major == 8 && v.Minor == 0 {
+	if v.Major < 5 {
 		return true
 	}
 	return false
 }
 
 func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompiler string) (cc string, cflags []string, cxx string, ldFlags []string, err error) {
-	if !s.needsAlternativeCC(phpVersion, forceCompiler) {
-		systemCxx := findSystemCXX()
-		return "", []string{}, systemCxx, nil, nil
-	}
-
 	v := utils.ParseVersion(phpVersion)
-	target := getZigTarget()
 
-	if v.Major < 8 {
-		target = getZigTargetForGlibc("2.39")
+	if v.Major >= 5 && (forceCompiler == "" || forceCompiler == "gcc") {
+		gccPath, err := exec.LookPath("gcc")
+		if err != nil {
+			return "", []string{}, "", nil, fmt.Errorf("[bundler] gcc not found in PATH: %w", err)
+		}
+		gxxPath, err := exec.LookPath("g++")
+		if err != nil {
+			return "", []string{}, "", nil, fmt.Errorf("[bundler] g++ not found in PATH: %w", err)
+		}
+		cflags = []string{"-Wno-error", "-fPIC"}
+		return gccPath, cflags, gxxPath, nil, nil
 	}
+
+	target := getZigTargetForGlibc("2.39")
 
 	if zigPath := os.Getenv("PHPV_ZIG_PATH"); zigPath != "" {
 		if _, err := os.Stat(zigPath); err == nil {
@@ -103,12 +105,9 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 	}
 
 	zigBinary := utils.GetZigCompilerPath(s.silo.Root, phpVersion)
+	zigVersion := "0.13.0"
 
 	if _, err := os.Stat(zigBinary); os.IsNotExist(err) {
-		zigVersion := "0.14.0"
-		if v.Major < 7 {
-			zigVersion = "0.13.0"
-		}
 		if err := s.installBuildTool("zig", zigVersion, phpVersion); err != nil {
 			return "", nil, "", nil, fmt.Errorf("[bundler] failed to install zig: %w", err)
 		}

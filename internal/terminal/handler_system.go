@@ -274,10 +274,7 @@ func usesZig(version string) bool {
 		return false
 	}
 	v := utils.ParseVersion(version)
-	if v.Major < 8 {
-		return true
-	}
-	if v.Major == 8 && v.Minor == 0 {
+	if v.Major < 5 {
 		return true
 	}
 	return false

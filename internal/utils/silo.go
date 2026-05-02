@@ -127,11 +127,7 @@ func GetSystemPkgConfigPaths() []string {
 }
 
 func GetZigCompilerPath(siloRoot, phpVersion string) string {
-	zigVersion := "0.14.0"
-	if v := ParseVersion(phpVersion); v.Major < 7 {
-		zigVersion = "0.13.0"
-	}
-	return filepath.Join(siloRoot, "build-tools", "zig", zigVersion, "zig")
+	return filepath.Join(siloRoot, "build-tools", "zig", "0.13.0", "zig")
 }
 
 func GetOS() string {

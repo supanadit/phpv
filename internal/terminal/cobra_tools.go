@@ -98,6 +98,10 @@ func registerToolsCommands(root *cobra.Command, handler *TerminalHandler) {
 					}
 					if resolved, err := utils.ResolveVersionConstraint(phpVersions, version); err == nil {
 						version = resolved
+					} else {
+						// Invalid version constraint - show error but continue with system check
+						fmt.Printf("Warning: Version %q not found, checking system dependencies only\n", version)
+						version = ""
 					}
 				}
 			}
@@ -110,21 +114,26 @@ func registerToolsCommands(root *cobra.Command, handler *TerminalHandler) {
 			// ── Readiness ──
 			fmt.Println("═══ System Readiness ═══")
 			verdictIcon := "✓"
-			if result.Verdict == "blocked" {
+			switch result.Verdict {
+			case "blocked":
 				verdictIcon = "✗"
-			} else if result.Verdict == "minor" {
+			case "minor":
 				verdictIcon = "⚡"
 			}
 			fmt.Printf("  %s %s\n", verdictIcon, result.VerdictMsg)
 
 			if result.CanBuildPHP8 {
-				fmt.Println("  ✓ PHP 8.1+ buildable    (gcc available)")
+				compilerUsed := "gcc"
+				if !result.HasGcc && result.HasZig {
+					compilerUsed = "zig"
+				}
+				fmt.Printf("  ✓ PHP 8.1+ buildable    (%s available)\n", compilerUsed)
 			} else {
 				fmt.Println("  ✗ PHP 8.1+ not buildable (gcc missing)")
 			}
 			if result.CanBuildPHP7 {
 				zigMsg := "zig available"
-				if !toolAvailable(result.BuildTools, "zig") {
+				if !result.HasZig {
 					zigMsg = "zig auto-downloaded"
 				}
 				fmt.Printf("  ✓ PHP 7.x buildable     (%s)\n", zigMsg)

@@ -31,8 +31,22 @@ func NewService() *Service {
 
 func (s *Service) RegisterPatterns(patterns []domain.URLPattern) {
 	for _, p := range patterns {
-		s.index[p.Name] = append(s.index[p.Name], p)
+		s.index[p.Name] = appendUniquePattern(s.index[p.Name], p)
 	}
+}
+
+func patternKey(p domain.URLPattern) string {
+	return p.Type + "|" + p.Template + "|" + p.Checksum
+}
+
+func appendUniquePattern(slice []domain.URLPattern, item domain.URLPattern) []domain.URLPattern {
+	itemKey := patternKey(item)
+	for _, v := range slice {
+		if patternKey(v) == itemKey {
+			return slice
+		}
+	}
+	return append(slice, item)
 }
 
 func (s *Service) MatchPattern(name string, v *domain.Version) (domain.URLPattern, error) {

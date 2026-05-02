@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
 	"github.com/spf13/afero"
@@ -308,9 +309,16 @@ func (s *bundlerRepository) resolveExtensionDependencies(extensions []string, ph
 		}
 	}
 
+	// Sort keys for deterministic output
+	keys := make([]string, 0, len(depMap))
+	for key := range depMap {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
 	var deps []domain.Dependency
-	for _, dep := range depMap {
-		deps = append(deps, dep)
+	for _, key := range keys {
+		deps = append(deps, depMap[key])
 	}
 
 	return deps

@@ -191,15 +191,24 @@ func (h *TerminalHandler) DoctorV2(version string) (*DoctorResultV2, error) {
 		phpInstall = h.doctorCheckPHPInstall(version)
 	}
 
-	// Count truly missing items (only "system" category)
+	// Count truly missing items
 	sysMissing := 0
+	buildableMissing := 0
 	allItems := append(buildTools, libChecks...)
 	var sysPkgs []string
+	var buildPkgs []string
 	for _, item := range allItems {
-		if !item.Available && item.Category == "system" {
-			sysMissing++
-			pkg := strings.TrimPrefix(item.Suggestion, osInfo.InstallCmd+" ")
-			sysPkgs = append(sysPkgs, pkg)
+		if !item.Available {
+			switch item.Category {
+			case "system":
+				sysMissing++
+				pkg := strings.TrimPrefix(item.Suggestion, osInfo.InstallCmd+" ")
+				sysPkgs = append(sysPkgs, pkg)
+			case "buildable":
+				buildableMissing++
+				pkg := strings.TrimPrefix(item.Suggestion, "phpv will build ")
+				buildPkgs = append(buildPkgs, pkg)
+			}
 		}
 	}
 
@@ -209,12 +218,17 @@ func (h *TerminalHandler) DoctorV2(version string) (*DoctorResultV2, error) {
 		quickFix = osInfo.InstallCmd + " " + strings.Join(sysPkgs, " ")
 	}
 
+	// Buildable packages info
+	buildableInfo := ""
+	if buildableMissing > 0 {
+		buildableInfo = fmt.Sprintf("%d packages will be built by phpv: %s", buildableMissing, strings.Join(buildPkgs, ", "))
+	}
+
 	// Determine buildable PHP versions from available compilers
 	hasGcc := toolAvailable(buildTools, "gcc")
 	hasMake := toolAvailable(buildTools, "make")
 
-	// zig and cmake are auto-downloaded — always available
-	hasZig := toolAvailable(buildTools, "zig") || autodownloadTools["zig"]
+	hasZig := toolAvailable(buildTools, "zig")
 
 	canBuildPHP8 := hasMake && (hasGcc || hasZig)
 	canBuildPHP7 := hasMake && hasZig
@@ -247,16 +261,19 @@ func (h *TerminalHandler) DoctorV2(version string) (*DoctorResultV2, error) {
 	}
 
 	return &DoctorResultV2{
-		BuildTools:   buildTools,
-		LibChecks:    libChecks,
-		Extensions:   extChecks,
-		PHPInstall:   phpInstall,
-		Verdict:      verdict,
-		VerdictMsg:   verdictMsg,
-		CanBuildPHP8: canBuildPHP8,
-		CanBuildPHP7: canBuildPHP7,
-		QuickFix:     quickFix,
-		Summary:      summary,
+		BuildTools:    buildTools,
+		LibChecks:     libChecks,
+		Extensions:    extChecks,
+		PHPInstall:    phpInstall,
+		Verdict:       verdict,
+		VerdictMsg:    verdictMsg,
+		CanBuildPHP8:  canBuildPHP8,
+		CanBuildPHP7:  canBuildPHP7,
+		HasGcc:        hasGcc,
+		HasZig:        hasZig,
+		QuickFix:      quickFix,
+		BuildableInfo: buildableInfo,
+		Summary:       summary,
 	}, nil
 }
 
@@ -274,9 +291,17 @@ func usesZig(version string) bool {
 		return false
 	}
 	v := utils.ParseVersion(version)
-	// zig is used for PHP < 5 or PHP >= 8 (unless forced to gcc)
-	// This matches the logic in bundler_compiler.go:getCompilerForVersion
-	return v.Major < 5 || v.Major >= 8
+	// For PHP 5-7: use gcc if available, else zig
+	if v.Major >= 5 && v.Major < 8 {
+		return !compilerAvailable("gcc")
+	}
+	// For PHP < 5 or >= 8: use gcc if available, else zig
+	return !compilerAvailable("gcc")
+}
+
+func compilerAvailable(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
 }
 
 func (h *TerminalHandler) doctorCheckBuildTools(osInfo utils.OSInfo, version string) []DoctorCheckItem {

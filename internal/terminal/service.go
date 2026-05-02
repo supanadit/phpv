@@ -108,7 +108,10 @@ type DoctorResultV2 struct {
 	VerdictMsg   string
 	CanBuildPHP8 bool
 	CanBuildPHP7 bool
+	HasGcc       bool // gcc available on system
+	HasZig       bool // zig available on system
 	QuickFix     string // consolidated install command for all missing deps
+	BuildableInfo string // info about packages that will be built by phpv
 	Summary      string
 }
 

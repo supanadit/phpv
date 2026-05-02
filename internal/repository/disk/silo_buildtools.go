@@ -57,9 +57,18 @@ func (r *SiloRepository) IncrementBuildToolRef(name, version, phpVersion string)
 	}
 
 	key := name + "@" + version
-	refs[key] = append(refs[key], phpVersion)
+	refs[key] = appendUnique(refs[key], phpVersion)
 
 	return r.saveBuildToolsRefs(refs)
+}
+
+func appendUnique(slice []string, item string) []string {
+	for _, v := range slice {
+		if v == item {
+			return slice
+		}
+	}
+	return append(slice, item)
 }
 
 func (r *SiloRepository) DecrementBuildToolRef(name, version, phpVersion string) error {
@@ -94,7 +103,29 @@ func (r *SiloRepository) DecrementBuildToolRef(name, version, phpVersion string)
 }
 
 func (r *SiloRepository) GetBuildToolRefs() (map[string][]string, error) {
-	return r.loadBuildToolsRefs()
+	refs, err := r.loadBuildToolsRefs()
+	if err != nil {
+		return nil, err
+	}
+
+	// Deduplicate each slice
+	for key, versions := range refs {
+		refs[key] = uniqueStrings(versions)
+	}
+
+	return refs, nil
+}
+
+func uniqueStrings(slice []string) []string {
+	seen := make(map[string]bool)
+	var result []string
+	for _, v := range slice {
+		if !seen[v] {
+			seen[v] = true
+			result = append(result, v)
+		}
+	}
+	return result
 }
 
 func (r *SiloRepository) RemoveBuildToolRef(name, version string) error {
@@ -131,6 +162,9 @@ func (r *SiloRepository) RemovePHPInstallation(phpVersion string) ([]string, err
 		return nil, fmt.Errorf("failed to load build-tools refs: %w", err)
 	}
 
+	for key, phpVersions := range refs {
+		refs[key] = uniqueStrings(phpVersions)
+	}
 	for key, phpVersions := range refs {
 		var newVersions []string
 		for _, v := range phpVersions {

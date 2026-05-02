@@ -31,33 +31,34 @@ const (
 
 // CompilerInfo contains information about a compiler
 type CompilerInfo struct {
-	Type     CompilerType
-	Path     string
-	Name     string
-	Version  string
+	Type      CompilerType
+	Path      string
+	Name      string
+	Version   string
 	Available bool
 }
 
+// filepath: internal/compiler/service.go
 // GetRequiredCompilerForPHP determines which compiler is required for the given PHP version
-func (c *CompilerService) GetRequiredCompilerForPHP(phpVersion string, forceCompiler string) CompilerType {
+func (c *CompilerService) GetRequiredCompilerForPHP(phpVersion string, forceCompiler CompilerType) CompilerType {
 	if phpVersion == "" {
 		return CompilerTypeGCC
 	}
-	
+
 	v := utils.ParseVersion(phpVersion)
-	
+
 	// For forced compiler selection
 	if forceCompiler == CompilerTypeZig {
 		return CompilerTypeZig
 	} else if forceCompiler == CompilerTypeGCC {
 		return CompilerTypeGCC
 	}
-	
+
 	// PHP versions 5.x through 7.x prefer gcc
 	if v.Major >= 5 && v.Major < 8 {
 		return CompilerTypeGCC
 	}
-	
+
 	// PHP versions < 5 or >= 8 prefer zig
 	return CompilerTypeZig
 }
@@ -67,7 +68,7 @@ func (c *CompilerService) GetCompilerInfo(compilerType CompilerType) CompilerInf
 	var path string
 	var name string
 	var err error
-	
+
 	switch compilerType {
 	case CompilerTypeGCC:
 		name = "gcc"
@@ -95,7 +96,7 @@ func (c *CompilerService) GetCompilerInfo(compilerType CompilerType) CompilerInf
 			Available: false,
 		}
 	}
-	
+
 	if err != nil {
 		return CompilerInfo{
 			Type:      compilerType,
@@ -103,9 +104,9 @@ func (c *CompilerService) GetCompilerInfo(compilerType CompilerType) CompilerInf
 			Available: false,
 		}
 	}
-	
+
 	version := c.getCompilerVersion(name, path)
-	
+
 	return CompilerInfo{
 		Type:      compilerType,
 		Path:      path,
@@ -124,12 +125,12 @@ func (c *CompilerService) IsCompilerAvailable(compilerType CompilerType) bool {
 // GetDefaultCompilerForPHP returns the best available compiler for the given PHP version
 func (c *CompilerService) GetDefaultCompilerForPHP(phpVersion string) CompilerType {
 	required := c.GetRequiredCompilerForPHP(phpVersion, "")
-	
+
 	// If the required compiler is available, use it
 	if c.IsCompilerAvailable(required) {
 		return required
 	}
-	
+
 	// Try the alternative compiler
 	var alt CompilerType
 	if required == CompilerTypeGCC {
@@ -137,36 +138,60 @@ func (c *CompilerService) GetDefaultCompilerForPHP(phpVersion string) CompilerTy
 	} else {
 		alt = CompilerTypeGCC
 	}
-	
+
 	if c.IsCompilerAvailable(alt) {
 		return alt
 	}
-	
+
 	// No compiler available
 	return ""
 }
 
+// GetEffectiveCompilerForPHP returns the compiler that will actually be used for building
+// This considers both version requirements and actual availability
+func (c *CompilerService) GetEffectiveCompilerForPHP(phpVersion string) CompilerType {
+	if phpVersion == "" {
+		return CompilerTypeGCC
+	}
+
+	v := utils.ParseVersion(phpVersion)
+
+	// PHP 5-7: always use gcc if available, else zig
+	if v.Major >= 5 && v.Major < 8 {
+		if c.IsCompilerAvailable(CompilerTypeGCC) {
+			return CompilerTypeGCC
+		}
+		return CompilerTypeZig
+	}
+
+	// PHP < 5 or >= 8: prefer gcc if available, else zig
+	if c.IsCompilerAvailable(CompilerTypeGCC) {
+		return CompilerTypeGCC
+	}
+	return CompilerTypeZig
+}
+
 // UsesZigForPHP returns whether zig will be used for the given PHP version
 func (c *CompilerService) UsesZigForPHP(phpVersion string) bool {
-	return c.GetRequiredCompilerForPHP(phpVersion, "") == CompilerTypeZig
+	return c.GetEffectiveCompilerForPHP(phpVersion) == CompilerTypeZig
 }
 
 // GetZigTarget returns the zig target for the current platform
 func (c *CompilerService) GetZigTarget() string {
 	arch := runtime.GOARCH
 	os := runtime.GOOS
-	
+
 	// Map architectures
 	archMap := map[string]string{
 		"amd64": "x86_64",
 		"arm64": "aarch64",
 		"arm":   "arm",
 	}
-	
+
 	if a, ok := archMap[arch]; ok {
 		arch = a
 	}
-	
+
 	return arch + "-" + os + "-gnu"
 }
 
@@ -182,8 +207,6 @@ func (c *CompilerService) getCompilerVersion(name, path string) string {
 	case "gcc":
 		args = []string{"--version"}
 	case "zig":
-		args = []string{"version"}
-	case "zig":
 		// For zig cc/c++ wrappers, we need to extract the zig binary
 		if filepath.Base(path) != "zig" {
 			parts := filepath.SplitList(path)
@@ -195,12 +218,12 @@ func (c *CompilerService) getCompilerVersion(name, path string) string {
 	default:
 		return ""
 	}
-	
+
 	cmd := exec.Command(path, args...)
 	output, err := cmd.Output()
 	if err != nil {
 		return ""
 	}
-	
+
 	return string(output)
 }

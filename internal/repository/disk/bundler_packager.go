@@ -329,6 +329,21 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 
 	cxxflags := cxxFlagsFromCFlags(cflags)
 
+	if name == "php" && len(ldFlags) > 0 {
+		var ccPrefix []string
+		var cxxPrefix []string
+		for _, flag := range ldFlags {
+			if strings.HasPrefix(flag, "-L") || strings.HasPrefix(flag, "-Wl,-rpath-link") {
+				ccPrefix = append(ccPrefix, flag)
+				cxxPrefix = append(cxxPrefix, flag)
+			}
+		}
+		if len(ccPrefix) > 0 {
+			cc = cc + " " + strings.Join(ccPrefix, " ")
+			cxx = cxx + " " + strings.Join(cxxPrefix, " ")
+		}
+	}
+
 	s.logBuildFlags(installDir, configureFlags, cppFlags, ldFlags, ldPath, cflags, pkgConfigPaths, cxxflags, cc, cxx)
 
 	compilerName := "gcc"

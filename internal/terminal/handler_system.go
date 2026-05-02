@@ -216,7 +216,7 @@ func (h *TerminalHandler) DoctorV2(version string) (*DoctorResultV2, error) {
 	// zig and cmake are auto-downloaded — always available
 	hasZig := toolAvailable(buildTools, "zig") || autodownloadTools["zig"]
 
-	canBuildPHP8 := hasMake && hasGcc
+	canBuildPHP8 := hasMake && (hasGcc || hasZig)
 	canBuildPHP7 := hasMake && hasZig
 
 	// Compute verdict
@@ -274,10 +274,9 @@ func usesZig(version string) bool {
 		return false
 	}
 	v := utils.ParseVersion(version)
-	if v.Major < 5 {
-		return true
-	}
-	return false
+	// zig is used for PHP < 5 or PHP >= 8 (unless forced to gcc)
+	// This matches the logic in bundler_compiler.go:getCompilerForVersion
+	return v.Major < 5 || v.Major >= 8
 }
 
 func (h *TerminalHandler) doctorCheckBuildTools(osInfo utils.OSInfo, version string) []DoctorCheckItem {

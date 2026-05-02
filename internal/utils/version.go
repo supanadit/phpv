@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
+	verutils "github.com/supanadit/phpv/internal/utils/version"
 )
 
 var versionRegex = regexp.MustCompile(`^(\d+)\.(\d+)(?:\.(\d+))?([a-z]*)$`)
@@ -145,4 +146,9 @@ func ResolveInstalledVersion(installedVersions []string, constraint string) (str
 		return "", fmt.Errorf("no installed version matching %q", constraint)
 	}
 	return matched[0], nil
+}
+
+// MatchVersionRange redirects to the version package implementation
+func MatchVersionRange(rangeStr string, version string) bool {
+	return verutils.MatchVersionRange(rangeStr, version)
 }

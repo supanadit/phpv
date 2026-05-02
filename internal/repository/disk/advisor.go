@@ -11,6 +11,7 @@ import (
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/extension"
+	"github.com/supanadit/phpv/internal/platform"
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/pattern"
@@ -23,6 +24,7 @@ type AdvisorRepository struct {
 	patternRegistry *pattern.Service
 	assembler       assembler.AssemblerRepository
 	extensionRepo   extension.Repository
+	platform        *platform.PlatformService
 }
 
 var (
@@ -49,24 +51,6 @@ var (
 	multiPkgConfigPackages = map[string][]string{
 		"icu": {"icu-uc", "icu-io", "icu-i18n"},
 	}
-
-	installSuggestions = map[string]string{
-		"libxml2":   "sudo apt install libxml2-dev  # or: sudo dnf install libxml2-devel",
-		"openssl":   "sudo apt install libssl-dev  # or: sudo dnf install openssl-devel",
-		"curl":      "sudo apt install libcurl4-openssl-dev  # or: sudo dnf install libcurl-devel",
-		"zlib":      "sudo apt install zlib1g-dev  # or: sudo dnf install zlib-devel",
-		"oniguruma": "sudo apt install libonig-dev  # or: sudo dnf install oniguruma-devel",
-		"icu":       "sudo apt install libicu-dev  # or: sudo dnf install libicu-devel",
-		"m4":        "sudo apt install m4",
-		"autoconf":  "sudo apt install autoconf",
-		"automake":  "sudo apt install automake",
-		"libtool":   "sudo apt install libtool",
-		"perl":      "sudo apt install perl",
-		"bison":     "sudo apt install bison",
-		"flex":      "sudo apt install flex",
-		"re2c":      "sudo apt install re2c",
-		"zig":       "sudo apt install zig",
-	}
 )
 
 func NewAdvisorRepository(asm assembler.AssemblerRepository, extRepo extension.Repository) advisor.AdvisorRepository {
@@ -81,6 +65,7 @@ func NewAdvisorRepository(asm assembler.AssemblerRepository, extRepo extension.R
 		patternRegistry: registry,
 		assembler:       asm,
 		extensionRepo:   extRepo,
+		platform:        platform.NewPlatformService(),
 	}
 }
 
@@ -95,9 +80,7 @@ func (r *AdvisorRepository) Check(name string, version string, phpVersion string
 
 	suggestion := ""
 	if !systemAvailable {
-		if sug, ok := installSuggestions[name]; ok {
-			suggestion = sug
-		}
+		suggestion = r.platform.GetInstallSuggestion(name)
 	}
 
 	return domain.AdvisorCheck{

@@ -33,14 +33,6 @@ func (r *ForgeRepository) SetLogger(logger utils.Logger) {
 	r.logger = logger
 }
 
-func (r *ForgeRepository) GetConfigureFlags(name string, version string) []string {
-	return nil
-}
-
-func (r *ForgeRepository) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
-	return nil
-}
-
 func (r *ForgeRepository) Build(config domain.ForgeConfig, sourceDir string) (domain.Forge, error) {
 	strategy := r.detectStrategy(config.Name, config.Version)
 	return r.BuildWithStrategy(config, strategy, sourceDir)

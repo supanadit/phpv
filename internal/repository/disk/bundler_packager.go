@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/flagresolver"
 	"github.com/supanadit/phpv/internal/utils"
 )
 
@@ -253,114 +254,6 @@ func (s *bundlerRepository) logBuildFlags(installDir string, configureFlags, cpp
 	}
 }
 
-var cOnlyWarnings = map[string]bool{
-	"-Wno-deprecated-non-prototype":      true,
-	"-Wno-implicit-function-declaration": true,
-	"-Wno-array-parameter":               true,
-	"-Wstrict-prototypes":                true,
-	"-Wno-incompatible-pointer-types":    true,
-}
-
-// cxxFlagsFromCFlags converts CFLAGS to CXXFLAGS for C++ compilation.
-// It removes C-only warning flags and converts C standard flags to equivalent C++ flags.
-//
-// For PHP builds with GCC 15+, this function ensures C++17 standard is used
-// to support ICU headers that require C++14+ features.
-//
-// Args:
-//   cflags: Original CFLAGS from compiler selection
-//   isPHPBuild: If true, ensures C++ standard flag is present
-//
-// Returns:
-//   Converted flags suitable for C++ compilation (CXXFLAGS).
-func cxxFlagsFromCFlags(cflags []string, isPHPBuild bool) []string {
-	cxxflags := make([]string, 0, len(cflags))
-	hasCXXStd := false
-
-	for _, f := range cflags {
-		if f == "-std=gnu11" {
-			cxxflags = append(cxxflags, "-std=gnu++17")
-			hasCXXStd = true
-		} else if f == "-std=c11" {
-			cxxflags = append(cxxflags, "-std=c++17")
-			hasCXXStd = true
-		} else if strings.HasPrefix(f, "-std=c++") || strings.HasPrefix(f, "-std=gnu++") {
-			cxxflags = append(cxxflags, f)
-			hasCXXStd = true
-		} else if cOnlyWarnings[f] {
-			continue
-		} else {
-			cxxflags = append(cxxflags, f)
-		}
-	}
-
-	// For PHP builds, ensure C++ standard is set when using GCC 15+ which
-	// requires C++14 for ICU headers (std::enable_if_t, std::is_same_v, etc.)
-	if isPHPBuild && !hasCXXStd {
-		cxxflags = append(cxxflags, "-std=gnu++17")
-	}
-
-	return cxxflags
-}
-
-// cxxFlagsFromCFlagsWithStd converts CFLAGS to CXXFLAGS using version-specific C++ standard.
-//
-// This function extends cxxFlagsFromCFlags by accepting a CStdRule from flagresolver,
-// allowing PHP version-specific C++ standards (e.g., 8.0 needs C++17 for ICU 77).
-//
-// Args:
-//   cflags: Original CFLAGS from compiler selection
-//   isPHPBuild: If true, ensures C++ standard flag is present
-//   stdRule: C/C++ standard rule from flagresolver (contains CStd and CXXStd)
-//
-// Returns:
-//   Converted flags suitable for C++ compilation (CXXFLAGS).
-//
-// Example:
-//
-//	stdRule := flagResolverSvc.GetCompilerStdRule("8.0.30")
-//	cxxflags := cxxFlagsFromCFlagsWithStd(cflags, true, stdRule)
-func cxxFlagsFromCFlagsWithStd(cflags []string, isPHPBuild bool, stdRule struct {
-	MinPHP string
-	MaxPHP string
-	CStd   string
-	CXXStd string
-}) []string {
-	cxxflags := make([]string, 0, len(cflags))
-	hasCXXStd := false
-
-	for _, f := range cflags {
-		if f == "-std=gnu11" || f == "-std=c11" {
-			// Replace C11 standard with CXXStd from rule
-			if stdRule.CXXStd != "" {
-				cxxflags = append(cxxflags, stdRule.CXXStd)
-			} else {
-				cxxflags = append(cxxflags, "-std=gnu++17")
-			}
-			hasCXXStd = true
-		} else if strings.HasPrefix(f, "-std=c++") || strings.HasPrefix(f, "-std=gnu++") {
-			cxxflags = append(cxxflags, f)
-			hasCXXStd = true
-		} else if cOnlyWarnings[f] {
-			continue
-		} else {
-			cxxflags = append(cxxflags, f)
-		}
-	}
-
-	// For PHP builds, ensure C++ standard is set when using GCC 15+ which
-	// requires C++14 for ICU headers (std::enable_if_t, std::is_same_v, etc.)
-	if isPHPBuild && !hasCXXStd {
-		if stdRule.CXXStd != "" {
-			cxxflags = append(cxxflags, stdRule.CXXStd)
-		} else {
-			cxxflags = append(cxxflags, "-std=gnu++17")
-		}
-	}
-
-	return cxxflags
-}
-
 func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, forceCompiler string) error {
 	sourceDir := utils.GetSourceDirPath(s.silo, name, version)
 
@@ -410,7 +303,7 @@ func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldP
 		}
 	}
 
-	cxxflags := cxxFlagsFromCFlags(cflags, false)
+	cxxflags := flagresolver.CXXFlagsFromCFlags(cflags, false)
 
 	if name == "php" && len(ldFlags) > 0 {
 		var ccPrefix []string

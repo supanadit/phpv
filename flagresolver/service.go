@@ -1,11 +1,119 @@
 package flagresolver
 
 import (
+	"strings"
+
 	"github.com/supanadit/phpv/domain"
 )
 
 var ErrUnknownExtension = domain.ErrUnknownExtension
 var ErrExtensionConflict = domain.ErrExtensionConflict
+
+// COnlyWarnings lists C compiler warning flags that have no equivalent in C++
+// and should be stripped when converting CFLAGS to CXXFLAGS.
+var COnlyWarnings = map[string]bool{
+	"-Wno-deprecated-non-prototype":      true,
+	"-Wno-implicit-function-declaration": true,
+	"-Wno-array-parameter":               true,
+	"-Wstrict-prototypes":                true,
+	"-Wno-incompatible-pointer-types":    true,
+}
+
+// CXXFlagsFromCFlags converts CFLAGS to CXXFLAGS for C++ compilation.
+// It removes C-only warning flags and converts C standard flags to equivalent C++ flags.
+//
+// For PHP builds with GCC 15+, this function ensures C++17 standard is used
+// to support ICU headers that require C++14+ features.
+//
+// Args:
+//
+//   cflags: Original CFLAGS from compiler selection
+//   isPHPBuild: If true, ensures C++ standard flag is present
+//
+// Returns:
+//   Converted flags suitable for C++ compilation (CXXFLAGS).
+func CXXFlagsFromCFlags(cflags []string, isPHPBuild bool) []string {
+	cxxflags := make([]string, 0, len(cflags))
+	hasCXXStd := false
+
+	for _, f := range cflags {
+		if f == "-std=gnu11" {
+			cxxflags = append(cxxflags, "-std=gnu++17")
+			hasCXXStd = true
+		} else if f == "-std=c11" {
+			cxxflags = append(cxxflags, "-std=c++17")
+			hasCXXStd = true
+		} else if strings.HasPrefix(f, "-std=c++") || strings.HasPrefix(f, "-std=gnu++") {
+			cxxflags = append(cxxflags, f)
+			hasCXXStd = true
+		} else if COnlyWarnings[f] {
+			continue
+		} else {
+			cxxflags = append(cxxflags, f)
+		}
+	}
+
+	// For PHP builds, ensure C++ standard is set when using GCC 15+ which
+	// requires C++14 for ICU headers (std::enable_if_t, std::is_same_v, etc.)
+	if isPHPBuild && !hasCXXStd {
+		cxxflags = append(cxxflags, "-std=gnu++17")
+	}
+
+	return cxxflags
+}
+
+// CXXFlagsFromCFlagsWithStd converts CFLAGS to CXXFLAGS using version-specific C++ standard.
+//
+// This function extends CXXFlagsFromCFlags by accepting a CStdRule from flagresolver,
+// allowing PHP version-specific C++ standards (e.g., 8.0 needs C++17 for ICU 77).
+//
+// Args:
+//   cflags: Original CFLAGS from compiler selection
+//   isPHPBuild: If true, ensures C++ standard flag is present
+//   stdRule: C/C++ standard rule from flagresolver (contains CStd and CXXStd)
+//
+// Returns:
+//   Converted flags suitable for C++ compilation (CXXFLAGS).
+//
+// Example:
+//
+//	stdRule := flagResolverSvc.GetCompilerStdRule("8.0.30")
+//	cxxflags := CXXFlagsFromCFlagsWithStd(cflags, true, stdRule)
+func CXXFlagsFromCFlagsWithStd(cflags []string, isPHPBuild bool, stdRule CStdRule) []string {
+	cxxflags := make([]string, 0, len(cflags))
+	hasCXXStd := false
+
+	for _, f := range cflags {
+		if f == "-std=gnu11" || f == "-std=c11" {
+			// Replace C11 standard with CXXStd from rule
+			if stdRule.CXXStd != "" {
+				cxxflags = append(cxxflags, stdRule.CXXStd)
+			} else {
+				cxxflags = append(cxxflags, "-std=gnu++17")
+			}
+			hasCXXStd = true
+		} else if strings.HasPrefix(f, "-std=c++") || strings.HasPrefix(f, "-std=gnu++") {
+			cxxflags = append(cxxflags, f)
+			hasCXXStd = true
+		} else if COnlyWarnings[f] {
+			continue
+		} else {
+			cxxflags = append(cxxflags, f)
+		}
+	}
+
+	// For PHP builds, ensure C++ standard is set when using GCC 15+ which
+	// requires C++14 for ICU headers (std::enable_if_t, std::is_same_v, etc.)
+	if isPHPBuild && !hasCXXStd {
+		if stdRule.CXXStd != "" {
+			cxxflags = append(cxxflags, stdRule.CXXStd)
+		} else {
+			cxxflags = append(cxxflags, "-std=gnu++17")
+		}
+	}
+
+	return cxxflags
+}
 
 // CStdRule defines C/C++ compiler standard flags for a specific PHP version range.
 //
@@ -70,6 +178,10 @@ type Repository interface {
 
 	// GetCompilerStdRule returns C/C++ standard flags for a PHP version.
 	GetCompilerStdRule(phpVersion string) CStdRule
+
+	// GetCompilerFlags returns C compiler flags (CFLAGS) for a specific compiler and PHP version.
+	// compiler should be "gcc" or "zig".
+	GetCompilerFlags(compiler string, phpVersion string) []string
 }
 
 // Service provides flag resolution operations for PHP and its extensions.
@@ -143,4 +255,10 @@ func (s *Service) CheckExtensionConflicts(extensions []string) ([]string, [][]st
 // Use this to get appropriate -std flags for building PHP with GCC 15+ compatibility.
 func (s *Service) GetCompilerStdRule(phpVersion string) CStdRule {
 	return s.repo.GetCompilerStdRule(phpVersion)
+}
+
+// GetCompilerFlags returns C compiler flags (CFLAGS) for a specific compiler and PHP version.
+// compiler should be "gcc" or "zig".
+func (s *Service) GetCompilerFlags(compiler string, phpVersion string) []string {
+	return s.repo.GetCompilerFlags(compiler, phpVersion)
 }

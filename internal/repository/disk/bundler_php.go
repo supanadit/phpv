@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/flagresolver"
 	"github.com/supanadit/phpv/internal/utils"
 )
 
@@ -107,6 +108,9 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 			return fmt.Errorf("failed to create install directory: %w", err)
 		}
 
+		sourceDir := utils.GetSourceDirPath(s.silo, name, version)
+		s.patchIntlConfigM4(sourceDir)
+
 		configureFlags := s.forgeSvc.GetPHPConfigureFlags(version, extensions)
 
 		configureFlags = s.resolveDependencyFlags("php", version, configureFlags)
@@ -128,7 +132,7 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 
 		// Get compiler standard flags based on PHP version
 		stdRule := s.flagResolverSvc.GetCompilerStdRule(version)
-		cxxflags := cxxFlagsFromCFlagsWithStd(cflags, true, stdRule)
+		cxxflags := flagresolver.CXXFlagsFromCFlagsWithStd(cflags, true, stdRule)
 
 		s.logBuildFlags(installDir, configureFlags, cppFlags, ldFlags, ldPath, cflags, pkgConfigPaths, cxxflags, cc, cxx)
 
@@ -167,7 +171,6 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 			Verbose:         s.verbose,
 		}
 
-		sourceDir := utils.GetSourceDirPath(s.silo, name, version)
 		_, err = s.forgeSvc.Build(config, sourceDir)
 		if err != nil {
 			s.logError("✗ Failed to build PHP %s: %v", version, err)
@@ -212,4 +215,35 @@ func (s *bundlerRepository) touchPHPGeneratedFiles(sourceDir string) {
 			os.Chtimes(f, now.Add(-time.Second), now.Add(-time.Second))
 		}
 	}
+}
+
+// patchIntlConfigM4 patches ext/intl/config.m4 to request C++17 instead of C++11.
+// Modern ICU (77+) headers require C++14+ features (std::enable_if_t, std::u16string_view,
+// etc.). PHP 8.0's intl extension hardcodes PHP_CXX_COMPILE_STDCXX(11, ...), which
+// adds -std=c++11 AFTER CXXFLAGS_CLEAN in the Makefile, overriding -std=gnu++17.
+// This patch ensures the intl extension requests C++17 so the generated Makefile
+// uses -std=c++17 instead, which is compatible with modern ICU.
+func (s *bundlerRepository) patchIntlConfigM4(sourceDir string) {
+	configPath := filepath.Join(sourceDir, "ext", "intl", "config.m4")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return // intl extension not present or already patched
+	}
+
+	content := string(data)
+	// Replace PHP_CXX_COMPILE_STDCXX(11, with PHP_CXX_COMPILE_STDCXX(17,
+	// This handles both the bare 11 and quoted [11] forms used in different PHP versions.
+	if strings.Contains(content, "PHP_CXX_COMPILE_STDCXX(11,") {
+		content = strings.ReplaceAll(content, "PHP_CXX_COMPILE_STDCXX(11,", "PHP_CXX_COMPILE_STDCXX(17,")
+	} else if strings.Contains(content, "PHP_CXX_COMPILE_STDCXX([11],") {
+		content = strings.ReplaceAll(content, "PHP_CXX_COMPILE_STDCXX([11],", "PHP_CXX_COMPILE_STDCXX([17],")
+	} else {
+		return // already patched or uses a different version
+	}
+
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+		s.logWarn("Warning: failed to patch ext/intl/config.m4: %v", err)
+		return
+	}
+	s.logInfo("  Patched ext/intl/config.m4: C++11 -> C++17 for ICU compatibility")
 }

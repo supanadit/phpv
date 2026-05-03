@@ -370,12 +370,14 @@ var DefaultPatterns = []domain.URLPattern{
 		Type:       domain.SourceTypeSource,
 		Constraint: func(v *domain.Version) bool { return v.Major == 75 && v.Minor == 1 },
 		Template:   "https://github.com/unicode-org/icu/releases/download/release-{major}-{minor}/icu4c-{major}_{minor}-src.tgz",
+		Checksum:   "icu-75.1",
 	},
 	{
 		Name:       "icu",
 		Type:       domain.SourceTypeSource,
 		Constraint: func(v *domain.Version) bool { return v.Major == 74 && v.Minor == 2 },
 		Template:   "https://github.com/unicode-org/icu/releases/download/release-{major}-{minor}/icu4c-{major}_{minor}-src.tgz",
+		Checksum:   "icu-74.2",
 	},
 	{
 		Name:       "icu",

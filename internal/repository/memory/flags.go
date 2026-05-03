@@ -110,6 +110,65 @@ var packageFlags = []packageFlagRule{
 // Extending for new PHP versions:
 //   Add a new rule before the catch-all, e.g:
 //   {MinPHP: "8.4", MaxPHP: "", CStd: "-std=gnu11", CXXStd: "-std=gnu++17"},
+// CompilerFlagRule defines C compiler flags (CFLAGS) for a specific compiler and PHP version range.
+// This allows different compiler flags to be used based on the compiler type and PHP version.
+//
+// Rules are evaluated in order; first matching rule wins.
+//
+// Example:
+//
+//	CompilerFlagRule{Compiler: "gcc", MinPHP: "5.0", MaxPHP: "7.99", CFLAGS: []string{"-std=gnu11", "-fPIC", ...}}
+//	CompilerFlagRule{Compiler: "gcc", MinPHP: "8.0", MaxPHP: "", CFLAGS: []string{"-Wno-error", "-fPIC"}}
+//	CompilerFlagRule{Compiler: "zig", MinPHP: "", MaxPHP: "", CFLAGS: []string{"-std=gnu11", "-fPIC", ...}}
+type CompilerFlagRule struct {
+	// Compiler is the compiler type ("gcc" or "zig").
+	Compiler string
+
+	// MinPHP is the minimum PHP version (inclusive) for this rule.
+	// Empty string means no minimum.
+	MinPHP string
+
+	// MaxPHP is the maximum PHP version (inclusive) for this rule.
+	// Empty string means no maximum.
+	MaxPHP string
+
+	// CFLAGS are the C compiler flags for this compiler/version combination.
+	CFLAGS []string
+}
+
+// compilerFlagRules defines C compiler flags for different compiler and PHP version ranges.
+// Rules are evaluated in order; first matching rule wins.
+//
+// GCC rules:
+//   - PHP 5.x-7.x: Includes -std=gnu11, -fPIC, and GCC 15+ compatibility flags
+//     (-fno-strict-function-pointer-casts for old PHP code with function pointer
+//     type mismatches, e.g., scanf.c casts strtoul to a no-args function pointer).
+//   - PHP 8.0+: Simpler flags (-Wno-error, -fPIC) since newer PHP handles GCC 15+ better.
+//
+// Zig rules:
+//   - All PHP versions: Includes -std=gnu11, -fPIC, and suppression flags for
+//     warnings that Zig's C compiler emits that are not relevant for PHP builds.
+var compilerFlagRules = []CompilerFlagRule{
+	{
+		Compiler: "gcc",
+		MinPHP:   "5.0",
+		MaxPHP:   "7.99",
+		CFLAGS:   []string{"-std=gnu11", "-fPIC", "-fno-strict-function-pointer-casts", "-Wno-error", "-Wno-array-parameter", "-Wno-deprecated-non-prototype", "-Wno-implicit-function-declaration", "-Wno-incompatible-pointer-types"},
+	},
+	{
+		Compiler: "gcc",
+		MinPHP:   "8.0",
+		MaxPHP:   "",
+		CFLAGS:   []string{"-Wno-error", "-fPIC"},
+	},
+	{
+		Compiler: "zig",
+		MinPHP:   "",
+		MaxPHP:   "",
+		CFLAGS:   []string{"-std=gnu11", "-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"},
+	},
+}
+
 var cstdRules = []flagresolver.CStdRule{
 	// PHP 5.x - 7.x with GCC 15+ needs C++17 for ICU headers
 	{MinPHP: "5.0", MaxPHP: "7.4", CStd: "-std=gnu11", CXXStd: "-std=gnu++17"},
@@ -141,6 +200,44 @@ func (r *flagRepo) GetCompilerStdRule(phpVersion string) flagresolver.CStdRule {
 	}
 	// Default fallback
 	return flagresolver.CStdRule{CStd: "-std=gnu11", CXXStd: "-std=gnu++17"}
+}
+
+// GetCompilerFlags returns C compiler flags (CFLAGS) for a specific compiler and PHP version.
+// It matches against compilerFlagRules in order, returning the first rule where the
+// compiler type and PHP version fall within the rule's ranges.
+//
+// The compiler parameter should be "gcc" or "zig".
+//
+// Usage:
+//
+//	cflags := r.GetCompilerFlags("gcc", "7.4.33")
+//	// Returns: ["-std=gnu11", "-fPIC", "-fno-strict-function-pointer-casts", ...]
+//
+//	cflags := r.GetCompilerFlags("gcc", "8.2.0")
+//	// Returns: ["-Wno-error", "-fPIC"]
+//
+//	cflags := r.GetCompilerFlags("zig", "8.0.30")
+//	// Returns: ["-std=gnu11", "-fPIC", "-Wno-error", ...]
+//
+// Returns an empty slice if no matching rule is found.
+func (r *flagRepo) GetCompilerFlags(compiler string, phpVersion string) []string {
+	v := utils.ParseVersion(phpVersion)
+
+	for _, rule := range compilerFlagRules {
+		if rule.Compiler != compiler {
+			continue
+		}
+
+		minOK := rule.MinPHP == "" || versionGE(v, rule.MinPHP)
+		maxOK := rule.MaxPHP == "" || versionLE(v, rule.MaxPHP)
+		if minOK && maxOK {
+			result := make([]string, len(rule.CFLAGS))
+			copy(result, rule.CFLAGS)
+			return result
+		}
+	}
+
+	return []string{}
 }
 
 // versionGE checks if version v >= minVersion using major.minor comparison.

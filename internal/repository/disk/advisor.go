@@ -51,6 +51,16 @@ var (
 	multiPkgConfigPackages = map[string][]string{
 		"icu": {"icu-uc", "icu-io", "icu-i18n"},
 	}
+
+	// ICU version compatibility matrix:
+	// - ICU 60-74: C++11 compatible (works with PHP 5.x-8.1)
+	// - ICU 75+: Requires C++14+ (needs PHP with C++17 support)
+	//
+	// For PHP <8.2, we must NOT use system ICU 75+ because:
+	// 1. ICU 75+ headers use C++14 features (std::enable_if_t, std::u16string_view)
+	// 2. PHP 8.0-8.1 default to C++11 (unless patched)
+	// 3. The config.m4 patch helps but we should prefer matching ICU versions
+	icuMaxCompatMajor = 74 // max ICU major version compatible with PHP <8.2
 )
 
 func NewAdvisorRepository(asm assembler.AssemblerRepository, extRepo extension.Repository) advisor.AdvisorRepository {
@@ -284,6 +294,11 @@ func (r *AdvisorRepository) shouldBuildFromSource(name, phpVersion string) bool 
 		return false
 	}
 
+	// CRITICAL: For ICU, check version compatibility with PHP
+	if name == "icu" {
+		return r.shouldBuildICUFromSource(phpVersion)
+	}
+
 	deps, err := r.assembler.GetDependencies("php", phpVersion)
 	if err != nil {
 		return false
@@ -359,6 +374,65 @@ func (r *AdvisorRepository) shouldBuildFromSource(name, phpVersion string) bool 
 					}
 				}
 			}
+		}
+	}
+
+	return false
+}
+
+// shouldBuildICUFromSource determines if ICU should be built from source
+// based on PHP version compatibility. ICU 75+ requires C++14 which older PHP versions
+// may not handle well without additional patching.
+func (r *AdvisorRepository) shouldBuildICUFromSource(phpVersion string) bool {
+	v := utils.ParseVersion(phpVersion)
+
+	// For PHP <8.2, only use ICU 74 or earlier from source
+	// This ensures C++11 compatibility with PHP 8.0-8.1
+	if v.Major < 8 || (v.Major == 8 && v.Minor < 2) {
+		_, _, systemVersion := r.checkSystemLibrary("icu", "icu-uc")
+		if systemVersion != "" {
+			systemV := utils.ParseVersion(systemVersion)
+			// If system ICU is 75+, build from source (use ICU 74)
+			if systemV.Major > icuMaxCompatMajor {
+				return true
+			}
+			// If system ICU is too old for the constraint, build from source
+			deps, err := r.assembler.GetDependencies("php", phpVersion)
+			if err == nil {
+				for _, dep := range deps {
+					if dep.Name == "icu" {
+						constraint := extractConstraint(dep.Version)
+						if constraint != "" && !utils.MatchVersionRange(constraint, systemVersion) {
+							return true
+						}
+					}
+				}
+			}
+		}
+		return true // For PHP <8.2, always build ICU from source to ensure compatibility
+	}
+
+	// For PHP >=8.2, check if system ICU meets the constraint
+	deps, err := r.assembler.GetDependencies("php", phpVersion)
+	if err != nil {
+		return false
+	}
+
+	for _, dep := range deps {
+		if dep.Name != "icu" {
+			continue
+		}
+		constraint := extractConstraint(dep.Version)
+		if constraint == "" {
+			return false
+		}
+
+		available, _, systemVersion := r.checkSystemLibrary("icu", "icu-uc")
+		if !available {
+			return true
+		}
+		if systemVersion != "" && !utils.MatchVersionRange(constraint, systemVersion) {
+			return true
 		}
 	}
 

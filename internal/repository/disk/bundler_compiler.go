@@ -91,7 +91,7 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 		if err != nil {
 			return "", []string{}, "", nil, fmt.Errorf("[bundler] g++ not found in PATH: %w", err)
 		}
-		cflags = []string{"-std=gnu11", "-fPIC", "-Wno-error", "-Wno-array-parameter", "-Wno-deprecated-non-prototype", "-Wno-implicit-function-declaration", "-Wno-incompatible-pointer-types"}
+		cflags = s.flagResolverSvc.GetCompilerFlags("gcc", phpVersion)
 		return gccPath, cflags, gxxPath, nil, nil
 	}
 
@@ -104,16 +104,17 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 		if err != nil {
 			return "", []string{}, "", nil, fmt.Errorf("[bundler] g++ not found in PATH: %w", err)
 		}
-		cflags = []string{"-Wno-error", "-fPIC"}
+		cflags = s.flagResolverSvc.GetCompilerFlags("gcc", phpVersion)
 		return gccPath, cflags, gxxPath, nil, nil
 	}
 
 	target := getZigTargetForGlibc("2.39")
+	zigFlags := s.flagResolverSvc.GetCompilerFlags("zig", phpVersion)
 
 	if zigPath := os.Getenv("PHPV_ZIG_PATH"); zigPath != "" {
 		if _, err := os.Stat(zigPath); err == nil {
 			cxx = zigPath + " c++ -target " + target
-			return zigPath + " cc -target " + target, []string{"-std=gnu11", "-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"}, cxx, nil, nil
+			return zigPath + " cc -target " + target, zigFlags, cxx, nil, nil
 		}
 	}
 
@@ -132,6 +133,6 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 	}
 
 	cxx = zigBinary + " c++ -target " + target
-	cflags = []string{"-std=gnu11", "-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"}
+	cflags = zigFlags
 	return zigBinary + " cc -target " + target, cflags, cxx, nil, nil
 }

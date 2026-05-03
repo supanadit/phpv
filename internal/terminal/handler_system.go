@@ -330,59 +330,31 @@ func (h *TerminalHandler) DoctorV2ResultCompiler(version string) string {
 }
 
 func (h *TerminalHandler) doctorCheckBuildTools(osInfo utils.OSInfo, version string) []DoctorCheckItem {
-	// Get effective compiler that will be used
-	effectiveCompiler := compiler.CompilerTypeGCC
-	if version != "" {
-		effectiveCompiler = h.Compiler.GetEffectiveCompilerForPHP(version)
-	}
+	// Always check for BOTH gcc and zig, regardless of version
+	// This is needed because CompilerByMajor needs to know what's available for each major version
+	// The effective compiler selection is done in DoctorV2, not here
 
-	// Determine which tools to check based on effective compiler
-	var tools []struct {
+	tools := []struct {
 		name    string
 		version []string
+	}{
+		{"make", []string{"--version"}},
+		{"gcc", []string{"--version"}},
+		{"g++", []string{"--version"}},
+		{"zig", []string{"version"}},
+		{"pkg-config", []string{"--version"}},
+		{"bison", []string{"--version"}},
+		{"flex", []string{"--version"}},
+		{"re2c", []string{"--version"}},
+		{"autoconf", []string{"--version"}},
+		{"automake", []string{"--version"}},
+		{"libtool", []string{"--version"}},
+		{"m4", []string{"--version"}},
+		{"perl", []string{"--version"}},
+		{"cmake", []string{"--version"}},
+		{"xz", []string{"--version"}},
 	}
 
-	if effectiveCompiler == compiler.CompilerTypeZig {
-		tools = []struct {
-			name    string
-			version []string
-		}{
-			{"make", []string{"--version"}},
-			{"zig", []string{"version"}},
-			{"pkg-config", []string{"--version"}},
-			{"bison", []string{"--version"}},
-			{"flex", []string{"--version"}},
-			{"re2c", []string{"--version"}},
-			{"autoconf", []string{"--version"}},
-			{"automake", []string{"--version"}},
-			{"libtool", []string{"--version"}},
-			{"m4", []string{"--version"}},
-			{"perl", []string{"--version"}},
-			{"cmake", []string{"--version"}},
-			{"xz", []string{"--version"}},
-		}
-	} else {
-		tools = []struct {
-			name    string
-			version []string
-		}{
-			{"make", []string{"--version"}},
-			{"gcc", []string{"--version"}},
-			{"g++", []string{"--version"}},
-			{"pkg-config", []string{"--version"}},
-			{"bison", []string{"--version"}},
-			{"flex", []string{"--version"}},
-			{"re2c", []string{"--version"}},
-			{"autoconf", []string{"--version"}},
-			{"automake", []string{"--version"}},
-			{"libtool", []string{"--version"}},
-			{"m4", []string{"--version"}},
-			{"perl", []string{"--version"}},
-			{"perl", []string{"--version"}},
-			{"cmake", []string{"--version"}},
-			{"xz", []string{"--version"}},
-		}
-	}
 
 	var items []DoctorCheckItem
 	for _, tool := range tools {

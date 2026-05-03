@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/supanadit/phpv/internal/compiler"
 	"github.com/supanadit/phpv/internal/utils"
 )
 
@@ -122,23 +123,26 @@ func registerToolsCommands(root *cobra.Command, handler *TerminalHandler) {
 			}
 			fmt.Printf("  %s %s\n", verdictIcon, result.VerdictMsg)
 
-			if result.CanBuildPHP8 {
-				compilerUsed := "gcc"
-				if !result.HasGcc && result.HasZig {
-					compilerUsed = "zig"
+			// Show compiler status for each major PHP version
+			// Buildable is determined by: make available AND (gcc available OR zig available OR zig auto-downloaded)
+			hasMake := false
+			for _, tool := range result.BuildTools {
+				if tool.Name == "make" && tool.Available {
+					hasMake = true
+					break
 				}
-				fmt.Printf("  ✓ PHP 8.1+ buildable    (%s available)\n", compilerUsed)
-			} else {
-				fmt.Println("  ✗ PHP 8.1+ not buildable (gcc missing)")
 			}
-			if result.CanBuildPHP7 {
-				zigMsg := "zig available"
-				if !result.HasZig {
-					zigMsg = "zig auto-downloaded"
+
+			for _, v := range result.CompilerByMajor {
+				statusIcon := "✓"
+				statusMsg := fmt.Sprintf("PHP %d.x buildable    (uses %s)", v.MajorVersion, v.Compiler)
+				if !v.Available {
+					statusIcon = "✗"
+					statusMsg = fmt.Sprintf("PHP %d.x not buildable  (no compiler)", v.MajorVersion)
+				} else if v.AutoDownload {
+					statusMsg = fmt.Sprintf("PHP %d.x buildable    (uses %s, auto-downloaded)", v.MajorVersion, v.Compiler)
 				}
-				fmt.Printf("  ✓ PHP 7.x buildable     (%s)\n", zigMsg)
-			} else {
-				fmt.Println("  ✗ PHP 7.x not buildable  (zig missing)")
+				fmt.Printf("  %s %s\n", statusIcon, statusMsg)
 			}
 
 			if result.QuickFix != "" {
@@ -146,15 +150,33 @@ func registerToolsCommands(root *cobra.Command, handler *TerminalHandler) {
 				fmt.Printf("  %s\n", result.QuickFix)
 			}
 
-			if version == "" && result.Verdict != "blocked" {
+			// Recommendation section
+			if version == "" && result.Verdict != "blocked" && hasMake {
 				fmt.Printf("\n═══ Recommendation ═══\n")
-				if result.CanBuildPHP8 {
-					fmt.Println("  phpv install 8")
-					fmt.Println("    Uses system gcc (fastest build).")
+
+				// Find the best PHP version to recommend (prefer highest major that's buildable)
+				var recommendedMajor int
+				var recommendedCompiler string
+				for i := len(result.CompilerByMajor) - 1; i >= 0; i-- {
+					if result.CompilerByMajor[i].Available {
+						recommendedMajor = result.CompilerByMajor[i].MajorVersion
+						recommendedCompiler = result.CompilerByMajor[i].Compiler
+						break
+					}
+				}
+
+				if recommendedMajor > 0 {
+					fmt.Printf("  phpv install %d\n", recommendedMajor)
+					if recommendedCompiler == string(compiler.CompilerTypeZig) {
+						autoNote := ""
+						if result.CompilerByMajor[len(result.CompilerByMajor)-1].AutoDownload {
+							autoNote = " (auto-downloaded)"
+						}
+						fmt.Printf("    Uses zig compiler%s\n", autoNote)
+					} else {
+						fmt.Println("    Uses gcc (fastest build)")
+					}
 					fmt.Println("    Add --ext openssl,curl,mbstring,intl for common extensions.")
-				} else if result.CanBuildPHP7 {
-					fmt.Println("  phpv install 7")
-					fmt.Println("    Uses zig compiler (bundled).")
 				}
 			}
 

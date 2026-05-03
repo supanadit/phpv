@@ -99,20 +99,27 @@ type DoctorPHPInstall struct {
 	EnabledExts []string
 }
 
+type DoctorCompilerForVersion struct {
+	MajorVersion int
+	Compiler     string // "gcc" or "zig"
+	Available    bool
+	AutoDownload bool // true if this compiler will be auto-downloaded by phpv
+}
+
 type DoctorResultV2 struct {
-	BuildTools    []DoctorCheckItem
-	LibChecks     []DoctorCheckItem
-	Extensions    []DoctorExtCheck
-	PHPInstall    *DoctorPHPInstall
-	Verdict       string // "ready", "minor", "blocked"
-	VerdictMsg    string
-	CanBuildPHP8  bool
-	CanBuildPHP7  bool
-	HasGcc        bool   // gcc available on system
-	HasZig        bool   // zig available on system
-	QuickFix      string // consolidated install command for all missing deps
-	BuildableInfo string // info about packages that will be built by phpv
-	Summary       string
+	BuildTools        []DoctorCheckItem
+	LibChecks         []DoctorCheckItem
+	Extensions        []DoctorExtCheck
+	PHPInstall        *DoctorPHPInstall
+	Verdict           string // "ready", "minor", "blocked"
+	VerdictMsg        string
+	HasGcc            bool // gcc available on system
+	HasZig            bool // zig available on system
+	CompilerByMajor   []DoctorCompilerForVersion
+	EffectiveCompiler string // "gcc" or "zig" - the compiler that will actually be used
+	QuickFix          string // consolidated install command for all missing deps
+	BuildableInfo     string // info about packages that will be built by phpv
+	Summary           string
 }
 
 type InstallResult struct {

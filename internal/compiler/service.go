@@ -4,11 +4,20 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 
 	"github.com/supanadit/phpv/internal/config"
 	"github.com/supanadit/phpv/internal/utils"
 )
+
+// CompilerRepository defines the interface for compiler operations
+type CompilerRepository interface {
+	GetRequiredCompilerForPHP(phpVersion string, forceCompiler CompilerType) CompilerType
+	GetEffectiveCompilerForPHP(phpVersion string) CompilerType
+	IsCompilerAvailable(compilerType CompilerType) bool
+	UsesZigForPHP(phpVersion string) bool
+	GetZigTarget() string
+	GetZigTargetForGlibc(glibcVersion string) string
+}
 
 // CompilerService provides unified compiler detection and management
 type CompilerService struct {
@@ -39,8 +48,8 @@ type CompilerInfo struct {
 	Available bool
 }
 
-// filepath: internal/compiler/service.go
 // GetRequiredCompilerForPHP determines which compiler is required for the given PHP version
+// This is the preferred compiler based on PHP version requirements (not availability)
 func (c *CompilerService) GetRequiredCompilerForPHP(phpVersion string, forceCompiler CompilerType) CompilerType {
 	if phpVersion == "" {
 		return CompilerTypeGCC
@@ -62,6 +71,61 @@ func (c *CompilerService) GetRequiredCompilerForPHP(phpVersion string, forceComp
 
 	// PHP versions < 5 or >= 8 prefer zig
 	return CompilerTypeZig
+}
+
+// GetEffectiveCompilerForPHP returns the compiler that will actually be used for building
+// This considers both version requirements and actual availability
+func (c *CompilerService) GetEffectiveCompilerForPHP(phpVersion string) CompilerType {
+	if phpVersion == "" {
+		return CompilerTypeGCC
+	}
+
+	v := utils.ParseVersion(phpVersion)
+
+	// PHP 5+: always use gcc if available, else zig
+	if v.Major >= 5 {
+		if c.IsCompilerAvailable(CompilerTypeGCC) {
+			return CompilerTypeGCC
+		}
+		return CompilerTypeZig
+	}
+
+	// PHP < 5: only zig (legacy)
+	if c.IsCompilerAvailable(CompilerTypeZig) {
+		return CompilerTypeZig
+	}
+	return "" // No viable compiler
+}
+
+// IsCompilerAvailable checks if a compiler is available on the system
+func (c *CompilerService) IsCompilerAvailable(compilerType CompilerType) bool {
+	var err error
+	switch compilerType {
+	case CompilerTypeGCC:
+		_, err = exec.LookPath("gcc")
+	case CompilerTypeZig:
+		// Check for environment variable first
+		if zigPath := os.Getenv("PHPV_ZIG_PATH"); zigPath != "" {
+			if _, statErr := os.Stat(zigPath); statErr == nil {
+				return true
+			}
+		}
+		// Check for zig in phpv's managed tools
+		zigBinary := utils.GetZigCompilerPath(c.siloRoot, "8.4.0")
+		if _, statErr := os.Stat(zigBinary); statErr == nil {
+			return true
+		}
+		// Fallback to system zig
+		_, err = exec.LookPath("zig")
+	default:
+		return false
+	}
+	return err == nil
+}
+
+// UsesZigForPHP returns whether zig will be used for the given PHP version
+func (c *CompilerService) UsesZigForPHP(phpVersion string) bool {
+	return c.GetEffectiveCompilerForPHP(phpVersion) == CompilerTypeZig
 }
 
 // GetCompilerInfo returns information about the specified compiler
@@ -117,89 +181,31 @@ func (c *CompilerService) GetCompilerInfo(compilerType CompilerType) CompilerInf
 	}
 }
 
-// IsCompilerAvailable checks if a compiler is available
-func (c *CompilerService) IsCompilerAvailable(compilerType CompilerType) bool {
-	info := c.GetCompilerInfo(compilerType)
-	return info.Available
-}
-
 // GetDefaultCompilerForPHP returns the best available compiler for the given PHP version
 func (c *CompilerService) GetDefaultCompilerForPHP(phpVersion string) CompilerType {
-	required := c.GetRequiredCompilerForPHP(phpVersion, "")
-
-	// If the required compiler is available, use it
-	if c.IsCompilerAvailable(required) {
-		return required
+	effective := c.GetEffectiveCompilerForPHP(phpVersion)
+	if effective != "" {
+		return effective
 	}
 
-	// Try the alternative compiler
-	var alt CompilerType
-	if required == CompilerTypeGCC {
-		alt = CompilerTypeZig
-	} else {
-		alt = CompilerTypeGCC
-	}
-
-	if c.IsCompilerAvailable(alt) {
-		return alt
-	}
-
-	// No compiler available
-	return ""
-}
-
-// GetEffectiveCompilerForPHP returns the compiler that will actually be used for building
-// This considers both version requirements and actual availability
-func (c *CompilerService) GetEffectiveCompilerForPHP(phpVersion string) CompilerType {
-	if phpVersion == "" {
-		return CompilerTypeGCC
-	}
-
-	v := utils.ParseVersion(phpVersion)
-
-	// PHP 5-7: always use gcc if available, else zig
-	if v.Major >= 5 && v.Major < 8 {
-		if c.IsCompilerAvailable(CompilerTypeGCC) {
-			return CompilerTypeGCC
-		}
-		return CompilerTypeZig
-	}
-
-	// PHP < 5 or >= 8: prefer gcc if available, else zig
+	// Fallback: check what's available
 	if c.IsCompilerAvailable(CompilerTypeGCC) {
 		return CompilerTypeGCC
 	}
-	return CompilerTypeZig
-}
-
-// UsesZigForPHP returns whether zig will be used for the given PHP version
-func (c *CompilerService) UsesZigForPHP(phpVersion string) bool {
-	return c.GetEffectiveCompilerForPHP(phpVersion) == CompilerTypeZig
+	if c.IsCompilerAvailable(CompilerTypeZig) {
+		return CompilerTypeZig
+	}
+	return ""
 }
 
 // GetZigTarget returns the zig target for the current platform
 func (c *CompilerService) GetZigTarget() string {
-	arch := runtime.GOARCH
-	os := runtime.GOOS
-
-	// Map architectures
-	archMap := map[string]string{
-		"amd64": "x86_64",
-		"arm64": "aarch64",
-		"arm":   "arm",
-	}
-
-	if a, ok := archMap[arch]; ok {
-		arch = a
-	}
-
-	return arch + "-" + os + "-gnu"
+	return utils.GetZigTarget()
 }
 
 // GetZigTargetForGlibc returns the zig target with a specific glibc version
 func (c *CompilerService) GetZigTargetForGlibc(glibcVersion string) string {
-	target := c.GetZigTarget()
-	return target + "." + glibcVersion
+	return utils.GetZigTargetForGlibc(glibcVersion)
 }
 
 func (c *CompilerService) getCompilerVersion(name, path string) string {

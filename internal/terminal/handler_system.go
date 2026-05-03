@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/compiler"
 	"github.com/supanadit/phpv/internal/config"
 	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/shim"
@@ -225,14 +226,43 @@ func (h *TerminalHandler) DoctorV2(version string) (*DoctorResultV2, error) {
 		buildableInfo = fmt.Sprintf("%d packages will be built by phpv: %s", buildableMissing, strings.Join(buildPkgs, ", "))
 	}
 
-	// Determine buildable PHP versions from available compilers
+	// Check available compilers
 	hasGcc := toolAvailable(buildTools, "gcc")
 	hasMake := toolAvailable(buildTools, "make")
-
 	hasZig := toolAvailable(buildTools, "zig")
 
-	canBuildPHP8 := hasMake && (hasGcc || hasZig)
-	canBuildPHP7 := hasMake && hasZig
+	// Determine compiler for each major PHP version using the same logic as bundler
+	// PHP 5-7: prefers gcc, falls back to zig
+	// PHP 8+: prefers gcc, falls back to zig
+	var compilerByMajor []DoctorCompilerForVersion
+	for _, major := range []int{5, 7, 8} {
+		majorVersion := major
+		effectiveCompiler := h.Compiler.GetEffectiveCompilerForPHP(fmt.Sprintf("%d.0.0", major))
+		compiler := string(effectiveCompiler)
+
+		// Check if compiler is available for this major version
+		available := false
+		autoDownload := false
+		if compiler == "gcc" && hasGcc {
+			available = true
+		} else if compiler == "zig" {
+			if hasZig {
+				available = true
+			}
+			// zig will be auto-downloaded if not available but make is present
+			if !available && hasMake {
+				autoDownload = true
+				available = true
+			}
+		}
+
+		compilerByMajor = append(compilerByMajor, DoctorCompilerForVersion{
+			MajorVersion: majorVersion,
+			Compiler:     compiler,
+			Available:    available,
+			AutoDownload: autoDownload,
+		})
+	}
 
 	// Compute verdict
 	verdict := "ready"
@@ -262,19 +292,19 @@ func (h *TerminalHandler) DoctorV2(version string) (*DoctorResultV2, error) {
 	}
 
 	return &DoctorResultV2{
-		BuildTools:    buildTools,
-		LibChecks:     libChecks,
-		Extensions:    extChecks,
-		PHPInstall:    phpInstall,
-		Verdict:       verdict,
-		VerdictMsg:    verdictMsg,
-		CanBuildPHP8:  canBuildPHP8,
-		CanBuildPHP7:  canBuildPHP7,
-		HasGcc:        hasGcc,
-		HasZig:        hasZig,
-		QuickFix:      quickFix,
-		BuildableInfo: buildableInfo,
-		Summary:       summary,
+		BuildTools:        buildTools,
+		LibChecks:         libChecks,
+		Extensions:        extChecks,
+		PHPInstall:        phpInstall,
+		Verdict:           verdict,
+		VerdictMsg:        verdictMsg,
+		HasGcc:            hasGcc,
+		HasZig:            hasZig,
+		CompilerByMajor:   compilerByMajor,
+		EffectiveCompiler: h.DoctorV2ResultCompiler(version),
+		QuickFix:          quickFix,
+		BuildableInfo:     buildableInfo,
+		Summary:           summary,
 	}, nil
 }
 
@@ -287,33 +317,32 @@ func toolAvailable(items []DoctorCheckItem, name string) bool {
 	return false
 }
 
-func usesZig(version string) bool {
+// DoctorV2ResultCompiler returns the effective compiler info for the doctor result
+func (h *TerminalHandler) DoctorV2ResultCompiler(version string) string {
+	// If no version specified, determine the effective compiler for a general check
+	// by checking what would be used for PHP 8 (the recommended version)
 	if version == "" {
-		return false
+		// For general system check, return gcc as default since it's the preferred compiler
+		return string(compiler.CompilerTypeGCC)
 	}
-	v := utils.ParseVersion(version)
-	// For PHP 5-7: use gcc if available, else zig
-	if v.Major >= 5 && v.Major < 8 {
-		return !compilerAvailable("gcc")
-	}
-	// For PHP < 5 or >= 8: use gcc if available, else zig
-	return !compilerAvailable("gcc")
-}
-
-func compilerAvailable(name string) bool {
-	_, err := exec.LookPath(name)
-	return err == nil
+	effective := h.Compiler.GetEffectiveCompilerForPHP(version)
+	return string(effective)
 }
 
 func (h *TerminalHandler) doctorCheckBuildTools(osInfo utils.OSInfo, version string) []DoctorCheckItem {
-	useZig := usesZig(version)
+	// Get effective compiler that will be used
+	effectiveCompiler := compiler.CompilerTypeGCC
+	if version != "" {
+		effectiveCompiler = h.Compiler.GetEffectiveCompilerForPHP(version)
+	}
 
+	// Determine which tools to check based on effective compiler
 	var tools []struct {
 		name    string
 		version []string
 	}
 
-	if useZig {
+	if effectiveCompiler == compiler.CompilerTypeZig {
 		tools = []struct {
 			name    string
 			version []string
@@ -348,6 +377,7 @@ func (h *TerminalHandler) doctorCheckBuildTools(osInfo utils.OSInfo, version str
 			{"automake", []string{"--version"}},
 			{"libtool", []string{"--version"}},
 			{"m4", []string{"--version"}},
+			{"perl", []string{"--version"}},
 			{"perl", []string{"--version"}},
 			{"cmake", []string{"--version"}},
 			{"xz", []string{"--version"}},

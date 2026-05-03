@@ -19,19 +19,19 @@ export PATH="$PHPV_ROOT/bin:$PATH"
 
 // ShellTemplateData contains the data for the shell initialization template
 type ShellTemplateData struct {
-	Root         string
-	ShellFunc    string
+	Root           string
+	ShellFunc      string
 	AutoDetectFunc string
-	HookCode     string
+	HookCode       string
 }
 
 // GetInitCodeForShell returns the shell initialization code for the specified shell
 func GetInitCodeForShell(shell string, phpvRoot string) string {
 	tmpl := template.Must(template.New("shell").Parse(ShellInitCodeTemplate))
-	
+
 	var data ShellTemplateData
 	data.Root = phpvRoot
-	
+
 	switch shell {
 	case "fish":
 		data.ShellFunc = fishShellFunc()
@@ -48,7 +48,7 @@ func GetInitCodeForShell(shell string, phpvRoot string) string {
 		data.AutoDetectFunc = bashZshAutoDetectFunc()
 		data.HookCode = bashHookCode()
 	}
-	
+
 	var buf strings.Builder
 	tmpl.Execute(&buf, data)
 	return strings.TrimSpace(buf.String())

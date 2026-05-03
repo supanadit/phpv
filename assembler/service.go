@@ -38,7 +38,7 @@ func (s *AssemblerService) RegisterPackage(pkg domain.Package) {
 	s.packages[pkg.Package] = pkg
 }
 
-func (s *AssemblerService) GetPackage(name string) (domain.Package, error) {
+func (s *AssemblerService) getPackage(name string) (domain.Package, error) {
 	pkg, ok := s.packages[name]
 	if !ok {
 		return domain.Package{}, fmt.Errorf("package not found: %s", name)
@@ -47,7 +47,7 @@ func (s *AssemblerService) GetPackage(name string) (domain.Package, error) {
 }
 
 func (s *AssemblerService) GetDependencies(packageName string, version string) ([]domain.Dependency, error) {
-	pkg, err := s.GetPackage(packageName)
+	pkg, err := s.getPackage(packageName)
 	if err != nil {
 		return nil, err
 	}

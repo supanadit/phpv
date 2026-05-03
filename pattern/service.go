@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/config"
 	"github.com/supanadit/phpv/internal/utils"
 )
 
@@ -165,8 +165,9 @@ func (s *Service) BuildURLs(pattern domain.URLPattern, v *domain.Version) ([]str
 }
 
 func (s *Service) BuildURLByType(name, version, sourceType string) (string, error) {
-	targetOS := viper.GetString("PHPV_TARGET_OS")
-	targetArch := viper.GetString("PHPV_TARGET_ARCH")
+	cfg := config.Get()
+	targetOS := cfg.OS
+	targetArch := cfg.Arch
 
 	if targetOS == "" {
 		targetOS = "linux"

@@ -158,7 +158,7 @@ func (p *PlatformService) GetPackageName(tool string) string {
 			return pkg
 		}
 	}
-	
+
 	// Fallback to the tool name if no package mapping found
 	return tool
 }
@@ -168,7 +168,7 @@ func (p *PlatformService) GetInstallSuggestion(tool string) string {
 	if p.osInfo.PkgMgr == "" {
 		return ""
 	}
-	
+
 	pkgName := p.GetPackageName(tool)
 	return p.osInfo.InstallCmd + " " + pkgName
 }

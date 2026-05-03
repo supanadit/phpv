@@ -1,13 +1,11 @@
 package flagresolver
 
 import (
-	"errors"
-
 	"github.com/supanadit/phpv/domain"
 )
 
-var ErrUnknownExtension = errors.New("unknown extension")
-var ErrExtensionConflict = errors.New("extension conflict")
+var ErrUnknownExtension = domain.ErrUnknownExtension
+var ErrExtensionConflict = domain.ErrExtensionConflict
 
 type Repository interface {
 	GetConfigureFlags(name string, version string) []string

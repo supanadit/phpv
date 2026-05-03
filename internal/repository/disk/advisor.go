@@ -6,11 +6,11 @@ import (
 	"strings"
 
 	"github.com/spf13/afero"
-	"github.com/spf13/viper"
 	"github.com/supanadit/phpv/advisor"
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/extension"
+	"github.com/supanadit/phpv/internal/config"
 	"github.com/supanadit/phpv/internal/platform"
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/utils"
@@ -55,7 +55,7 @@ var (
 
 func NewAdvisorRepository(asm assembler.AssemblerRepository, extRepo extension.Repository) advisor.AdvisorRepository {
 	fs := afero.NewOsFs()
-	root := viper.GetString("PHPV_ROOT")
+	root := config.Get().RootDir()
 	registry := pattern.NewService()
 	registry.RegisterPatterns(memory.DefaultPatterns)
 	return &AdvisorRepository{

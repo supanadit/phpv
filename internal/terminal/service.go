@@ -100,19 +100,19 @@ type DoctorPHPInstall struct {
 }
 
 type DoctorResultV2 struct {
-	BuildTools   []DoctorCheckItem
-	LibChecks    []DoctorCheckItem
-	Extensions   []DoctorExtCheck
-	PHPInstall   *DoctorPHPInstall
-	Verdict      string // "ready", "minor", "blocked"
-	VerdictMsg   string
-	CanBuildPHP8 bool
-	CanBuildPHP7 bool
-	HasGcc       bool // gcc available on system
-	HasZig       bool // zig available on system
-	QuickFix     string // consolidated install command for all missing deps
+	BuildTools    []DoctorCheckItem
+	LibChecks     []DoctorCheckItem
+	Extensions    []DoctorExtCheck
+	PHPInstall    *DoctorPHPInstall
+	Verdict       string // "ready", "minor", "blocked"
+	VerdictMsg    string
+	CanBuildPHP8  bool
+	CanBuildPHP7  bool
+	HasGcc        bool   // gcc available on system
+	HasZig        bool   // zig available on system
+	QuickFix      string // consolidated install command for all missing deps
 	BuildableInfo string // info about packages that will be built by phpv
-	Summary      string
+	Summary       string
 }
 
 type InstallResult struct {

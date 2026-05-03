@@ -6,6 +6,8 @@
 [![License](https://img.shields.io/github/license/supanadit/phpv)](https://github.com/supanadit/phpv/blob/main/LICENSE)
 [![Release](https://img.shields.io/github/v/release/supanadit/phpv)](https://github.com/supanadit/phpv/releases)
 
+Yet another PHP multi-version installation and management ?
+
 **PHP has no pre-built Linux binaries. Every other major language does.**
 
 Node.js? `nvm install 20` downloads a binary in seconds. Python? `pyenv install 3.12` compiles, but with minimal deps. Ruby? Same story. PHP? You need a lot of system libraries, each with the right `-dev` package, and one wrong `./configure` flag means your installation silently lacks MySQL support.
@@ -18,14 +20,14 @@ Node.js? `nvm install 20` downloads a binary in seconds. Python? `pyenv install 
 
 ### The Problem Nobody Else Solved
 
-| | Node.js | Python | Ruby | **PHP** |
-|---|---|---|---|---|
-| Pre-built Linux binaries | Yes | Limited | No | **No** |
-| Must compile from source | Fallback | Primary | Primary | **Always / Pre-built in future** |
-| Build deps per extension | None | Few | Few | **Yes** |
-| Silently breaks without deps | No | Sometimes | Sometimes | **Yes** |
-| Extension ecosystem (MySQL, PDO, etc.) | N/A | pip | gems | **Bundle + PECL** |
-| Version manager handles deps | N/A | No | No | **phpv does** |
+|                                        | Node.js  | Python    | Ruby      | **PHP**                          |
+| -------------------------------------- | -------- | --------- | --------- | -------------------------------- |
+| Pre-built Linux binaries               | Yes      | Limited   | No        | **No**                           |
+| Must compile from source               | Fallback | Primary   | Primary   | **Always / Pre-built in future** |
+| Build deps per extension               | None     | Few       | Few       | **Yes**                          |
+| Silently breaks without deps           | No       | Sometimes | Sometimes | **Yes**                          |
+| Extension ecosystem (MySQL, PDO, etc.) | N/A      | pip       | gems      | **Bundle + PECL**                |
+| Version manager handles deps           | N/A      | No        | No        | **phpv does**                    |
 
 `phpv install 8.4` resolves the full transitive dependency graph — OpenSSL, libxml2, curl, zlib, oniguruma — checks what's already on your system, builds what's missing from source, then compiles PHP with the correct `--with-*` flags for every requested extension.
 
@@ -192,36 +194,36 @@ phpv install 8.4
 
 ## All Commands
 
-| Command | Description |
-|---------|-------------|
-| `phpv install <version>` | Install PHP version with all dependencies |
-| `phpv use <version>` | Switch to PHP version in current shell |
-| `phpv default <version>` | Set global default PHP version |
-| `phpv versions` | List installed PHP versions |
-| `phpv list` | List available PHP versions from source |
-| `phpv which` | Show path to current PHP binary |
-| `phpv uninstall <version>` | Remove PHP version and isolated dependencies |
-| `phpv upgrade [version]` | Upgrade to latest patch/minor version |
-| `phpv doctor` | Check system for missing build dependencies |
-| `phpv pecl install <ext-archive>` | Install PECL extension |
-| `phpv pecl list` | List installed PECL extensions |
-| `phpv pecl uninstall <ext>` | Uninstall PECL extension |
-| `phpv build-tools clean` | Remove unused shared build tools |
-| `phpv init <shell>` | Output shell initialization code |
-| `phpv completion <shell>` | Generate shell completions |
+| Command                           | Description                                  |
+| --------------------------------- | -------------------------------------------- |
+| `phpv install <version>`          | Install PHP version with all dependencies    |
+| `phpv use <version>`              | Switch to PHP version in current shell       |
+| `phpv default <version>`          | Set global default PHP version               |
+| `phpv versions`                   | List installed PHP versions                  |
+| `phpv list`                       | List available PHP versions from source      |
+| `phpv which`                      | Show path to current PHP binary              |
+| `phpv uninstall <version>`        | Remove PHP version and isolated dependencies |
+| `phpv upgrade [version]`          | Upgrade to latest patch/minor version        |
+| `phpv doctor`                     | Check system for missing build dependencies  |
+| `phpv pecl install <ext-archive>` | Install PECL extension                       |
+| `phpv pecl list`                  | List installed PECL extensions               |
+| `phpv pecl uninstall <ext>`       | Uninstall PECL extension                     |
+| `phpv build-tools clean`          | Remove unused shared build tools             |
+| `phpv init <shell>`               | Output shell initialization code             |
+| `phpv completion <shell>`         | Generate shell completions                   |
 
 ### Install Flags
 
-| Flag | Description |
-|------|-------------|
-| `--verbose` | Show full build output |
-| `--quiet` | Suppress all non-error output |
-| `--force` | Rebuild even if already installed |
-| `--fresh` | Remove existing installation first |
+| Flag                | Description                         |
+| ------------------- | ----------------------------------- |
+| `--verbose`         | Show full build output              |
+| `--quiet`           | Suppress all non-error output       |
+| `--force`           | Rebuild even if already installed   |
+| `--fresh`           | Remove existing installation first  |
 | `--compiler <name>` | Use specific compiler (e.g., `zig`) |
-| `--ext <name>` | Enable PHP extension (repeatable) |
-| `--dry-run` | Preview without building |
-| `--json` | Output in JSON format |
+| `--ext <name>`      | Enable PHP extension (repeatable)   |
+| `--dry-run`         | Preview without building            |
+| `--json`            | Output in JSON format               |
 
 ---
 
@@ -229,30 +231,30 @@ phpv install 8.4
 
 ### vs phpbrew
 
-| | phpv | phpbrew |
-|---|---|---|
-| Language | Go (single binary) | PHP (requires Composer) |
-| Dependency resolution | Automatic transitive graph | Manual — you install `-dev` packages |
-| System library detection | Auto via pkg-config + headers | None |
-| Parallel builds | Yes (goroutines) | No (sequential) |
-| Build failure rollback | Yes (state machine) | No (leaves broken state) |
-| PECL management | Built-in | Plugin |
-| Zig compiler fallback | Yes | No |
-| Configure flag resolution | Automatic per extension | Manual (`+mysql`, `+pdo`) |
-| Download resume | Yes | No |
-| Checksum verification | Yes | No |
-| Old PHP on modern systems | Yes (Zig fallback) | Often fails |
+|                           | phpv                          | phpbrew                              |
+| ------------------------- | ----------------------------- | ------------------------------------ |
+| Language                  | Go (single binary)            | PHP (requires Composer)              |
+| Dependency resolution     | Automatic transitive graph    | Manual — you install `-dev` packages |
+| System library detection  | Auto via pkg-config + headers | None                                 |
+| Parallel builds           | Yes (goroutines)              | No (sequential)                      |
+| Build failure rollback    | Yes (state machine)           | No (leaves broken state)             |
+| PECL management           | Built-in                      | Plugin                               |
+| Zig compiler fallback     | Yes                           | No                                   |
+| Configure flag resolution | Automatic per extension       | Manual (`+mysql`, `+pdo`)            |
+| Download resume           | Yes                           | No                                   |
+| Checksum verification     | Yes                           | No                                   |
+| Old PHP on modern systems | Yes (Zig fallback)            | Often fails                          |
 
 ### vs NVM / pyenv / rbenv
 
-| | phpv | nvm | pyenv | rbenv |
-|---|---|---|---|---|
-| Install method | Compile from source | Binary download | Compile from source | Compile from source |
-| Dependency management | **Full automatic** | N/A (binaries) | **None** (manual) | **None** (manual) |
-| Extension management | **Bundled + PECL** | N/A | N/A | N/A |
-| When deps missing | Builds from source | N/A | **Build fails** | **Build fails** |
-| Parallel compilation | Yes | N/A | No | No |
-| Install reliability | High (advisor + fallback) | High (binaries) | Low-Medium | Low-Medium |
+|                       | phpv                      | nvm             | pyenv               | rbenv               |
+| --------------------- | ------------------------- | --------------- | ------------------- | ------------------- |
+| Install method        | Compile from source       | Binary download | Compile from source | Compile from source |
+| Dependency management | **Full automatic**        | N/A (binaries)  | **None** (manual)   | **None** (manual)   |
+| Extension management  | **Bundled + PECL**        | N/A             | N/A                 | N/A                 |
+| When deps missing     | Builds from source        | N/A             | **Build fails**     | **Build fails**     |
+| Parallel compilation  | Yes                       | N/A             | No                  | No                  |
+| Install reliability   | High (advisor + fallback) | High (binaries) | Low-Medium          | Low-Medium          |
 
 PHP is fundamentally harder to manage than Node/Python/Ruby — it has no pre-built Linux binaries, requires a lot of system libraries, and each extension needs its own configure flag and dependency. phpv is the only version manager that handles all of this automatically.
 
@@ -319,10 +321,10 @@ Each PHP version gets its own isolated dependency tree — no conflicts between 
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PHPV_ROOT` | Root directory for phpv data | `~/.phpv` |
-| `PHPV_CURRENT` | Override current PHP version | (none) |
+| Variable       | Description                  | Default   |
+| -------------- | ---------------------------- | --------- |
+| `PHPV_ROOT`    | Root directory for phpv data | `~/.phpv` |
+| `PHPV_CURRENT` | Override current PHP version | (none)    |
 
 ---
 

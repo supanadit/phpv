@@ -557,11 +557,60 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 			} else {
 				result = append(result, flag)
 			}
+		} else if flag == "--enable-intl" {
+			// ICU (required by intl) needs --with-icu-dir to tell PHP's configure
+			// where the bundled ICU is installed.
+			result = append(result, flag)
+			icuPath := s.resolveICUPath(phpVersion)
+			if icuPath != "" {
+				result = append(result, "--with-icu-dir="+icuPath)
+			}
 		} else {
 			result = append(result, flag)
 		}
 	}
 	return result
+}
+
+// resolveICUPath finds the bundled ICU installation directory for the given PHP version.
+// ICU is required by the intl extension and must be passed via --with-icu-dir to
+// PHP's configure. The function searches the dependency directory for an ICU
+// installation that contains include/unicode/urename.h (the renamed header).
+func (s *bundlerRepository) resolveICUPath(phpVersion string) string {
+	// Try via assembler first (exact version match).
+	deps, err := s.assemblerSvc.GetDependencies("php", phpVersion)
+	if err == nil {
+		for _, dep := range deps {
+			if dep.Name == "icu" {
+				ver := dep.Version
+				if idx := strings.Index(ver, "|"); idx != -1 {
+					ver = ver[:idx]
+				}
+				icuPath := utils.DependencyPath(s.silo, phpVersion, "icu", ver)
+				if fi, err := os.Stat(icuPath); err == nil && fi.IsDir() {
+					includeFile := filepath.Join(icuPath, "include", "unicode", "urename.h")
+					if _, err := os.Stat(includeFile); err == nil {
+						return icuPath
+					}
+				}
+				break
+			}
+		}
+	}
+
+	// Fallback: scan the dependency directory for any ICU version.
+	depPath := utils.DependencyPath(s.silo, phpVersion, "icu", "")
+	if entries, err := os.ReadDir(depPath); err == nil && len(entries) > 0 {
+		for _, entry := range entries {
+			candidatePath := filepath.Join(depPath, entry.Name())
+			includeFile := filepath.Join(candidatePath, "include", "unicode", "urename.h")
+			if _, err := os.Stat(includeFile); err == nil {
+				return candidatePath
+			}
+		}
+	}
+
+	return ""
 }
 
 func (s *bundlerRepository) getInstallDir(name, version, phpVersion string) string {

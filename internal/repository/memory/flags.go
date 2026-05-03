@@ -140,10 +140,13 @@ type CompilerFlagRule struct {
 // Rules are evaluated in order; first matching rule wins.
 //
 // GCC rules:
-//   - PHP 5.x-7.x: Includes -std=gnu11, -fPIC, and GCC 15+ compatibility flags
-//     (-fno-strict-function-pointer-casts for old PHP code with function pointer
-//     type mismatches, e.g., scanf.c casts strtoul to a no-args function pointer).
-//   - PHP 8.0+: Simpler flags (-Wno-error, -fPIC) since newer PHP handles GCC 15+ better.
+//   - PHP 5.x-7.x: Includes -std=gnu11, -fPIC, and GCC 15+ compatibility flags.
+//     -fno-strict-function-pointer-casts: old PHP code casts function pointers
+//       (e.g., scanf.c casts strtoul to a no-args function pointer).
+//     -fpermissive: GCC 15+ hard-errors when calling a function through a cast
+//       pointer with wrong arg count; -fpermissive downgrades it to a warning.
+//   - PHP 8.0+: GCC 15+ still hits scanf.c function pointer cast issues so
+//     -fpermissive and -Wno-cast-function-type are needed here too.
 //
 // Zig rules:
 //   - All PHP versions: Includes -std=gnu11, -fPIC, and suppression flags for
@@ -153,13 +156,13 @@ var compilerFlagRules = []CompilerFlagRule{
 		Compiler: "gcc",
 		MinPHP:   "5.0",
 		MaxPHP:   "7.99",
-		CFLAGS:   []string{"-std=gnu11", "-fPIC", "-fno-strict-function-pointer-casts", "-Wno-error", "-Wno-array-parameter", "-Wno-deprecated-non-prototype", "-Wno-implicit-function-declaration", "-Wno-incompatible-pointer-types"},
+		CFLAGS:   []string{"-std=gnu11", "-fPIC", "-fno-strict-function-pointer-casts", "-fpermissive", "-Wno-cast-function-type", "-Wno-error", "-Wno-array-parameter", "-Wno-deprecated-non-prototype", "-Wno-implicit-function-declaration", "-Wno-incompatible-pointer-types"},
 	},
 	{
 		Compiler: "gcc",
 		MinPHP:   "8.0",
 		MaxPHP:   "",
-		CFLAGS:   []string{"-Wno-error", "-fPIC"},
+		CFLAGS:   []string{"-fpermissive", "-Wno-cast-function-type", "-Wno-error", "-fPIC"},
 	},
 	{
 		Compiler: "zig",

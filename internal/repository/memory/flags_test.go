@@ -18,31 +18,18 @@ func TestGetCompilerFlags_GCC_PHP5(t *testing.T) {
 		t.Fatal("expected flags for gcc PHP 5.6, got none")
 	}
 
-	found := false
-	for _, f := range flags {
-		if f == "-std=gnu11" {
-			found = true
-			break
+	expectedFlags := []string{"-std=gnu11", "-fpermissive", "-Wno-cast-function-type", "-fno-strict-function-pointer-casts"}
+	for _, expected := range expectedFlags {
+		found := false
+		for _, f := range flags {
+			if f == expected {
+				found = true
+				break
+			}
 		}
-	}
-	if !found {
-		t.Error("expected -std=gnu11 in gcc PHP 5.6 flags")
-	}
-
-	found = false
-	for _, f := range flags {
-		if f == "-fno-strict-function-pointer-casts" {
-			found = true
-			break
+		if !found {
+			t.Errorf("expected %s in gcc PHP 5.6 flags, got %v", expected, flags)
 		}
-	}
-	if !found {
-		t.Error("expected -fno-strict-function-pointer-casts in gcc PHP 5.6 flags (GCC 15+ compat)")
-	}
-
-	// PHP 5 should not have -Wno-error as primary flag since it uses -std=gnu11 set
-	if flags[0] != "-std=gnu11" {
-		t.Errorf("expected first flag to be -std=gnu11, got %s", flags[0])
 	}
 }
 
@@ -54,15 +41,18 @@ func TestGetCompilerFlags_GCC_PHP7(t *testing.T) {
 		t.Fatal("expected flags for gcc PHP 7.4, got none")
 	}
 
-	found := false
-	for _, f := range flags {
-		if f == "-fno-strict-function-pointer-casts" {
-			found = true
-			break
+	expectedFlags := []string{"-fno-strict-function-pointer-casts", "-fpermissive", "-Wno-cast-function-type"}
+	for _, expected := range expectedFlags {
+		found := false
+		for _, f := range flags {
+			if f == expected {
+				found = true
+				break
+			}
 		}
-	}
-	if !found {
-		t.Error("expected -fno-strict-function-pointer-casts in gcc PHP 7.4 flags (GCC 15+ compat)")
+		if !found {
+			t.Errorf("expected %s in gcc PHP 7.4 flags, got %v", expected, flags)
+		}
 	}
 }
 
@@ -74,23 +64,22 @@ func TestGetCompilerFlags_GCC_PHP8(t *testing.T) {
 		t.Fatal("expected flags for gcc PHP 8.2, got none")
 	}
 
-	// PHP 8+ should have simpler flags
-	if flags[0] != "-Wno-error" {
-		t.Errorf("expected first flag to be -Wno-error, got %s", flags[0])
-	}
-
-	found := false
-	for _, f := range flags {
-		if f == "-fPIC" {
-			found = true
-			break
+	// PHP 8+ should have -fpermissive for GCC 15+ scanf.c function pointer casts
+	expectedFlags := []string{"-fpermissive", "-Wno-cast-function-type", "-Wno-error", "-fPIC"}
+	for _, expected := range expectedFlags {
+		found := false
+		for _, f := range flags {
+			if f == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected %s in gcc PHP 8.2 flags, got %v", expected, flags)
 		}
 	}
-	if !found {
-		t.Error("expected -fPIC in gcc PHP 8.2 flags")
-	}
 
-	// PHP 8+ should NOT have -fno-strict-function-pointer-casts
+	// PHP 8+ should NOT have -fno-strict-function-pointer-casts (GCC 14 compat only)
 	for _, f := range flags {
 		if f == "-fno-strict-function-pointer-casts" {
 			t.Error("should not have -fno-strict-function-pointer-casts in gcc PHP 8+ flags")

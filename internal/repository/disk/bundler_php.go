@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -110,6 +111,7 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 
 		sourceDir := utils.GetSourceDirPath(s.silo, name, version)
 		s.patchIntlConfigM4(sourceDir)
+		s.patchScanfFunctionCasts(sourceDir, version)
 
 		configureFlags := s.forgeSvc.GetPHPConfigureFlags(version, extensions)
 
@@ -151,6 +153,22 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 			compileMsg += fmt.Sprintf(" and extension %s", strings.Join(extensions, ","))
 		}
 		s.logInfo("%s", compileMsg)
+
+		// ICU 74+ deprecated icu-config; PHP's configure may fail to
+		// detect ICU via pkg-config. Add ICU .so files by full path to
+		// LDFLAGS so the linker can't miss them.
+		if slices.Contains(extensions, "intl") {
+			icuPath := s.resolveICUPath(version)
+			if icuPath != "" {
+				icuLibDir := filepath.Join(icuPath, "lib")
+				for _, lib := range []string{"libicui18n.so", "libicuuc.so", "libicudata.so", "libicuio.so"} {
+					fullPath := filepath.Join(icuLibDir, lib)
+					if _, err := os.Stat(fullPath); err == nil {
+						ldFlags = append(ldFlags, fullPath)
+					}
+				}
+			}
+		}
 
 		config := domain.ForgeConfig{
 			Name:            name,
@@ -246,4 +264,76 @@ func (s *bundlerRepository) patchIntlConfigM4(sourceDir string) {
 		return
 	}
 	s.logInfo("  Patched ext/intl/config.m4: C++11 -> C++17 for ICU compatibility")
+}
+
+// patchScanfFunctionCasts patches ext/standard/scanf.c to fix function pointer
+// casts that GCC 15+ (C23) rejects. PHP 8.0's scanf.c declares:
+//
+//   zend_long (*fn)();
+//
+// and assigns:
+//
+//   fn = (zend_long (*)())ZEND_STRTOL_PTR;
+//
+// then calls:
+//
+//   (*fn)(buf, NULL, base);
+//
+// C23 changed () in function declarations from "unspecified params" to
+// "no params" (matching C++), so GCC 15+ sees fn as 0-arg and hard-errors
+// at the 3-arg call site. -fpermissive does not downgrade this error.
+//
+// This patch fixes both the declaration and the casts to use the correct
+// 3-arg function pointer type: zend_long (*)(const char *, char **, int)
+func (s *bundlerRepository) patchScanfFunctionCasts(sourceDir, phpVersion string) {
+	// Only PHP 8.0.x is affected; PHP 8.1+ already fixed this upstream.
+	v := utils.ParseVersion(phpVersion)
+	if v.Major != 8 || v.Minor != 0 {
+		return
+	}
+
+	scanfPath := filepath.Join(sourceDir, "ext", "standard", "scanf.c")
+	data, err := os.ReadFile(scanfPath)
+	if err != nil {
+		return
+	}
+
+	content := string(data)
+
+	// Fix the declaration: zend_long (*fn)() -> zend_long (*fn)(const char *, char **, int)
+	// Also handle (void) variant in case some patchlevels differ.
+	oldDecl := "zend_long (*fn)()"
+	if strings.Contains(content, oldDecl) {
+		content = strings.ReplaceAll(content, oldDecl,
+			"zend_long (*fn)(const char *, char **, int)")
+	} else {
+		oldDecl = "zend_long (*fn)(void)"
+		if strings.Contains(content, oldDecl) {
+			content = strings.ReplaceAll(content, oldDecl,
+				"zend_long (*fn)(const char *, char **, int)")
+		}
+	}
+
+	// Fix the casts: (zend_long (*)()) -> (zend_long (*)(const char *, char **, int))
+	// Also handle (void) variant.
+	oldCast := "(zend_long (*)())"
+	newCast := "(zend_long (*)(const char *, char **, int))"
+	if strings.Contains(content, oldCast) {
+		content = strings.ReplaceAll(content, oldCast, newCast)
+	}
+	oldCastVoid := "(zend_long (*)(void))"
+	if strings.Contains(content, oldCastVoid) {
+		content = strings.ReplaceAll(content, oldCastVoid, newCast)
+	}
+
+	// Don't rewrite if nothing changed (already patched).
+	if string(data) == content {
+		return
+	}
+
+	if err := os.WriteFile(scanfPath, []byte(content), 0o644); err != nil {
+		s.logWarn("Warning: failed to patch ext/standard/scanf.c: %v", err)
+		return
+	}
+	s.logInfo("  Patched ext/standard/scanf.c: function pointer types for C23/GCC 15+ compatibility")
 }

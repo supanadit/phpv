@@ -162,6 +162,7 @@ type ShimConfig struct {
 	BinPath      string
 	ComposerPath string
 	PiePath      string
+	WpCliPath    string
 }
 
 func DetectComposerPath() string {
@@ -185,6 +186,88 @@ func DetectComposerPath() string {
 	filteredPath := strings.Join(filteredParts, ":")
 
 	cmd := exec.Command("which", "composer")
+	cmd.Env = append(os.Environ(), "PATH="+filteredPath)
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+const wpCliShimTemplate = `#!/bin/bash
+# Dynamic shim for wp-cli - runs wp-cli phar through phpv PHP
+PHPV_ROOT="${PHPV_ROOT:-$HOME/.phpv}"
+if [ -f "$PHPV_ROOT/.phpv_system" ]; then
+    PHP_PATH="$(command -v php 2>/dev/null)"
+    if [ -z "$PHP_PATH" ]; then
+        echo "Error: System PHP not found" >&2
+        exit 1
+    fi
+    WP_CLI_PATH="{{ .WpCliPath }}"
+    if [ -z "$WP_CLI_PATH" ]; then
+        echo "Error: wp-cli not found. Please install wp-cli first." >&2
+        echo "Hint: phpv phar install wp-cli" >&2
+        exit 1
+    fi
+    exec "$PHP_PATH" "$WP_CLI_PATH" "$@"
+fi
+if [ -n "$PHPV_CURRENT" ]; then
+    PHPV_VERSION="$PHPV_CURRENT"
+elif [ -f .phpvrc ] && [ -s .phpvrc ]; then
+    PHPV_VERSION="$(phpv auto-detect-resolve "$(cat .phpvrc)" 2>/dev/null)"
+    if [ -z "$PHPV_VERSION" ]; then
+        PHPV_VERSION="$(cat .phpvrc)"
+    fi
+else
+    PHPV_VERSION="$(phpv auto-detect-resolve 2>/dev/null || cat "$PHPV_ROOT/default" 2>/dev/null)"
+fi
+if [ -z "$PHPV_VERSION" ]; then
+    echo "Error: No PHP version selected. Run 'phpv use <version>' first." >&2
+    exit 1
+fi
+PHPV_OUTPUT="$PHPV_ROOT/versions/$PHPV_VERSION/output"
+if [ ! -d "$PHPV_OUTPUT" ]; then
+    echo "Error: PHP version $PHPV_VERSION not found. Run 'phpv install $PHPV_VERSION' first." >&2
+    exit 1
+fi
+export PHPV_CURRENT="$PHPV_VERSION"
+PHPV_DEPS="$PHPV_ROOT/versions/$PHPV_VERSION/dependency"
+if [ -d "$PHPV_DEPS" ]; then
+    for dep_lib in "$PHPV_DEPS"/*/*/lib; do
+        [ -d "$dep_lib" ] && LD_LIBRARY_PATH="$dep_lib:$LD_LIBRARY_PATH"
+    done
+fi
+export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:$LD_LIBRARY_PATH"
+WP_CLI_PATH="{{ .WpCliPath }}"
+if [ -z "$WP_CLI_PATH" ]; then
+    echo "Error: wp-cli not found. Please install wp-cli first." >&2
+    echo "Hint: phpv phar install wp-cli" >&2
+    exit 1
+fi
+exec "${PHPV_OUTPUT}/bin/php" "$WP_CLI_PATH" "$@"
+`
+
+func DetectWpCliPath() string {
+	cfg := config.Get()
+	phpvRoot := cfg.RootDir()
+	phpvBin := cfg.BinPath()
+	phpvPhar := cfg.PharPath()
+
+	localWpCli := filepath.Join(phpvPhar, "wp-cli.phar")
+	if _, err := os.Stat(localWpCli); err == nil {
+		return localWpCli
+	}
+
+	pathEnv := os.Getenv("PATH")
+	var filteredParts []string
+	for _, part := range strings.Split(pathEnv, ":") {
+		if part != phpvBin && !strings.HasPrefix(part, phpvRoot+"/") {
+			filteredParts = append(filteredParts, part)
+		}
+	}
+	filteredPath := strings.Join(filteredParts, ":")
+
+	cmd := exec.Command("which", "wp")
 	cmd.Env = append(os.Environ(), "PATH="+filteredPath)
 	out, err := cmd.Output()
 	if err != nil {
@@ -251,6 +334,15 @@ func WriteShims(cfg ShimConfig) error {
 		content := strings.ReplaceAll(pieShimTemplate, "{{ .PiePath }}", piePath)
 		if err := os.WriteFile(shimPath, []byte(content), 0755); err != nil {
 			return fmt.Errorf("failed to write shim pie: %w", err)
+		}
+	}
+
+	if cfg.WpCliPath != "" {
+		wpCliPath := cfg.WpCliPath
+		shimPath := filepath.Join(cfg.BinPath, "wp")
+		content := strings.ReplaceAll(wpCliShimTemplate, "{{ .WpCliPath }}", wpCliPath)
+		if err := os.WriteFile(shimPath, []byte(content), 0755); err != nil {
+			return fmt.Errorf("failed to write shim wp: %w", err)
 		}
 	}
 

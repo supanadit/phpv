@@ -15,6 +15,7 @@ import (
 
 const composerPharURLTemplate = "https://getcomposer.org/download/%s/composer.phar"
 const piePharURLTemplate = "https://github.com/php/pie/releases/latest/download/pie.phar"
+const wpCliPharURLTemplate = "https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar"
 
 func (h *TerminalHandler) PharInstall(name string, version string) (*domain.PharResult, error) {
 	return h.pharInstallOrUpdate(name, version, false)
@@ -25,7 +26,8 @@ func (h *TerminalHandler) PharUpdate(name string, version string) (*domain.PharR
 }
 
 func (h *TerminalHandler) pharInstallOrUpdate(name string, version string, isUpdate bool) (*domain.PharResult, error) {
-	if name != "composer" && name != "pie" {
+	pharName := normalizePharName(name)
+	if pharName == "" {
 		return nil, fmt.Errorf("unsupported phar: %s", name)
 	}
 
@@ -41,13 +43,16 @@ func (h *TerminalHandler) pharInstallOrUpdate(name string, version string, isUpd
 		return nil, fmt.Errorf("failed to get silo: %w", err)
 	}
 
-	switch name {
+	switch pharName {
 	case "composer":
 		url = fmt.Sprintf(composerPharURLTemplate, exactVersion)
 		destPath = filepath.Join(utils.PharPath(silo), "composer.phar")
 	case "pie":
 		url = piePharURLTemplate
 		destPath = filepath.Join(utils.PharPath(silo), "pie.phar")
+	case "wp-cli":
+		url = wpCliPharURLTemplate
+		destPath = filepath.Join(utils.PharPath(silo), "wp-cli.phar")
 	}
 
 	if isUpdate {
@@ -98,15 +103,29 @@ func (h *TerminalHandler) pharInstallOrUpdate(name string, version string, isUpd
 	}
 
 	return &domain.PharResult{
-		Name:    name,
+		Name:    pharName,
 		Version: exactVersion,
 		Path:    destPath,
 		Updated: isUpdate,
 	}, nil
 }
 
+func normalizePharName(name string) string {
+	switch name {
+	case "composer":
+		return "composer"
+	case "pie":
+		return "pie"
+	case "wp", "wp-cli":
+		return "wp-cli"
+	default:
+		return ""
+	}
+}
+
 func (h *TerminalHandler) PharRemove(name string) error {
-	if name != "composer" && name != "pie" {
+	pharName := normalizePharName(name)
+	if pharName == "" {
 		return fmt.Errorf("unsupported phar: %s", name)
 	}
 
@@ -116,11 +135,13 @@ func (h *TerminalHandler) PharRemove(name string) error {
 	}
 
 	var destPath string
-	switch name {
+	switch pharName {
 	case "composer":
 		destPath = filepath.Join(utils.PharPath(silo), "composer.phar")
 	case "pie":
 		destPath = filepath.Join(utils.PharPath(silo), "pie.phar")
+	case "wp-cli":
+		destPath = filepath.Join(utils.PharPath(silo), "wp-cli.phar")
 	}
 
 	if _, err := os.Stat(destPath); os.IsNotExist(err) {
@@ -160,14 +181,17 @@ func (h *TerminalHandler) PharList() ([]string, error) {
 }
 
 func (h *TerminalHandler) PharWhich(name string) (string, error) {
-	if name != "composer" && name != "pie" {
+	pharName := normalizePharName(name)
+	if pharName == "" {
 		return "", fmt.Errorf("unsupported phar: %s", name)
 	}
-	switch name {
+	switch pharName {
 	case "composer":
 		return shim.DetectComposerPath(), nil
 	case "pie":
 		return shim.DetectPiePath(), nil
+	case "wp-cli":
+		return shim.DetectWpCliPath(), nil
 	}
 	return "", nil
 }
@@ -176,10 +200,12 @@ func (h *TerminalHandler) regeneratePharShims(silo *domain.Silo) error {
 	shimPath := utils.BinPath(silo)
 	composerPath := shim.DetectComposerPath()
 	piePath := shim.DetectPiePath()
+	wpCliPath := shim.DetectWpCliPath()
 
 	return shim.WriteShims(shim.ShimConfig{
 		BinPath:      shimPath,
 		ComposerPath: composerPath,
 		PiePath:      piePath,
+		WpCliPath:    wpCliPath,
 	})
 }

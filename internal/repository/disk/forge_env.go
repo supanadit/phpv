@@ -163,6 +163,12 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 	}
 	if len(config.CXXFLAGS) > 0 {
 		env = setEnvVar(env, "CXXFLAGS", strings.Join(config.CXXFLAGS, " "))
+	} else if config.Name == "php" && config.CXXStd != "" {
+		// For PHP builds with GCC 15+, ICU headers require C++14 features
+		// (std::enable_if_t, std::is_same_v, std::u16string_view, etc.)
+		// Use CXXStd from ForgeConfig, set based on PHP version via flagresolver.
+		// See flagresolver/cstdRules for version-specific standard requirements.
+		env = setEnvVar(env, "CXXFLAGS", config.CXXStd)
 	}
 
 	// Set autotools environment variables to use bundled versions

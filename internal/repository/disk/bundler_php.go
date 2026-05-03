@@ -126,7 +126,9 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 			}
 		}
 
-		cxxflags := cxxFlagsFromCFlags(cflags)
+		// Get compiler standard flags based on PHP version
+		stdRule := s.flagResolverSvc.GetCompilerStdRule(version)
+		cxxflags := cxxFlagsFromCFlagsWithStd(cflags, true, stdRule)
 
 		s.logBuildFlags(installDir, configureFlags, cppFlags, ldFlags, ldPath, cflags, pkgConfigPaths, cxxflags, cc, cxx)
 
@@ -157,8 +159,10 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 			ConfigureFlags:  configureFlags,
 			CC:              cc,
 			CFLAGS:          cflags,
+			CStd:            stdRule.CStd,
 			CXX:             cxx,
 			CXXFLAGS:        cxxflags,
+			CXXStd:          stdRule.CXXStd,
 			PkgConfigPaths:  pkgConfigPaths,
 			Verbose:         s.verbose,
 		}

@@ -331,14 +331,32 @@ func (m *VersionWrapperManager) CreateLibPqWrapper(systemLibPqPath string) error
 		} else if strings.HasSuffix(systemInclude, "/lib") {
 			systemInclude = strings.TrimSuffix(systemInclude, "/lib") + "/include"
 		}
-		psqlFeHeader := filepath.Join(systemInclude, "libpq-fe.h")
-		if _, err := os.Stat(psqlFeHeader); err == nil {
-			m.createSymlink(psqlFeHeader, filepath.Join(wrapperIncludePath, "libpq-fe.h"))
-		}
 
-		postgresHeader := filepath.Join(systemInclude, "postgres.h")
-		if _, err := os.Stat(postgresHeader); err == nil {
-			m.createSymlink(postgresHeader, filepath.Join(wrapperIncludePath, "postgres.h"))
+		checkIncludePaths := []string{systemInclude, "/usr/include"}
+		for _, includePath := range checkIncludePaths {
+			psqlFeHeader := filepath.Join(includePath, "libpq-fe.h")
+			if _, err := os.Stat(psqlFeHeader); err == nil {
+				m.createSymlink(psqlFeHeader, filepath.Join(m.includePath, "libpq-fe.h"))
+				m.createSymlink(psqlFeHeader, filepath.Join(wrapperIncludePath, "libpq-fe.h"))
+			}
+
+			postgresHeader := filepath.Join(includePath, "postgres.h")
+			if _, err := os.Stat(postgresHeader); err == nil {
+				m.createSymlink(postgresHeader, filepath.Join(m.includePath, "postgres.h"))
+				m.createSymlink(postgresHeader, filepath.Join(wrapperIncludePath, "postgres.h"))
+			}
+
+			psqlLibPqHeader := filepath.Join(includePath, "postgresql", "libpq-fe.h")
+			if _, err := os.Stat(psqlLibPqHeader); err == nil {
+				m.createSymlink(psqlLibPqHeader, filepath.Join(m.includePath, "libpq-fe.h"))
+				m.createSymlink(psqlLibPqHeader, filepath.Join(wrapperIncludePath, "libpq-fe.h"))
+			}
+
+			psqlLibPqFsHeader := filepath.Join(includePath, "postgresql", "libpq", "libpq-fs.h")
+			if _, err := os.Stat(psqlLibPqFsHeader); err == nil {
+				m.createSymlink(psqlLibPqFsHeader, filepath.Join(m.includePath, "libpq-fs.h"))
+				m.createSymlink(psqlLibPqFsHeader, filepath.Join(wrapperIncludePath, "libpq-fs.h"))
+			}
 		}
 	}
 
@@ -403,6 +421,8 @@ func (m *VersionWrapperManager) Exists() bool {
 
 func GetSystemLibPqPath() string {
 	paths := []string{
+		"/usr/lib/x86_64-linux-gnu/libpq.so",
+		"/usr/lib/x86_64-linux-gnu/libpq.a",
 		"/usr/lib64/libpq.so",
 		"/usr/lib64/libpq.a",
 		"/usr/lib/libpq.so",
@@ -420,6 +440,8 @@ func GetSystemLibPqPath() string {
 
 func GetSystemOpenSSLLibPath() string {
 	paths := []string{
+		"/usr/lib/x86_64-linux-gnu/libssl.so",
+		"/usr/lib/x86_64-linux-gnu/libcrypto.so",
 		"/usr/lib64/libssl.so",
 		"/usr/lib/libssl.so",
 		"/usr/lib64/libcrypto.so",

@@ -236,6 +236,21 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 		s.logWarn("Warning: failed to create pkg-config wrapper: %v", err)
 	}
 
+	if systemLibPath := GetSystemLibPqPath(); systemLibPath != "" {
+		if err := wrapperMgr.CreateLibPqWrapper(systemLibPath); err != nil {
+			s.logWarn("Warning: failed to create libpq wrapper: %v", err)
+		}
+	}
+
+	if systemSSLPath := GetSystemOpenSSLLibPath(); systemSSLPath != "" {
+		if err := wrapperMgr.AddSystemLib("ssl", systemSSLPath); err != nil {
+			s.logWarn("Warning: failed to create ssl wrapper: %v", err)
+		}
+		if err := wrapperMgr.AddSystemLib("crypto", strings.Replace(systemSSLPath, "libssl.so", "libcrypto.so", 1)); err != nil {
+			s.logWarn("Warning: failed to create crypto wrapper: %v", err)
+		}
+	}
+
 	if !utils.BuildTools["openssl"] {
 		depPath := utils.DependencyPath(s.silo, exactVersion, "openssl", "")
 		if entries, err := os.ReadDir(depPath); err == nil && len(entries) > 0 {

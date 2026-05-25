@@ -1,38 +1,43 @@
-# Agents
+<!-- gitnexus:start -->
+# GitNexus — Code Intelligence
 
-## Build & Test
+This project is indexed by GitNexus as **phpv** (3076 symbols, 9597 relationships, 269 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
-```bash
-go build -o phpv ./app/phpv.go   # Build binary
-go test ./...                    # Run all tests
-go fmt ./... && go vet ./...      # Format and lint
-```
+> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
-Entry point: `app/phpv.go` uses `go.uber.org/fx` for dependency injection.
+## Always Do
 
-## Architecture
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
+- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
+- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
+- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
 
-Clean Architecture layers:
-- `app/` — CLI entry point, DI wiring (fx)
-- `internal/terminal/` — Usecase/business logic (NO `fmt.Print*` here)
-- `domain/` — Pure data types (no logic)
-- `internal/repository/` — Data access (disk/, memory/, http/)
-- Service interfaces live in root packages (`bundler/`, `assembler/`, `forge/`, etc.)
+## Never Do
 
-## Conventions
+- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
+- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
+- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
 
-- Return `(value, err)` for all fallible functions
-- Domain types must be pure data
-- Business logic goes in service packages, not in `internal/terminal/`
-- Tests: `*_test.go` alongside the code they test
+## Resources
 
-## Test Failures
+| Resource | Use for |
+|----------|---------|
+| `gitnexus://repo/phpv/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/phpv/clusters` | All functional areas |
+| `gitnexus://repo/phpv/processes` | All execution flows |
+| `gitnexus://repo/phpv/process/{name}` | Step-by-step execution trace |
 
-Some tests may fail on a fresh machine (e.g., `flex` not installed, no PHP default set). These are environmental, not code issues. Run tests with `-v` to see which package fails.
+## CLI
 
-## Running
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
-```bash
-go run ./app/phpv.go --help       # Direct run
-./phpv --help                     # Built binary
-```
+<!-- gitnexus:end -->

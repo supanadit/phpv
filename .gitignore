@@ -1,9 +1,2 @@
-phpv
-phpv-test
-
-.idea
-.crush
 .opencode/*
-.pecl/*
-.claw
-.sandbox-home
+.gitnexus

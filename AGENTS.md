@@ -63,11 +63,12 @@ This project follows Clean Architecture. The dependency rule is absolute: **sour
 │  Imports: domain, stdlib. NEVER: internal/,  │
 │  database drivers, HTTP/CLI frameworks.      │
 ├─────────────────────────────────────────────┤
-│            internal/{delivery}/              │  ← DELIVERY
+│            internal/{protocol}/              │  ← DELIVERY
 │  HTTP handlers, CLI commands, gRPC servers.  │
 │  Translates external input to use-case calls.│
 │  Maps domain errors to status codes.         │
 │  Declares its own narrow service interfaces. │
+│  Sits directly under internal/, no nesting.  │
 ├─────────────────────────────────────────────┤
 │         internal/repository/{impl}/          │  ← INFRASTRUCTURE
 │  Database, filesystem, HTTP clients.         │
@@ -88,9 +89,71 @@ This project follows Clean Architecture. The dependency rule is absolute: **sour
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | Entities         | `domain/`                                                                                                                        | Single `domain` package with one file per aggregate root                      |
 | Use Cases        | `{feature}/` (e.g. `user/`, `order/`, `payment/`)                                                                                | One package per business feature. Each declares its own repository interfaces |
-| Delivery         | `internal/{protocol}/` (e.g. `internal/rest/`, `internal/grpc/`, `internal/cli/`, `internal/kafka/`)                             | One package per delivery mechanism. Multiple delivery mechanisms coexist      |
+| Delivery         | `internal/{protocol}/` (e.g. `internal/rest/`, `internal/grpc/`, `internal/cli/`, `internal/kafka/`, `internal/graphql/`, `internal/websocket/`) | One package per delivery mechanism directly under `internal/`. Multiple delivery mechanisms coexist |
 | Infrastructure   | `internal/repository/{backend}/` (e.g. `internal/repository/mysql/`, `internal/repository/postgres/`, `internal/repository/s3/`) | One package per storage backend. Never imports use-case packages              |
+| Internal Workers | `internal/worker/`                                                                                                               | Background job processors, scheduled tasks, event consumers. A form of delivery for internal service-to-service communication |
 | Composition Root | `cmd/{app}/` or `app/`                                                                                                           | Contains only `main.go`. All wiring, no logic                                 |
+
+## The `internal/` Directory — Strict Classification
+
+Go's `internal/` package provides compiler-enforced visibility: no external project can import it. But within the project, `internal/` is NOT a dumping ground. It has exactly three valid categories:
+
+### ✅ What BELONGS in `internal/`
+
+| Category | Directory | Contains |
+|----------|-----------|----------|
+| Delivery mechanisms | `internal/{protocol}/` | HTTP handlers, gRPC servers, CLI commands, WebSocket hubs, Kafka consumers/producers, GraphQL resolvers. Placed directly under `internal/` — no extra `delivery/` nesting. |
+| Infrastructure implementations | `internal/repository/{backend}/` | Database repos, filesystem repos, cache repos, external API clients, message queue drivers |
+| Internal workers | `internal/worker/` | Background job processors, cron-like scheduled tasks, event subscribers that react to internal service events |
+
+Every package in `internal/` must be one of these three. If a package does not handle external I/O (network, disk, database, message queue) it does not belong in `internal/`.
+
+### ❌ What DOES NOT belong in `internal/`
+
+| Misplaced package | Why it's wrong | Where it belongs |
+|-------------------|---------------|-----------------|
+| `internal/config/` | Configuration is a cross-cutting concern loaded at startup. It should not be buried where use cases cannot cleanly depend on it. | Root-level `config/` — loaded in `main.go`, injected as a dependency into services that need it. Never accessed via global singleton. |
+| `internal/{service}/` where `{service}` is not a delivery or repository (e.g. `internal/notifier/`, `internal/pricer/`, `internal/validator/`) | These are use-case / business logic services. They contain behavior, decisions, and orchestration — not I/O. | Root-level `{feature}/` package alongside other use cases. |
+| `internal/utils/`, `internal/helpers/`, `internal/common/` | Utility dumping grounds hide the real dependencies of each layer and invite circular imports. | Split by what they actually do: pure functions in `domain/` or `pkg/`; logging wrappers injected as interfaces; OS or environment detection extracted into its own root-level use-case package. |
+| `internal/models/`, `internal/types/` | If these are domain types, they belong in `domain/`. If they are request/response DTOs, they belong in the delivery package that uses them. | `domain/` for entity structs; delivery package for request/response types. |
+
+### Decision Heuristic
+
+To decide whether package `X` belongs in `internal/`, ask:
+
+> Does this package directly perform I/O (disk, network, database, message queue, OS syscalls for files/processes)?
+
+- **Yes** → `internal/` is correct (delivery, infrastructure, or worker)
+- **No** → it is a use case, domain type, or configuration — move it out of `internal/`
+
+### `internal/` Directory Anti-Patterns
+
+```
+// ❌ VIOLATION — services and config dumped into internal/
+internal/
+├── config/          // WRONG: config should be root-level, injected
+├── notifier/        // WRONG: this is a use case, move to notifier/
+├── pricer/          // WRONG: this is a use case, move to pricer/
+├── utils/           // WRONG: utilities dumping ground
+├── cli/             // OK: CLI delivery
+└── repository/      // OK: infrastructure
+
+// ✅ CORRECT — internal/ contains only delivery, infrastructure, workers
+//           Delivery packages sit directly under internal/, not nested.
+internal/
+├── rest/
+├── grpc/
+├── cli/
+├── graphql/
+├── websocket/
+├── kafka/
+├── repository/
+│   ├── mysql/
+│   ├── postgres/
+│   └── s3/
+└── worker/
+    └── cleanup/
+```
 
 ## Layer Rules
 
@@ -183,8 +246,7 @@ The concrete `*usecase.Service` satisfies this interface implicitly via Go struc
 | Importing `domain` types                                 | Importing use-case packages — infrastructure never knows who calls it |
 | Satisfying repository interfaces from use-case packages  | Business logic or domain rule validation                              |
 | Database drivers, filesystem APIs, HTTP clients          | Importing delivery packages                                           |
-| Utility packages (`internal/config/`, `internal/utils/`) | Orchestrating multiple repositories                                   |
-| Private query-builder helpers                            |                                                                       |
+| Private query-builder helpers                            | Orchestrating multiple repositories                                   |
 
 **Pattern:** Infrastructure satisfies use-case interfaces through Go's implicit interface satisfaction. The infrastructure package **never imports** the use-case package. It simply writes methods whose signatures match:
 
@@ -271,7 +333,7 @@ HTTP handlers, gRPC servers, CLI commands, and Kafka consumers each define their
 | ------------------------ | ----------- | ------------------------------------------------------------------------------- |
 | `domain/`                | Unit        | No mocks — pure data and functions                                              |
 | `{usecase}/`             | Unit        | Mock the Repository interface. Never touch real I/O                             |
-| `internal/{delivery}/`   | Unit        | Mock the Service interface. Use httptest for HTTP, never real infra             |
+| `internal/{protocol}/`   | Unit        | Mock the Service interface. Use httptest for HTTP, never real infra             |
 | `internal/repository/*/` | Integration | Use real backend (temp filesystem, test database). Test I/O, not business logic |
 
 ## Prohibited Patterns
@@ -286,3 +348,5 @@ These patterns break the dependency rule and MUST NOT appear in code:
 6. **`main.go` containing business logic.** The composition root wires dependencies. It contains no `if` statements about domain rules.
 7. **Circular imports.** If package A imports B and B imports A, the dependency rule is violated. Break the cycle by defining an interface in the inner layer.
 8. **Use-case packages importing delivery.** Use cases never know how they are invoked. If a service imports `internal/rest/` or `internal/cli/`, it cannot be reused with a different delivery mechanism.
+9. **Configuration accessed via global singleton.** `config.Get()` called from use cases or infrastructure creates hidden coupling and untestable code. Config structs belong in a root-level `config/` package. They are loaded in `main.go` and injected as constructor dependencies. No package other than `main.go` calls `config.Load()` or `config.Get()`.
+10. **Business services inside `internal/`.** Any package in `internal/` that does not perform I/O (disk, network, database, message queue) is misplaced. Use cases, platform detection, compilers, validators, and other behavior/decision services belong in root-level `{feature}/` packages. `internal/` is exclusively for delivery mechanisms, repository implementations, and workers.

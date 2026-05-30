@@ -27,7 +27,9 @@ context: |
   ### Silo
   Manages the on-disk PHPV_ROOT layout: archives, extracted sources, installed
   PHP versions, per-version dependency trees, build tools, and install state
-  tracking (in-progress, complete, failed).
+  tracking (in-progress, complete, failed). Handles downloading source archives
+  over HTTP (with fallback URLs, SHA256 checksum verification, and retry) and
+  extracting .tar.gz, .tar.xz, and .zip archives to destination directories.
 
   ### Bundler
   Top-level orchestrator for `phpv install`. Coordinates the full pipeline:
@@ -43,35 +45,24 @@ context: |
   ### Advisor
   Checks whether a dependency package is already available on the system (pkg-config,
   header detection) or must be built from source. Returns readiness state and
-  suggested action.
+  suggested action. Maps package name and version to download URLs with OS/arch-aware
+  matching, fallback URLs, and template variables ({version}, {major}.{minor}).
+  Detects the Linux distribution and package manager (apt, dnf, pacman, zypper, apk,
+  xbps, brew) and maps tool names to distro-specific package names for install
+  suggestions.
 
   ### Forge
   Executes C/C++ builds using autotools (./configure && make), cmake, or make-only
   strategies. Accepts a ForgeConfig (prefix, flags, env, compiler paths) and returns
-  the built result.
-
-  ### Download
-  Fetches source archives over HTTP. Supports fallback URLs, SHA256 checksum
-  verification, and retry with configurable delay.
-
-  ### Unload
-  Extracts .tar.gz, .tar.xz, and .zip archives to destination directories.
+  the built result. Maps PHP extensions to ./configure flags, resolves C and C++
+  compiler standard flags per PHP version (e.g., -std=gnu11 for C, -std=gnu++17 for
+  C++ when GCC 15+ requires C++14+ for ICU headers), and converts CFLAGS to CXXFLAGS
+  while stripping C-only warning flags.
 
   ### Extension
   Registry of bundled PHP extensions: --with-*/--enable-* flags, min/max PHP
   version ranges, conflicting extensions, implied extensions, and system library
   mappings with version constraints.
-
-  ### Flag Resolver
-  Maps PHP extensions to ./configure flags. Resolves C and C++ compiler standard
-  flags per PHP version (e.g., -std=gnu11 for C, -std=gnu++17 for C++ when
-  GCC 15+ requires C++14+ for ICU headers). Converts CFLAGS to CXXFLAGS,
-  stripping C-only warning flags.
-
-  ### Pattern
-  Maps package name and version to download URLs. Supports OS/arch-aware matching,
-  fallback URLs, template variables ({version}, {major}.{minor}), and extension
-  functions for packages with non-standard archive naming.
 
   ### Source
   Registry of available packages and their versions. Resolves source vs. binary
@@ -83,14 +74,10 @@ context: |
   runtime via PHPV_CURRENT → .phpvrc → composer.json → default → system fallback.
 
   ### Compiler Selection
-  Determines which C compiler to use for a given PHP version. Core rules:
-  PHP 5.x-7.x prefer gcc; PHP <5 and ≥8 prefer zig. Checks compiler availability
-  and provides zig target triples for cross-compilation.
-
-  ### Platform
-  Detects the Linux distribution (from /etc/os-release) and package manager
-  (apt, dnf, pacman, zypper, apk, xbps, brew). Maps tool names to distro-specific
-  package names for install suggestions.
+  Determines which C compiler to use for a given PHP version — this decision is made
+  by Advisor during readiness checks. Core rules: PHP 5.x-7.x prefer gcc; PHP <5
+  and ≥8 prefer zig. Checks compiler availability and provides zig target triples
+  for cross-compilation.
 
   ### Terminal (CLI Delivery)
   Cobra-based CLI commands: install, use, default, versions, rebuild, phar

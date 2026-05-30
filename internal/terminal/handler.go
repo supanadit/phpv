@@ -1,11 +1,10 @@
 package terminal
 
 import (
+	"github.com/supanadit/phpv/advisor"
 	"github.com/supanadit/phpv/bundler"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/extension"
-	"github.com/supanadit/phpv/internal/compiler"
-	"github.com/supanadit/phpv/internal/config"
 	"github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/source"
 )
@@ -26,7 +25,7 @@ type TerminalHandler struct {
 	Silo          silo.SiloRepository
 	Source        source.SourceRepository
 	ExtensionRepo extension.Repository
-	Compiler      *compiler.CompilerService
+	Advisor       *advisor.Service
 }
 
 func NewHandler(
@@ -34,12 +33,13 @@ func NewHandler(
 	siloRepo silo.SiloRepository,
 	sourceSvc source.SourceRepository,
 	extRepo extension.Repository,
+	advisorSvc *advisor.Service,
 ) *TerminalHandler {
 	return &TerminalHandler{
 		BundlerRepo:   bundlerRepo,
 		Silo:          siloRepo,
 		Source:        sourceSvc,
 		ExtensionRepo: extRepo,
-		Compiler:      compiler.NewCompilerService(config.Get().RootDir()),
+		Advisor:       advisorSvc,
 	}
 }

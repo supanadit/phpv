@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/supanadit/phpv/advisor"
 	"github.com/supanadit/phpv/domain"
 )
 
@@ -57,6 +58,26 @@ type mockSiloRepo struct {
 	removeResult   []string
 	removeErr      error
 	installedVerts map[string]bool
+}
+
+type mockAdvisorRepo struct {
+	advisor.AdvisorRepository
+}
+
+func (m *mockAdvisorRepo) Check(name, version, phpVersion string) (domain.AdvisorCheck, error) {
+	return domain.AdvisorCheck{}, nil
+}
+
+func (m *mockAdvisorRepo) IsCompilerAvailable(compilerType domain.CompilerType) bool {
+	return false
+}
+
+func (m *mockAdvisorRepo) GetCompilerReadiness(phpVersion string) (domain.CompilerInfo, error) {
+	return domain.CompilerInfo{}, nil
+}
+
+func newMockAdvisorSvc() *advisor.Service {
+	return advisor.NewAdvisorService(&mockAdvisorRepo{})
 }
 
 func newMockSiloRepo() *mockSiloRepo {
@@ -285,8 +306,9 @@ func newTestHandler() *TerminalHandler {
 	siloRepo := newMockSiloRepo()
 	srcRepo := &mockSourceRepo{}
 	extRepo := &mockExtensionRepo{}
+	advisorSvc := newMockAdvisorSvc()
 
-	return NewHandler(&mockBundlerRepo{}, siloRepo, srcRepo, extRepo)
+	return NewHandler(&mockBundlerRepo{}, siloRepo, srcRepo, extRepo, advisorSvc)
 }
 
 func TestNewHandler(t *testing.T) {
@@ -372,7 +394,7 @@ func TestUse_ShimGeneration(t *testing.T) {
 
 	mockBundler := &mockBundlerRepo{}
 	srcRepo := &mockSourceRepo{}
-	handler := NewHandler(mockBundler, mockSilo, srcRepo, &mockExtensionRepo{})
+	handler := NewHandler(mockBundler, mockSilo, srcRepo, &mockExtensionRepo{}, newMockAdvisorSvc())
 
 	result, err := handler.Use("8.4.0")
 	if err != nil {
@@ -728,7 +750,7 @@ func TestShellUse_ConstraintResolution(t *testing.T) {
 
 	mockBundler := &mockBundlerRepo{}
 	srcRepo := &mockSourceRepo{}
-	handler := NewHandler(mockBundler, mockSilo, srcRepo, &mockExtensionRepo{})
+	handler := NewHandler(mockBundler, mockSilo, srcRepo, &mockExtensionRepo{}, newMockAdvisorSvc())
 
 	err := handler.ShellUse("8.4")
 	if err != nil {
@@ -744,7 +766,7 @@ func TestAutoDetect_NoComposer(t *testing.T) {
 	mockSilo := newMockSiloRepo()
 	mockBundler := &mockBundlerRepo{}
 	srcRepo := &mockSourceRepo{}
-	handler := NewHandler(mockBundler, mockSilo, srcRepo, &mockExtensionRepo{})
+	handler := NewHandler(mockBundler, mockSilo, srcRepo, &mockExtensionRepo{}, newMockAdvisorSvc())
 
 	oldCwd, err := os.Getwd()
 	if err != nil {
@@ -765,7 +787,7 @@ func TestAutoDetect_EmptyConfig(t *testing.T) {
 	mockSilo := newMockSiloRepo()
 	mockBundler := &mockBundlerRepo{}
 	srcRepo := &mockSourceRepo{}
-	handler := NewHandler(mockBundler, mockSilo, srcRepo, &mockExtensionRepo{})
+	handler := NewHandler(mockBundler, mockSilo, srcRepo, &mockExtensionRepo{}, newMockAdvisorSvc())
 
 	oldCwd, err := os.Getwd()
 	if err != nil {
@@ -788,7 +810,7 @@ func TestAutoDetectResolve_NotInstalled(t *testing.T) {
 	mockSilo := newMockSiloRepo()
 	mockBundler := &mockBundlerRepo{}
 	srcRepo := &mockSourceRepo{}
-	handler := NewHandler(mockBundler, mockSilo, srcRepo, &mockExtensionRepo{})
+	handler := NewHandler(mockBundler, mockSilo, srcRepo, &mockExtensionRepo{}, newMockAdvisorSvc())
 
 	oldCwd, err := os.Getwd()
 	if err != nil {

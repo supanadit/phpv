@@ -2,6 +2,8 @@ package disk
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -11,7 +13,6 @@ import (
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/extension"
 	"github.com/supanadit/phpv/internal/config"
-	"github.com/supanadit/phpv/internal/platform"
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/pattern"
@@ -24,7 +25,6 @@ type AdvisorRepository struct {
 	patternRegistry *pattern.Service
 	assembler       assembler.AssemblerRepository
 	extensionRepo   extension.Repository
-	platform        *platform.PlatformService
 }
 
 var (
@@ -46,6 +46,130 @@ var (
 		"zlib":      "zlib",
 		"oniguruma": "mbstring",
 		"icu":       "intl",
+	}
+
+	// packageNameByPM maps generic tool names to distro-specific package names.
+	// This is the package-name mapping that was previously in PlatformService.
+	packageNameByPM = map[string]map[string]string{
+		"apt": {
+			"libxml2":   "libxml2-dev",
+			"openssl":   "libssl-dev",
+			"curl":      "libcurl4-openssl-dev",
+			"zlib":      "zlib1g-dev",
+			"oniguruma": "libonig-dev",
+			"icu":       "libicu-dev",
+			"m4":        "m4",
+			"autoconf":  "autoconf",
+			"automake":  "automake",
+			"libtool":   "libtool",
+			"perl":      "perl",
+			"bison":     "bison",
+			"flex":      "flex",
+			"re2c":      "re2c",
+			"zig":       "zig",
+		},
+		"dnf": {
+			"libxml2":   "libxml2-devel",
+			"openssl":   "openssl-devel",
+			"curl":      "libcurl-devel",
+			"zlib":      "zlib-devel",
+			"oniguruma": "oniguruma-devel",
+			"icu":       "libicu-devel",
+			"m4":        "m4",
+			"autoconf":  "autoconf",
+			"automake":  "automake",
+			"libtool":   "libtool",
+			"perl":      "perl",
+			"bison":     "bison",
+			"flex":      "flex",
+			"re2c":      "re2c",
+			"zig":       "zig",
+		},
+		"pacman": {
+			"libxml2":   "libxml2",
+			"openssl":   "openssl",
+			"curl":      "curl",
+			"zlib":      "zlib",
+			"oniguruma": "oniguruma",
+			"icu":       "icu",
+			"m4":        "m4",
+			"autoconf":  "autoconf",
+			"automake":  "automake",
+			"libtool":   "libtool",
+			"perl":      "perl",
+			"bison":     "bison",
+			"flex":      "flex",
+			"re2c":      "re2c",
+			"zig":       "zig",
+		},
+		"zypper": {
+			"libxml2":   "libxml2-devel",
+			"openssl":   "libssl-devel",
+			"curl":      "libcurl-devel",
+			"zlib":      "zlib-devel",
+			"oniguruma": "libonig-devel",
+			"icu":       "libicu-devel",
+			"m4":        "m4",
+			"autoconf":  "autoconf",
+			"automake":  "automake",
+			"libtool":   "libtool",
+			"perl":      "perl",
+			"bison":     "bison",
+			"flex":      "flex",
+			"re2c":      "re2c",
+			"zig":       "zig",
+		},
+		"apk": {
+			"libxml2":   "libxml2-dev",
+			"openssl":   "openssl-dev",
+			"curl":      "curl-dev",
+			"zlib":      "zlib-dev",
+			"oniguruma": "onig-dev",
+			"icu":       "icu-dev",
+			"m4":        "m4",
+			"autoconf":  "autoconf",
+			"automake":  "automake",
+			"libtool":   "libtool",
+			"perl":      "perl",
+			"bison":     "bison",
+			"flex":      "flex",
+			"re2c":      "re2c",
+			"zig":       "zig",
+		},
+		"xbps": {
+			"libxml2":   "libxml2-devel",
+			"openssl":   "openssl-devel",
+			"curl":      "libcurl-devel",
+			"zlib":      "zlib-devel",
+			"oniguruma": "onig-devel",
+			"icu":       "libicu-devel",
+			"m4":        "m4",
+			"autoconf":  "autoconf",
+			"automake":  "automake",
+			"libtool":   "libtool",
+			"perl":      "perl",
+			"bison":     "bison",
+			"flex":      "flex",
+			"re2c":      "re2c",
+			"zig":       "zig",
+		},
+		"brew": {
+			"libxml2":   "libxml2",
+			"openssl":   "openssl",
+			"curl":      "curl",
+			"zlib":      "zlib",
+			"oniguruma": "oniguruma",
+			"icu":       "icu4c",
+			"m4":        "m4",
+			"autoconf":  "autoconf",
+			"automake":  "automake",
+			"libtool":   "libtool",
+			"perl":      "perl",
+			"bison":     "bison",
+			"flex":      "flex",
+			"re2c":      "re2c",
+			"zig":       "zig",
+		},
 	}
 
 	multiPkgConfigPackages = map[string][]string{
@@ -75,7 +199,6 @@ func NewAdvisorRepository(asm assembler.AssemblerRepository, extRepo extension.R
 		patternRegistry: registry,
 		assembler:       asm,
 		extensionRepo:   extRepo,
-		platform:        platform.NewPlatformService(),
 	}
 }
 
@@ -90,7 +213,7 @@ func (r *AdvisorRepository) Check(name string, version string, phpVersion string
 
 	suggestion := ""
 	if !systemAvailable {
-		suggestion = r.platform.GetInstallSuggestion(name)
+		suggestion = getInstallSuggestion(name)
 	}
 
 	return domain.AdvisorCheck{
@@ -560,6 +683,95 @@ func determineActionAndURL(state domain.PackageState, systemAvailable, shouldBui
 	default:
 		return "unknown", "", ""
 	}
+}
+
+func (r *AdvisorRepository) IsCompilerAvailable(compilerType domain.CompilerType) bool {
+	switch compilerType {
+	case domain.CompilerTypeGCC:
+		_, err := exec.LookPath("gcc")
+		return err == nil
+	case domain.CompilerTypeZig:
+		// Check for environment variable first
+		if zigPath := os.Getenv("PHPV_ZIG_PATH"); zigPath != "" {
+			if _, statErr := os.Stat(zigPath); statErr == nil {
+				return true
+			}
+		}
+		// Check for zig in phpv's managed tools
+		zigBinary := filepath.Join(r.root, "build-tools", "zig", "0.13.0", "zig")
+		if _, statErr := os.Stat(zigBinary); statErr == nil {
+			return true
+		}
+		// Fallback to system zig
+		_, err := exec.LookPath("zig")
+		return err == nil
+	default:
+		return false
+	}
+}
+
+func (r *AdvisorRepository) GetCompilerReadiness(phpVersion string) (domain.CompilerInfo, error) {
+	v := utils.ParseVersion(phpVersion)
+
+	hasGcc := r.IsCompilerAvailable(domain.CompilerTypeGCC)
+	hasZig := r.IsCompilerAvailable(domain.CompilerTypeZig)
+
+	// make availability determines zig auto-download eligibility
+	_, hasMake := exec.LookPath("make")
+
+	result := domain.CompilerInfo{}
+
+	if v.Major >= 5 {
+		// PHP 5+: prefer gcc, fallback to zig (auto-download if available)
+		if hasGcc {
+			result.Type = domain.CompilerTypeGCC
+			result.Name = string(domain.CompilerTypeGCC)
+			result.Available = true
+			result.Path, _ = exec.LookPath("gcc")
+		} else {
+			result.Type = domain.CompilerTypeZig
+			result.Name = string(domain.CompilerTypeZig)
+			if hasZig {
+				result.Available = true
+				result.Path, _ = exec.LookPath("zig")
+			} else if hasMake == nil {
+				result.Available = true
+				result.AutoDownload = true
+			}
+		}
+	} else {
+		// PHP <5: only zig
+		result.Type = domain.CompilerTypeZig
+		result.Name = string(domain.CompilerTypeZig)
+		if hasZig {
+			result.Available = true
+			result.Path, _ = exec.LookPath("zig")
+		} else if hasMake == nil {
+			result.Available = true
+			result.AutoDownload = true
+		}
+	}
+
+	return result, nil
+}
+
+// getInstallSuggestion returns a formatted install suggestion for the given tool
+// based on the detected platform's package manager.
+func getInstallSuggestion(tool string) string {
+	osInfo := utils.DetectOSInfo()
+	if osInfo.PkgMgr == "" {
+		return ""
+	}
+
+	// Look up the package name for this tool on the detected package manager
+	if pmNames, ok := packageNameByPM[osInfo.PkgMgr]; ok {
+		if pkg, ok := pmNames[tool]; ok {
+			return osInfo.InstallCmd + " " + pkg
+		}
+	}
+
+	// Fallback to tool name itself
+	return osInfo.InstallCmd + " " + tool
 }
 
 func buildMessage(name, version string, state domain.PackageState, action string) string {

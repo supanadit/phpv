@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/compiler"
 	"github.com/supanadit/phpv/internal/config"
 	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/shim"
@@ -237,23 +236,14 @@ func (h *TerminalHandler) DoctorV2(version string) (*DoctorResultV2, error) {
 	var compilerByMajor []DoctorCompilerForVersion
 	for _, major := range []int{5, 7, 8} {
 		majorVersion := major
-		effectiveCompiler := h.Compiler.GetEffectiveCompilerForPHP(fmt.Sprintf("%d.0.0", major))
-		compiler := string(effectiveCompiler)
-
-		// Check if compiler is available for this major version
+		readiness, err := h.Advisor.GetCompilerReadiness(fmt.Sprintf("%d.0.0", major))
+		compiler := ""
 		available := false
 		autoDownload := false
-		if compiler == "gcc" && hasGcc {
-			available = true
-		} else if compiler == "zig" {
-			if hasZig {
-				available = true
-			}
-			// zig will be auto-downloaded if not available but make is present
-			if !available && hasMake {
-				autoDownload = true
-				available = true
-			}
+		if err == nil {
+			compiler = string(readiness.Type)
+			available = readiness.Available
+			autoDownload = readiness.AutoDownload
 		}
 
 		compilerByMajor = append(compilerByMajor, DoctorCompilerForVersion{
@@ -319,13 +309,10 @@ func toolAvailable(items []DoctorCheckItem, name string) bool {
 
 // DoctorV2ResultCompiler returns the effective compiler info for the doctor result
 func (h *TerminalHandler) DoctorV2ResultCompiler(version string) string {
-	// If no version specified, determine the effective compiler for a general check
-	// by checking what would be used for PHP 8 (the recommended version)
 	if version == "" {
-		// For general system check, return gcc as default since it's the preferred compiler
-		return string(compiler.CompilerTypeGCC)
+		return string(domain.CompilerTypeGCC)
 	}
-	effective := h.Compiler.GetEffectiveCompilerForPHP(version)
+	effective := h.Advisor.GetEffectiveCompilerForPHP(version)
 	return string(effective)
 }
 
@@ -354,7 +341,6 @@ func (h *TerminalHandler) doctorCheckBuildTools(osInfo utils.OSInfo, version str
 		{"cmake", []string{"--version"}},
 		{"xz", []string{"--version"}},
 	}
-
 
 	var items []DoctorCheckItem
 	for _, tool := range tools {

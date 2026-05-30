@@ -325,10 +325,7 @@ internal/
 │                           # Imports: domain. NEVER imports order/
 │                           # Methods happen to match order.Repository interface
 │                           # → compiler verifies shape match at call site in main.go
-└── worker/
-    └── order_cleanup.go    # Background job, calls order.Service via interface
-
-cmd/server/
+app/
 └── main.go                 # Composition root — the ONLY file where concrete meets interface
                             # repo := mysql.NewOrderRepository(db)
                             # svc := order.NewService(repo)
@@ -341,7 +338,7 @@ cmd/server/
 - `order/service.go` **declares** the `Repository` interface. It **never** imports `internal/repository/mysql/`.
 - `internal/repository/mysql/order.go` **implements** it by writing methods with matching signatures. It **never** imports `order/`.
 - `internal/rest/order.go` declares its **own** narrow `Service` interface. It calls `order.Service` through that interface, not directly.
-- `cmd/server/main.go` is the **only file** where `mysql.OrderRepository` meets `order.Repository` and `order.Service` meets `rest.Service`.
+- `app/main.go` is the **only file** where `mysql.OrderRepository` meets `order.Repository` and `order.Service` meets `rest.Service`.
 - Swapping MySQL for Postgres means creating `internal/repository/postgres/order.go` and changing **one import and one constructor call** in `main.go`.
 - Adding gRPC means creating `internal/grpc/order.go` and **one new line** in `main.go`.
 

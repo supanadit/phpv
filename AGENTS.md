@@ -398,3 +398,179 @@ These patterns break the dependency rule and MUST NOT appear in code:
 8. **Use-case packages importing delivery.** Use cases never know how they are invoked. If a service imports `internal/rest/` or `internal/cli/`, it cannot be reused with a different delivery mechanism.
 9. **Configuration accessed via global singleton.** `config.Get()` called from use cases or infrastructure creates hidden coupling and untestable code. Config structs belong in a root-level `config/` package. They are loaded in `main.go` and injected as constructor dependencies. No package other than `main.go` calls `config.Load()` or `config.Get()`.
 10. **Business services inside `internal/`.** Any package in `internal/` that does not perform I/O (disk, network, database, message queue) is misplaced. Use cases, platform detection, compilers, validators, and other behavior/decision services belong in root-level `{feature}/` packages. `internal/` is exclusively for delivery mechanisms, repository implementations, and workers.
+
+## uber-go/fx — Dependency Injection in Clean Architecture
+
+`uber-go/fx` is a DI framework that replaces manual wiring in the composition root with declarative provider functions. It respects Go's implicit interface satisfaction while automating constructor call chains.
+
+### How fx maps to Clean Architecture layers
+
+| fx concept | Clean Architecture role |
+|------------|------------------------|
+| `fx.Provide(fn)` | Registers a constructor. `fn` returns a **concrete type** that fx tracks by its Go type identity. |
+| Constructor parameters | fx resolves each parameter by finding a registered concrete type that satisfies it. If the parameter is an **interface**, fx finds a concrete type whose methods match. |
+| `fx.Invoke(fn)` | The composition root. `fn` receives fully-resolved dependencies and starts the application. Equivalent to `main()` body. |
+| `fx.Module(name, opts...)` | Groups related providers. Use one module per layer or per feature. |
+| `fx.Lifecycle` | Start/stop hooks — HTTP servers, gRPC servers, DB connection pools, consumer group joins. |
+| `fx.Annotate(fn, ...)` | Rewires return types: expose a concrete implementation `*mysql.Repo` **as** the interface `feature.Repository`. |
+
+### Core Rule: Providers return CONCRETE types. Constructors accept INTERFACES.
+
+fx matches by Go type identity. A provider returning `*mysql.OrderRepository` creates a value of type `*mysql.OrderRepository`. A constructor parameter of type `order.Repository` (an interface) will be satisfied by that concrete value **only if** `*mysql.OrderRepository` has all the methods — or if `fx.Annotate` explicitly casts it.
+
+```go
+// ✅ CORRECT — provider returns concrete type
+func NewOrderRepository(db *sql.DB) *mysql.OrderRepository {
+    return &mysql.OrderRepository{DB: db}
+}
+
+// Constructor accepts interface — fx resolves it from the concrete provider above
+func NewService(repo order.Repository) *order.Service {
+    return &order.Service{Repo: repo}
+}
+```
+
+```go
+// ❌ PROHIBITED — provider returning interface directly
+func NewOrderRepository(db *sql.DB) order.Repository {
+    return &mysql.OrderRepository{DB: db}  // fx loses the concrete type identity
+}
+```
+
+When a provider returns an interface, fx cannot track which concrete type backs it. This breaks fx's ability to provide that same concrete value to other constructors that might need it (e.g., health checks, multiple interfaces). Always return the concrete struct, then use `fx.Annotate` or let Go's implicit satisfaction handle interface matching.
+
+### Module Organization
+
+Respect layer boundaries by grouping providers into modules:
+
+```go
+// Infrastructure module — provides concrete repository implementations
+var RepositoryModule = fx.Module("repository",
+    fx.Provide(
+        mysql.NewOrderRepository,
+        mysql.NewUserRepository,
+        postgres.NewAuditRepository,
+    ),
+)
+
+// Use-case module — provides service constructors (accept interfaces)
+var UseCaseModule = fx.Module("usecase",
+    fx.Provide(
+        order.NewService,
+        user.NewService,
+    ),
+)
+
+// Delivery module — provides handlers, registers routes
+var DeliveryModule = fx.Module("delivery",
+    fx.Provide(
+        rest.NewOrderHandler,
+        grpc.NewOrderServer,
+        kafka.NewOrderConsumer,
+    ),
+    fx.Invoke(rest.RegisterRoutes),
+    fx.Invoke(grpc.StartServer),
+)
+```
+
+```go
+// app/main.go — the composition root assembles modules
+func main() {
+    app := fx.New(
+        fx.Provide(
+            NewConfig,
+            NewDatabase,
+        ),
+        RepositoryModule,
+        UseCaseModule,
+        DeliveryModule,
+        fx.NopLogger,  // suppress fx internal logging in production
+    )
+
+    app.Run()  // blocks until signal, handles lifecycle start/stop
+}
+```
+
+### `fx.In` — Grouping Constructor Parameters
+
+When a constructor needs many dependencies, use `fx.In` to group them into a struct instead of a long parameter list. This is purely organizational — it does not create new types in fx's container:
+
+```go
+// ✅ CORRECT — grouped parameters with fx.In
+type ServiceParams struct {
+    fx.In
+
+    OrderRepo  order.Repository
+    UserRepo   user.Repository
+    AuditRepo  audit.Repository
+    Config     *config.Config
+}
+
+func NewOrderService(p ServiceParams) *order.Service {
+    return &order.Service{
+        OrderRepo: p.OrderRepo,
+        UserRepo:  p.UserRepo,
+        AuditRepo: p.AuditRepo,
+        Config:    p.Config,
+    }
+}
+```
+
+```go
+// ❌ PROHIBITED — fx.In structs in domain/ or use-case packages
+// fx.In imports "go.uber.org/fx". Domain and use-case packages
+// must never import DI frameworks. fx.In structs belong in the
+// same package as the composition root, or in a dedicated
+// internal/di/ package that only the composition root imports.
+```
+
+### `fx.Annotate` — Exposing a Concrete Type as an Interface
+
+When fx needs to provide the same concrete type under multiple interfaces, or when the concrete type is from a package that doesn't import the interface package, use `fx.Annotate`:
+
+```go
+fx.Provide(
+    mysql.NewOrderRepository,  // returns *mysql.OrderRepository
+    fx.Annotate(
+        mysql.NewOrderRepository,
+        fx.As(new(order.Repository)),    // expose as order.Repository
+        fx.As(new(audit.OrderReader)),   // expose as audit.OrderReader
+    ),
+)
+```
+
+Without `fx.Annotate`, fx only knows `*mysql.OrderRepository`. If a constructor asks for `order.Repository`, fx won't match it unless `*mysql.OrderRepository` is explicitly annotated — or unless the call site uses implicit interface satisfaction at the provider level.
+
+> **Go tip:** If the provider returns `*mysql.OrderRepository` and a constructor parameter is `order.Repository`, fx resolves it automatically via Go's implicit interface satisfaction — no `fx.Annotate` needed. Use `fx.Annotate` only when you need to expose the same concrete type under **multiple** interfaces, or when the provider package cannot import the interface package.
+
+### Lifecycle Hooks
+
+Use `fx.Lifecycle` to manage start/stop for servers, connections, and consumers:
+
+```go
+func NewRESTServer(lc fx.Lifecycle, cfg *config.Config, handler *rest.OrderHandler) *echo.Echo {
+    e := echo.New()
+    handler.Register(e)
+
+    lc.Append(fx.Hook{
+        OnStart: func(ctx context.Context) error {
+            go e.Start(cfg.Address)  // non-blocking start
+            return nil
+        },
+        OnStop: func(ctx context.Context) error {
+            return e.Shutdown(ctx)   // graceful shutdown
+        },
+    })
+
+    return e
+}
+```
+
+### fx Anti-Patterns
+
+1. **Providers returning interfaces.** Always return the concrete struct. Let fx (and Go) resolve interface satisfaction.
+2. **`fx.In` structs outside the composition root.** `fx.In` pulls `go.uber.org/fx` into the import graph. Domain and use-case packages must never import DI frameworks.
+3. **Business logic inside `fx.Invoke`.** Invoke functions start servers and register routes. They contain no if/switch on domain rules.
+4. **Calling `fx.Provide` from outside `main.go` or module definitions.** Providers must be registered at app startup, not conditionally during runtime.
+5. **Circular dependencies through fx.** If A needs B and B needs A, fx cannot resolve it. This is a design problem — break the cycle with an interface.
+6. **Using fx as a service locator.** Never pass `*fx.App` around and call `app.Get(...)` deep in the call stack. Dependencies flow through constructors, not runtime lookups.

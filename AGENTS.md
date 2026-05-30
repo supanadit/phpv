@@ -294,6 +294,57 @@ func main() {
 
 Swapping MySQL for PostgreSQL changes **one line**: the import and the constructor call. Swapping REST for gRPC changes **one line**. Running both simultaneously adds **one line**. The service and domain layers never change.
 
+## File-Level Relationship Map
+
+For a feature named `order`, the concrete files and how they connect across layers:
+
+```
+domain/
+└── order.go                # domain.Order struct (entity, pure data)
+
+order/
+└── service.go              # Repository interface (declared here — consumed by business logic)
+                            # Service struct (business logic methods live here)
+                            # Imports: domain, stdlib. NEVER imports internal/
+
+internal/
+├── rest/
+│   └── order.go            # Service interface (declared here — what REST needs)
+│                           # Handler struct (HTTP handler)
+│                           # Imports: domain. Calls order.Service via interface
+├── grpc/
+│   └── order.go            # Own Service interface (what gRPC needs)
+│                           # Server struct (gRPC handler)
+│                           # Same *order.Service injected — zero changes to order/
+├── kafka/
+│   └── order.go            # Own Service interface (what Kafka needs)
+│                           # Consumer struct (Kafka consumer)
+├── repository/
+│   └── mysql/
+│       └── order.go        # Repository struct (concrete MySQL implementation)
+│                           # Imports: domain. NEVER imports order/
+│                           # Methods happen to match order.Repository interface
+│                           # → compiler verifies shape match at call site in main.go
+└── worker/
+    └── order_cleanup.go    # Background job, calls order.Service via interface
+
+cmd/server/
+└── main.go                 # Composition root — the ONLY file where concrete meets interface
+                            # repo := mysql.NewOrderRepository(db)
+                            # svc := order.NewService(repo)
+                            # rest.NewOrderHandler(e, svc)
+                            # grpc.NewOrderServer(s, svc)
+                            # kafka.NewOrderConsumer(c, svc)
+```
+
+**Key rules from the map:**
+- `order/service.go` **declares** the `Repository` interface. It **never** imports `internal/repository/mysql/`.
+- `internal/repository/mysql/order.go` **implements** it by writing methods with matching signatures. It **never** imports `order/`.
+- `internal/rest/order.go` declares its **own** narrow `Service` interface. It calls `order.Service` through that interface, not directly.
+- `cmd/server/main.go` is the **only file** where `mysql.OrderRepository` meets `order.Repository` and `order.Service` meets `rest.Service`.
+- Swapping MySQL for Postgres means creating `internal/repository/postgres/order.go` and changing **one import and one constructor call** in `main.go`.
+- Adding gRPC means creating `internal/grpc/order.go` and **one new line** in `main.go`.
+
 ## Interface Rules
 
 ### Rule 1: Interfaces belong to the CONSUMER

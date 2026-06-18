@@ -74,9 +74,6 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 	"gd": {
 		Flag:   "--with-gd",
 		MinPHP: "5.0",
-		FlagVersions: []domain.FlagVersionDef{
-			{VersionRange: ">=7.4", Flag: "--enable-gd"},
-		},
 	},
 	"gettext": {
 		Flag:   "--with-gettext",
@@ -124,6 +121,10 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 		Flag:    "--with-libxml",
 		MinPHP:  "5.0",
 		Package: "libxml2",
+		FlagVersions: []domain.FlagVersionDef{
+			{VersionRange: ">=5.0 <8.0", Flag: "--enable-libxml"},
+			{VersionRange: ">=8.0", Flag: "--with-libxml"},
+		},
 		Versions: []domain.VersionConstraintDef{
 			{VersionRange: ">=8.2.0", Version: "2.12.7|~2.12.0"},
 			{VersionRange: ">=8.0.0 <8.2.0", Version: "2.11.7|~2.11.0"},
@@ -346,9 +347,6 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 	"zip": {
 		Flag:   "--enable-zip",
 		MinPHP: "5.0",
-		FlagVersions: []domain.FlagVersionDef{
-			{VersionRange: ">=7.4", Flag: "--with-zip"},
-		},
 	},
 	"zlib": {
 		Flag:    "--with-zlib",

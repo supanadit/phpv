@@ -74,6 +74,9 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 	"gd": {
 		Flag:   "--with-gd",
 		MinPHP: "5.0",
+		FlagVersions: []domain.FlagVersionDef{
+			{VersionRange: ">=7.4", Flag: "--enable-gd"},
+		},
 	},
 	"gettext": {
 		Flag:   "--with-gettext",
@@ -346,6 +349,9 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 	"zip": {
 		Flag:   "--enable-zip",
 		MinPHP: "5.0",
+		FlagVersions: []domain.FlagVersionDef{
+			{VersionRange: ">=7.4", Flag: "--with-zip"},
+		},
 	},
 	"zlib": {
 		Flag:    "--with-zlib",

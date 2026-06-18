@@ -116,13 +116,13 @@ jobs:
         if: steps.php-state.outputs.cached == 'false'
         run: |
           eval "$($PHPV_ROOT/bin/phpv init bash)"
-          phpv install ${{ matrix.php_version }} --ext $PHPV_EXTENSIONS -v
+          phpv install ${{ matrix.php_version }} --ext $PHPV_EXTENSIONS
 
       - name: Rebuild PHP ${{ matrix.php_version }}
         if: steps.php-state.outputs.cached == 'true'
         run: |
           eval "$($PHPV_ROOT/bin/phpv init bash)"
-          phpv rebuild ${{ matrix.php_version }} --ext $PHPV_EXTENSIONS -v
+          phpv rebuild ${{ matrix.php_version }} --ext $PHPV_EXTENSIONS
 
       - name: Verify PHP ${{ matrix.php_version }}
         run: |

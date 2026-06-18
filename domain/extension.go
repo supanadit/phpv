@@ -1,13 +1,19 @@
 package domain
 
+type FlagVersionDef struct {
+	VersionRange string
+	Flag         string
+}
+
 type ExtensionDef struct {
-	Flag      string
-	MinPHP    string
-	MaxPHP    string
-	Conflicts []string
-	Package   string
-	Versions  []VersionConstraintDef
-	Implied   []string
+	Flag         string
+	FlagVersions []FlagVersionDef
+	MinPHP       string
+	MaxPHP       string
+	Conflicts    []string
+	Package      string
+	Versions     []VersionConstraintDef
+	Implied      []string
 }
 
 type VersionConstraintDef struct {

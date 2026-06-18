@@ -182,6 +182,10 @@ type Repository interface {
 	// GetCompilerFlags returns C compiler flags (CFLAGS) for a specific compiler and PHP version.
 	// compiler should be "gcc" or "zig".
 	GetCompilerFlags(compiler string, phpVersion string) []string
+
+	// ExpandImplied returns the full set of extensions after expanding implied deps,
+	// plus a list of extensions that were auto-added (not in the original request).
+	ExpandImplied(extensions []string) (expanded []string, added []string)
 }
 
 // Service provides flag resolution operations for PHP and its extensions.
@@ -261,4 +265,9 @@ func (s *Service) GetCompilerStdRule(phpVersion string) CStdRule {
 // compiler should be "gcc" or "zig".
 func (s *Service) GetCompilerFlags(compiler string, phpVersion string) []string {
 	return s.repo.GetCompilerFlags(compiler, phpVersion)
+}
+
+// ExpandImplied returns the expanded extension set with a list of auto-added deps.
+func (s *Service) ExpandImplied(extensions []string) ([]string, []string) {
+	return s.repo.ExpandImplied(extensions)
 }

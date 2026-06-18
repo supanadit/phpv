@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/supanadit/phpv/internal/compiler"
+	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/utils"
 )
 
@@ -167,7 +167,7 @@ func registerToolsCommands(root *cobra.Command, handler *TerminalHandler) {
 
 				if recommendedMajor > 0 {
 					fmt.Printf("  phpv install %d\n", recommendedMajor)
-					if recommendedCompiler == string(compiler.CompilerTypeZig) {
+					if recommendedCompiler == string(domain.CompilerTypeZig) {
 						autoNote := ""
 						if result.CompilerByMajor[len(result.CompilerByMajor)-1].AutoDownload {
 							autoNote = " (auto-downloaded)"

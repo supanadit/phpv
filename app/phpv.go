@@ -193,7 +193,8 @@ func run(
 	}
 
 	bundlerRepo := disk.NewBundlerRepository(cfg, pattern)
-	handler := terminal.NewHandler(bundlerRepo, sil, src, ext)
+	advisorSvc := advisor.NewAdvisorService(cfg.Advisor)
+	handler := terminal.NewHandler(bundlerRepo, sil, src, ext, advisorSvc)
 
 	if err := terminal.ExecuteCobra(handler, shutdowner); err != nil {
 		return

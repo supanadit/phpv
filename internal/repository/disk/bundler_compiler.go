@@ -92,6 +92,7 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 			return "", []string{}, "", nil, fmt.Errorf("[bundler] g++ not found in PATH: %w", err)
 		}
 		cflags = s.flagResolverSvc.GetCompilerFlags("gcc", phpVersion)
+		cflags = utils.FilterCompilerFlags(gccPath, cflags)
 		return gccPath, cflags, gxxPath, nil, nil
 	}
 
@@ -105,6 +106,7 @@ func (s *bundlerRepository) getCompilerForVersion(phpVersion string, forceCompil
 			return "", []string{}, "", nil, fmt.Errorf("[bundler] g++ not found in PATH: %w", err)
 		}
 		cflags = s.flagResolverSvc.GetCompilerFlags("gcc", phpVersion)
+		cflags = utils.FilterCompilerFlags(gccPath, cflags)
 		return gccPath, cflags, gxxPath, nil, nil
 	}
 

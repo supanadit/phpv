@@ -47,8 +47,9 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 		MinPHP: "5.0",
 	},
 	"dom": {
-		Flag:   "--enable-dom",
-		MinPHP: "5.0",
+		Flag:    "--enable-dom",
+		MinPHP:  "5.0",
+		Implied: []string{"libxml"},
 	},
 	"enchant": {
 		Flag:   "--with-enchant",
@@ -103,7 +104,9 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 		MinPHP:  "5.0",
 		Package: "icu",
 		Versions: []domain.VersionConstraintDef{
-			{VersionRange: ">=5.0", Version: "74.2|>=74.2"},
+			{VersionRange: ">=8.0", Version: "74.2|>=74.2"},
+			{VersionRange: ">=7.4", Version: "63.1|>=63.1,<74"},
+			{VersionRange: ">=5.0 <7.4", Version: "57.2|>=57.0,<60"},
 		},
 	},
 	"json": {
@@ -118,6 +121,10 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 		Flag:    "--with-libxml",
 		MinPHP:  "5.0",
 		Package: "libxml2",
+		FlagVersions: []domain.FlagVersionDef{
+			{VersionRange: ">=5.0 <8.0", Flag: "--enable-libxml"},
+			{VersionRange: ">=8.0", Flag: "--with-libxml"},
+		},
 		Versions: []domain.VersionConstraintDef{
 			{VersionRange: ">=8.2.0", Version: "2.12.7|~2.12.0"},
 			{VersionRange: ">=8.0.0 <8.2.0", Version: "2.11.7|~2.11.0"},
@@ -139,6 +146,7 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 		MinPHP:    "5.0",
 		MaxPHP:    "5.6",
 		Conflicts: []string{"mysqli", "pdo_mysql"},
+		Implied:   []string{"zlib"},
 	},
 	"mysqli": {
 		Flag:      "--with-mysqli",
@@ -179,35 +187,41 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 		MinPHP: "5.0",
 	},
 	"pdo_dblib": {
-		Flag:   "--with-pdo-dblib",
-		MinPHP: "5.0",
+		Flag:    "--with-pdo-dblib",
+		MinPHP:  "5.0",
+		Implied: []string{"pdo"},
 	},
 	"pdo_firebird": {
-		Flag:   "--with-pdo-firebird",
-		MinPHP: "5.0",
+		Flag:    "--with-pdo-firebird",
+		MinPHP:  "5.0",
+		Implied: []string{"pdo"},
 	},
 	"pdo_mysql": {
 		Flag:      "--with-pdo-mysql",
 		MinPHP:    "5.0",
 		Conflicts: []string{"mysql", "mysqli"},
-		Implied:   []string{"zlib"},
+		Implied:   []string{"pdo", "zlib"},
 	},
 	"pdo_oci": {
-		Flag:   "--with-pdo-oci",
-		MinPHP: "5.0",
+		Flag:    "--with-pdo-oci",
+		MinPHP:  "5.0",
+		Implied: []string{"pdo"},
 	},
 	"pdo_odbc": {
-		Flag:   "--with-pdo-odbc",
-		MinPHP: "5.0",
+		Flag:    "--with-pdo-odbc",
+		MinPHP:  "5.0",
+		Implied: []string{"pdo"},
 	},
 	"pdo_pgsql": {
 		Flag:    "--with-pdo-pgsql",
 		MinPHP:  "5.0",
 		Package: "libpq",
+		Implied: []string{"pdo"},
 	},
 	"pdo_sqlite": {
-		Flag:   "--with-pdo-sqlite",
-		MinPHP: "5.0",
+		Flag:    "--with-pdo-sqlite",
+		MinPHP:  "5.0",
+		Implied: []string{"pdo"},
 	},
 	"pgsql": {
 		Flag:    "--with-pgsql",
@@ -217,7 +231,7 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 	"phar": {
 		Flag:    "--enable-phar",
 		MinPHP:  "5.0",
-		Implied: []string{"json"},
+		Implied: []string{"json", "hash"},
 	},
 	"posix": {
 		Flag:   "--enable-posix",
@@ -248,16 +262,18 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 		MinPHP: "5.0",
 	},
 	"simplexml": {
-		Flag:   "--enable-simplexml",
-		MinPHP: "5.0",
+		Flag:    "--enable-simplexml",
+		MinPHP:  "5.0",
+		Implied: []string{"libxml"},
 	},
 	"snmp": {
 		Flag:   "--with-snmp",
 		MinPHP: "5.0",
 	},
 	"soap": {
-		Flag:   "--enable-soap",
-		MinPHP: "5.0",
+		Flag:    "--enable-soap",
+		MinPHP:  "5.0",
+		Implied: []string{"libxml"},
 	},
 	"sockets": {
 		Flag:   "--enable-sockets",
@@ -300,24 +316,29 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 		MinPHP: "7.0",
 	},
 	"xml": {
-		Flag:   "--enable-xml",
-		MinPHP: "5.0",
+		Flag:    "--enable-xml",
+		MinPHP:  "5.0",
+		Implied: []string{"libxml"},
 	},
 	"xmlreader": {
-		Flag:   "--enable-xmlreader",
-		MinPHP: "5.0",
+		Flag:    "--enable-xmlreader",
+		MinPHP:  "5.0",
+		Implied: []string{"libxml"},
 	},
 	"xmlrpc": {
-		Flag:   "--enable-xmlrpc",
-		MinPHP: "5.0",
+		Flag:    "--enable-xmlrpc",
+		MinPHP:  "5.0",
+		Implied: []string{"libxml"},
 	},
 	"xmlwriter": {
-		Flag:   "--enable-xmlwriter",
-		MinPHP: "5.0",
+		Flag:    "--enable-xmlwriter",
+		MinPHP:  "5.0",
+		Implied: []string{"libxml"},
 	},
 	"xsl": {
-		Flag:   "--with-xsl",
-		MinPHP: "5.0",
+		Flag:    "--with-xsl",
+		MinPHP:  "5.0",
+		Implied: []string{"libxml"},
 	},
 	"zend_test": {
 		Flag:   "--enable-zend-test",

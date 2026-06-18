@@ -105,11 +105,42 @@ func (s *bundlerRepository) Rebuild(version string, compiler string, extensions 
 		return domain.Forge{}, fmt.Errorf("[bundler] PHP %s is not installed. Use 'phpv install %s' first", exactVersion, version)
 	}
 
-	var depLibraryPaths []string
-	var depCppFlags []string
-	var depLdFlags []string
-	var depPkgConfigPaths []string
+	// Same validation gates as Install
+	if len(extensions) > 0 {
+		if err := s.flagResolverSvc.ValidateExtensions(extensions, exactVersion); err != nil {
+			return domain.Forge{}, fmt.Errorf("invalid extension: %w", err)
+		}
 
+		_, added := s.flagResolverSvc.ExpandImplied(extensions)
+		if len(added) > 0 {
+			s.logInfo("ℹ  Auto-added required dependencies: %s", strings.Join(added, ", "))
+		}
+
+		conflicts, conflictPairs, _ := s.flagResolverSvc.CheckExtensionConflicts(extensions)
+		if len(conflicts) > 0 {
+			s.logError("✗ Conflicting extensions: %s", strings.Join(conflicts, ", "))
+			for _, pair := range conflictPairs {
+				s.logError("  %s conflicts with %s", pair[0], pair[1])
+			}
+			return domain.Forge{}, fmt.Errorf("conflicting extensions: %s", strings.Join(conflicts, ", "))
+		}
+	}
+
+	// Resolve all dependency levels
+	levels, err := s.assemblerSvc.GetDependencyLevels("php", exactVersion)
+	if err != nil {
+		return domain.Forge{}, fmt.Errorf("failed to resolve dependencies: %w", err)
+	}
+
+	extDeps := s.resolveExtensionDependencies(extensions, exactVersion)
+	if len(extDeps) > 0 {
+		levels = append([][]domain.Dependency{extDeps}, levels...)
+	}
+
+	// Build only missing dependencies (existing ones skip via advisor cache)
+	depLibraryPaths, depCppFlags, depLdFlags, depPkgConfigPaths := s.buildMissingDeps(levels, exactVersion, compiler)
+
+	// Rebuild PHP with the full dependency context
 	if err := s.buildPHP("php", exactVersion, extensions, depLibraryPaths, depCppFlags, depLdFlags, depPkgConfigPaths, compiler, true); err != nil {
 		return domain.Forge{}, fmt.Errorf("[bundler] failed to rebuild PHP: %w", err)
 	}
@@ -125,7 +156,64 @@ func (s *bundlerRepository) Rebuild(version string, compiler string, extensions 
 	}, nil
 }
 
+// buildMissingDeps builds only dependencies that aren't already cached,
+// and returns the accumulated library/include paths.
+func (s *bundlerRepository) buildMissingDeps(levels [][]domain.Dependency, exactVersion, compiler string) ([]string, []string, []string, []string) {
+	// Start by collecting paths from already-installed deps
+	libPaths, cppFlags, ldFlags, pkgPath := s.collectInstalledDependencyPaths(exactVersion)
+
+	for _, level := range levels {
+		for _, dep := range level {
+			depVersion := dep.Version
+			if idx := strings.Index(dep.Version, "|"); idx != -1 {
+				depVersion = dep.Version[:idx]
+			}
+
+			// buildPackage will "skip" if already cached
+			depInfo, err := s.buildPackage(dep.Name, depVersion, exactVersion, libPaths, cppFlags, ldFlags, pkgPath, compiler)
+			if err != nil {
+				s.logError("✗ Failed to build %s@%s: %v", dep.Name, depVersion, err)
+				continue
+			}
+
+			if depInfo != nil && !utils.BuildTools[dep.Name] {
+				// Only add paths for source-built deps not already collected
+				depPath := utils.DependencyPath(s.silo, exactVersion, dep.Name, depVersion)
+				cppFlags = appendUnique(cppFlags, fmt.Sprintf("-I%s/include", depPath))
+				ldFlags = appendUnique(ldFlags, fmt.Sprintf("-L%s/lib", depPath))
+				ldFlags = appendUnique(ldFlags, fmt.Sprintf("-Wl,-rpath,%s/lib", depPath))
+				libPaths = appendUnique(libPaths, filepath.Join(depPath, "lib"))
+				if _, err := os.Stat(filepath.Join(depPath, "lib", "pkgconfig")); err == nil {
+					pkgPath = appendUnique(pkgPath, filepath.Join(depPath, "lib", "pkgconfig"))
+				}
+			}
+		}
+	}
+	return libPaths, cppFlags, ldFlags, pkgPath
+}
+
 func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler string, extensions []string, fresh bool) (domain.Forge, error) {
+	// Gate: validate extensions BEFORE anything else
+	if len(extensions) > 0 {
+		if err := s.flagResolverSvc.ValidateExtensions(extensions, exactVersion); err != nil {
+			return domain.Forge{}, fmt.Errorf("invalid extension: %w", err)
+		}
+
+		_, added := s.flagResolverSvc.ExpandImplied(extensions)
+		if len(added) > 0 {
+			s.logInfo("ℹ  Auto-added required dependencies: %s", strings.Join(added, ", "))
+		}
+
+		conflicts, conflictPairs, _ := s.flagResolverSvc.CheckExtensionConflicts(extensions)
+		if len(conflicts) > 0 {
+			s.logError("✗ Conflicting extensions: %s", strings.Join(conflicts, ", "))
+			for _, pair := range conflictPairs {
+				s.logError("  %s conflicts with %s", pair[0], pair[1])
+			}
+			return domain.Forge{}, fmt.Errorf("conflicting extensions: %s", strings.Join(conflicts, ", "))
+		}
+	}
+
 	if err := s.siloRepo.MarkInProgress(exactVersion); err != nil {
 		return domain.Forge{}, fmt.Errorf("[bundler] failed to mark installation in progress: %w", err)
 	}
@@ -234,6 +322,21 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 	}
 	if err := wrapperMgr.CreatePkgConfigWrapper(); err != nil {
 		s.logWarn("Warning: failed to create pkg-config wrapper: %v", err)
+	}
+
+	if systemLibPath := GetSystemLibPqPath(); systemLibPath != "" {
+		if err := wrapperMgr.CreateLibPqWrapper(systemLibPath); err != nil {
+			s.logWarn("Warning: failed to create libpq wrapper: %v", err)
+		}
+	}
+
+	if systemSSLPath := GetSystemOpenSSLLibPath(); systemSSLPath != "" {
+		if err := wrapperMgr.AddSystemLib("ssl", systemSSLPath); err != nil {
+			s.logWarn("Warning: failed to create ssl wrapper: %v", err)
+		}
+		if err := wrapperMgr.AddSystemLib("crypto", strings.Replace(systemSSLPath, "libssl.so", "libcrypto.so", 1)); err != nil {
+			s.logWarn("Warning: failed to create crypto wrapper: %v", err)
+		}
 	}
 
 	if !utils.BuildTools["openssl"] {
@@ -375,4 +478,41 @@ func (s *bundlerRepository) freshClean(name, exactVersion string, levels [][]dom
 	}
 
 	return nil
+}
+
+// collectInstalledDependencyPaths scans the installed dependencies for a PHP version
+// and returns the library/include paths needed for a rebuild.
+func (s *bundlerRepository) collectInstalledDependencyPaths(exactVersion string) ([]string, []string, []string, []string) {
+	depDir := filepath.Join(s.silo.Root, "versions", exactVersion, "dependency")
+	entries, err := afero.ReadDir(s.fs, depDir)
+	if err != nil {
+		return nil, nil, nil, nil
+	}
+
+	var libPaths, cppFlags, ldFlags, pkgConfigPaths []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		// Skip build tools
+		if utils.BuildTools[name] {
+			continue
+		}
+		versDir := filepath.Join(depDir, name)
+		vers, err := afero.ReadDir(s.fs, versDir)
+		if err != nil || len(vers) == 0 {
+			continue
+		}
+		ver := vers[0].Name()
+		depPath := filepath.Join(versDir, ver)
+		libPaths = append(libPaths, filepath.Join(depPath, "lib"))
+		cppFlags = append(cppFlags, fmt.Sprintf("-I%s/include", depPath))
+		ldFlags = append(ldFlags, fmt.Sprintf("-L%s/lib", depPath))
+		ldFlags = append(ldFlags, fmt.Sprintf("-Wl,-rpath,%s/lib", depPath))
+		if _, err := os.Stat(filepath.Join(depPath, "lib", "pkgconfig")); err == nil {
+			pkgConfigPaths = append(pkgConfigPaths, filepath.Join(depPath, "lib", "pkgconfig"))
+		}
+	}
+	return libPaths, cppFlags, ldFlags, pkgConfigPaths
 }

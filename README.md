@@ -102,7 +102,6 @@ phpv install 8.4 --fresh --verbose
 - **`phpv init` regenerates shims** — Every shell init call ensures all shims match the current binary.
 - **Doctor command** — Checks system readiness, analyzes extension availability per PHP version, suggests install commands.
 - **Single binary** — No runtime dependencies. Just Go.
->>>>>>> ve/refactor
 
 ---
 

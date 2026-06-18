@@ -322,7 +322,13 @@ var DefaultPatterns = []domain.URLPattern{
 	{
 		Name:       "openssl",
 		Type:       domain.SourceTypeSource,
-		Constraint: func(v *domain.Version) bool { return v.Major == 1 },
+		Constraint: func(v *domain.Version) bool { return v.Major == 1 && v.Minor >= 1 },
+		Template:   "https://www.openssl.org/source/openssl-{version}.tar.gz",
+	},
+	{
+		Name:       "openssl",
+		Type:       domain.SourceTypeSource,
+		Constraint: func(v *domain.Version) bool { return v.Major < 1 || (v.Major == 1 && v.Minor < 1) },
 		Template:   "https://www.openssl.org/source/openssl-{version}.tar.gz",
 	},
 

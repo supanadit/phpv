@@ -79,11 +79,11 @@ func (r *SiloRepository) GetState(phpVersion string) (domain.InstallState, error
 }
 
 func (r *SiloRepository) Rollback(phpVersion string) error {
-	versionPath := silo.PHPVersionPath(r.silo, phpVersion)
-
-	if exists, _ := afero.Exists(r.fs, versionPath); exists {
-		if err := r.fs.RemoveAll(versionPath); err != nil {
-			return fmt.Errorf("failed to remove version directory: %w", err)
+	// Only remove PHP build output — preserve successfully built dependencies
+	outputPath := silo.PHPOutputPath(r.silo, phpVersion)
+	if exists, _ := afero.Exists(r.fs, outputPath); exists {
+		if err := r.fs.RemoveAll(outputPath); err != nil {
+			return fmt.Errorf("failed to remove output directory: %w", err)
 		}
 	}
 

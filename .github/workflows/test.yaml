@@ -3,8 +3,6 @@ name: Test PHP Matrix
 on:
   pull_request:
     branches: [main, development]
-  push:
-    branches: [development]
 
 jobs:
   test-php-matrix:

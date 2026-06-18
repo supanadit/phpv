@@ -129,13 +129,6 @@ jobs:
           for ext in dom gd intl mbstring pdo_mysql zip curl json phar opcache openssl simplexml xml xmlreader xmlwriter tokenizer session fileinfo filter bcmath pdo zlib; do
             if php -m | grep -qi -w "$ext"; then
               echo "✓ $ext"
-            elif [ "$ext" = "opcache" ] && \
-                 php -r '
-                   if (extension_loaded("Zend OPcache")) exit(0);
-                   $f = ini_get("extension_dir") . "/opcache.so";
-                   exit(file_exists($f) ? 0 : 1);
-                 ' 2>/dev/null; then
-              echo "✓ $ext (shared)"
             else
               echo "✗ $ext MISSING"
               MISSING="$MISSING $ext"

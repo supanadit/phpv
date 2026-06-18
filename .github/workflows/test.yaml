@@ -1,24 +1,34 @@
-name: Test PHP Versions
+name: Test PHP Matrix
 
 on:
-  push:
-    branches: [development]
   pull_request:
     branches: [main, development]
+  push:
+    branches: [development]
 
 jobs:
-  test-php-install:
-    timeout-minutes: 45
-    runs-on: ${{ matrix.os }}
+  test-php-matrix:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        php_version: ['8.2', '8.4', '8.5']
+        php_version:
+          - '7.0'
+          - '7.1'
+          - '7.2'
+          - '7.3'
+          - '7.4'
+          - '8.0'
+          - '8.1'
+          - '8.2'
+          - '8.3'
+          - '8.4'
+          - '8.5'
 
-    # Setting the root at the job level or step level for isolation
     env:
       PHPV_ROOT: ${{ github.workspace }}/phpv-root-${{ matrix.php_version }}
+      PHPV_EXTENSIONS: "opcache,mbstring,curl,pdo_mysql,openssl,intl,bcmath,zip,xml,gd,pdo,zlib,json,phar,filter,dom,fileinfo,session,tokenizer,xmlwriter,simplexml,xmlreader"
 
     steps:
       - uses: actions/checkout@v4
@@ -29,40 +39,125 @@ jobs:
           go-version: '1.25'
           cache: true
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: |
-          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-            sudo apt-get update && sudo apt-get install -y build-essential libssl-dev libxml2-dev libsqlite3-dev libtool
-          else
-            brew install openssl sqlite
-          fi
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            autoconf \
+            automake \
+            libtool \
+            m4 \
+            re2c \
+            bison \
+            pkg-config \
+            libssl-dev \
+            libxml2-dev \
+            libsqlite3-dev \
+            libgd-dev \
+            libonig-dev \
+            libzip-dev \
+            libicu-dev \
+            libcurl4-openssl-dev \
+            libpng-dev \
+            libjpeg-dev \
+            libwebp-dev \
+            libxpm-dev \
+            libfreetype6-dev \
+            libmariadb-dev \
+            gettext
 
-      - name: Build phpv for Isolation
+      - name: Compute cache key
+        id: cache-key
+        run: |
+          HASH=$(sha256sum \
+            internal/repository/memory/extensions.go \
+            internal/repository/memory/flags.go \
+            internal/repository/memory/assembler.go \
+            internal/repository/disk/bundler.go \
+            internal/repository/disk/advisor.go \
+            internal/repository/disk/bundler_packager.go \
+            internal/repository/disk/bundler_php.go \
+            app/phpv.go \
+            go.mod \
+            go.sum \
+            .github/workflows/test.yaml \
+            | sha256sum | cut -d' ' -f1)
+          echo "key=phpv-${{ matrix.php_version }}-$HASH" >> $GITHUB_OUTPUT
+          echo "restore-key=phpv-${{ matrix.php_version }}-" >> $GITHUB_OUTPUT
+
+      - name: Cache phpv build artifacts
+        id: cache-phpv
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PHPV_ROOT }}
+          key: ${{ steps.cache-key.outputs.key }}
+          restore-keys: |
+            ${{ steps.cache-key.outputs.restore-key }}
+
+      - name: Build phpv binary
         run: |
           mkdir -p $PHPV_ROOT/bin
           go build -o $PHPV_ROOT/bin/phpv ./app/phpv.go
-          # Add the version-specific bin to the path for all following steps
           echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
 
-      - name: Install PHP ${{ matrix.php_version }}
-        # phpv uses the PHPV_ROOT env var to decide where to install
-        run: phpv install ${{ matrix.php_version }}
-
-      - name: Verify Isolated Installation
+      - name: Get installed PHP version
+        id: php-state
         run: |
-          # 1. Initialize the shell for this specific PHPV_ROOT
+          PATTERN="$PHPV_ROOT/versions"
+          INSTALLED=$(ls -d $PATTERN/*/output/bin/php 2>/dev/null || echo "")
+          if [ -n "$INSTALLED" ]; then
+            echo "cached=true" >> $GITHUB_OUTPUT
+          else
+            echo "cached=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install PHP ${{ matrix.php_version }}
+        if: steps.php-state.outputs.cached == 'false'
+        run: |
           eval "$($PHPV_ROOT/bin/phpv init bash)"
-          
-          # 2. Switch to the version
+          phpv install ${{ matrix.php_version }} --ext $PHPV_EXTENSIONS
+
+      - name: Rebuild PHP ${{ matrix.php_version }}
+        if: steps.php-state.outputs.cached == 'true'
+        run: |
+          eval "$($PHPV_ROOT/bin/phpv init bash)"
+          phpv rebuild ${{ matrix.php_version }} --ext $PHPV_EXTENSIONS
+
+      - name: Verify PHP ${{ matrix.php_version }}
+        run: |
+          eval "$($PHPV_ROOT/bin/phpv init bash)"
           phpv use ${{ matrix.php_version }}
-          
-          # 3. Confirm binary location is inside our isolated root
+
           PHP_PATH=$(which php)
-          echo "PHP Path: $PHP_PATH"
-          
+          echo "PHP binary: $PHP_PATH"
+
           if [[ "$PHP_PATH" != "$PHPV_ROOT"* ]]; then
             echo "Error: PHP is not running from the isolated root!"
             exit 1
           fi
-          
+
           php -v
+          echo ""
+          echo "=== Installed extensions ==="
+          php -m | sort
+          echo ""
+
+          MISSING=""
+          for ext in dom gd intl mbstring pdo_mysql zip curl json phar opcache openssl simplexml xml xmlreader xmlwriter tokenizer session fileinfo filter bcmath pdo zlib; do
+            if php -m | grep -qi "^$ext$"; then
+              echo "✓ $ext"
+            else
+              echo "✗ $ext MISSING"
+              MISSING="$MISSING $ext"
+            fi
+          done
+
+          if [ -n "$MISSING" ]; then
+            echo ""
+            echo "FAILED: Missing extensions:$MISSING"
+            exit 1
+          fi
+
+          echo ""
+          echo "All critical extensions present ✓"

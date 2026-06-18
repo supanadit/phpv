@@ -18,22 +18,12 @@ const piePharURLTemplate = "https://github.com/php/pie/releases/latest/download/
 const wpCliPharURLTemplate = "https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar"
 
 // composerVersionForPHP returns the highest Composer version compatible with the given PHP version.
-// Composer 2.8+ requires PHP 8.3+, 2.2+ requires PHP 7.2.5+.
+// SHA-256/SHA-512 phar support is now enabled for all PHP versions via dependency-sorted configure flags.
 func composerVersionForPHP(phpVersion string, requestedVersion string) string {
 	if requestedVersion != "" && requestedVersion != "latest-stable" {
 		return requestedVersion
 	}
-	v := strings.SplitN(phpVersion, ".", 2)[0]
-	switch v {
-	case "5", "7":
-		// PHP 5.6, 7.0-7.3: max Composer 1.10.26 (SHA-1 signatures)
-		return "1.10.26"
-	case "8":
-		// PHP 8.x: latest stable
-		return "latest-stable"
-	default:
-		return "latest-stable"
-	}
+	return "latest-stable"
 }
 
 func (h *TerminalHandler) PharInstall(name string, version string) (*domain.PharResult, error) {

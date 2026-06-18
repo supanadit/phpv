@@ -1,6 +1,8 @@
 package memory
 
 import (
+	"sort"
+
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/extension"
 	"github.com/supanadit/phpv/flagresolver"
@@ -365,7 +367,7 @@ func (r *flagRepo) GetPHPConfigureFlags(phpVersion string, extensions []string) 
 	}
 
 	extensions = r.expandImplied(extensions)
-	v := utils.ParseVersion(phpVersion)
+	extensions = r.sortByDependency(extensions)
 
 	for _, ext := range extensions {
 		if extDef, ok := r.extRepo.GetExtensionDef(ext); ok {
@@ -382,11 +384,71 @@ func (r *flagRepo) GetPHPConfigureFlags(phpVersion string, extensions []string) 
 		}
 	}
 
-	if contains(extensions, "opcache") && v.Major >= 7 {
-		flags = append(flags, "--enable-opcache")
+	if contains(extensions, "opcache") {
+		v := utils.ParseVersion(phpVersion)
+		if v.Major >= 7 {
+			flags = append(flags, "--enable-opcache")
+		}
 	}
 
 	return flags
+}
+// e.g., [phar, xml] → [json, hash, phar, libxml, xml]
+func (r *flagRepo) sortByDependency(exts []string) []string {
+	depth := make(map[string]int)
+	implied := make(map[string][]string)
+
+	// Calculate dependency depth for each extension
+	var calcDepth func(name string) int
+	calcDepth = func(name string) int {
+		if d, ok := depth[name]; ok {
+			return d
+		}
+		def, ok := r.extRepo.GetExtensionDef(name)
+		if !ok || len(def.Implied) == 0 {
+			depth[name] = 0
+			return 0
+		}
+		maxChildDepth := 0
+		for _, imp := range def.Implied {
+			cd := calcDepth(imp)
+			if cd > maxChildDepth {
+				maxChildDepth = cd
+			}
+		}
+		depth[name] = maxChildDepth + 1
+		implied[name] = def.Implied
+		return depth[name]
+	}
+
+	for _, ext := range exts {
+		calcDepth(ext)
+	}
+
+	sorted := make([]string, len(exts))
+	copy(sorted, exts)
+
+	// Stable sort: children (deps) come before parents, then by depth ascending
+	sort.SliceStable(sorted, func(i, j int) bool {
+		di, dj := depth[sorted[i]], depth[sorted[j]]
+		if di != dj {
+			return di < dj
+		}
+		// If same depth, dependency of the other goes first
+		for _, imp := range implied[sorted[j]] {
+			if imp == sorted[i] {
+				return true
+			}
+		}
+		for _, imp := range implied[sorted[i]] {
+			if imp == sorted[j] {
+				return false
+			}
+		}
+		return false
+	})
+
+	return sorted
 }
 
 func (r *flagRepo) GetExtensionDef(name string) (domain.ExtensionDef, bool) {

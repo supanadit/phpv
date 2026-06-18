@@ -41,10 +41,14 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 		fallthrough
 
 	case "download":
+		sourceType := check.SourceType
+		if sourceType == "" {
+			sourceType = domain.SourceTypeSource
+		}
 		if !forceRebuild {
-			pat, err := s.patternSvc.MatchPatternByType(name, check.SourceType, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
+			pat, err := s.patternSvc.MatchPatternByType(name, sourceType, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
 			if err != nil {
-				if check.SourceType == domain.SourceTypeBinary && name == "php" {
+				if sourceType == domain.SourceTypeBinary && name == "php" {
 					pat, err = s.patternSvc.MatchPatternByType(name, domain.SourceTypeSource, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
 				}
 				if err != nil {

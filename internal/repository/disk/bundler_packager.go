@@ -588,28 +588,8 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 // PHP's configure. The function searches the dependency directory for an ICU
 // installation that contains include/unicode/urename.h (the renamed header).
 func (s *bundlerRepository) resolveICUPath(phpVersion string) string {
-	// Try via assembler first (exact version match).
-	deps, err := s.assemblerSvc.GetDependencies("php", phpVersion)
-	if err == nil {
-		for _, dep := range deps {
-			if dep.Name == "icu" {
-				ver := dep.Version
-				if idx := strings.Index(ver, "|"); idx != -1 {
-					ver = ver[:idx]
-				}
-				icuPath := silo.DependencyPath(s.silo, phpVersion, "icu", ver)
-				if fi, err := os.Stat(icuPath); err == nil && fi.IsDir() {
-					includeFile := filepath.Join(icuPath, "include", "unicode", "urename.h")
-					if _, err := os.Stat(includeFile); err == nil {
-						return icuPath
-					}
-				}
-				break
-			}
-		}
-	}
-
-	// Fallback: scan the dependency directory for any ICU version.
+	// Scan the dependency directory for any ICU version.
+	// This handles both assembler-level deps and extension-level deps (e.g., intl requires icu).
 	depPath := silo.DependencyPath(s.silo, phpVersion, "icu", "")
 	if entries, err := os.ReadDir(depPath); err == nil && len(entries) > 0 {
 		for _, entry := range entries {

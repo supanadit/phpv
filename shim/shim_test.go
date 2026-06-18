@@ -1,7 +1,6 @@
 package shim
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +15,7 @@ func TestWriteShims_Success(t *testing.T) {
 		t.Fatalf("WriteShims failed: %v", err)
 	}
 
-	expectedShims := []string{"php", "phpize", "php-config", "php-cgi", "composer"}
+	expectedShims := []string{"php", "phpize", "php-config", "php-cgi", "composer", "pie", "wp"}
 
 	for _, name := range expectedShims {
 		shimPath := filepath.Join(binPath, name)
@@ -160,68 +159,7 @@ func TestShimContent_ExecWithArgs(t *testing.T) {
 	}
 }
 
-func TestDynamicShimTemplate_php(t *testing.T) {
-	template := fmt.Sprintf(dynamicShimTemplate, "php", "php", "php")
-
-	if template == "" {
-		t.Fatal("Template should not be empty")
-	}
-
-	if !strings.Contains(template, "%s") && !strings.Contains(template, "php") {
-		t.Error("Template should reference the binary name")
-	}
-}
-
-func TestDynamicShimTemplate_phpize(t *testing.T) {
-	template := fmt.Sprintf(dynamicShimTemplate, "phpize", "phpize", "phpize")
-
-	if template == "" {
-		t.Fatal("Template should not be empty")
-	}
-}
-
-func TestDynamicShimTemplate_phpConfig(t *testing.T) {
-	template := fmt.Sprintf(dynamicShimTemplate, "php-config", "php-config", "php-config")
-
-	if template == "" {
-		t.Fatal("Template should not be empty")
-	}
-}
-
-func TestDynamicShimTemplate_phpCgi(t *testing.T) {
-	template := fmt.Sprintf(dynamicShimTemplate, "php-cgi", "php-cgi", "php-cgi")
-
-	if template == "" {
-		t.Fatal("Template should not be empty")
-	}
-}
-
-func TestWriteShims_AllBinaries(t *testing.T) {
-	binPath := t.TempDir()
-
-	shims := []string{"php", "phpize", "php-config", "php-cgi", "composer"}
-
-	for _, name := range shims {
-		shimPath := filepath.Join(binPath, name)
-
-		content := fmt.Sprintf(dynamicShimTemplate, name, name, name)
-		if err := os.WriteFile(shimPath, []byte(content), 0755); err != nil {
-			t.Errorf("Failed to write shim %s: %v", name, err)
-		}
-
-		readContent, err := os.ReadFile(shimPath)
-		if err != nil {
-			t.Errorf("Failed to read shim %s: %v", name, err)
-			continue
-		}
-
-		if string(readContent) != content {
-			t.Errorf("Shim %s content mismatch", name)
-		}
-	}
-}
-
-func TestWriteShims_Executable(t *testing.T) {
+func TestPharShim_ContainsPharPath(t *testing.T) {
 	binPath := t.TempDir()
 
 	err := WriteShims(ShimConfig{BinPath: binPath})
@@ -229,17 +167,52 @@ func TestWriteShims_Executable(t *testing.T) {
 		t.Fatalf("WriteShims failed: %v", err)
 	}
 
-	for _, name := range []string{"php", "phpize", "php-config", "php-cgi", "composer"} {
-		shimPath := filepath.Join(binPath, name)
-		info, err := os.Stat(shimPath)
+	for _, tool := range DefaultPharTools {
+		shimPath := filepath.Join(binPath, tool.Name)
+		content, err := os.ReadFile(shimPath)
 		if err != nil {
-			t.Errorf("Failed to stat shim %s: %v", name, err)
+			t.Errorf("Failed to read %s shim: %v", tool.Name, err)
 			continue
 		}
 
-		mode := info.Mode()
-		if mode.IsRegular() && mode&0111 == 0 {
-			t.Errorf("Shim %s is not executable", name)
+		shimContent := string(content)
+
+		if !strings.Contains(shimContent, tool.PharFile) {
+			t.Errorf("%s shim should reference %s", tool.Name, tool.PharFile)
+		}
+
+		if !strings.Contains(shimContent, "exec") {
+			t.Errorf("%s shim should contain exec command", tool.Name)
+		}
+
+		if !strings.Contains(shimContent, `"$@"`) {
+			t.Errorf("%s shim should pass arguments with \"$@\"", tool.Name)
+		}
+	}
+}
+
+func TestPharShim_AllToolsCreated(t *testing.T) {
+	binPath := t.TempDir()
+
+	err := WriteShims(ShimConfig{BinPath: binPath})
+	if err != nil {
+		t.Fatalf("WriteShims failed: %v", err)
+	}
+
+	if len(DefaultPharTools) == 0 {
+		t.Fatal("DefaultPharTools should not be empty")
+	}
+
+	for _, tool := range DefaultPharTools {
+		shimPath := filepath.Join(binPath, tool.Name)
+		info, err := os.Stat(shimPath)
+		if err != nil {
+			t.Errorf("Shim for %s was not created: %v", tool.Name, err)
+			continue
+		}
+
+		if info.Mode()&0111 == 0 {
+			t.Errorf("Shim %s is not executable", tool.Name)
 		}
 	}
 }
@@ -290,68 +263,66 @@ func TestShimContent_EnvironmentFallback(t *testing.T) {
 	}
 }
 
-func TestComposerShim_ContainsComposerPath(t *testing.T) {
-	binPath := t.TempDir()
-	composerPath := "/usr/bin/composer"
+func TestSystemMarker(t *testing.T) {
+	root := t.TempDir()
 
-	err := WriteShims(ShimConfig{BinPath: binPath, ComposerPath: composerPath})
-	if err != nil {
-		t.Fatalf("WriteShims failed: %v", err)
+	// Initially not system mode
+	if IsSystemMode(root) {
+		t.Error("Should not be in system mode without marker")
 	}
 
-	composerShimPath := filepath.Join(binPath, "composer")
-	content, err := os.ReadFile(composerShimPath)
-	if err != nil {
-		t.Fatalf("Failed to read composer shim: %v", err)
+	// Write marker
+	if err := WriteSystemMarker(root); err != nil {
+		t.Fatalf("WriteSystemMarker failed: %v", err)
 	}
 
-	shimContent := string(content)
-
-	if !strings.Contains(shimContent, composerPath) {
-		t.Error("Composer shim should contain the composer path")
+	if !IsSystemMode(root) {
+		t.Error("Should be in system mode after writing marker")
 	}
 
-	if !strings.Contains(shimContent, "exec") {
-		t.Error("Composer shim should contain exec command")
+	// Remove marker
+	if err := RemoveSystemMarker(root); err != nil {
+		t.Fatalf("RemoveSystemMarker failed: %v", err)
 	}
 
-	if !strings.Contains(shimContent, `"$@"`) {
-		t.Error("Composer shim should pass arguments with \"$@\"")
-	}
-}
-
-func TestComposerShim_EmptyComposerPathShowsError(t *testing.T) {
-	binPath := t.TempDir()
-
-	err := WriteShims(ShimConfig{BinPath: binPath, ComposerPath: ""})
-	if err != nil {
-		t.Fatalf("WriteShims failed: %v", err)
+	if IsSystemMode(root) {
+		t.Error("Should not be in system mode after removing marker")
 	}
 
-	composerShimPath := filepath.Join(binPath, "composer")
-	content, err := os.ReadFile(composerShimPath)
-	if err != nil {
-		t.Fatalf("Failed to read composer shim: %v", err)
-	}
-
-	shimContent := string(content)
-
-	if !strings.Contains(shimContent, "composer not found") {
-		t.Error("Composer shim should show error when composer path is empty")
-	}
-
-	if !strings.Contains(shimContent, "https://getcomposer.org/download/") {
-		t.Error("Composer shim should show install hint")
+	// Removing again should be a no-op
+	if err := RemoveSystemMarker(root); err != nil {
+		t.Fatalf("RemoveSystemMarker on clean state failed: %v", err)
 	}
 }
 
-func TestDetectComposerPath(t *testing.T) {
-	path := DetectComposerPath("/home/test/.phpv")
-	if path == "" {
-		t.Skip("Composer not found in PATH, skipping test")
+func TestDefaultPharTools_NotEmpty(t *testing.T) {
+	if len(DefaultPharTools) == 0 {
+		t.Fatal("DefaultPharTools must have at least one tool")
 	}
 
-	if !strings.Contains(path, "composer") {
-		t.Errorf("DetectComposerPath returned unexpected path: %s", path)
+	for _, tool := range DefaultPharTools {
+		if tool.Name == "" {
+			t.Error("PharTool.Name must not be empty")
+		}
+		if tool.PharFile == "" {
+			t.Errorf("PharTool %s has empty PharFile", tool.Name)
+		}
+		if tool.BinName == "" {
+			t.Errorf("PharTool %s has empty BinName", tool.Name)
+		}
+	}
+}
+
+func TestDetectPharPath(t *testing.T) {
+	for _, tool := range DefaultPharTools {
+		path := DetectPharPath(tool, "/home/test/.phpv")
+		if path == "" {
+			t.Logf("Phar %s not found, skipping detection test", tool.Name)
+			continue
+		}
+
+		if !filepath.IsAbs(path) {
+			t.Errorf("DetectPharPath for %s returned non-absolute path: %s", tool.Name, path)
+		}
 	}
 }

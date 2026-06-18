@@ -1,21 +1,93 @@
 package shim
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"text/template"
 )
 
-const dynamicShimTemplate = `#!/bin/bash
-# Dynamic shim - resolves PHP version at runtime
-# Resolution order: PHPV_CURRENT → .phpvrc → composer.json → $PHPV_ROOT/default → system
+// PharTool defines a PHAR-based tool that gets a shell shim.
+type PharTool struct {
+	Name     string // display + shim name: composer, pie, wp
+	PharFile string // phar filename: composer.phar, pie.phar, wp-cli.phar
+	BinName  string // system binary name for --system detection: composer, pie, wp
+}
+
+// DefaultPharTools is the canonical list of PHAR tools phpv manages.
+var DefaultPharTools = []PharTool{
+	{Name: "composer", PharFile: "composer.phar", BinName: "composer"},
+	{Name: "pie", PharFile: "pie.phar", BinName: "pie"},
+	{Name: "wp", PharFile: "wp-cli.phar", BinName: "wp"},
+}
+
+// pharShimTmpl is a single reusable bash shim for any PHAR tool.
+var pharShimTmpl = template.Must(template.New("phar").Parse(`#!/bin/bash
+# phpv shim for {{.Name}} - resolves PHP version at runtime
+# Resolution order: PHPV_CURRENT -> .phpvrc -> composer.json -> $PHPV_ROOT/default -> system
 PHPV_ROOT="${PHPV_ROOT:-$HOME/.phpv}"
 if [ -f "$PHPV_ROOT/.phpv_system" ]; then
-    PHP_PATH="$(command -v %s 2>/dev/null)"
+    PHP_PATH="$(command -v php 2>/dev/null)"
     if [ -z "$PHP_PATH" ]; then
-        echo "Error: System %s not found" >&2
+        echo "Error: System PHP not found" >&2
+        exit 1
+    fi
+    PHAR_PATH="$PHPV_ROOT/phar/{{.PharFile}}"
+    if [ ! -f "$PHAR_PATH" ]; then
+        echo "Error: {{.Name}} not found. Please install {{.Name}} first." >&2
+        echo "Hint: phpv phar install {{.Name}}" >&2
+        exit 1
+    fi
+    exec "$PHP_PATH" "$PHAR_PATH" "$@"
+fi
+if [ -n "$PHPV_CURRENT" ]; then
+    PHPV_VERSION="$PHPV_CURRENT"
+elif [ -f .phpvrc ] && [ -s .phpvrc ]; then
+    PHPV_VERSION="$(phpv auto-detect-resolve "$(cat .phpvrc)" 2>/dev/null)"
+    if [ -z "$PHPV_VERSION" ]; then
+        PHPV_VERSION="$(cat .phpvrc)"
+    fi
+else
+    PHPV_VERSION="$(phpv auto-detect-resolve 2>/dev/null || cat "$PHPV_ROOT/default" 2>/dev/null)"
+fi
+if [ -z "$PHPV_VERSION" ]; then
+    echo "Error: No PHP version selected. Run 'phpv use <version>' first." >&2
+    exit 1
+fi
+PHPV_OUTPUT="$PHPV_ROOT/versions/$PHPV_VERSION/output"
+if [ ! -d "$PHPV_OUTPUT" ]; then
+    echo "Error: PHP version $PHPV_VERSION not found. Run 'phpv install $PHPV_VERSION' first." >&2
+    exit 1
+fi
+export PHPV_CURRENT="$PHPV_VERSION"
+PHPV_DEPS="$PHPV_ROOT/versions/$PHPV_VERSION/dependency"
+if [ -d "$PHPV_DEPS" ]; then
+    for dep_lib in "$PHPV_DEPS"/*/*/lib; do
+        [ -d "$dep_lib" ] && LD_LIBRARY_PATH="$dep_lib:$LD_LIBRARY_PATH"
+    done
+fi
+export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:$LD_LIBRARY_PATH"
+PHAR_PATH="$PHPV_ROOT/versions/$PHPV_VERSION/phar/{{.PharFile}}"
+if [ ! -f "$PHAR_PATH" ]; then
+    echo "Error: {{.Name}} not installed for PHP $PHPV_VERSION" >&2
+    echo "Hint: phpv phar install {{.Name}}" >&2
+    exit 1
+fi
+exec "${PHPV_OUTPUT}/bin/php" "$PHAR_PATH" "$@"
+`))
+
+// phpShimTmpl is the template for PHP binary shims (php, phpize, etc).
+var phpShimTmpl = template.Must(template.New("php").Parse(`#!/bin/bash
+# phpv shim for {{.Name}} - resolves PHP version at runtime
+# Resolution order: PHPV_CURRENT -> .phpvrc -> composer.json -> $PHPV_ROOT/default -> system
+PHPV_ROOT="${PHPV_ROOT:-$HOME/.phpv}"
+if [ -f "$PHPV_ROOT/.phpv_system" ]; then
+    PHP_PATH="$(command -v {{.Name}} 2>/dev/null)"
+    if [ -z "$PHP_PATH" ]; then
+        echo "Error: System {{.Name}} not found" >&2
         exit 1
     fi
     exec "$PHP_PATH" "$@"
@@ -47,126 +119,33 @@ if [ -d "$PHPV_DEPS" ]; then
     done
 fi
 export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:$LD_LIBRARY_PATH"
-exec "${PHPV_OUTPUT}/bin/%s" "$@"
-`
+exec "${PHPV_OUTPUT}/bin/{{.Name}}" "$@"
+`))
 
-const composerShimTemplate = `#!/bin/bash
-# Dynamic shim for composer - runs system composer through phpv PHP
-PHPV_ROOT="${PHPV_ROOT:-$HOME/.phpv}"
-if [ -f "$PHPV_ROOT/.phpv_system" ]; then
-    PHP_PATH="$(command -v php 2>/dev/null)"
-    if [ -z "$PHP_PATH" ]; then
-        echo "Error: System PHP not found" >&2
-        exit 1
-    fi
-    COMPOSER_PATH="$HOME/.phpv/phar/composer.phar"
-    if [ ! -f "$COMPOSER_PATH" ]; then
-        echo "Error: composer not found. Please install composer first." >&2
-        echo "Hint: https://getcomposer.org/download/" >&2
-        exit 1
-    fi
-    exec "$PHP_PATH" "$COMPOSER_PATH" "$@"
-fi
-if [ -n "$PHPV_CURRENT" ]; then
-    PHPV_VERSION="$PHPV_CURRENT"
-elif [ -f .phpvrc ] && [ -s .phpvrc ]; then
-    PHPV_VERSION="$(phpv auto-detect-resolve "$(cat .phpvrc)" 2>/dev/null)"
-    if [ -z "$PHPV_VERSION" ]; then
-        PHPV_VERSION="$(cat .phpvrc)"
-    fi
-else
-    PHPV_VERSION="$(phpv auto-detect-resolve 2>/dev/null || cat "$PHPV_ROOT/default" 2>/dev/null)"
-fi
-if [ -z "$PHPV_VERSION" ]; then
-    echo "Error: No PHP version selected. Run 'phpv use <version>' first." >&2
-    exit 1
-fi
-PHPV_OUTPUT="$PHPV_ROOT/versions/$PHPV_VERSION/output"
-if [ ! -d "$PHPV_OUTPUT" ]; then
-    echo "Error: PHP version $PHPV_VERSION not found. Run 'phpv install $PHPV_VERSION' first." >&2
-    exit 1
-fi
-export PHPV_CURRENT="$PHPV_VERSION"
-PHPV_DEPS="$PHPV_ROOT/versions/$PHPV_VERSION/dependency"
-if [ -d "$PHPV_DEPS" ]; then
-    for dep_lib in "$PHPV_DEPS"/*/*/lib; do
-        [ -d "$dep_lib" ] && LD_LIBRARY_PATH="$dep_lib:$LD_LIBRARY_PATH"
-    done
-fi
-export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:$LD_LIBRARY_PATH"
-COMPOSER_PATH="$PHPV_ROOT/versions/$PHPV_VERSION/phar/composer.phar"
-if [ ! -f "$COMPOSER_PATH" ]; then
-    echo "Error: composer not installed for PHP $PHPV_VERSION" >&2
-    echo "Hint: phpv phar install composer" >&2
-    exit 1
-fi
-exec "${PHPV_OUTPUT}/bin/php" "$COMPOSER_PATH" "$@"
-`
+// phpBinNames is the list of PHP binaries that get shims.
+var phpBinNames = []string{"php", "phpize", "php-config", "php-cgi"}
 
-const pieShimTemplate = `#!/bin/bash
-# Dynamic shim for pie - runs pie phar through phpv PHP
-PHPV_ROOT="${PHPV_ROOT:-$HOME/.phpv}"
-if [ -f "$PHPV_ROOT/.phpv_system" ]; then
-    PHP_PATH="$(command -v php 2>/dev/null)"
-    if [ -z "$PHP_PATH" ]; then
-        echo "Error: System PHP not found" >&2
-        exit 1
-    fi
-    PIE_PATH="$HOME/.phpv/phar/pie.phar"
-    if [ ! -f "$PIE_PATH" ]; then
-        echo "Error: pie not found. Please install pie first." >&2
-        echo "Hint: phpv phar install pie" >&2
-        exit 1
-    fi
-    exec "$PHP_PATH" "$PIE_PATH" "$@"
-fi
-if [ -n "$PHPV_CURRENT" ]; then
-    PHPV_VERSION="$PHPV_CURRENT"
-elif [ -f .phpvrc ] && [ -s .phpvrc ]; then
-    PHPV_VERSION="$(phpv auto-detect-resolve "$(cat .phpvrc)" 2>/dev/null)"
-    if [ -z "$PHPV_VERSION" ]; then
-        PHPV_VERSION="$(cat .phpvrc)"
-    fi
-else
-    PHPV_VERSION="$(phpv auto-detect-resolve 2>/dev/null || cat "$PHPV_ROOT/default" 2>/dev/null)"
-fi
-if [ -z "$PHPV_VERSION" ]; then
-    echo "Error: No PHP version selected. Run 'phpv use <version>' first." >&2
-    exit 1
-fi
-PHPV_OUTPUT="$PHPV_ROOT/versions/$PHPV_VERSION/output"
-if [ ! -d "$PHPV_OUTPUT" ]; then
-    echo "Error: PHP version $PHPV_VERSION not found. Run 'phpv install $PHPV_VERSION' first." >&2
-    exit 1
-fi
-export PHPV_CURRENT="$PHPV_VERSION"
-PHPV_DEPS="$PHPV_ROOT/versions/$PHPV_VERSION/dependency"
-if [ -d "$PHPV_DEPS" ]; then
-    for dep_lib in "$PHPV_DEPS"/*/*/lib; do
-        [ -d "$dep_lib" ] && LD_LIBRARY_PATH="$dep_lib:$LD_LIBRARY_PATH"
-    done
-fi
-export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:$LD_LIBRARY_PATH"
-PIE_PATH="$PHPV_ROOT/versions/$PHPV_VERSION/phar/pie.phar"
-if [ ! -f "$PIE_PATH" ]; then
-    echo "Error: pie not installed for PHP $PHPV_VERSION" >&2
-    echo "Hint: phpv phar install pie" >&2
-    exit 1
-fi
-exec "${PHPV_OUTPUT}/bin/php" "$PIE_PATH" "$@"
-`
+type shimData struct {
+	Name string
+}
+
+type pharShimData struct {
+	Name     string
+	PharFile string
+}
 
 type ShimConfig struct {
 	BinPath string
 }
 
-func DetectComposerPath(phpvRoot string) string {
+// DetectPharPath returns the path to a system-installed phar tool.
+func DetectPharPath(tool PharTool, phpvRoot string) string {
 	phpvBin := filepath.Join(phpvRoot, "bin")
 	phpvPhar := filepath.Join(phpvRoot, "phar")
 
-	localComposer := filepath.Join(phpvPhar, "composer.phar")
-	if _, err := os.Stat(localComposer); err == nil {
-		return localComposer
+	localPhar := filepath.Join(phpvPhar, tool.PharFile)
+	if _, err := os.Stat(localPhar); err == nil {
+		return localPhar
 	}
 
 	pathEnv := os.Getenv("PATH")
@@ -178,114 +157,7 @@ func DetectComposerPath(phpvRoot string) string {
 	}
 	filteredPath := strings.Join(filteredParts, ":")
 
-	cmd := exec.Command("which", "composer")
-	cmd.Env = append(os.Environ(), "PATH="+filteredPath)
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
-const wpCliShimTemplate = `#!/bin/bash
-# Dynamic shim for wp-cli - runs wp-cli phar through phpv PHP
-PHPV_ROOT="${PHPV_ROOT:-$HOME/.phpv}"
-if [ -f "$PHPV_ROOT/.phpv_system" ]; then
-    PHP_PATH="$(command -v php 2>/dev/null)"
-    if [ -z "$PHP_PATH" ]; then
-        echo "Error: System PHP not found" >&2
-        exit 1
-    fi
-    WP_CLI_PATH="$HOME/.phpv/phar/wp-cli.phar"
-    if [ ! -f "$WP_CLI_PATH" ]; then
-        echo "Error: wp-cli not found. Please install wp-cli first." >&2
-        echo "Hint: phpv phar install wp-cli" >&2
-        exit 1
-    fi
-    exec "$PHP_PATH" "$WP_CLI_PATH" "$@"
-fi
-if [ -n "$PHPV_CURRENT" ]; then
-    PHPV_VERSION="$PHPV_CURRENT"
-elif [ -f .phpvrc ] && [ -s .phpvrc ]; then
-    PHPV_VERSION="$(phpv auto-detect-resolve "$(cat .phpvrc)" 2>/dev/null)"
-    if [ -z "$PHPV_VERSION" ]; then
-        PHPV_VERSION="$(cat .phpvrc)"
-    fi
-else
-    PHPV_VERSION="$(phpv auto-detect-resolve 2>/dev/null || cat "$PHPV_ROOT/default" 2>/dev/null)"
-fi
-if [ -z "$PHPV_VERSION" ]; then
-    echo "Error: No PHP version selected. Run 'phpv use <version>' first." >&2
-    exit 1
-fi
-PHPV_OUTPUT="$PHPV_ROOT/versions/$PHPV_VERSION/output"
-if [ ! -d "$PHPV_OUTPUT" ]; then
-    echo "Error: PHP version $PHPV_VERSION not found. Run 'phpv install $PHPV_VERSION' first." >&2
-    exit 1
-fi
-export PHPV_CURRENT="$PHPV_VERSION"
-PHPV_DEPS="$PHPV_ROOT/versions/$PHPV_VERSION/dependency"
-if [ -d "$PHPV_DEPS" ]; then
-    for dep_lib in "$PHPV_DEPS"/*/*/lib; do
-        [ -d "$dep_lib" ] && LD_LIBRARY_PATH="$dep_lib:$LD_LIBRARY_PATH"
-    done
-fi
-export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:$LD_LIBRARY_PATH"
-WP_CLI_PATH="$PHPV_ROOT/versions/$PHPV_VERSION/phar/wp-cli.phar"
-if [ ! -f "$WP_CLI_PATH" ]; then
-    echo "Error: wp-cli not installed for PHP $PHPV_VERSION" >&2
-    echo "Hint: phpv phar install wp-cli" >&2
-    exit 1
-fi
-exec "${PHPV_OUTPUT}/bin/php" "$WP_CLI_PATH" "$@"
-`
-
-func DetectWpCliPath(phpvRoot string) string {
-	phpvBin := filepath.Join(phpvRoot, "bin")
-	phpvPhar := filepath.Join(phpvRoot, "phar")
-
-	localWpCli := filepath.Join(phpvPhar, "wp-cli.phar")
-	if _, err := os.Stat(localWpCli); err == nil {
-		return localWpCli
-	}
-
-	pathEnv := os.Getenv("PATH")
-	var filteredParts []string
-	for _, part := range strings.Split(pathEnv, ":") {
-		if part != phpvBin && !strings.HasPrefix(part, phpvRoot+"/") {
-			filteredParts = append(filteredParts, part)
-		}
-	}
-	filteredPath := strings.Join(filteredParts, ":")
-
-	cmd := exec.Command("which", "wp")
-	cmd.Env = append(os.Environ(), "PATH="+filteredPath)
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
-func DetectPiePath(phpvRoot string) string {
-	phpvBin := filepath.Join(phpvRoot, "bin")
-	phpvPhar := filepath.Join(phpvRoot, "phar")
-
-	localPie := filepath.Join(phpvPhar, "pie.phar")
-	if _, err := os.Stat(localPie); err == nil {
-		return localPie
-	}
-
-	pathEnv := os.Getenv("PATH")
-	var filteredParts []string
-	for _, part := range strings.Split(pathEnv, ":") {
-		if part != phpvBin && !strings.HasPrefix(part, phpvRoot+"/") {
-			filteredParts = append(filteredParts, part)
-		}
-	}
-	filteredPath := strings.Join(filteredParts, ":")
-
-	cmd := exec.Command("which", "pie")
+	cmd := exec.Command("which", tool.BinName)
 	cmd.Env = append(os.Environ(), "PATH="+filteredPath)
 	out, err := cmd.Output()
 	if err != nil {
@@ -295,34 +167,28 @@ func DetectPiePath(phpvRoot string) string {
 }
 
 func WriteShims(cfg ShimConfig) error {
-	phpShims := []string{
-		"php",
-		"phpize",
-		"php-config",
-		"php-cgi",
-	}
-
-	for _, name := range phpShims {
+	// PHP binary shims
+	for _, name := range phpBinNames {
 		shimPath := filepath.Join(cfg.BinPath, name)
-		content := fmt.Sprintf(dynamicShimTemplate, name, name, name)
-		if err := os.WriteFile(shimPath, []byte(content), 0755); err != nil {
+		var buf bytes.Buffer
+		if err := phpShimTmpl.Execute(&buf, shimData{Name: name}); err != nil {
+			return fmt.Errorf("failed to render shim %s: %w", name, err)
+		}
+		if err := os.WriteFile(shimPath, buf.Bytes(), 0755); err != nil {
 			return fmt.Errorf("failed to write shim %s: %w", name, err)
 		}
 	}
 
-	shimPath := filepath.Join(cfg.BinPath, "composer")
-	if err := os.WriteFile(shimPath, []byte(composerShimTemplate), 0755); err != nil {
-		return fmt.Errorf("failed to write shim composer: %w", err)
-	}
-
-	shimPath = filepath.Join(cfg.BinPath, "pie")
-	if err := os.WriteFile(shimPath, []byte(pieShimTemplate), 0755); err != nil {
-		return fmt.Errorf("failed to write shim pie: %w", err)
-	}
-
-	shimPath = filepath.Join(cfg.BinPath, "wp")
-	if err := os.WriteFile(shimPath, []byte(wpCliShimTemplate), 0755); err != nil {
-		return fmt.Errorf("failed to write shim wp: %w", err)
+	// PHAR tool shims
+	for _, tool := range DefaultPharTools {
+		shimPath := filepath.Join(cfg.BinPath, tool.Name)
+		var buf bytes.Buffer
+		if err := pharShimTmpl.Execute(&buf, pharShimData{Name: tool.Name, PharFile: tool.PharFile}); err != nil {
+			return fmt.Errorf("failed to render shim %s: %w", tool.Name, err)
+		}
+		if err := os.WriteFile(shimPath, buf.Bytes(), 0755); err != nil {
+			return fmt.Errorf("failed to write shim %s: %w", tool.Name, err)
+		}
 	}
 
 	return nil

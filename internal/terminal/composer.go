@@ -1,4 +1,4 @@
-package utils
+package terminal
 
 import (
 	"encoding/json"
@@ -19,7 +19,7 @@ type ComposerConfig struct {
 
 var versionExtractRegex = regexp.MustCompile(`(\d+\.?\d*\.?\d*)`)
 
-func ParseComposerJSON(dir string) (string, error) {
+func parseComposerJSON(dir string) (string, error) {
 	composerPath := filepath.Join(dir, "composer.json")
 
 	data, err := os.ReadFile(composerPath)
@@ -55,7 +55,7 @@ func ParseComposerJSON(dir string) (string, error) {
 	return cleaned, nil
 }
 
-func FindComposerJSONFromPath(path string) (string, string, error) {
+func findComposerJSONFromPath(path string) (string, string, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return "", "", err
@@ -63,7 +63,7 @@ func FindComposerJSONFromPath(path string) (string, string, error) {
 
 	dir := absPath
 	for {
-		version, err := ParseComposerJSON(dir)
+		version, err := parseComposerJSON(dir)
 		if err == nil && version != "" {
 			return dir, version, nil
 		}
@@ -78,7 +78,7 @@ func FindComposerJSONFromPath(path string) (string, string, error) {
 	return "", "", nil
 }
 
-func ParseComposerExtensions(dir string) ([]string, error) {
+func parseComposerExtensions(dir string) ([]string, error) {
 	composerPath := filepath.Join(dir, "composer.json")
 
 	data, err := os.ReadFile(composerPath)
@@ -94,7 +94,7 @@ func ParseComposerExtensions(dir string) ([]string, error) {
 	return config.Config.PHPExtensions, nil
 }
 
-func FindComposerExtensionsFromPath(path string) (string, []string, error) {
+func findComposerExtensionsFromPath(path string) (string, []string, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return "", nil, err
@@ -102,7 +102,7 @@ func FindComposerExtensionsFromPath(path string) (string, []string, error) {
 
 	dir := absPath
 	for {
-		extensions, err := ParseComposerExtensions(dir)
+		extensions, err := parseComposerExtensions(dir)
 		if err == nil && len(extensions) > 0 {
 			return dir, extensions, nil
 		}
@@ -117,7 +117,7 @@ func FindComposerExtensionsFromPath(path string) (string, []string, error) {
 	return "", nil, nil
 }
 
-func ParsePhpvrc(dir string) (string, error) {
+func parsePhpvrc(dir string) (string, error) {
 	phpvrcPath := filepath.Join(dir, ".phpvrc")
 
 	data, err := os.ReadFile(phpvrcPath)
@@ -133,7 +133,7 @@ func ParsePhpvrc(dir string) (string, error) {
 	return version, nil
 }
 
-func FindPhpvrcFromPath(path string) (string, string, error) {
+func findPhpvrcFromPath(path string) (string, string, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return "", "", err
@@ -141,7 +141,7 @@ func FindPhpvrcFromPath(path string) (string, string, error) {
 
 	dir := absPath
 	for {
-		version, err := ParsePhpvrc(dir)
+		version, err := parsePhpvrc(dir)
 		if err == nil && version != "" {
 			return dir, version, nil
 		}

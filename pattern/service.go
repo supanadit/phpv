@@ -2,10 +2,10 @@ package pattern
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/config"
 	"github.com/supanadit/phpv/internal/utils"
 )
 
@@ -165,9 +165,8 @@ func (s *Service) BuildURLs(pattern domain.URLPattern, v *domain.Version) ([]str
 }
 
 func (s *Service) BuildURLByType(name, version, sourceType string) (string, error) {
-	cfg := config.Get()
-	targetOS := cfg.OS
-	targetArch := cfg.Arch
+	targetOS := runtime.GOOS
+	targetArch := utils.GetArch()
 
 	if targetOS == "" {
 		targetOS = "linux"

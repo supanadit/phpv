@@ -9,6 +9,7 @@ import (
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/flagresolver"
 	"github.com/supanadit/phpv/internal/utils"
+	"github.com/supanadit/phpv/silo"
 )
 
 func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, forceCompiler string) (*domain.DependencyInfo, error) {
@@ -66,7 +67,7 @@ func (s *bundlerRepository) buildPackage(name, version, phpVersion string, ldPat
 		if archive == "" {
 			return nil, fmt.Errorf("[bundler] no cached archive for %s@%s", name, version)
 		}
-		dest := utils.GetSourceDirPath(s.silo, name, version)
+		dest := silo.SourceDirPkgPath(s.silo, name, version)
 		if _, err := s.unloadSvc.Unpack(archive, dest); err != nil {
 			s.logWarn("  Archive corrupted or incomplete, removing and re-downloading...")
 			if removeErr := s.fs.Remove(archive); removeErr != nil {
@@ -142,7 +143,7 @@ func (s *bundlerRepository) buildFromSource(name, version, phpVersion string, ld
 			continue
 		}
 
-		sourceDir := utils.GetSourceDirPath(s.silo, name, version)
+		sourceDir := silo.SourceDirPkgPath(s.silo, name, version)
 		if _, err := s.unloadSvc.Unpack(archive, sourceDir); err != nil {
 			lastErr = err
 			s.logWarn("Extraction failed for %s@%s, trying next mirror...", name, version)
@@ -255,7 +256,7 @@ func (s *bundlerRepository) logBuildFlags(installDir string, configureFlags, cpp
 }
 
 func (s *bundlerRepository) compilePackage(name, version, phpVersion string, ldPath, cppFlags, ldFlags, pkgConfigPaths []string, forceCompiler string) error {
-	sourceDir := utils.GetSourceDirPath(s.silo, name, version)
+	sourceDir := silo.SourceDirPkgPath(s.silo, name, version)
 
 	installDir := s.getInstallDir(name, version, phpVersion)
 
@@ -387,7 +388,7 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 						if idx := strings.Index(ver, "|"); idx != -1 {
 							ver = ver[:idx]
 						}
-						opensslPath := utils.DependencyPath(s.silo, phpVersion, "openssl", ver)
+						opensslPath := silo.DependencyPath(s.silo, phpVersion, "openssl", ver)
 						if fi, err := os.Stat(opensslPath); err == nil && fi.IsDir() {
 							includeDir := filepath.Join(opensslPath, "include", "openssl")
 							if _, err := os.Stat(includeDir); err == nil {
@@ -400,7 +401,7 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 				}
 			}
 			if !resolved {
-				depPath := utils.DependencyPath(s.silo, phpVersion, "openssl", "")
+				depPath := silo.DependencyPath(s.silo, phpVersion, "openssl", "")
 				if entries, err := os.ReadDir(depPath); err == nil && len(entries) > 0 {
 					for _, entry := range entries {
 						candidatePath := filepath.Join(depPath, entry.Name())
@@ -426,7 +427,7 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 						if idx := strings.Index(ver, "|"); idx != -1 {
 							ver = ver[:idx]
 						}
-						zlibPath := utils.DependencyPath(s.silo, phpVersion, "zlib", ver)
+						zlibPath := silo.DependencyPath(s.silo, phpVersion, "zlib", ver)
 						if fi, err := os.Stat(zlibPath); err == nil && fi.IsDir() {
 							includeFile := filepath.Join(zlibPath, "include", "zlib.h")
 							if _, err := os.Stat(includeFile); err == nil {
@@ -439,7 +440,7 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 				}
 			}
 			if !resolved {
-				depPath := utils.DependencyPath(s.silo, phpVersion, "zlib", "")
+				depPath := silo.DependencyPath(s.silo, phpVersion, "zlib", "")
 				if entries, err := os.ReadDir(depPath); err == nil && len(entries) > 0 {
 					for _, entry := range entries {
 						candidatePath := filepath.Join(depPath, entry.Name())
@@ -465,7 +466,7 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 						if idx := strings.Index(ver, "|"); idx != -1 {
 							ver = ver[:idx]
 						}
-						libxml2Path := utils.DependencyPath(s.silo, phpVersion, "libxml2", ver)
+						libxml2Path := silo.DependencyPath(s.silo, phpVersion, "libxml2", ver)
 						if fi, err := os.Stat(libxml2Path); err == nil && fi.IsDir() {
 							pkgConfigPath := filepath.Join(libxml2Path, "lib", "pkgconfig", "libxml-2.0.pc")
 							if _, err := os.Stat(pkgConfigPath); err == nil {
@@ -483,7 +484,7 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 				}
 			}
 			if !resolved {
-				depPath := utils.DependencyPath(s.silo, phpVersion, "libxml2", "")
+				depPath := silo.DependencyPath(s.silo, phpVersion, "libxml2", "")
 				if entries, err := os.ReadDir(depPath); err == nil && len(entries) > 0 {
 					for _, entry := range entries {
 						candidatePath := filepath.Join(depPath, entry.Name())
@@ -514,7 +515,7 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 						if idx := strings.Index(ver, "|"); idx != -1 {
 							ver = ver[:idx]
 						}
-						curlPath := utils.DependencyPath(s.silo, phpVersion, "curl", ver)
+						curlPath := silo.DependencyPath(s.silo, phpVersion, "curl", ver)
 						if fi, err := os.Stat(curlPath); err == nil && fi.IsDir() {
 							libCurlPath := filepath.Join(curlPath, "lib", "libcurl.so")
 							if _, err := os.Stat(libCurlPath); err == nil {
@@ -527,7 +528,7 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 				}
 			}
 			if !resolved {
-				depPath := utils.DependencyPath(s.silo, phpVersion, "curl", "")
+				depPath := silo.DependencyPath(s.silo, phpVersion, "curl", "")
 				if entries, err := os.ReadDir(depPath); err == nil && len(entries) > 0 {
 					for _, entry := range entries {
 						candidatePath := filepath.Join(depPath, entry.Name())
@@ -596,7 +597,7 @@ func (s *bundlerRepository) resolveICUPath(phpVersion string) string {
 				if idx := strings.Index(ver, "|"); idx != -1 {
 					ver = ver[:idx]
 				}
-				icuPath := utils.DependencyPath(s.silo, phpVersion, "icu", ver)
+				icuPath := silo.DependencyPath(s.silo, phpVersion, "icu", ver)
 				if fi, err := os.Stat(icuPath); err == nil && fi.IsDir() {
 					includeFile := filepath.Join(icuPath, "include", "unicode", "urename.h")
 					if _, err := os.Stat(includeFile); err == nil {
@@ -609,7 +610,7 @@ func (s *bundlerRepository) resolveICUPath(phpVersion string) string {
 	}
 
 	// Fallback: scan the dependency directory for any ICU version.
-	depPath := utils.DependencyPath(s.silo, phpVersion, "icu", "")
+	depPath := silo.DependencyPath(s.silo, phpVersion, "icu", "")
 	if entries, err := os.ReadDir(depPath); err == nil && len(entries) > 0 {
 		for _, entry := range entries {
 			candidatePath := filepath.Join(depPath, entry.Name())
@@ -625,7 +626,7 @@ func (s *bundlerRepository) resolveICUPath(phpVersion string) string {
 
 func (s *bundlerRepository) getInstallDir(name, version, phpVersion string) string {
 	if buildToolsList[name] {
-		return utils.BuildToolPath(s.silo, name, version)
+		return silo.BuildToolPath(s.silo, name, version)
 	}
-	return utils.DependencyPath(s.silo, phpVersion, name, version)
+	return silo.DependencyPath(s.silo, phpVersion, name, version)
 }

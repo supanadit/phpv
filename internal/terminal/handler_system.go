@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/config"
 	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/shim"
+	silopkg "github.com/supanadit/phpv/silo"
 )
 
 func (h *TerminalHandler) Which() (string, error) {
@@ -48,7 +48,7 @@ func (h *TerminalHandler) Which() (string, error) {
 		return "", nil
 	}
 
-	phpPath := filepath.Join(utils.PHPOutputPath(silo, activeVer), "bin", "php")
+	phpPath := filepath.Join(silopkg.PHPOutputPath(silo, activeVer), "bin", "php")
 	if _, err := os.Stat(phpPath); os.IsNotExist(err) {
 		return "", nil
 	}
@@ -66,7 +66,7 @@ func (h *TerminalHandler) Uninstall(constraint string) (*UninstallResult, error)
 		return nil, fmt.Errorf("failed to get silo: %w", err)
 	}
 
-	outputPath := utils.PHPOutputPath(silo, exactVersion)
+	outputPath := silopkg.PHPOutputPath(silo, exactVersion)
 	phpBinary := filepath.Join(outputPath, "bin", "php")
 	if _, err := os.Stat(phpBinary); os.IsNotExist(err) {
 		h.Silo.RemovePHPInstallation(exactVersion)
@@ -89,7 +89,7 @@ func (h *TerminalHandler) Uninstall(constraint string) (*UninstallResult, error)
 		return nil, fmt.Errorf("failed to uninstall: %w", err)
 	}
 
-	shimPath := utils.BinPath(silo)
+	shimPath := silopkg.BinPath(silo)
 	for _, name := range []string{"php", "php-cgi", "phpize", "php-config"} {
 		shimPath := filepath.Join(shimPath, name)
 		_ = os.RemoveAll(shimPath)
@@ -540,7 +540,7 @@ func (h *TerminalHandler) doctorCheckPHPInstall(version string) *DoctorPHPInstal
 		return &DoctorPHPInstall{Version: version, Installed: false}
 	}
 
-	phpBinary := filepath.Join(utils.PHPOutputPath(silo, version), "bin", "php")
+	phpBinary := filepath.Join(silopkg.PHPOutputPath(silo, version), "bin", "php")
 	if _, err := os.Stat(phpBinary); os.IsNotExist(err) {
 		return &DoctorPHPInstall{Version: version, Installed: false}
 	}
@@ -638,7 +638,7 @@ func (h *TerminalHandler) Doctor() (*DoctorResult, error) {
 
 		defaultVer, _ := h.Silo.GetDefault()
 		if defaultVer != "" {
-			phpPath := filepath.Join(utils.PHPOutputPath(silo, defaultVer), "bin", "php")
+			phpPath := filepath.Join(silopkg.PHPOutputPath(silo, defaultVer), "bin", "php")
 			if _, err := os.Stat(phpPath); os.IsNotExist(err) {
 				warnings = append(warnings, DoctorWarning{
 					Category: "phpv",
@@ -662,10 +662,17 @@ func (h *TerminalHandler) Doctor() (*DoctorResult, error) {
 }
 
 func (h *TerminalHandler) GetInitCode(shell string) (string, error) {
-	phpvRoot := config.Get().RootDir()
-	return GetInitCodeForShell(shell, phpvRoot), nil
+	silo, err := h.Silo.GetSilo()
+	if err != nil {
+		return "", err
+	}
+	return GetInitCodeForShell(shell, silo.Root), nil
 }
 
 func (h *TerminalHandler) GetPHPvRoot() string {
-	return config.Get().RootDir()
+	silo, err := h.Silo.GetSilo()
+	if err != nil {
+		return ""
+	}
+	return silo.Root
 }

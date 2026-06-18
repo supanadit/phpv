@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/afero"
-	"github.com/supanadit/phpv/internal/utils"
+	"github.com/supanadit/phpv/silo"
 )
 
 func (r *SiloRepository) FullClean(pkg, ver string) error {
@@ -27,9 +27,9 @@ func (r *SiloRepository) FullClean(pkg, ver string) error {
 
 func (r *SiloRepository) CleanAll() error {
 	paths := []string{
-		utils.CachePath(r.silo),
-		utils.SourcePath(r.silo),
-		utils.VersionPath(r.silo),
+		silo.CachePath(r.silo),
+		silo.SourcePath(r.silo),
+		silo.VersionPath(r.silo),
 	}
 
 	for _, path := range paths {

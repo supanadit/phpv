@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/afero"
-	"github.com/supanadit/phpv/internal/utils"
+	"github.com/supanadit/phpv/silo"
 )
 
 func (r *SiloRepository) VersionExists(pkg, ver string) bool {
@@ -19,7 +19,7 @@ func (r *SiloRepository) VersionExists(pkg, ver string) bool {
 }
 
 func (r *SiloRepository) GetVersionPath(pkg, ver string) string {
-	return utils.GetVersionPath(r.silo, pkg, ver)
+	return silo.VersionPkgPath(r.silo, pkg, ver)
 }
 
 func (r *SiloRepository) StoreVersion(pkg, ver string, data io.Reader) error {
@@ -27,7 +27,7 @@ func (r *SiloRepository) StoreVersion(pkg, ver string, data io.Reader) error {
 		return err
 	}
 
-	path := utils.GetVersionPath(r.silo, pkg, ver)
+	path := silo.VersionPkgPath(r.silo, pkg, ver)
 
 	if err := r.fs.MkdirAll(path, 0o755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", path, err)
@@ -65,7 +65,7 @@ func (r *SiloRepository) RemoveVersion(pkg, ver string) error {
 		return err
 	}
 
-	path := utils.GetVersionPath(r.silo, pkg, ver)
+	path := silo.VersionPkgPath(r.silo, pkg, ver)
 	if exists, _ := afero.Exists(r.fs, path); !exists {
 		return nil
 	}
@@ -74,7 +74,7 @@ func (r *SiloRepository) RemoveVersion(pkg, ver string) error {
 }
 
 func (r *SiloRepository) ListVersions() []string {
-	basePath := utils.VersionPath(r.silo)
+	basePath := silo.VersionPath(r.silo)
 	entries, err := afero.ReadDir(r.fs, basePath)
 	if err != nil {
 		return nil

@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/utils"
+	"github.com/supanadit/phpv/silo"
 )
 
 func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
@@ -96,7 +97,7 @@ func (r *ForgeRepository) buildEnv(config domain.ForgeConfig) []string {
 		env = setEnvVar(env, "PKG_CONFIG_SYSROOT_DIR", "/")
 
 		// Find OpenSSL path for lt_cv_sys_lib_dlsearch_path_spec
-		depPath := utils.DependencyPath(r.siloRepo.silo, config.PHPVersion, "openssl", "")
+		depPath := silo.DependencyPath(r.siloRepo.silo, config.PHPVersion, "openssl", "")
 		if entries, err := os.ReadDir(depPath); err == nil && len(entries) > 0 {
 			opensslPath = filepath.Join(depPath, entries[0].Name(), "lib")
 		}

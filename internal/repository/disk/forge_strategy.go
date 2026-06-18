@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/utils"
+	silopkg "github.com/supanadit/phpv/silo"
 )
 
 func (r *ForgeRepository) detectStrategy(name, version string) domain.BuildStrategy {
@@ -46,7 +46,7 @@ func (r *ForgeRepository) BuildWithStrategy(config domain.ForgeConfig, strategy 
 
 	installDir := config.Prefix
 	if installDir == "" {
-		installDir = utils.GetVersionPath(silo, config.Name, config.Version)
+		installDir = silopkg.VersionPkgPath(silo, config.Name, config.Version)
 	}
 
 	r.ensureFs()

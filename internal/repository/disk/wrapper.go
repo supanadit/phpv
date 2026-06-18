@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/utils"
+	silopkg "github.com/supanadit/phpv/silo"
 )
 
 type VersionWrapperManager struct {
@@ -26,7 +26,7 @@ func NewVersionWrapperManager(fs afero.Fs, silo *domain.Silo, phpVersion string)
 		fs:          fs,
 		silo:        silo,
 		phpVersion:  phpVersion,
-		wrapperRoot: utils.VersionWrapperPath(silo, phpVersion),
+		wrapperRoot: silopkg.VersionWrapperPath(silo, phpVersion),
 	}
 	m.binPath = filepath.Join(m.wrapperRoot, "bin")
 	m.libPath = filepath.Join(m.wrapperRoot, "lib")
@@ -210,7 +210,7 @@ func (m *VersionWrapperManager) CreateIncludeSymlink(depName, sourceInclude stri
 }
 
 func (m *VersionWrapperManager) CreateDepLibSymlink(depName, depVersion string) error {
-	depPath := utils.DependencyPath(m.silo, m.phpVersion, depName, depVersion)
+	depPath := silopkg.DependencyPath(m.silo, m.phpVersion, depName, depVersion)
 	if depPath == "" {
 		return nil
 	}
@@ -268,7 +268,7 @@ func (m *VersionWrapperManager) CreateDepLibSymlink(depName, depVersion string) 
 }
 
 func (m *VersionWrapperManager) CreateDepIncludeSymlink(depName, depVersion string) error {
-	depPath := utils.DependencyPath(m.silo, m.phpVersion, depName, depVersion)
+	depPath := silopkg.DependencyPath(m.silo, m.phpVersion, depName, depVersion)
 	if depPath == "" {
 		return nil
 	}

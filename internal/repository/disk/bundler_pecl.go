@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/utils"
+	"github.com/supanadit/phpv/silo"
 )
 
 func (s *bundlerRepository) PECLInstall(archivePath string, phpVersion string) (*domain.Extension, error) {
@@ -18,20 +18,20 @@ func (s *bundlerRepository) PECLInstall(archivePath string, phpVersion string) (
 		return nil, err
 	}
 
-	phpBin := filepath.Join(utils.PHPOutputPath(s.silo, phpVersion), "bin", "php")
+	phpBin := filepath.Join(silo.PHPOutputPath(s.silo, phpVersion), "bin", "php")
 	if _, err := os.Stat(phpBin); os.IsNotExist(err) {
 		return nil, fmt.Errorf("PHP %s is not installed at %s", phpVersion, phpBin)
 	}
 
-	phpizeBin := filepath.Join(utils.PHPOutputPath(s.silo, phpVersion), "bin", "phpize")
-	phpConfigBin := filepath.Join(utils.PHPOutputPath(s.silo, phpVersion), "bin", "php-config")
+	phpizeBin := filepath.Join(silo.PHPOutputPath(s.silo, phpVersion), "bin", "phpize")
+	phpConfigBin := filepath.Join(silo.PHPOutputPath(s.silo, phpVersion), "bin", "php-config")
 
 	extName, extVersion, err := s.extractExtensionInfo(archivePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract extension info from archive: %w", err)
 	}
 
-	extBaseDir := filepath.Join(utils.PHPOutputPath(s.silo, phpVersion), "lib", "extensions")
+	extBaseDir := filepath.Join(silo.PHPOutputPath(s.silo, phpVersion), "lib", "extensions")
 	if err := os.MkdirAll(extBaseDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create extensions directory: %w", err)
 	}
@@ -112,7 +112,7 @@ func (s *bundlerRepository) PECLInstall(archivePath string, phpVersion string) (
 }
 
 func (s *bundlerRepository) PECLList(phpVersion string) ([]string, error) {
-	extensionsDir := filepath.Join(utils.PHPOutputPath(s.silo, phpVersion), "lib", "extensions")
+	extensionsDir := filepath.Join(silo.PHPOutputPath(s.silo, phpVersion), "lib", "extensions")
 
 	if _, err := os.Stat(extensionsDir); os.IsNotExist(err) {
 		return []string{}, nil
@@ -139,7 +139,7 @@ func (s *bundlerRepository) PECLList(phpVersion string) ([]string, error) {
 }
 
 func (s *bundlerRepository) PECLUninstall(name string, phpVersion string) error {
-	extensionsDir := filepath.Join(utils.PHPOutputPath(s.silo, phpVersion), "lib", "extensions")
+	extensionsDir := filepath.Join(silo.PHPOutputPath(s.silo, phpVersion), "lib", "extensions")
 	extDir := filepath.Join(extensionsDir, name)
 
 	if _, err := os.Stat(extDir); os.IsNotExist(err) {
@@ -240,5 +240,5 @@ func (s *bundlerRepository) findExtensionSourceDir(baseDir string, extName strin
 }
 
 func (s *bundlerRepository) getExtStateFilePath(phpVersion string, extName string) string {
-	return filepath.Join(utils.PHPOutputPath(s.silo, phpVersion), "lib", "extensions", extName, ".state")
+	return filepath.Join(silo.PHPOutputPath(s.silo, phpVersion), "lib", "extensions", extName, ".state")
 }

@@ -5,7 +5,7 @@ import (
 	"io"
 
 	"github.com/spf13/afero"
-	"github.com/supanadit/phpv/internal/utils"
+	"github.com/supanadit/phpv/silo"
 )
 
 func (r *SiloRepository) SourceExists(pkg, ver string) bool {
@@ -18,7 +18,7 @@ func (r *SiloRepository) SourceExists(pkg, ver string) bool {
 }
 
 func (r *SiloRepository) GetSourcePath(pkg, ver string) string {
-	return utils.GetSourcePath(r.silo, pkg, ver)
+	return silo.SourcePkgPath(r.silo, pkg, ver)
 }
 
 func (r *SiloRepository) StoreSource(pkg, ver string, data io.Reader) error {
@@ -26,7 +26,7 @@ func (r *SiloRepository) StoreSource(pkg, ver string, data io.Reader) error {
 		return err
 	}
 
-	path := utils.GetSourcePath(r.silo, pkg, ver)
+	path := silo.SourcePkgPath(r.silo, pkg, ver)
 
 	if err := r.fs.MkdirAll(path, 0o755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", path, err)
@@ -64,7 +64,7 @@ func (r *SiloRepository) RemoveSource(pkg, ver string) error {
 		return err
 	}
 
-	path := utils.GetSourcePath(r.silo, pkg, ver)
+	path := silo.SourcePkgPath(r.silo, pkg, ver)
 	if exists, _ := afero.Exists(r.fs, path); !exists {
 		return nil
 	}
@@ -73,5 +73,5 @@ func (r *SiloRepository) RemoveSource(pkg, ver string) error {
 }
 
 func (r *SiloRepository) ListSources() []string {
-	return r.listItems(utils.SourcePath(r.silo))
+	return r.listItems(silo.SourcePath(r.silo))
 }

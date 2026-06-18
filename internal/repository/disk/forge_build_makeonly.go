@@ -4,12 +4,11 @@ import (
 	"fmt"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/utils"
 )
 
 func (r *ForgeRepository) buildMakeOnly(sourcePath, prefix string, config domain.ForgeConfig, env []string) (domain.Forge, error) {
-	ctx := utils.NewExecContext(config.Verbose)
-	jobs := utils.GetJobs(config.Jobs)
+	ctx := NewExecContext(config.Verbose)
+	jobs := Jobs(config.Jobs)
 
 	makeArgs := []string{fmt.Sprintf("-j%d", jobs)}
 	if config.Name == "automake" || config.Name == "autoconf" {

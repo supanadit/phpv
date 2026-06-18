@@ -6,8 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/supanadit/phpv/internal/config"
 )
 
 const dynamicShimTemplate = `#!/bin/bash
@@ -162,11 +160,9 @@ type ShimConfig struct {
 	BinPath string
 }
 
-func DetectComposerPath() string {
-	cfg := config.Get()
-	phpvRoot := cfg.RootDir()
-	phpvBin := cfg.BinPath()
-	phpvPhar := cfg.PharPath()
+func DetectComposerPath(phpvRoot string) string {
+	phpvBin := filepath.Join(phpvRoot, "bin")
+	phpvPhar := filepath.Join(phpvRoot, "phar")
 
 	localComposer := filepath.Join(phpvPhar, "composer.phar")
 	if _, err := os.Stat(localComposer); err == nil {
@@ -244,11 +240,9 @@ fi
 exec "${PHPV_OUTPUT}/bin/php" "$WP_CLI_PATH" "$@"
 `
 
-func DetectWpCliPath() string {
-	cfg := config.Get()
-	phpvRoot := cfg.RootDir()
-	phpvBin := cfg.BinPath()
-	phpvPhar := cfg.PharPath()
+func DetectWpCliPath(phpvRoot string) string {
+	phpvBin := filepath.Join(phpvRoot, "bin")
+	phpvPhar := filepath.Join(phpvRoot, "phar")
 
 	localWpCli := filepath.Join(phpvPhar, "wp-cli.phar")
 	if _, err := os.Stat(localWpCli); err == nil {
@@ -273,11 +267,9 @@ func DetectWpCliPath() string {
 	return strings.TrimSpace(string(out))
 }
 
-func DetectPiePath() string {
-	cfg := config.Get()
-	phpvRoot := cfg.RootDir()
-	phpvBin := cfg.BinPath()
-	phpvPhar := cfg.PharPath()
+func DetectPiePath(phpvRoot string) string {
+	phpvBin := filepath.Join(phpvRoot, "bin")
+	phpvPhar := filepath.Join(phpvRoot, "phar")
 
 	localPie := filepath.Join(phpvPhar, "pie.phar")
 	if _, err := os.Stat(localPie); err == nil {

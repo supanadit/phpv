@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/supanadit/phpv/advisor"
 	"github.com/supanadit/phpv/assembler"
@@ -12,7 +13,6 @@ import (
 	"github.com/supanadit/phpv/extension"
 	"github.com/supanadit/phpv/flagresolver"
 	"github.com/supanadit/phpv/forge"
-	"github.com/supanadit/phpv/internal/config"
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/internal/repository/http"
 	"github.com/supanadit/phpv/internal/repository/memory"
@@ -30,12 +30,10 @@ type silentLogger struct{}
 func (s *silentLogger) LogEvent(event fxevent.Event) {}
 
 func main() {
-	// Initialize config - reads PHPV_ROOT from env or uses default
-	_ = config.Get()
-
 	opts := []fx.Option{
 		fx.WithLogger(func() fxevent.Logger { return &silentLogger{} }),
 		fx.Provide(
+			providePHPVRoot,
 			NewSiloRepository,
 			NewSourceRepository,
 			NewDownloadRepository,
@@ -60,6 +58,18 @@ func main() {
 	}
 
 	<-app.Done()
+}
+
+// providePHPVRoot reads PHPV_ROOT from environment or uses default.
+func providePHPVRoot() string {
+	if root := os.Getenv("PHPV_ROOT"); root != "" {
+		return root
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join("/home", ".phpv")
+	}
+	return filepath.Join(home, ".phpv")
 }
 
 type Silos struct {
@@ -97,8 +107,8 @@ type Forges struct {
 	Forge forge.ForgeRepository
 }
 
-func NewSiloRepository() (*disk.SiloRepository, error) {
-	return disk.NewSiloRepository()
+func NewSiloRepository(root string) (*disk.SiloRepository, error) {
+	return disk.NewSiloRepository(root)
 }
 
 func NewSourceRepository() source.SourceRepository {
@@ -113,8 +123,8 @@ func NewUnloadRepository() unload.UnloadRepository {
 	return disk.NewUnloadRepository()
 }
 
-func NewAdvisorRepository(asm assembler.AssemblerRepository, extRepo extension.Repository) advisor.AdvisorRepository {
-	return disk.NewAdvisorRepository(asm, extRepo)
+func NewAdvisorRepository(root string, asm assembler.AssemblerRepository, extRepo extension.Repository) advisor.AdvisorRepository {
+	return disk.NewAdvisorRepository(root, asm, extRepo)
 }
 
 func NewAssemblerRepository() assembler.AssemblerRepository {

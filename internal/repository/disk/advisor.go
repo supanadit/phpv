@@ -399,8 +399,13 @@ func checkBuilt(name, versionPath, version string, fs afero.Fs) bool {
 		exists, _ := afero.Exists(fs, phpBinary)
 		return exists
 	}
+	// Some deps (zlib, libxml2) only install lib/ and include/ — no bin/
 	binPath := filepath.Join(versionPath, "bin")
-	exists, _ := afero.Exists(fs, binPath)
+	if exists, _ := afero.Exists(fs, binPath); exists {
+		return true
+	}
+	libPath := filepath.Join(versionPath, "lib")
+	exists, _ := afero.Exists(fs, libPath)
 	return exists
 }
 

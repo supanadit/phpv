@@ -455,7 +455,7 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 			if !resolved {
 				result = append(result, flag)
 			}
-		} else if strings.HasPrefix(flag, "--with-libxml") {
+		} else if strings.HasPrefix(flag, "--with-libxml") || strings.HasPrefix(flag, "--enable-libxml") {
 			resolved := false
 			deps, err := s.assemblerSvc.GetDependencies("php", phpVersion)
 			if err == nil {
@@ -469,7 +469,12 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 						if fi, err := os.Stat(libxml2Path); err == nil && fi.IsDir() {
 							pkgConfigPath := filepath.Join(libxml2Path, "lib", "pkgconfig", "libxml-2.0.pc")
 							if _, err := os.Stat(pkgConfigPath); err == nil {
-								result = append(result, flag+"="+libxml2Path)
+								if strings.HasPrefix(flag, "--enable-libxml") {
+									result = append(result, flag)
+									result = append(result, "--with-libxml-dir="+libxml2Path)
+								} else {
+									result = append(result, flag+"="+libxml2Path)
+								}
 								resolved = true
 							}
 						}
@@ -484,7 +489,12 @@ func (s *bundlerRepository) resolveDependencyFlags(name, phpVersion string, flag
 						candidatePath := filepath.Join(depPath, entry.Name())
 						pkgConfigPath := filepath.Join(candidatePath, "lib", "pkgconfig", "libxml-2.0.pc")
 						if _, err := os.Stat(pkgConfigPath); err == nil {
-							result = append(result, flag+"="+candidatePath)
+							if strings.HasPrefix(flag, "--enable-libxml") {
+								result = append(result, flag)
+								result = append(result, "--with-libxml-dir="+candidatePath)
+							} else {
+								result = append(result, flag+"="+candidatePath)
+							}
 							resolved = true
 							break
 						}

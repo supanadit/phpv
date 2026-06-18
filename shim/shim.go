@@ -61,8 +61,8 @@ if [ -f "$PHPV_ROOT/.phpv_system" ]; then
         echo "Error: System PHP not found" >&2
         exit 1
     fi
-    COMPOSER_PATH="{{ .ComposerPath }}"
-    if [ -z "$COMPOSER_PATH" ]; then
+    COMPOSER_PATH="$HOME/.phpv/phar/composer.phar"
+    if [ ! -f "$COMPOSER_PATH" ]; then
         echo "Error: composer not found. Please install composer first." >&2
         echo "Hint: https://getcomposer.org/download/" >&2
         exit 1
@@ -96,10 +96,10 @@ if [ -d "$PHPV_DEPS" ]; then
     done
 fi
 export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:$LD_LIBRARY_PATH"
-COMPOSER_PATH="{{ .ComposerPath }}"
-if [ -z "$COMPOSER_PATH" ]; then
-    echo "Error: composer not found. Please install composer first." >&2
-    echo "Hint: https://getcomposer.org/download/" >&2
+COMPOSER_PATH="$PHPV_ROOT/versions/$PHPV_VERSION/phar/composer.phar"
+if [ ! -f "$COMPOSER_PATH" ]; then
+    echo "Error: composer not installed for PHP $PHPV_VERSION" >&2
+    echo "Hint: phpv phar install composer" >&2
     exit 1
 fi
 exec "${PHPV_OUTPUT}/bin/php" "$COMPOSER_PATH" "$@"
@@ -114,8 +114,8 @@ if [ -f "$PHPV_ROOT/.phpv_system" ]; then
         echo "Error: System PHP not found" >&2
         exit 1
     fi
-    PIE_PATH="{{ .PiePath }}"
-    if [ -z "$PIE_PATH" ]; then
+    PIE_PATH="$HOME/.phpv/phar/pie.phar"
+    if [ ! -f "$PIE_PATH" ]; then
         echo "Error: pie not found. Please install pie first." >&2
         echo "Hint: phpv phar install pie" >&2
         exit 1
@@ -149,9 +149,9 @@ if [ -d "$PHPV_DEPS" ]; then
     done
 fi
 export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:$LD_LIBRARY_PATH"
-PIE_PATH="{{ .PiePath }}"
-if [ -z "$PIE_PATH" ]; then
-    echo "Error: pie not found. Please install pie first." >&2
+PIE_PATH="$PHPV_ROOT/versions/$PHPV_VERSION/phar/pie.phar"
+if [ ! -f "$PIE_PATH" ]; then
+    echo "Error: pie not installed for PHP $PHPV_VERSION" >&2
     echo "Hint: phpv phar install pie" >&2
     exit 1
 fi
@@ -159,10 +159,7 @@ exec "${PHPV_OUTPUT}/bin/php" "$PIE_PATH" "$@"
 `
 
 type ShimConfig struct {
-	BinPath      string
-	ComposerPath string
-	PiePath      string
-	WpCliPath    string
+	BinPath string
 }
 
 func DetectComposerPath() string {
@@ -203,8 +200,8 @@ if [ -f "$PHPV_ROOT/.phpv_system" ]; then
         echo "Error: System PHP not found" >&2
         exit 1
     fi
-    WP_CLI_PATH="{{ .WpCliPath }}"
-    if [ -z "$WP_CLI_PATH" ]; then
+    WP_CLI_PATH="$HOME/.phpv/phar/wp-cli.phar"
+    if [ ! -f "$WP_CLI_PATH" ]; then
         echo "Error: wp-cli not found. Please install wp-cli first." >&2
         echo "Hint: phpv phar install wp-cli" >&2
         exit 1
@@ -238,9 +235,9 @@ if [ -d "$PHPV_DEPS" ]; then
     done
 fi
 export LD_LIBRARY_PATH="$PHPV_OUTPUT/lib:$LD_LIBRARY_PATH"
-WP_CLI_PATH="{{ .WpCliPath }}"
-if [ -z "$WP_CLI_PATH" ]; then
-    echo "Error: wp-cli not found. Please install wp-cli first." >&2
+WP_CLI_PATH="$PHPV_ROOT/versions/$PHPV_VERSION/phar/wp-cli.phar"
+if [ ! -f "$WP_CLI_PATH" ]; then
+    echo "Error: wp-cli not installed for PHP $PHPV_VERSION" >&2
     echo "Hint: phpv phar install wp-cli" >&2
     exit 1
 fi
@@ -321,29 +318,19 @@ func WriteShims(cfg ShimConfig) error {
 		}
 	}
 
-	composerPath := cfg.ComposerPath
 	shimPath := filepath.Join(cfg.BinPath, "composer")
-	content := strings.ReplaceAll(composerShimTemplate, "{{ .ComposerPath }}", composerPath)
-	if err := os.WriteFile(shimPath, []byte(content), 0755); err != nil {
+	if err := os.WriteFile(shimPath, []byte(composerShimTemplate), 0755); err != nil {
 		return fmt.Errorf("failed to write shim composer: %w", err)
 	}
 
-	if cfg.PiePath != "" {
-		piePath := cfg.PiePath
-		shimPath := filepath.Join(cfg.BinPath, "pie")
-		content := strings.ReplaceAll(pieShimTemplate, "{{ .PiePath }}", piePath)
-		if err := os.WriteFile(shimPath, []byte(content), 0755); err != nil {
-			return fmt.Errorf("failed to write shim pie: %w", err)
-		}
+	shimPath = filepath.Join(cfg.BinPath, "pie")
+	if err := os.WriteFile(shimPath, []byte(pieShimTemplate), 0755); err != nil {
+		return fmt.Errorf("failed to write shim pie: %w", err)
 	}
 
-	if cfg.WpCliPath != "" {
-		wpCliPath := cfg.WpCliPath
-		shimPath := filepath.Join(cfg.BinPath, "wp")
-		content := strings.ReplaceAll(wpCliShimTemplate, "{{ .WpCliPath }}", wpCliPath)
-		if err := os.WriteFile(shimPath, []byte(content), 0755); err != nil {
-			return fmt.Errorf("failed to write shim wp: %w", err)
-		}
+	shimPath = filepath.Join(cfg.BinPath, "wp")
+	if err := os.WriteFile(shimPath, []byte(wpCliShimTemplate), 0755); err != nil {
+		return fmt.Errorf("failed to write shim wp: %w", err)
 	}
 
 	return nil

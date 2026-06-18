@@ -34,6 +34,11 @@ func PharPath(silo *domain.Silo) string {
 	return filepath.Join(silo.Root, "phar")
 }
 
+// VersionPharPath returns the phar directory for a specific PHP version.
+func VersionPharPath(silo *domain.Silo, phpVersion string) string {
+	return filepath.Join(silo.Root, "versions", phpVersion, "phar")
+}
+
 func ArchiveKey(pkg, ver string) string {
 	return filepath.Join("cache", pkg, ver, "archive")
 }

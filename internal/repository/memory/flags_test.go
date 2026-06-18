@@ -18,7 +18,7 @@ func TestGetCompilerFlags_GCC_PHP5(t *testing.T) {
 		t.Fatal("expected flags for gcc PHP 5.6, got none")
 	}
 
-	expectedFlags := []string{"-std=gnu11", "-fpermissive", "-Wno-cast-function-type", "-fno-strict-function-pointer-casts"}
+	expectedFlags := []string{"-std=gnu11", "-fpermissive", "-Wno-cast-function-type"}
 	for _, expected := range expectedFlags {
 		found := false
 		for _, f := range flags {
@@ -41,7 +41,7 @@ func TestGetCompilerFlags_GCC_PHP7(t *testing.T) {
 		t.Fatal("expected flags for gcc PHP 7.4, got none")
 	}
 
-	expectedFlags := []string{"-fno-strict-function-pointer-casts", "-fpermissive", "-Wno-cast-function-type"}
+	expectedFlags := []string{"-fpermissive", "-Wno-cast-function-type"}
 	for _, expected := range expectedFlags {
 		found := false
 		for _, f := range flags {

@@ -132,44 +132,79 @@ type CompilerFlagRule struct {
 	// Empty string means no maximum.
 	MaxPHP string
 
-	// CFLAGS are the C compiler flags for this compiler/version combination.
-	CFLAGS []string
+	// CFLAGDefs are the candidate flag definitions for this compiler/version combination.
+	// Flags are probed at runtime to filter out unsupported ones.
+	CFLAGDefs []domain.CompilerFlagDef
 }
 
 // compilerFlagRules defines C compiler flags for different compiler and PHP version ranges.
 // Rules are evaluated in order; first matching rule wins.
-//
-// GCC rules:
-//   - PHP 5.x-7.x: Includes -std=gnu11, -fPIC, and GCC 15+ compatibility flags.
-//     -fno-strict-function-pointer-casts: old PHP code casts function pointers
-//       (e.g., scanf.c casts strtoul to a no-args function pointer).
-//     -fpermissive: GCC 15+ hard-errors when calling a function through a cast
-//       pointer with wrong arg count; -fpermissive downgrades it to a warning.
-//   - PHP 8.0+: GCC 15+ still hits scanf.c function pointer cast issues so
-//     -fpermissive and -Wno-cast-function-type are needed here too.
-//
-// Zig rules:
-//   - All PHP versions: Includes -std=gnu11, -fPIC, and suppression flags for
-//     warnings that Zig's C compiler emits that are not relevant for PHP builds.
-var compilerFlagRules = []CompilerFlagRule{
+// Flags are now candidate lists — the actual compiler is probed at runtime to filter out
+// unsupported flags (e.g., GCC 16 doesn't recognize -fno-strict-function-pointer-casts).
+// The Needs field documents which compiler versions require each flag.
+var compilerFlagRuleCandidates = []CompilerFlagRule{
 	{
 		Compiler: "gcc",
 		MinPHP:   "5.0",
 		MaxPHP:   "7.99",
-		CFLAGS:   []string{"-std=gnu11", "-fPIC", "-fno-strict-function-pointer-casts", "-fpermissive", "-Wno-cast-function-type", "-Wno-error", "-Wno-array-parameter", "-Wno-deprecated-non-prototype", "-Wno-implicit-function-declaration", "-Wno-incompatible-pointer-types"},
+		CFLAGDefs: []domain.CompilerFlagDef{
+			{Flag: "-std=gnu11", Purpose: "C11 standard"},
+			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
+			{Flag: "-fpermissive", Needs: ">=gcc15", Purpose: "downgrade pointer-cast errors to warnings"},
+			{Flag: "-Wno-cast-function-type", Needs: ">=gcc8", Purpose: "suppress function-type cast warnings"},
+			{Flag: "-Wno-error", Purpose: "never treat warnings as errors"},
+			{Flag: "-Wno-array-parameter", Needs: ">=gcc11", Purpose: "suppress array-parameter mismatch warnings"},
+			{Flag: "-Wno-deprecated-non-prototype", Needs: ">=gcc15", Purpose: "suppress C23 prototype warnings"},
+			{Flag: "-Wno-implicit-function-declaration", Needs: ">=gcc14", Purpose: "suppress C99 implicit-decl warnings"},
+			{Flag: "-Wno-incompatible-pointer-types", Needs: ">=gcc14", Purpose: "suppress incompatible-pointer warnings"},
+		},
 	},
 	{
 		Compiler: "gcc",
 		MinPHP:   "8.0",
 		MaxPHP:   "",
-		CFLAGS:   []string{"-fpermissive", "-Wno-cast-function-type", "-Wno-error", "-fPIC"},
+		CFLAGDefs: []domain.CompilerFlagDef{
+			{Flag: "-fpermissive", Needs: ">=gcc15", Purpose: "downgrade pointer-cast errors to warnings"},
+			{Flag: "-Wno-cast-function-type", Needs: ">=gcc8", Purpose: "suppress function-type cast warnings"},
+			{Flag: "-Wno-error", Purpose: "never treat warnings as errors"},
+			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
+		},
 	},
 	{
 		Compiler: "zig",
 		MinPHP:   "",
 		MaxPHP:   "",
-		CFLAGS:   []string{"-std=gnu11", "-fPIC", "-Wno-error", "-fno-sanitize=undefined", "-Wno-cast-align", "-Wno-unused-but-set-variable", "-Wno-deprecated-non-prototype", "-Wno-array-parameter", "-Wno-implicit-function-declaration"},
+		CFLAGDefs: []domain.CompilerFlagDef{
+			{Flag: "-std=gnu11", Purpose: "C11 standard"},
+			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
+			{Flag: "-Wno-error", Purpose: "never treat warnings as errors"},
+			{Flag: "-fno-sanitize=undefined", Purpose: "disable UB sanitizer (zig-specific)"},
+			{Flag: "-Wno-cast-align", Purpose: "suppress cast-align warnings (zig-specific)"},
+			{Flag: "-Wno-unused-but-set-variable", Purpose: "suppress unused warnings"},
+			{Flag: "-Wno-deprecated-non-prototype", Purpose: "suppress C23 prototype warnings"},
+			{Flag: "-Wno-array-parameter", Purpose: "suppress array-parameter mismatch warnings"},
+			{Flag: "-Wno-implicit-function-declaration", Purpose: "suppress C99 implicit-decl warnings"},
+		},
 	},
+}
+
+// GetCompilerFlagCandidates returns candidate flag definitions for the given compiler+PHP version.
+// Callers should probe the actual compiler to filter out unsupported flags.
+func (r *flagRepo) GetCompilerFlagCandidates(compiler string, phpVersion string) []domain.CompilerFlagDef {
+	v := utils.ParseVersion(phpVersion)
+	for _, rule := range compilerFlagRuleCandidates {
+		if rule.Compiler != compiler {
+			continue
+		}
+		minOK := rule.MinPHP == "" || versionGE(v, rule.MinPHP)
+		maxOK := rule.MaxPHP == "" || versionLE(v, rule.MaxPHP)
+		if minOK && maxOK {
+			result := make([]domain.CompilerFlagDef, len(rule.CFLAGDefs))
+			copy(result, rule.CFLAGDefs)
+			return result
+		}
+	}
+	return nil
 }
 
 var cstdRules = []flagresolver.CStdRule{
@@ -205,42 +240,17 @@ func (r *flagRepo) GetCompilerStdRule(phpVersion string) flagresolver.CStdRule {
 	return flagresolver.CStdRule{CStd: "-std=gnu11", CXXStd: "-std=gnu++17"}
 }
 
-// GetCompilerFlags returns C compiler flags (CFLAGS) for a specific compiler and PHP version.
-// It matches against compilerFlagRules in order, returning the first rule where the
-// compiler type and PHP version fall within the rule's ranges.
-//
-// The compiler parameter should be "gcc" or "zig".
-//
-// Usage:
-//
-//	cflags := r.GetCompilerFlags("gcc", "7.4.33")
-//	// Returns: ["-std=gnu11", "-fPIC", "-fno-strict-function-pointer-casts", ...]
-//
-//	cflags := r.GetCompilerFlags("gcc", "8.2.0")
-//	// Returns: ["-Wno-error", "-fPIC"]
-//
-//	cflags := r.GetCompilerFlags("zig", "8.0.30")
-//	// Returns: ["-std=gnu11", "-fPIC", "-Wno-error", ...]
-//
-// Returns an empty slice if no matching rule is found.
+// GetCompilerFlags returns C compiler flag strings for a specific compiler and PHP version.
+// It delegates to GetCompilerFlagCandidates and extracts only the Flag field.
+// Note: this returns ALL candidate flags — the actual compiler probing (to filter unsupported
+// flags) happens in bundler_compiler.go via utils.FilterCompilerFlags.
 func (r *flagRepo) GetCompilerFlags(compiler string, phpVersion string) []string {
-	v := utils.ParseVersion(phpVersion)
-
-	for _, rule := range compilerFlagRules {
-		if rule.Compiler != compiler {
-			continue
-		}
-
-		minOK := rule.MinPHP == "" || versionGE(v, rule.MinPHP)
-		maxOK := rule.MaxPHP == "" || versionLE(v, rule.MaxPHP)
-		if minOK && maxOK {
-			result := make([]string, len(rule.CFLAGS))
-			copy(result, rule.CFLAGS)
-			return result
-		}
+	candidates := r.GetCompilerFlagCandidates(compiler, phpVersion)
+	result := make([]string, len(candidates))
+	for i, c := range candidates {
+		result[i] = c.Flag
 	}
-
-	return []string{}
+	return result
 }
 
 // versionGE checks if version v >= minVersion using major.minor comparison.
@@ -360,7 +370,14 @@ func (r *flagRepo) GetPHPConfigureFlags(phpVersion string, extensions []string) 
 	for _, ext := range extensions {
 		if extDef, ok := r.extRepo.GetExtensionDef(ext); ok {
 			if r.extRepo.IsExtensionValidForPHPVersion(ext, phpVersion) {
-				flags = append(flags, extDef.Flag)
+				flag := extDef.Flag
+				for _, fv := range extDef.FlagVersions {
+					if utils.MatchVersionRange(fv.VersionRange, phpVersion) {
+						flag = fv.Flag
+						break
+					}
+				}
+				flags = append(flags, flag)
 			}
 		}
 	}
@@ -394,6 +411,23 @@ func (r *flagRepo) GetExtensionDependencyWithVersion(extName, phpVersion string)
 
 func (r *flagRepo) ValidateExtensions(extensions []string, phpVersion string) ([]string, error) {
 	return r.extRepo.ValidateExtensions(extensions, phpVersion)
+}
+
+func (r *flagRepo) ExpandImplied(extensions []string) ([]string, []string) {
+	expanded := r.expandImplied(extensions)
+
+	// Collect original extensions for diff
+	orig := make(map[string]bool)
+	for _, e := range extensions {
+		orig[e] = true
+	}
+	var added []string
+	for _, e := range expanded {
+		if !orig[e] {
+			added = append(added, e)
+		}
+	}
+	return expanded, added
 }
 
 func (r *flagRepo) expandImplied(extensions []string) []string {

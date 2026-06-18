@@ -23,6 +23,10 @@ After initialization, you can use 'phpv use <version>' to switch PHP versions in
 			if len(args) > 0 {
 				shell = args[0]
 			}
+
+			// Regenerate shims on every init — ensures shims match the current binary
+			handler.regenerateAllShims()
+
 			initCode, err := handler.GetInitCode(shell)
 			if err != nil {
 				return err

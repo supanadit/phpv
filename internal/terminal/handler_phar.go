@@ -17,6 +17,25 @@ const composerPharURLTemplate = "https://getcomposer.org/download/%s/composer.ph
 const piePharURLTemplate = "https://github.com/php/pie/releases/latest/download/pie.phar"
 const wpCliPharURLTemplate = "https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar"
 
+// composerVersionForPHP returns the highest Composer version compatible with the given PHP version.
+// Composer 2.8+ requires PHP 8.3+, 2.2+ requires PHP 7.2.5+.
+func composerVersionForPHP(phpVersion string, requestedVersion string) string {
+	if requestedVersion != "" && requestedVersion != "latest-stable" {
+		return requestedVersion
+	}
+	v := strings.SplitN(phpVersion, ".", 2)[0]
+	switch v {
+	case "5", "7":
+		// PHP 5.6, 7.0-7.3: max Composer 1.10.26 (SHA-1 signatures)
+		return "1.10.26"
+	case "8":
+		// PHP 8.x: latest stable
+		return "latest-stable"
+	default:
+		return "latest-stable"
+	}
+}
+
 func (h *TerminalHandler) PharInstall(name string, version string) (*domain.PharResult, error) {
 	return h.pharInstallOrUpdate(name, version, false)
 }
@@ -43,16 +62,32 @@ func (h *TerminalHandler) pharInstallOrUpdate(name string, version string, isUpd
 		return nil, fmt.Errorf("failed to get silo: %w", err)
 	}
 
+	activePHP := h.detectActivePHPVersion(silo)
+	if activePHP == "" {
+		return nil, fmt.Errorf("no active PHP version. Run 'phpv use <version>' first")
+	}
+
+	// Auto-detect compatible version for composer based on active PHP version
+	if pharName == "composer" && exactVersion == "latest-stable" {
+		mapped := composerVersionForPHP(activePHP, exactVersion)
+		if mapped != exactVersion {
+			fmt.Printf("Auto-selected composer %s for PHP %s\n", mapped, activePHP)
+		}
+		exactVersion = mapped
+	}
+
+	pharDir := utils.VersionPharPath(silo, activePHP)
+
 	switch pharName {
 	case "composer":
 		url = fmt.Sprintf(composerPharURLTemplate, exactVersion)
-		destPath = filepath.Join(utils.PharPath(silo), "composer.phar")
+		destPath = filepath.Join(pharDir, "composer.phar")
 	case "pie":
 		url = piePharURLTemplate
-		destPath = filepath.Join(utils.PharPath(silo), "pie.phar")
+		destPath = filepath.Join(pharDir, "pie.phar")
 	case "wp-cli":
 		url = wpCliPharURLTemplate
-		destPath = filepath.Join(utils.PharPath(silo), "wp-cli.phar")
+		destPath = filepath.Join(pharDir, "wp-cli.phar")
 	}
 
 	if isUpdate {
@@ -61,7 +96,6 @@ func (h *TerminalHandler) pharInstallOrUpdate(name string, version string, isUpd
 		}
 	}
 
-	pharDir := filepath.Dir(destPath)
 	if err := os.MkdirAll(pharDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create phar directory: %w", err)
 	}
@@ -134,14 +168,20 @@ func (h *TerminalHandler) PharRemove(name string) error {
 		return fmt.Errorf("failed to get silo: %w", err)
 	}
 
+	activePHP := h.detectActivePHPVersion(silo)
+	if activePHP == "" {
+		return fmt.Errorf("no active PHP version. Run 'phpv use <version>' first")
+	}
+
+	pharDir := utils.VersionPharPath(silo, activePHP)
 	var destPath string
 	switch pharName {
 	case "composer":
-		destPath = filepath.Join(utils.PharPath(silo), "composer.phar")
+		destPath = filepath.Join(pharDir, "composer.phar")
 	case "pie":
-		destPath = filepath.Join(utils.PharPath(silo), "pie.phar")
+		destPath = filepath.Join(pharDir, "pie.phar")
 	case "wp-cli":
-		destPath = filepath.Join(utils.PharPath(silo), "wp-cli.phar")
+		destPath = filepath.Join(pharDir, "wp-cli.phar")
 	}
 
 	if _, err := os.Stat(destPath); os.IsNotExist(err) {
@@ -161,8 +201,13 @@ func (h *TerminalHandler) PharList() ([]string, error) {
 		return nil, fmt.Errorf("failed to get silo: %w", err)
 	}
 
-	binPath := utils.PharPath(silo)
-	entries, err := os.ReadDir(binPath)
+	activePHP := h.detectActivePHPVersion(silo)
+	if activePHP == "" {
+		return nil, fmt.Errorf("no active PHP version. Run 'phpv use <version>' first")
+	}
+
+	pharDir := utils.VersionPharPath(silo, activePHP)
+	entries, err := os.ReadDir(pharDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return []string{}, nil
@@ -185,27 +230,55 @@ func (h *TerminalHandler) PharWhich(name string) (string, error) {
 	if pharName == "" {
 		return "", fmt.Errorf("unsupported phar: %s", name)
 	}
-	switch pharName {
-	case "composer":
-		return shim.DetectComposerPath(), nil
-	case "pie":
-		return shim.DetectPiePath(), nil
-	case "wp-cli":
-		return shim.DetectWpCliPath(), nil
+	silo, err := h.Silo.GetSilo()
+	if err != nil {
+		return "", nil
 	}
-	return "", nil
+	activePHP := h.detectActivePHPVersion(silo)
+	if activePHP == "" {
+		return "", fmt.Errorf("no active PHP version")
+	}
+	return filepath.Join(utils.VersionPharPath(silo, activePHP), pharName+".phar"), nil
+}
+
+// detectActivePHPVersion returns the currently active PHP version by checking
+// environment variable, default file, or scanning installed versions.
+func (h *TerminalHandler) detectActivePHPVersion(silo *domain.Silo) string {
+	// 1. Check PHPV_CURRENT env var
+	if v := os.Getenv("PHPV_CURRENT"); v != "" {
+		return v
+	}
+	// 2. Check default marker
+	defaultFile := filepath.Join(silo.Root, "default")
+	if data, err := os.ReadFile(defaultFile); err == nil {
+		return strings.TrimSpace(string(data))
+	}
+	// 3. Find latest installed version
+	versionsDir := filepath.Join(silo.Root, "versions")
+	entries, err := os.ReadDir(versionsDir)
+	if err != nil {
+		return ""
+	}
+	for i := len(entries) - 1; i >= 0; i-- {
+		if entries[i].IsDir() {
+			return entries[i].Name()
+		}
+	}
+	return ""
 }
 
 func (h *TerminalHandler) regeneratePharShims(silo *domain.Silo) error {
-	shimPath := utils.BinPath(silo)
-	composerPath := shim.DetectComposerPath()
-	piePath := shim.DetectPiePath()
-	wpCliPath := shim.DetectWpCliPath()
-
 	return shim.WriteShims(shim.ShimConfig{
-		BinPath:      shimPath,
-		ComposerPath: composerPath,
-		PiePath:      piePath,
-		WpCliPath:    wpCliPath,
+		BinPath: utils.BinPath(silo),
 	})
+}
+
+// regenerateAllShims regenerates all shims (php, composer, pie, wp) for the current installation.
+// Called by 'phpv init' to ensure shims always match the current binary.
+func (h *TerminalHandler) regenerateAllShims() {
+	silo, err := h.Silo.GetSilo()
+	if err != nil {
+		return
+	}
+	h.regeneratePharShims(silo)
 }

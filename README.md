@@ -38,28 +38,34 @@ cd phpv && go build -o phpv ./app/phpv.go
 # Initialize your shell (add to ~/.bashrc, ~/.zshrc, or fish config)
 eval "$(phpv init bash)"
 
-# Install PHP
-phpv install 8.4                          # Latest 8.4.x
-phpv install 8                             # Latest 8.x.x
-phpv install 8.4 --ext curl,openssl,intl   # With extensions
-phpv install 5.6 --compiler zig            # Old PHP with Zig fallback
+# Install PHP — deps auto-resolved, built from source if needed
+phpv install 7.2 --ext curl,openssl,intl,gd,mbstring,pdo_mysql
+phpv install 8.3 --ext curl,openssl,mbstring,phar,pdo
+phpv install 5.6 --compiler zig              # Old PHP with Zig fallback
 
 # Switch versions
-phpv use 8.4              # Current shell
-phpv use system           # Use system PHP
-phpv default 8.4          # Global default
-phpv versions              # List installed
-phpv which                 # Path to current PHP
+phpv use 8.3                                  # Current shell
+phpv use system                               # Use system PHP
+phpv default 8.3                              # Global default
+phpv versions                                 # List installed
+phpv which                                    # Path to current PHP
 
-# Rebuild with different extensions (keeps deps, recompiles PHP only)
-phpv rebuild 8 --ext phar,iconv,filter,fileinfo,dom,session
+# Rebuild with different extensions (smart — only rebuilds PHP, keeps deps)
+phpv rebuild 7.2 --ext phar,iconv,filter,fileinfo,dom,session
 
-# Manage PHAR tools
-phpv phar install composer    # Install Composer
-phpv phar install pie         # Install PIE
-phpv phar install wp-cli      # Install WP-CLI
-phpv phar update composer     # Update to latest
-phpv phar list               # List installed PHARs
+# Per-project version via .phpvrc
+echo "7.2" > .phpvrc                          # Auto-switch on cd
+
+# List available extensions for any PHP version
+phpv extensions --php 7.2
+
+# Manage PHAR tools (per-version — each PHP version has its own phars)
+phpv phar install composer                    # Auto-detects latest compatible
+phpv phar install pie                         # Install PIE
+phpv phar install wp-cli                      # Install WP-CLI
+phpv phar update composer                     # Update to latest
+phpv phar list                                # List for current PHP version
+phpv phar which composer                      # Show phar path
 
 # PECL extensions
 phpv pecl install /path/to/ext-1.0.0.tgz
@@ -67,8 +73,8 @@ phpv pecl list
 phpv pecl uninstall ext
 
 # Diagnose issues
-phpv doctor                 # System readiness check
-phpv doctor 8.4            # Extension analysis for PHP 8.4
+phpv doctor                                   # System readiness check
+phpv doctor 8.4                               # Extension analysis for PHP 8.4
 phpv install 8.4 --fresh --verbose
 ```
 
@@ -78,14 +84,22 @@ phpv install 8.4 --fresh --verbose
 
 - **Full dependency resolution** — Transitive dependency graph with version constraints. Missing libraries? Built from source automatically.
 - **Bundled PHP extensions** — Each mapped to the correct `./configure` flag, system library, and compatible version range.
+- **Dependency-sorted configure flags** — `sortByDependency()` ensures `--enable-hash` always precedes `--enable-phar`, enabling native SHA-256/SHA-512 phar signatures on all PHP versions. Composer 2.x works out of the box on PHP 7.x.
+- **Smart `phpv rebuild`** — Runs all three validation gates (unknown extensions, conflicts, implied deps auto-expansion). Only builds missing dependencies, reuses cached ones. No more "configure failed" from missing deps.
+- **Per-version PHAR management** — Each PHP version gets its own isolated phar directory at `versions/<ver>/phar/`. Different versions can have different versions of composer, pie, or wp-cli.
+- **Auto-regenerating shims** — Every `phpv init zsh` call regenerates all shims (php, phpize, composer, pie, wp) to match the current binary. No stale templates.
 - **PECL extension management** — Install, list, and uninstall with full build orchestration.
-- **PHAR management** — Install Composer, PIE, and WP-CLI directly. Auto-shimmed into `$PHPV_ROOT/bin/`.
 - **System library detection** — Discovers installed dev packages via `pkg-config` and header checks. Uses system libs when available, builds from source when not.
 - **Parallel dependency builds** — Dependencies at the same graph level compile concurrently.
 - **Zig compiler fallback** — Old PHP versions that fail with modern GCC get auto-provisioned Zig as a drop-in C compiler.
 - **Multi-version support** — PHP 4.x through 8.x side by side, each with isolated dependencies.
 - **Smart version resolution** — `8` → latest 8.x, `8.4` → latest 8.4.x, `8.4.5` → exact version.
-- **Rebuild without reinstalling** — `phpv rebuild` recompiles PHP with different extensions while keeping downloaded dependencies.
+- **Per-version extension flags (FlagVersions)** — Same extension can use different configure flags per PHP version range (libxml: `--enable-libxml` for <8.0, `--with-libxml` for 8.0+).
+- **Compiler flag probing** — CFLAGS are tested against the actual compiler at runtime. Unsupported flags are silently dropped instead of breaking builds.
+- **ICU version matrix** — `intl` extension auto-selects the right ICU version per PHP version (57.2 for <7.4, 63.1 for 7.4, 74.2 for 8.0+).
+- **Three-tier extension gating** — Unknown extensions halt, conflicting extensions halt, missing implied deps auto-expand with a warning.
+- **`.phpvrc` support** — Per-project PHP version auto-switching.
+- **`phpv init` regenerates shims** — Every shell init call ensures all shims match the current binary.
 - **Doctor command** — Checks system readiness, analyzes extension availability per PHP version, suggests install commands.
 - **Single binary** — No runtime dependencies. Just Go.
 
@@ -95,22 +109,22 @@ phpv install 8.4 --fresh --verbose
 
 ```
 $PHPV_ROOT/
-├── bin/                    # Shims (php, php-cgi, phpize, composer, pie, wp-cli)
+├── bin/                    # Shims (php, php-cgi, phpize, php-config, composer, pie, wp)
 ├── build-tools/            # Shared build tools (autoconf, bison, re2c, etc.)
 │   └── {pkg}/{ver}/
 ├── cache/                  # Downloaded archives (with resume support)
 ├── default                 # Default PHP version file
-├── phar/                   # PHAR binaries (composer.phar, pie.phar, wp-cli.phar)
 ├── sources/                # Extracted source code
 │   └── {pkg}/{ver}/
 └── versions/               # Installed PHP versions
     └── {php-version}/
         ├── dependency/      # Isolated dependencies per PHP version
         │   └── {pkg}/{ver}/
+        ├── phar/            # Per-version PHAR binaries (composer.phar, etc.)
         └── output/          # PHP installation prefix
 ```
 
-Each PHP version gets its own isolated dependency tree — no conflicts between versions.
+Each PHP version gets its own isolated dependency tree and phar directory — no conflicts between versions.
 
 ---
 

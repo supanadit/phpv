@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/spf13/afero"
-	"github.com/supanadit/phpv/internal/utils"
+	"github.com/supanadit/phpv/silo"
 )
 
 func (r *SiloRepository) getBuildToolsRefsFilePath() string {
@@ -194,7 +194,7 @@ func (r *SiloRepository) RemovePHPInstallation(phpVersion string) ([]string, err
 		return nil, fmt.Errorf("failed to save build-tools refs: %w", err)
 	}
 
-	versionPath := utils.PHPVersionPath(r.silo, phpVersion)
+	versionPath := silo.PHPVersionPath(r.silo, phpVersion)
 	if exists, _ := afero.Exists(r.fs, versionPath); exists {
 		if err := r.fs.RemoveAll(versionPath); err != nil {
 			return nil, fmt.Errorf("failed to remove version directory: %w", err)

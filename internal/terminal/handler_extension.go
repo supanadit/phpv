@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/utils"
+	"github.com/supanadit/phpv/silo"
 )
 
 func (h *TerminalHandler) PECLInstall(archivePath string) (*PECLInstallResult, error) {
@@ -21,11 +21,11 @@ func (h *TerminalHandler) PECLInstall(archivePath string) (*PECLInstallResult, e
 		return nil, err
 	}
 
-	silo, err := h.Silo.GetSilo()
+	s, err := h.Silo.GetSilo()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get silo: %w", err)
 	}
-	extensionsDir := filepath.Join(utils.PHPOutputPath(silo, activeVer), "lib", "extensions", ext.Name)
+	extensionsDir := filepath.Join(silo.PHPOutputPath(s, activeVer), "lib", "extensions", ext.Name)
 
 	return &PECLInstallResult{
 		Name:       ext.Name,

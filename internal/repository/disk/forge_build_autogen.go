@@ -8,12 +8,11 @@ import (
 
 	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/utils"
 )
 
 func (r *ForgeRepository) buildAutogen(sourcePath, prefix string, config domain.ForgeConfig, env []string) (domain.Forge, error) {
-	ctx := utils.NewExecContext(config.Verbose)
-	jobs := utils.GetJobs(config.Jobs)
+	ctx := NewExecContext(config.Verbose)
+	jobs := Jobs(config.Jobs)
 
 	buildToolsBinPath := r.getBuildToolsBinPath(config)
 

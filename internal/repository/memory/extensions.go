@@ -118,12 +118,11 @@ var bundledExtensions = map[string]domain.ExtensionDef{
 		MinPHP: "5.0",
 	},
 	"libxml": {
-		Flag:    "--with-libxml",
+		Flag:    "--enable-libxml",
 		MinPHP:  "5.0",
 		Package: "libxml2",
 		FlagVersions: []domain.FlagVersionDef{
-			{VersionRange: ">=5.0 <8.0", Flag: "--enable-libxml"},
-			{VersionRange: ">=8.0", Flag: "--with-libxml"},
+			{VersionRange: ">=7.4", Flag: "--with-libxml"},
 		},
 		Versions: []domain.VersionConstraintDef{
 			{VersionRange: ">=8.2.0", Version: "2.12.7|~2.12.0"},

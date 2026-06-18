@@ -8,15 +8,15 @@ import (
 
 	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/utils"
+	"github.com/supanadit/phpv/silo"
 )
 
 func (r *SiloRepository) getDepsInfoFilePath(phpVersion string) string {
-	return filepath.Join(utils.PHPVersionPath(r.silo, phpVersion), ".deps.json")
+	return filepath.Join(silo.PHPVersionPath(r.silo, phpVersion), ".deps.json")
 }
 
 func (r *SiloRepository) SaveDependencyInfo(phpVersion string, deps []domain.DependencyInfo) error {
-	versionPath := utils.PHPVersionPath(r.silo, phpVersion)
+	versionPath := silo.PHPVersionPath(r.silo, phpVersion)
 	if err := r.fs.MkdirAll(versionPath, 0o755); err != nil {
 		return fmt.Errorf("failed to create version directory: %w", err)
 	}

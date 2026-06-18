@@ -346,7 +346,7 @@ func TestComposerShim_EmptyComposerPathShowsError(t *testing.T) {
 }
 
 func TestDetectComposerPath(t *testing.T) {
-	path := DetectComposerPath()
+	path := DetectComposerPath("/home/test/.phpv")
 	if path == "" {
 		t.Skip("Composer not found in PATH, skipping test")
 	}

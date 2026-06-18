@@ -5,116 +5,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-
-	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/config"
 )
 
-func RootPath(silo *domain.Silo) string {
-	return silo.Root
-}
-
-func CachePath(silo *domain.Silo) string {
-	return filepath.Join(silo.Root, "cache")
-}
-
-func SourcePath(silo *domain.Silo) string {
-	return filepath.Join(silo.Root, "sources")
-}
-
-func VersionPath(silo *domain.Silo) string {
-	return filepath.Join(silo.Root, "versions")
-}
-
-func BinPath(silo *domain.Silo) string {
-	return filepath.Join(silo.Root, "bin")
-}
-
-func PharPath(silo *domain.Silo) string {
-	return filepath.Join(silo.Root, "phar")
-}
-
-// VersionPharPath returns the phar directory for a specific PHP version.
-func VersionPharPath(silo *domain.Silo, phpVersion string) string {
-	return filepath.Join(silo.Root, "versions", phpVersion, "phar")
-}
-
-func ArchiveKey(pkg, ver string) string {
-	return filepath.Join("cache", pkg, ver, "archive")
-}
-
-func SourceKey(pkg, ver string) string {
-	return filepath.Join("sources", pkg, ver)
-}
-
-func VersionKey(pkg, ver string) string {
-	return filepath.Join("versions", pkg, ver)
-}
-
-func SourceDirKey(pkg, ver string) string {
-	return filepath.Join("sources", pkg, ver, "src")
-}
-
-func GetArchivePath(silo *domain.Silo, pkg, ver string) string {
-	return filepath.Join(silo.Root, ArchiveKey(pkg, ver))
-}
-
-func GetSourcePath(silo *domain.Silo, pkg, ver string) string {
-	return filepath.Join(silo.Root, SourceKey(pkg, ver))
-}
-
-func GetVersionPath(silo *domain.Silo, pkg, ver string) string {
-	return filepath.Join(silo.Root, VersionKey(pkg, ver))
-}
-
-func GetSourceDirPath(silo *domain.Silo, pkg, ver string) string {
-	return filepath.Join(silo.Root, SourceDirKey(pkg, ver))
-}
-
-func PHPVersionPath(silo *domain.Silo, phpVersion string) string {
-	return filepath.Join(silo.Root, "versions", phpVersion)
-}
-
-func PHPOutputPath(silo *domain.Silo, phpVersion string) string {
-	return filepath.Join(PHPVersionPath(silo, phpVersion), "output")
-}
-
-func DependencyPath(silo *domain.Silo, phpVersion, pkg, ver string) string {
-	return filepath.Join(PHPVersionPath(silo, phpVersion), "dependency", pkg, ver)
-}
-
-func DependencyRootPath(silo *domain.Silo, phpVersion string) string {
-	return filepath.Join(PHPVersionPath(silo, phpVersion), "dependency")
-}
-
-func VersionWrapperPath(silo *domain.Silo, phpVersion string) string {
-	return filepath.Join(PHPVersionPath(silo, phpVersion), "wrapper")
-}
-
-func VersionWrapperBinPath(silo *domain.Silo, phpVersion string) string {
-	return filepath.Join(VersionWrapperPath(silo, phpVersion), "bin")
-}
-
-func VersionWrapperLibPath(silo *domain.Silo, phpVersion string) string {
-	return filepath.Join(VersionWrapperPath(silo, phpVersion), "lib")
-}
-
-func VersionWrapperIncludePath(silo *domain.Silo, phpVersion string) string {
-	return filepath.Join(VersionWrapperPath(silo, phpVersion), "include")
-}
-
-func BuildToolsPath(silo *domain.Silo) string {
-	return filepath.Join(silo.Root, "build-tools")
-}
-
-func BuildToolPath(silo *domain.Silo, pkg, ver string) string {
-	return filepath.Join(BuildToolsPath(silo), pkg, ver)
-}
-
-func BuildToolBinPath(silo *domain.Silo, pkg, ver string) string {
-	return filepath.Join(BuildToolPath(silo, pkg, ver), "bin")
-}
-
+// GetSystemPkgConfigPaths returns standard system pkg-config search paths.
 func GetSystemPkgConfigPaths() []string {
 	var paths []string
 
@@ -148,14 +41,17 @@ func GetSystemPkgConfigPaths() []string {
 	return paths
 }
 
+// GetZigCompilerPath returns the path to the zig compiler binary.
 func GetZigCompilerPath(siloRoot, phpVersion string) string {
 	return filepath.Join(siloRoot, "build-tools", "zig", "0.13.0", "zig")
 }
 
+// GetOS returns the runtime OS.
 func GetOS() string {
 	return runtime.GOOS
 }
 
+// GetArch returns the normalized CPU architecture.
 func GetArch() string {
 	a := runtime.GOARCH
 	switch a {
@@ -167,6 +63,7 @@ func GetArch() string {
 	return a
 }
 
+// OSInfo holds detected operating system information.
 type OSInfo struct {
 	GOOS       string
 	Distro     string
@@ -174,6 +71,7 @@ type OSInfo struct {
 	InstallCmd string
 }
 
+// DetectOSInfo probes the OS and returns info about package manager and distro.
 func DetectOSInfo() OSInfo {
 	info := OSInfo{GOOS: runtime.GOOS}
 
@@ -239,14 +137,7 @@ func extractOSReleaseID(data string) string {
 	return "linux"
 }
 
-// GetConfig returns the global config singleton.
-// Kept for backwards compatibility - prefer using internal/config directly.
-func GetConfig() *config.Config {
-	return config.Get()
-}
-
 // GetZigTarget returns the zig target for the current platform.
-// Previously in arch.go.
 func GetZigTarget() string {
 	goarch := runtime.GOARCH
 	switch goarch {
@@ -266,7 +157,6 @@ func GetZigTarget() string {
 }
 
 // GetZigTargetForGlibc returns the zig target with a specific glibc version.
-// Previously in arch.go.
 func GetZigTargetForGlibc(glibcVersion string) string {
 	goarch := runtime.GOARCH
 	switch goarch {
@@ -284,8 +174,7 @@ func GetZigTargetForGlibc(glibcVersion string) string {
 	return goarch + "-linux-gnu." + glibcVersion
 }
 
-// GetOpenSSLConfigureTarget returns the OpenSSL configure target.
-// Previously in arch.go.
+// GetOpenSSLConfigureTarget returns the OpenSSL configure target string.
 func GetOpenSSLConfigureTarget() string {
 	goarch := runtime.GOARCH
 	switch goarch {
@@ -310,7 +199,6 @@ func GetOpenSSLConfigureTarget() string {
 }
 
 // GetConfigureHostTriple returns the configure --host triple.
-// Previously in arch.go.
 func GetConfigureHostTriple() string {
 	goarch := runtime.GOARCH
 	switch goarch {

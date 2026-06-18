@@ -148,6 +148,24 @@ var compilerFlagRuleCandidates = []CompilerFlagRule{
 	{
 		Compiler: "gcc",
 		MinPHP:   "5.0",
+		MaxPHP:   "7.3",
+		CFLAGDefs: []domain.CompilerFlagDef{
+			{Flag: "-std=gnu11", Purpose: "C11 standard"},
+			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
+			{Flag: "-DTRUE=1", Purpose: "define TRUE for PHP 7.x intl compat on GCC 15+"},
+			{Flag: "-DFALSE=0", Purpose: "define FALSE for PHP 7.x intl compat on GCC 15+"},
+			{Flag: "-fpermissive", Needs: ">=gcc15", Purpose: "downgrade pointer-cast errors to warnings"},
+			{Flag: "-Wno-cast-function-type", Needs: ">=gcc8", Purpose: "suppress function-type cast warnings"},
+			{Flag: "-Wno-error", Purpose: "never treat warnings as errors"},
+			{Flag: "-Wno-array-parameter", Needs: ">=gcc11", Purpose: "suppress array-parameter mismatch warnings"},
+			{Flag: "-Wno-deprecated-non-prototype", Needs: ">=gcc15", Purpose: "suppress C23 prototype warnings"},
+			{Flag: "-Wno-implicit-function-declaration", Needs: ">=gcc14", Purpose: "suppress C99 implicit-decl warnings"},
+			{Flag: "-Wno-incompatible-pointer-types", Needs: ">=gcc14", Purpose: "suppress incompatible-pointer warnings"},
+		},
+	},
+	{
+		Compiler: "gcc",
+		MinPHP:   "7.4",
 		MaxPHP:   "7.99",
 		CFLAGDefs: []domain.CompilerFlagDef{
 			{Flag: "-std=gnu11", Purpose: "C11 standard"},

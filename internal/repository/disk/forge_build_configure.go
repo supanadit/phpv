@@ -93,8 +93,8 @@ func (r *ForgeRepository) buildConfigureMake(sourcePath, prefix string, config d
 		r.touchAllGeneratedFiles(sourcePath)
 	}
 
-	ctx := utils.NewExecContext(config.Verbose)
-	jobs := utils.GetJobs(config.Jobs)
+	ctx := NewExecContext(config.Verbose)
+	jobs := Jobs(config.Jobs)
 
 	if config.Name == "m4" {
 		if _, err := os.Stat(configurePath); os.IsNotExist(err) {

@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/spf13/afero"
+	silopkg "github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/utils"
 )
 
 func TestBundlerRepository_FreshClean_CleansDependencySources(t *testing.T) {
@@ -16,12 +16,12 @@ func TestBundlerRepository_FreshClean_CleansDependencySources(t *testing.T) {
 
 	exactVersion := "8.0.30"
 
-	versionPath := utils.PHPVersionPath(silo, exactVersion)
-	phpSourcePath := utils.GetSourcePath(silo, "php", exactVersion)
-	opensslSourcePath := utils.GetSourcePath(silo, "openssl", "1.1.1w")
-	opensslSourceDirPath := utils.GetSourceDirPath(silo, "openssl", "1.1.1w")
-	zlibSourcePath := utils.GetSourcePath(silo, "zlib", "1.3.1")
-	zlibSourceDirPath := utils.GetSourceDirPath(silo, "zlib", "1.3.1")
+	versionPath := silopkg.PHPVersionPath(silo, exactVersion)
+	phpSourcePath := silopkg.SourcePkgPath(silo, "php", exactVersion)
+	opensslSourcePath := silopkg.SourcePkgPath(silo, "openssl", "1.1.1w")
+	opensslSourceDirPath := silopkg.SourceDirPkgPath(silo, "openssl", "1.1.1w")
+	zlibSourcePath := silopkg.SourcePkgPath(silo, "zlib", "1.3.1")
+	zlibSourceDirPath := silopkg.SourceDirPkgPath(silo, "zlib", "1.3.1")
 
 	if err := fs.MkdirAll(versionPath, 0755); err != nil {
 		t.Fatalf("failed to create version path: %v", err)
@@ -85,8 +85,8 @@ func TestBundlerRepository_FreshClean(t *testing.T) {
 
 	exactVersion := "8.0.30"
 
-	versionPath := utils.PHPVersionPath(silo, exactVersion)
-	sourcePath := utils.GetSourcePath(silo, "php", exactVersion)
+	versionPath := silopkg.PHPVersionPath(silo, exactVersion)
+	sourcePath := silopkg.SourcePkgPath(silo, "php", exactVersion)
 
 	if err := fs.MkdirAll(versionPath, 0755); err != nil {
 		t.Fatalf("failed to create version path: %v", err)
@@ -102,7 +102,7 @@ func TestBundlerRepository_FreshClean(t *testing.T) {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	cachePath := utils.GetArchivePath(silo, "php", exactVersion)
+	cachePath := silopkg.ArchivePkgPath(silo, "php", exactVersion)
 	if err := fs.MkdirAll(filepath.Dir(cachePath), 0755); err != nil {
 		t.Fatalf("failed to create cache dir: %v", err)
 	}
@@ -155,8 +155,8 @@ func TestBundlerRepository_FreshClean_OnlyRemovesPHPVersion(t *testing.T) {
 	exactVersion := "8.0.30"
 	otherVersion := "8.1.33"
 
-	versionPath8 := utils.PHPVersionPath(silo, exactVersion)
-	versionPath81 := utils.PHPVersionPath(silo, otherVersion)
+	versionPath8 := silopkg.PHPVersionPath(silo, exactVersion)
+	versionPath81 := silopkg.PHPVersionPath(silo, otherVersion)
 
 	if err := fs.MkdirAll(versionPath8, 0755); err != nil {
 		t.Fatalf("failed to create version path 8.0: %v", err)
@@ -190,7 +190,7 @@ func TestBundlerRepository_FreshClean_PreservesCache(t *testing.T) {
 
 	exactVersion := "8.0.30"
 
-	cachePath := utils.GetArchivePath(silo, "php", exactVersion)
+	cachePath := silopkg.ArchivePkgPath(silo, "php", exactVersion)
 	cacheDir := filepath.Dir(cachePath)
 	if err := fs.MkdirAll(cacheDir, 0755); err != nil {
 		t.Fatalf("failed to create cache dir: %v", err)
@@ -228,8 +228,8 @@ func TestBundlerRepository_FreshClean_PreservesOtherSources(t *testing.T) {
 
 	exactVersion := "8.0.30"
 
-	phpSourcePath := utils.GetSourcePath(silo, "php", exactVersion)
-	libxml2SourcePath := utils.GetSourcePath(silo, "libxml2", "2.9.14")
+	phpSourcePath := silopkg.SourcePkgPath(silo, "php", exactVersion)
+	libxml2SourcePath := silopkg.SourcePkgPath(silo, "libxml2", "2.9.14")
 
 	if err := fs.MkdirAll(phpSourcePath, 0755); err != nil {
 		t.Fatalf("failed to create php source path: %v", err)
@@ -263,9 +263,9 @@ func TestBundlerRepository_FreshClean_PreservesBuildTools(t *testing.T) {
 
 	exactVersion := "8.0.30"
 
-	versionPath := utils.PHPVersionPath(silo, exactVersion)
-	buildToolsPath := utils.BuildToolsPath(silo)
-	buildToolPath := utils.BuildToolPath(silo, "m4", "1.4.19")
+	versionPath := silopkg.PHPVersionPath(silo, exactVersion)
+	buildToolsPath := silopkg.BuildToolsPath(silo)
+	buildToolPath := silopkg.BuildToolPath(silo, "m4", "1.4.19")
 
 	if err := fs.MkdirAll(versionPath, 0755); err != nil {
 		t.Fatalf("failed to create version path: %v", err)

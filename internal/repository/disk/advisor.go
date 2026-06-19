@@ -12,7 +12,6 @@ import (
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/extension"
-	"github.com/supanadit/phpv/internal/config"
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/pattern"
@@ -187,9 +186,8 @@ var (
 	icuMaxCompatMajor = 74 // max ICU major version compatible with PHP <8.2
 )
 
-func NewAdvisorRepository(asm assembler.AssemblerRepository, extRepo extension.Repository) advisor.AdvisorRepository {
+func NewAdvisorRepository(root string, asm assembler.AssemblerRepository, extRepo extension.Repository) advisor.AdvisorRepository {
 	fs := afero.NewOsFs()
-	root := config.Get().RootDir()
 	registry := pattern.NewService()
 	registry.RegisterPatterns(memory.DefaultPatterns)
 	return &AdvisorRepository{

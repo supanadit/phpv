@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/utils"
+	silopkg "github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/shim"
 )
 
@@ -66,7 +66,7 @@ func (h *TerminalHandler) pharInstallOrUpdate(name string, version string, isUpd
 		exactVersion = mapped
 	}
 
-	pharDir := utils.VersionPharPath(silo, activePHP)
+	pharDir := silopkg.VersionPharPath(silo, activePHP)
 
 	switch pharName {
 	case "composer":
@@ -163,7 +163,7 @@ func (h *TerminalHandler) PharRemove(name string) error {
 		return fmt.Errorf("no active PHP version. Run 'phpv use <version>' first")
 	}
 
-	pharDir := utils.VersionPharPath(silo, activePHP)
+	pharDir := silopkg.VersionPharPath(silo, activePHP)
 	var destPath string
 	switch pharName {
 	case "composer":
@@ -196,7 +196,7 @@ func (h *TerminalHandler) PharList() ([]string, error) {
 		return nil, fmt.Errorf("no active PHP version. Run 'phpv use <version>' first")
 	}
 
-	pharDir := utils.VersionPharPath(silo, activePHP)
+	pharDir := silopkg.VersionPharPath(silo, activePHP)
 	entries, err := os.ReadDir(pharDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -228,7 +228,7 @@ func (h *TerminalHandler) PharWhich(name string) (string, error) {
 	if activePHP == "" {
 		return "", fmt.Errorf("no active PHP version")
 	}
-	return filepath.Join(utils.VersionPharPath(silo, activePHP), pharName+".phar"), nil
+	return filepath.Join(silopkg.VersionPharPath(silo, activePHP), pharName+".phar"), nil
 }
 
 // detectActivePHPVersion returns the currently active PHP version by checking
@@ -259,7 +259,7 @@ func (h *TerminalHandler) detectActivePHPVersion(silo *domain.Silo) string {
 
 func (h *TerminalHandler) regeneratePharShims(silo *domain.Silo) error {
 	return shim.WriteShims(shim.ShimConfig{
-		BinPath: utils.BinPath(silo),
+		BinPath: silopkg.BinPath(silo),
 	})
 }
 

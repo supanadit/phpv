@@ -6,28 +6,28 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/afero"
-	"github.com/supanadit/phpv/internal/utils"
+	"github.com/supanadit/phpv/silo"
 )
 
 func (r *SiloRepository) getSourceFilePath(pkg, ver string) string {
-	return filepath.Join(utils.GetSourcePath(r.silo, pkg, ver), "source.tar.gz")
+	return filepath.Join(silo.SourcePkgPath(r.silo, pkg, ver), "source.tar.gz")
 }
 
 func (r *SiloRepository) getVersionFilePath(pkg, ver string) string {
-	return filepath.Join(utils.GetVersionPath(r.silo, pkg, ver), "version.tar.gz")
+	return filepath.Join(silo.VersionPkgPath(r.silo, pkg, ver), "version.tar.gz")
 }
 
 func (r *SiloRepository) ArchiveExists(pkg, ver string) bool {
 	if err := r.validateInput(pkg, ver); err != nil {
 		return false
 	}
-	path := utils.GetArchivePath(r.silo, pkg, ver)
+	path := silo.ArchivePkgPath(r.silo, pkg, ver)
 	exists, _ := afero.Exists(r.fs, path)
 	return exists
 }
 
 func (r *SiloRepository) GetArchivePath(pkg, ver string) string {
-	return utils.GetArchivePath(r.silo, pkg, ver)
+	return silo.ArchivePkgPath(r.silo, pkg, ver)
 }
 
 func (r *SiloRepository) StoreArchive(pkg, ver string, data io.Reader) error {
@@ -35,7 +35,7 @@ func (r *SiloRepository) StoreArchive(pkg, ver string, data io.Reader) error {
 		return err
 	}
 
-	path := utils.GetArchivePath(r.silo, pkg, ver)
+	path := silo.ArchivePkgPath(r.silo, pkg, ver)
 	dir := filepath.Dir(path)
 
 	if err := r.fs.MkdirAll(dir, 0o755); err != nil {
@@ -60,7 +60,7 @@ func (r *SiloRepository) RetrieveArchive(pkg, ver string) (io.ReadCloser, error)
 		return nil, err
 	}
 
-	path := utils.GetArchivePath(r.silo, pkg, ver)
+	path := silo.ArchivePkgPath(r.silo, pkg, ver)
 	if exists, _ := afero.Exists(r.fs, path); !exists {
 		return nil, fmt.Errorf("archive not found: %w", ErrNotFound)
 	}
@@ -73,7 +73,7 @@ func (r *SiloRepository) RemoveArchive(pkg, ver string) error {
 		return err
 	}
 
-	path := utils.GetArchivePath(r.silo, pkg, ver)
+	path := silo.ArchivePkgPath(r.silo, pkg, ver)
 	if exists, _ := afero.Exists(r.fs, path); !exists {
 		return nil
 	}
@@ -82,5 +82,5 @@ func (r *SiloRepository) RemoveArchive(pkg, ver string) error {
 }
 
 func (r *SiloRepository) ListArchives() []string {
-	return r.listItems(utils.CachePath(r.silo))
+	return r.listItems(silo.CachePath(r.silo))
 }

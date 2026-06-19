@@ -8,15 +8,15 @@ import (
 
 	"github.com/spf13/afero"
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/utils"
+	"github.com/supanadit/phpv/silo"
 )
 
 func (r *SiloRepository) getStateFilePath(phpVersion string) string {
-	return filepath.Join(utils.PHPVersionPath(r.silo, phpVersion), ".state")
+	return filepath.Join(silo.PHPVersionPath(r.silo, phpVersion), ".state")
 }
 
 func (r *SiloRepository) MarkInProgress(phpVersion string) error {
-	versionPath := utils.PHPVersionPath(r.silo, phpVersion)
+	versionPath := silo.PHPVersionPath(r.silo, phpVersion)
 	if err := r.fs.MkdirAll(versionPath, 0o755); err != nil {
 		return fmt.Errorf("failed to create version directory: %w", err)
 	}
@@ -79,11 +79,11 @@ func (r *SiloRepository) GetState(phpVersion string) (domain.InstallState, error
 }
 
 func (r *SiloRepository) Rollback(phpVersion string) error {
-	versionPath := utils.PHPVersionPath(r.silo, phpVersion)
-
-	if exists, _ := afero.Exists(r.fs, versionPath); exists {
-		if err := r.fs.RemoveAll(versionPath); err != nil {
-			return fmt.Errorf("failed to remove version directory: %w", err)
+	// Only remove PHP build output — preserve successfully built dependencies
+	outputPath := silo.PHPOutputPath(r.silo, phpVersion)
+	if exists, _ := afero.Exists(r.fs, outputPath); exists {
+		if err := r.fs.RemoveAll(outputPath); err != nil {
+			return fmt.Errorf("failed to remove output directory: %w", err)
 		}
 	}
 

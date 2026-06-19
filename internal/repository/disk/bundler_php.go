@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spf13/afero"
+	"github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/flagresolver"
 	"github.com/supanadit/phpv/internal/utils"
@@ -20,7 +21,7 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 		return err
 	}
 
-	outputPath := utils.PHPOutputPath(s.silo, version)
+	outputPath := silo.PHPOutputPath(s.silo, version)
 	phpBinary := filepath.Join(outputPath, "bin", "php")
 
 	var archive string
@@ -40,10 +41,14 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 		fallthrough
 
 	case "download":
+		sourceType := check.SourceType
+		if sourceType == "" {
+			sourceType = domain.SourceTypeSource
+		}
 		if !forceRebuild {
-			pat, err := s.patternSvc.MatchPatternByType(name, check.SourceType, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
+			pat, err := s.patternSvc.MatchPatternByType(name, sourceType, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
 			if err != nil {
-				if check.SourceType == domain.SourceTypeBinary && name == "php" {
+				if sourceType == domain.SourceTypeBinary && name == "php" {
 					pat, err = s.patternSvc.MatchPatternByType(name, domain.SourceTypeSource, utils.GetOS(), utils.GetArch(), utils.ParseVersion(version))
 				}
 				if err != nil {
@@ -76,7 +81,7 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 				}
 			}
 
-			sourceDir := utils.GetSourceDirPath(s.silo, name, version)
+			sourceDir := silo.SourceDirPkgPath(s.silo, name, version)
 			if err := os.MkdirAll(sourceDir, 0o755); err != nil {
 				return fmt.Errorf("failed to create source directory: %w", err)
 			}
@@ -104,12 +109,12 @@ func (s *bundlerRepository) buildPHP(name, version string, extensions []string, 
 			}
 		}
 
-		installDir := utils.PHPOutputPath(s.silo, version)
+		installDir := silo.PHPOutputPath(s.silo, version)
 		if err := os.MkdirAll(installDir, 0o755); err != nil {
 			return fmt.Errorf("failed to create install directory: %w", err)
 		}
 
-		sourceDir := utils.GetSourceDirPath(s.silo, name, version)
+		sourceDir := silo.SourceDirPkgPath(s.silo, name, version)
 		s.patchIntlConfigM4(sourceDir)
 		s.patchScanfFunctionCasts(sourceDir, version)
 

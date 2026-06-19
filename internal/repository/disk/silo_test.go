@@ -7,12 +7,11 @@ import (
 	"testing"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/config"
-	"github.com/supanadit/phpv/internal/utils"
+	silopkg "github.com/supanadit/phpv/silo"
 )
 
 func TestSiloRepository_GetSilo(t *testing.T) {
-	repo, err := NewSiloRepository()
+	repo, err := NewSiloRepository("/tmp/.phpv")
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
@@ -33,10 +32,8 @@ func TestSiloRepository_GetSilo(t *testing.T) {
 
 func TestSiloRepository_EnsurePaths(t *testing.T) {
 	tmpDir := t.TempDir()
-	config.SetForTesting(tmpDir)
-	defer config.ResetForTesting()
 
-	repo, err := NewSiloRepository()
+	repo, err := NewSiloRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
@@ -62,10 +59,8 @@ func TestSiloRepository_EnsurePaths(t *testing.T) {
 
 func TestSiloRepository_ArchiveOperations(t *testing.T) {
 	tmpDir := t.TempDir()
-	config.SetForTesting(tmpDir)
-	defer config.ResetForTesting()
 
-	repo, err := NewSiloRepository()
+	repo, err := NewSiloRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
@@ -120,10 +115,8 @@ func TestSiloRepository_ArchiveOperations(t *testing.T) {
 
 func TestSiloRepository_SourceOperations(t *testing.T) {
 	tmpDir := t.TempDir()
-	config.SetForTesting(tmpDir)
-	defer config.ResetForTesting()
 
-	repo, err := NewSiloRepository()
+	repo, err := NewSiloRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
@@ -178,10 +171,8 @@ func TestSiloRepository_SourceOperations(t *testing.T) {
 
 func TestSiloRepository_VersionOperations(t *testing.T) {
 	tmpDir := t.TempDir()
-	config.SetForTesting(tmpDir)
-	defer config.ResetForTesting()
 
-	repo, err := NewSiloRepository()
+	repo, err := NewSiloRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
@@ -236,10 +227,8 @@ func TestSiloRepository_VersionOperations(t *testing.T) {
 
 func TestSiloRepository_FullClean(t *testing.T) {
 	tmpDir := t.TempDir()
-	config.SetForTesting(tmpDir)
-	defer config.ResetForTesting()
 
-	repo, err := NewSiloRepository()
+	repo, err := NewSiloRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
@@ -278,10 +267,8 @@ func TestSiloRepository_FullClean(t *testing.T) {
 
 func TestSiloRepository_CleanAll(t *testing.T) {
 	tmpDir := t.TempDir()
-	config.SetForTesting(tmpDir)
-	defer config.ResetForTesting()
 
-	repo, err := NewSiloRepository()
+	repo, err := NewSiloRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
@@ -317,10 +304,8 @@ func TestSiloRepository_CleanAll(t *testing.T) {
 
 func TestSiloRepository_ValidateInput(t *testing.T) {
 	tmpDir := t.TempDir()
-	config.SetForTesting(tmpDir)
-	defer config.ResetForTesting()
 
-	repo, err := NewSiloRepository()
+	repo, err := NewSiloRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
@@ -350,10 +335,8 @@ func TestSiloRepository_ValidateInput(t *testing.T) {
 
 func TestSiloRepository_ListArchives(t *testing.T) {
 	tmpDir := t.TempDir()
-	config.SetForTesting(tmpDir)
-	defer config.ResetForTesting()
 
-	repo, err := NewSiloRepository()
+	repo, err := NewSiloRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
@@ -380,10 +363,8 @@ func TestSiloRepository_ListArchives(t *testing.T) {
 
 func TestSiloRepository_ListSources(t *testing.T) {
 	tmpDir := t.TempDir()
-	config.SetForTesting(tmpDir)
-	defer config.ResetForTesting()
 
-	repo, err := NewSiloRepository()
+	repo, err := NewSiloRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
@@ -406,10 +387,8 @@ func TestSiloRepository_ListSources(t *testing.T) {
 
 func TestSiloRepository_ListVersions(t *testing.T) {
 	tmpDir := t.TempDir()
-	config.SetForTesting(tmpDir)
-	defer config.ResetForTesting()
 
-	repo, err := NewSiloRepository()
+	repo, err := NewSiloRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
@@ -445,26 +424,26 @@ func TestSiloRepository_ListVersions(t *testing.T) {
 }
 
 func TestDomain_SiloPathMethods(t *testing.T) {
-	silo := domain.Silo{Root: "/home/user/.phpv"}
+	s := domain.Silo{Root: "/home/user/.phpv"}
 
 	tests := []struct {
 		name     string
 		got      string
 		expected string
 	}{
-		{"RootPath", utils.RootPath(&silo), "/home/user/.phpv"},
-		{"CachePath", utils.CachePath(&silo), "/home/user/.phpv/cache"},
-		{"SourcePath", utils.SourcePath(&silo), "/home/user/.phpv/sources"},
-		{"VersionPath", utils.VersionPath(&silo), "/home/user/.phpv/versions"},
-		{"BinPath", utils.BinPath(&silo), "/home/user/.phpv/bin"},
-		{"ArchiveKey", utils.ArchiveKey("php", "8.3.0"), "cache/php/8.3.0/archive"},
-		{"SourceKey", utils.SourceKey("php", "8.3.0"), "sources/php/8.3.0"},
-		{"VersionKey", utils.VersionKey("php", "8.3.0"), "versions/php/8.3.0"},
-		{"SourceDirKey", utils.SourceDirKey("php", "8.3.0"), "sources/php/8.3.0/src"},
-		{"GetArchivePath", utils.GetArchivePath(&silo, "php", "8.3.0"), "/home/user/.phpv/cache/php/8.3.0/archive"},
-		{"GetSourcePath", utils.GetSourcePath(&silo, "php", "8.3.0"), "/home/user/.phpv/sources/php/8.3.0"},
-		{"GetVersionPath", utils.GetVersionPath(&silo, "php", "8.3.0"), "/home/user/.phpv/versions/php/8.3.0"},
-		{"GetSourceDirPath", utils.GetSourceDirPath(&silo, "php", "8.3.0"), "/home/user/.phpv/sources/php/8.3.0/src"},
+		{"RootPath", silopkg.RootPath(&s), "/home/user/.phpv"},
+		{"CachePath", silopkg.CachePath(&s), "/home/user/.phpv/cache"},
+		{"SourcePath", silopkg.SourcePath(&s), "/home/user/.phpv/sources"},
+		{"VersionPath", silopkg.VersionPath(&s), "/home/user/.phpv/versions"},
+		{"BinPath", silopkg.BinPath(&s), "/home/user/.phpv/bin"},
+		{"ArchiveKey", silopkg.ArchiveKey("php", "8.3.0"), "cache/php/8.3.0/archive"},
+		{"SourceKey", silopkg.SourceKey("php", "8.3.0"), "sources/php/8.3.0"},
+		{"VersionKey", silopkg.VersionKey("php", "8.3.0"), "versions/php/8.3.0"},
+		{"SourceDirKey", silopkg.SourceDirKey("php", "8.3.0"), "sources/php/8.3.0/src"},
+		{"ArchivePkgPath", silopkg.ArchivePkgPath(&s, "php", "8.3.0"), "/home/user/.phpv/cache/php/8.3.0/archive"},
+		{"SourcePkgPath", silopkg.SourcePkgPath(&s, "php", "8.3.0"), "/home/user/.phpv/sources/php/8.3.0"},
+		{"VersionPkgPath", silopkg.VersionPkgPath(&s, "php", "8.3.0"), "/home/user/.phpv/versions/php/8.3.0"},
+		{"SourceDirPkgPath", silopkg.SourceDirPkgPath(&s, "php", "8.3.0"), "/home/user/.phpv/sources/php/8.3.0/src"},
 	}
 
 	for _, tt := range tests {

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/afero"
+	"github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/advisor"
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/bundler"
@@ -99,7 +100,7 @@ func (s *bundlerRepository) Rebuild(version string, compiler string, extensions 
 		return domain.Forge{}, fmt.Errorf("[bundler] failed to resolve PHP version %q: %w", version, err)
 	}
 
-	outputPath := utils.PHPOutputPath(s.silo, exactVersion)
+	outputPath := silo.PHPOutputPath(s.silo, exactVersion)
 	phpBinary := filepath.Join(outputPath, "bin", "php")
 	if exists, _ := afero.Exists(s.fs, phpBinary); !exists {
 		return domain.Forge{}, fmt.Errorf("[bundler] PHP %s is not installed. Use 'phpv install %s' first", exactVersion, version)
@@ -145,7 +146,7 @@ func (s *bundlerRepository) Rebuild(version string, compiler string, extensions 
 		return domain.Forge{}, fmt.Errorf("[bundler] failed to rebuild PHP: %w", err)
 	}
 
-	outputPath = utils.PHPOutputPath(s.silo, exactVersion)
+	outputPath = silo.PHPOutputPath(s.silo, exactVersion)
 	depLibraryPaths = append(depLibraryPaths, filepath.Join(outputPath, "lib"))
 
 	return domain.Forge{
@@ -178,7 +179,7 @@ func (s *bundlerRepository) buildMissingDeps(levels [][]domain.Dependency, exact
 
 			if depInfo != nil && !utils.BuildTools[dep.Name] {
 				// Only add paths for source-built deps not already collected
-				depPath := utils.DependencyPath(s.silo, exactVersion, dep.Name, depVersion)
+				depPath := silo.DependencyPath(s.silo, exactVersion, dep.Name, depVersion)
 				cppFlags = appendUnique(cppFlags, fmt.Sprintf("-I%s/include", depPath))
 				ldFlags = appendUnique(ldFlags, fmt.Sprintf("-L%s/lib", depPath))
 				ldFlags = appendUnique(ldFlags, fmt.Sprintf("-Wl,-rpath,%s/lib", depPath))
@@ -264,7 +265,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 
 			completed[dep.Name+"@"+depVersion] = true
 			if !utils.BuildTools[dep.Name] && depInfo.BuiltFromSource {
-				depPath := utils.DependencyPath(s.silo, exactVersion, dep.Name, depVersion)
+				depPath := silo.DependencyPath(s.silo, exactVersion, dep.Name, depVersion)
 				depLibraryPaths = append(depLibraryPaths, filepath.Join(depPath, "lib"))
 				depCppFlags = append(depCppFlags, fmt.Sprintf("-I%s/include", depPath))
 				depLdFlags = append(depLdFlags, fmt.Sprintf("-L%s/lib", depPath))
@@ -340,7 +341,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 	}
 
 	if !utils.BuildTools["openssl"] {
-		depPath := utils.DependencyPath(s.silo, exactVersion, "openssl", "")
+		depPath := silo.DependencyPath(s.silo, exactVersion, "openssl", "")
 		if entries, err := os.ReadDir(depPath); err == nil && len(entries) > 0 {
 			entry := entries[len(entries)-1]
 			opensslPath := filepath.Join(depPath, entry.Name())
@@ -367,7 +368,7 @@ func (s *bundlerRepository) Orchestrate(name, exactVersion string, forceCompiler
 		s.logWarn("Warning: failed to mark installation complete: %v", err)
 	}
 
-	outputPath := utils.PHPOutputPath(s.silo, exactVersion)
+	outputPath := silo.PHPOutputPath(s.silo, exactVersion)
 	depLibraryPaths = append(depLibraryPaths, filepath.Join(outputPath, "lib"))
 
 	return domain.Forge{
@@ -453,8 +454,8 @@ func (s *bundlerRepository) expandImpliedExtensions(extensions []string) []strin
 
 func (s *bundlerRepository) freshClean(name, exactVersion string, levels [][]domain.Dependency) error {
 	pathsToClean := []string{
-		utils.PHPVersionPath(s.silo, exactVersion),
-		utils.GetSourcePath(s.silo, name, exactVersion),
+		silo.PHPVersionPath(s.silo, exactVersion),
+		silo.SourcePkgPath(s.silo, name, exactVersion),
 	}
 
 	for _, level := range levels {
@@ -463,8 +464,8 @@ func (s *bundlerRepository) freshClean(name, exactVersion string, levels [][]dom
 			if idx := strings.Index(dep.Version, "|"); idx != -1 {
 				depVersion = dep.Version[:idx]
 			}
-			sourcePath := utils.GetSourcePath(s.silo, dep.Name, depVersion)
-			sourceDirPath := utils.GetSourceDirPath(s.silo, dep.Name, depVersion)
+			sourcePath := silo.SourcePkgPath(s.silo, dep.Name, depVersion)
+			sourceDirPath := silo.SourceDirPkgPath(s.silo, dep.Name, depVersion)
 			pathsToClean = append(pathsToClean, sourcePath, sourceDirPath)
 		}
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/utils"
 	"github.com/supanadit/phpv/shim"
+	silopkg "github.com/supanadit/phpv/silo"
 )
 
 func (h *TerminalHandler) Install(version string, compiler string, extensions []string, verbose bool, fresh bool) (domain.Forge, error) {
@@ -33,13 +34,13 @@ func (h *TerminalHandler) Use(constraint string) (*UseResult, error) {
 
 	_ = shim.RemoveSystemMarker(silo.Root)
 
-	outputPath := utils.PHPOutputPath(silo, exactVersion)
+	outputPath := silopkg.PHPOutputPath(silo, exactVersion)
 	phpBinary := filepath.Join(outputPath, "bin", "php")
 	if _, err := os.Stat(phpBinary); os.IsNotExist(err) {
 		return nil, fmt.Errorf("PHP %s is not properly installed (binary not found: %s)", exactVersion, phpBinary)
 	}
 
-	shimPath := utils.BinPath(silo)
+	shimPath := silopkg.BinPath(silo)
 
 	if err := shim.WriteShims(shim.ShimConfig{
 		BinPath: shimPath,
@@ -69,7 +70,7 @@ func (h *TerminalHandler) UseSystem() (*UseResult, error) {
 		return nil, err
 	}
 
-	shimPath := utils.BinPath(silo)
+	shimPath := silopkg.BinPath(silo)
 
 	if err := shim.WriteShims(shim.ShimConfig{
 		BinPath: shimPath,
@@ -103,7 +104,7 @@ func (h *TerminalHandler) AutoDetect() (string, error) {
 		return "", fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	version, err := utils.ParseComposerJSON(cwd)
+	version, err := parseComposerJSON(cwd)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse composer.json: %w", err)
 	}
@@ -142,11 +143,11 @@ func (h *TerminalHandler) resolveActivePHP() (string, error) {
 		return "", fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	if _, version, err := utils.FindPhpvrcFromPath(cwd); err == nil && version != "" {
+	if _, version, err := findPhpvrcFromPath(cwd); err == nil && version != "" {
 		return h.resolveInstalledVersion(version)
 	}
 
-	if _, version, err := utils.FindComposerJSONFromPath(cwd); err == nil && version != "" {
+	if _, version, err := findComposerJSONFromPath(cwd); err == nil && version != "" {
 		return h.resolveInstalledVersion(version)
 	}
 
@@ -330,7 +331,7 @@ func (h *TerminalHandler) Upgrade(constraint string) (*UpgradeResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get silo: %w", err)
 	}
-	outputPath := utils.PHPOutputPath(silo, latestMatch)
+	outputPath := silopkg.PHPOutputPath(silo, latestMatch)
 
 	return &UpgradeResult{
 		FromVersion: currentVersion,

@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/utils"
 )
 
 func (r *ForgeRepository) buildCMake(sourcePath, prefix string, config domain.ForgeConfig, env []string) (domain.Forge, error) {
@@ -15,8 +14,8 @@ func (r *ForgeRepository) buildCMake(sourcePath, prefix string, config domain.Fo
 		return domain.Forge{}, fmt.Errorf("failed to create build directory: %w", err)
 	}
 
-	ctx := utils.NewExecContext(config.Verbose)
-	jobs := utils.GetJobs(config.Jobs)
+	ctx := NewExecContext(config.Verbose)
+	jobs := Jobs(config.Jobs)
 
 	cmakeArgs := []string{
 		"-DCMAKE_INSTALL_PREFIX=" + prefix,

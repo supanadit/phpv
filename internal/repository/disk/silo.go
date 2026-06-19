@@ -6,9 +6,8 @@ import (
 	"sync"
 
 	"github.com/spf13/afero"
+	"github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/config"
-	"github.com/supanadit/phpv/internal/utils"
 )
 
 var (
@@ -23,11 +22,10 @@ type SiloRepository struct {
 	buildToolsMutex sync.Mutex
 }
 
-func NewSiloRepository() (*SiloRepository, error) {
-	cfg := config.Get()
+func NewSiloRepository(root string) (*SiloRepository, error) {
 	return &SiloRepository{
 		fs:   afero.NewOsFs(),
-		silo: &domain.Silo{Root: cfg.RootDir()},
+		silo: &domain.Silo{Root: root},
 	}, nil
 }
 
@@ -37,11 +35,11 @@ func (r *SiloRepository) GetSilo() (*domain.Silo, error) {
 
 func (r *SiloRepository) EnsurePaths() error {
 	paths := []string{
-		utils.CachePath(r.silo),
-		utils.SourcePath(r.silo),
-		utils.VersionPath(r.silo),
-		utils.BinPath(r.silo),
-		utils.PharPath(r.silo),
+		silo.CachePath(r.silo),
+		silo.SourcePath(r.silo),
+		silo.VersionPath(r.silo),
+		silo.BinPath(r.silo),
+		silo.PharPath(r.silo),
 	}
 
 	for _, path := range paths {

@@ -13,10 +13,10 @@ func NewRegistryRepository() *RegistryRepository {
 	return &RegistryRepository{}
 }
 
-func (reg *RegistryRepository) List(name string) (result []domain.Registry, err error) {
+func (reg *RegistryRepository) List(name string, checksum bool) (result []domain.Registry, err error) {
 	switch name {
 	case "php":
-		return repository.BuildRegistries(repository.PackageConfig{
+		result = repository.BuildRegistries(repository.PackageConfig{
 			Name:   "php",
 			Source: "official",
 			Ranges: repository.BuildRanges(
@@ -26,6 +26,7 @@ func (reg *RegistryRepository) List(name string) (result []domain.Registry, err 
 					{Minor: 2, PatchEnd: 29},
 					{Minor: 3, PatchEnd: 27},
 					{Minor: 4, PatchEnd: 19},
+					{Minor: 5, PatchEnd: 8},
 				}),
 				repository.BuildMinorRanges(7, []repository.MinorRange{
 					{Minor: 0, PatchEnd: 33},
@@ -52,10 +53,17 @@ func (reg *RegistryRepository) List(name string) (result []domain.Registry, err 
 				}),
 			),
 			URLTemplate: "https://www.php.net/distributions/php-{version}.tar.gz",
-		}), nil
+			Checksums: []repository.Checksum{
+				{
+					Version: "8.5.8",
+					Type:    "sha256",
+					Value:   "6ebc55e52af4396385e689f7af0f28944fbbf966843433b573e9dc1dc03df539",
+				},
+			},
+		})
 
 	case "cmake":
-		return repository.BuildRegistries(repository.PackageConfig{
+		result = repository.BuildRegistries(repository.PackageConfig{
 			Name:   "cmake",
 			Source: "binary",
 			Ranges: repository.BuildRanges(
@@ -70,10 +78,10 @@ func (reg *RegistryRepository) List(name string) (result []domain.Registry, err 
 				}),
 			),
 			URLTemplate: "https://github.com/Kitware/CMake/releases/download/v{version}/cmake-{version}-linux-x86_64.tar.gz",
-		}), nil
+		})
 
 	case "perl":
-		return repository.BuildRegistries(repository.PackageConfig{
+		result = repository.BuildRegistries(repository.PackageConfig{
 			Name:   "perl",
 			Source: "source",
 			Versions: []string{
@@ -90,9 +98,21 @@ func (reg *RegistryRepository) List(name string) (result []domain.Registry, err 
 					{Before: "5.20.0", Ext: "tar.bz2"},
 				},
 			},
-		}), nil
+		})
 
 	default:
 		return nil, fmt.Errorf("unknown package: %s", name)
 	}
+
+	if checksum {
+		filtered := make([]domain.Registry, 0, len(result))
+		for _, r := range result {
+			if r.ChecksumType != "" {
+				filtered = append(filtered, r)
+			}
+		}
+		result = filtered
+	}
+
+	return result, err
 }

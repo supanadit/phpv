@@ -13,6 +13,13 @@ type ExtOverride struct {
 	Ext    string
 }
 
+// Checksum binds a specific version to its checksum algorithm and value.
+type Checksum struct {
+	Version string
+	Type    string
+	Value   string
+}
+
 // ExtensionConfig defines the default extension and optional overrides.
 // Overrides are evaluated in order — first match wins. If no override matches,
 // Default is used.
@@ -46,6 +53,7 @@ type PackageConfig struct {
 	Skip        []string
 	URLTemplate string
 	Extension   ExtensionConfig
+	Checksums   []Checksum
 }
 
 // BuildRegistries generates domain.Registry entries from a PackageConfig.
@@ -61,6 +69,11 @@ func BuildRegistries(cfg PackageConfig) []domain.Registry {
 		versions = cfg.Versions
 	}
 
+	checksumMap := make(map[string]Checksum, len(cfg.Checksums))
+	for _, c := range cfg.Checksums {
+		checksumMap[c.Version] = c
+	}
+
 	registries := make([]domain.Registry, 0, len(versions))
 	for _, v := range versions {
 		url := RenderTemplate(cfg.URLTemplate, v)
@@ -68,12 +81,18 @@ func BuildRegistries(cfg PackageConfig) []domain.Registry {
 			ext := resolveExtension(cfg.Extension, v)
 			url = strings.ReplaceAll(url, "{ext}", ext)
 		}
-		registries = append(registries, domain.Registry{
+
+		entry := domain.Registry{
 			Name:    cfg.Name,
 			Source:  cfg.Source,
 			URL:     url,
 			Version: v,
-		})
+		}
+		if c, ok := checksumMap[v]; ok {
+			entry.ChecksumType = c.Type
+			entry.ChecksumValue = c.Value
+		}
+		registries = append(registries, entry)
 	}
 	return registries
 }

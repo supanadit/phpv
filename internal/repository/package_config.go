@@ -47,7 +47,7 @@ type ExtensionConfig struct {
 //   - {ext}     — replaced by evaluating Extension rules
 type PackageConfig struct {
 	Name        string
-	Source      string
+	Type        string
 	Ranges      []VersionRange
 	Versions    []string
 	Skip        []string
@@ -84,7 +84,7 @@ func BuildRegistries(cfg PackageConfig) []domain.Registry {
 
 		entry := domain.Registry{
 			Name:    cfg.Name,
-			Source:  cfg.Source,
+			Type:    cfg.Type,
 			URL:     url,
 			Version: v,
 		}

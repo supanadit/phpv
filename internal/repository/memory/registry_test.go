@@ -21,8 +21,8 @@ func TestRegistryRepository_List_PHP(t *testing.T) {
 	if first.Name != "php" {
 		t.Fatalf("first entry.Name = %q, want php", first.Name)
 	}
-	if first.Source != "official" {
-		t.Fatalf("first entry.Source = %q, want official", first.Source)
+	if first.Type != "source_code" {
+		t.Fatalf("first entry.Type = %q, want source_code", first.Type)
 	}
 	if !strings.Contains(first.URL, "https://www.php.net/distributions/") {
 		t.Fatalf("first entry.URL = %q, missing php.net domain", first.URL)
@@ -84,8 +84,8 @@ func TestRegistryRepository_List_CMake(t *testing.T) {
 	if first.Name != "cmake" {
 		t.Fatalf("first entry.Name = %q, want cmake", first.Name)
 	}
-	if first.Source != "binary" {
-		t.Fatalf("first entry.Source = %q, want binary", first.Source)
+	if first.Type != "binary" {
+		t.Fatalf("first entry.Type = %q, want binary", first.Type)
 	}
 	if !strings.Contains(first.URL, "github.com/Kitware/CMake") {
 		t.Fatalf("first entry.URL = %q, missing github.com/Kitware/CMake", first.URL)
@@ -106,8 +106,8 @@ func TestRegistryRepository_List_Perl(t *testing.T) {
 		if r.Name != "perl" {
 			t.Fatalf("entry.Name = %q, want perl", r.Name)
 		}
-		if r.Source != "source" {
-			t.Fatalf("entry.Source = %q, want source", r.Source)
+		if r.Type != "source_code" {
+			t.Fatalf("entry.Type = %q, want source_code", r.Type)
 		}
 		if !strings.Contains(r.URL, "https://www.cpan.org/src/5.0/") {
 			t.Fatalf("entry.URL = %q, missing cpan.org domain", r.URL)
@@ -148,7 +148,7 @@ func TestRegistryRepository_List_ConsistentShape(t *testing.T) {
 			t.Fatalf("List(%q) returned error: %v", name, err)
 		}
 		for i, e := range entries {
-			if e.Name == "" || e.Source == "" || e.URL == "" || e.Version == "" {
+			if e.Name == "" || e.Type == "" || e.URL == "" || e.Version == "" {
 				t.Fatalf("List(%q)[%d] has empty field: %+v", name, i, e)
 			}
 		}

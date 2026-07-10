@@ -18,7 +18,7 @@ func (reg *RegistryRepository) List(name string, checksum bool) (result []domain
 	case "php":
 		result = repository.BuildRegistries(repository.PackageConfig{
 			Name:   "php",
-			Source: "official",
+			Type: "source_code",
 			Ranges: repository.BuildRanges(
 				repository.BuildMinorRanges(8, []repository.MinorRange{
 					{Minor: 0, PatchEnd: 30},
@@ -65,7 +65,7 @@ func (reg *RegistryRepository) List(name string, checksum bool) (result []domain
 	case "cmake":
 		result = repository.BuildRegistries(repository.PackageConfig{
 			Name:   "cmake",
-			Source: "binary",
+			Type: "binary",
 			Ranges: repository.BuildRanges(
 				repository.BuildMinorRanges(3, []repository.MinorRange{
 					{Minor: 21, PatchEnd: 4},
@@ -83,7 +83,7 @@ func (reg *RegistryRepository) List(name string, checksum bool) (result []domain
 	case "perl":
 		result = repository.BuildRegistries(repository.PackageConfig{
 			Name:   "perl",
-			Source: "source",
+			Type: "source_code",
 			Versions: []string{
 				"5.42.1", "5.40.3", "5.38.5", "5.36.3", "5.34.3",
 				"5.32.1", "5.30.3", "5.28.3", "5.26.3", "5.24.4",

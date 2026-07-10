@@ -13,6 +13,35 @@ type VersionRange struct {
 	To   string
 }
 
+// MinorRange defines patch bounds for a single minor version.
+// PatchStart defaults to 0.
+type MinorRange struct {
+	Minor      int
+	PatchStart int
+	PatchEnd   int
+}
+
+// BuildMinorRanges builds VersionRange slices for a given major version
+// and its per-minor patch bounds.
+//
+// Example:
+//
+//	BuildMinorRanges(4, []MinorRange{
+//	    {Minor: 0, PatchEnd: 6},
+//	    {Minor: 1, PatchEnd: 2},
+//	})
+//	// → [{From: "4.0.0", To: "4.0.6"}, {From: "4.1.0", To: "4.1.2"}]
+func BuildMinorRanges(major int, minors []MinorRange) []VersionRange {
+	ranges := make([]VersionRange, 0, len(minors))
+	for _, m := range minors {
+		ranges = append(ranges, VersionRange{
+			From: fmt.Sprintf("%d.%d.%d", major, m.Minor, m.PatchStart),
+			To:   fmt.Sprintf("%d.%d.%d", major, m.Minor, m.PatchEnd),
+		})
+	}
+	return ranges
+}
+
 // GenerateVersions generates all version strings within the given ranges,
 // skipping any versions listed in the skip list. Versions not covered by any
 // range are considered gaps and are not generated.

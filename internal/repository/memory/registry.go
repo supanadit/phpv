@@ -16,30 +16,37 @@ func NewRegistryRepository() *RegistryRepository {
 func (reg *RegistryRepository) List(name string) (result []domain.Registry, err error) {
 	// Define PHP version ranges. Gaps between ranges are intentional —
 	// only versions within these ranges are generated.
-	ranges := []repository.VersionRange{
-		{From: "8.4.0", To: "8.4.19"},
-		{From: "8.3.0", To: "8.3.27"},
-		{From: "8.2.0", To: "8.2.29"},
-		{From: "8.1.0", To: "8.1.33"},
-		{From: "8.0.0", To: "8.0.30"},
-		{From: "7.4.0", To: "7.4.33"},
-		{From: "7.3.0", To: "7.3.33"},
-		{From: "7.2.0", To: "7.2.34"},
-		{From: "7.1.0", To: "7.1.33"},
-		{From: "7.0.0", To: "7.0.33"},
-		{From: "5.6.0", To: "5.6.40"},
-		{From: "5.5.0", To: "5.5.38"},
-		{From: "5.4.0", To: "5.4.45"},
-		{From: "5.3.0", To: "5.3.29"},
-		{From: "5.2.0", To: "5.2.17"},
-		{From: "5.1.0", To: "5.1.6"},
-		{From: "5.0.0", To: "5.0.5"},
-		{From: "4.4.0", To: "4.4.9"},
-		{From: "4.3.0", To: "4.3.11"},
-		{From: "4.2.0", To: "4.2.3"},
-		{From: "4.1.0", To: "4.1.2"},
-		{From: "4.0.0", To: "4.0.6"},
-	}
+	ranges := []repository.VersionRange{}
+	ranges = append(ranges, repository.BuildMinorRanges(8, []repository.MinorRange{
+		{Minor: 0, PatchEnd: 30},
+		{Minor: 1, PatchEnd: 33},
+		{Minor: 2, PatchEnd: 29},
+		{Minor: 3, PatchEnd: 27},
+		{Minor: 4, PatchEnd: 19},
+	})...)
+	ranges = append(ranges, repository.BuildMinorRanges(7, []repository.MinorRange{
+		{Minor: 0, PatchEnd: 33},
+		{Minor: 1, PatchEnd: 33},
+		{Minor: 2, PatchEnd: 34},
+		{Minor: 3, PatchEnd: 33},
+		{Minor: 4, PatchEnd: 33},
+	})...)
+	ranges = append(ranges, repository.BuildMinorRanges(5, []repository.MinorRange{
+		{Minor: 0, PatchEnd: 5},
+		{Minor: 1, PatchEnd: 6},
+		{Minor: 2, PatchEnd: 17},
+		{Minor: 3, PatchEnd: 29},
+		{Minor: 4, PatchEnd: 45},
+		{Minor: 5, PatchEnd: 38},
+		{Minor: 6, PatchEnd: 40},
+	})...)
+	ranges = append(ranges, repository.BuildMinorRanges(4, []repository.MinorRange{
+		{Minor: 0, PatchEnd: 6},
+		{Minor: 1, PatchEnd: 2},
+		{Minor: 2, PatchEnd: 3},
+		{Minor: 3, PatchEnd: 11},
+		{Minor: 4, PatchEnd: 9},
+	})...)
 
 	// Specific versions to skip (gaps within ranges)
 	skip := []string{}

@@ -21,6 +21,16 @@ type MinorRange struct {
 	PatchEnd   int
 }
 
+// BuildRanges concatenates multiple VersionRange slices into a single slice.
+// Useful for combining several BuildMinorRanges calls without repeated append.
+func BuildRanges(ranges ...[]VersionRange) []VersionRange {
+	var result []VersionRange
+	for _, r := range ranges {
+		result = append(result, r...)
+	}
+	return result
+}
+
 // BuildMinorRanges builds VersionRange slices for a given major version
 // and its per-minor patch bounds.
 //
@@ -42,6 +52,39 @@ func BuildMinorRanges(major int, minors []MinorRange) []VersionRange {
 	return ranges
 }
 
+// RenderTemplate replaces "{version}" placeholders in a URL template
+// with the given version string.
+func RenderTemplate(tmpl, version string) string {
+	return strings.ReplaceAll(tmpl, "{version}", version)
+}
+
+// CompareVersions compares two semver strings.
+// Returns -1 if a < b, 0 if a == b, 1 if a > b.
+func CompareVersions(a, b string) int {
+	sa := ParseVersion(a)
+	sb := ParseVersion(b)
+
+	if sa.Major != sb.Major {
+		if sa.Major < sb.Major {
+			return -1
+		}
+		return 1
+	}
+	if sa.Minor != sb.Minor {
+		if sa.Minor < sb.Minor {
+			return -1
+		}
+		return 1
+	}
+	if sa.Patch != sb.Patch {
+		if sa.Patch < sb.Patch {
+			return -1
+		}
+		return 1
+	}
+	return 0
+}
+
 // GenerateVersions generates all version strings within the given ranges,
 // skipping any versions listed in the skip list. Versions not covered by any
 // range are considered gaps and are not generated.
@@ -53,45 +96,45 @@ func GenerateVersions(ranges []VersionRange, skip []string) []string {
 
 	var versions []string
 	for _, r := range ranges {
-		from := parseVersion(r.From)
-		to := parseVersion(r.To)
+		from := ParseVersion(r.From)
+		to := ParseVersion(r.To)
 		versions = append(versions, expandRange(from, to, skipSet)...)
 	}
 	return versions
 }
 
-// semver represents a parsed semantic version with major.minor.patch.
-type semver struct {
-	major, minor, patch int
+// Semver represents a parsed semantic version with major.minor.patch.
+type Semver struct {
+	Major, Minor, Patch int
 }
 
-// parseVersion parses a version string like "8.2.1" or "8.x.x".
+// ParseVersion parses a version string like "8.2.1" or "8.x.x".
 // Wildcard "x"/"X" is represented as -1.
-func parseVersion(v string) semver {
+func ParseVersion(v string) Semver {
 	parts := strings.Split(v, ".")
 	if len(parts) != 3 {
-		return semver{}
+		return Semver{}
 	}
-	var s semver
+	var s Semver
 	for i, p := range parts {
 		if p == "x" || p == "X" {
 			switch i {
 			case 0:
-				s.major = -1
+				s.Major = -1
 			case 1:
-				s.minor = -1
+				s.Minor = -1
 			case 2:
-				s.patch = -1
+				s.Patch = -1
 			}
 		} else {
 			n, _ := strconv.Atoi(p)
 			switch i {
 			case 0:
-				s.major = n
+				s.Major = n
 			case 1:
-				s.minor = n
+				s.Minor = n
 			case 2:
-				s.patch = n
+				s.Patch = n
 			}
 		}
 	}
@@ -101,45 +144,45 @@ func parseVersion(v string) semver {
 // expandRange generates all version strings from 'from' to 'to' (inclusive),
 // skipping versions present in skipSet. Wildcards (-1) are resolved to
 // reasonable bounds: major 0-99, minor 0-99, patch 0-999.
-func expandRange(from, to semver, skipSet map[string]bool) []string {
+func expandRange(from, to Semver, skipSet map[string]bool) []string {
 	// Resolve wildcards to reasonable defaults
-	if from.major == -1 {
-		from.major = 0
+	if from.Major == -1 {
+		from.Major = 0
 	}
-	if from.minor == -1 {
-		from.minor = 0
+	if from.Minor == -1 {
+		from.Minor = 0
 	}
-	if from.patch == -1 {
-		from.patch = 0
+	if from.Patch == -1 {
+		from.Patch = 0
 	}
-	if to.major == -1 {
-		to.major = 99
+	if to.Major == -1 {
+		to.Major = 99
 	}
-	if to.minor == -1 {
-		to.minor = 99
+	if to.Minor == -1 {
+		to.Minor = 99
 	}
-	if to.patch == -1 {
-		to.patch = 999
+	if to.Patch == -1 {
+		to.Patch = 999
 	}
 
 	var versions []string
-	for major := from.major; major <= to.major; major++ {
-		minMinor := from.minor
-		maxMinor := to.minor
-		if major > from.major {
+	for major := from.Major; major <= to.Major; major++ {
+		minMinor := from.Minor
+		maxMinor := to.Minor
+		if major > from.Major {
 			minMinor = 0
 		}
-		if major < to.major {
+		if major < to.Major {
 			maxMinor = 99
 		}
 
 		for minor := minMinor; minor <= maxMinor; minor++ {
-			minPatch := from.patch
-			maxPatch := to.patch
-			if major > from.major || minor > from.minor {
+			minPatch := from.Patch
+			maxPatch := to.Patch
+			if major > from.Major || minor > from.Minor {
 				minPatch = 0
 			}
-			if major < to.major || minor < to.minor {
+			if major < to.Major || minor < to.Minor {
 				maxPatch = 999
 			}
 

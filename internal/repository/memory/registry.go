@@ -14,51 +14,85 @@ func NewRegistryRepository() *RegistryRepository {
 }
 
 func (reg *RegistryRepository) List(name string) (result []domain.Registry, err error) {
-	// Define PHP version ranges. Gaps between ranges are intentional —
-	// only versions within these ranges are generated.
-	ranges := []repository.VersionRange{}
-	ranges = append(ranges, repository.BuildMinorRanges(8, []repository.MinorRange{
-		{Minor: 0, PatchEnd: 30},
-		{Minor: 1, PatchEnd: 33},
-		{Minor: 2, PatchEnd: 29},
-		{Minor: 3, PatchEnd: 27},
-		{Minor: 4, PatchEnd: 19},
-	})...)
-	ranges = append(ranges, repository.BuildMinorRanges(7, []repository.MinorRange{
-		{Minor: 0, PatchEnd: 33},
-		{Minor: 1, PatchEnd: 33},
-		{Minor: 2, PatchEnd: 34},
-		{Minor: 3, PatchEnd: 33},
-		{Minor: 4, PatchEnd: 33},
-	})...)
-	ranges = append(ranges, repository.BuildMinorRanges(5, []repository.MinorRange{
-		{Minor: 0, PatchEnd: 5},
-		{Minor: 1, PatchEnd: 6},
-		{Minor: 2, PatchEnd: 17},
-		{Minor: 3, PatchEnd: 29},
-		{Minor: 4, PatchEnd: 45},
-		{Minor: 5, PatchEnd: 38},
-		{Minor: 6, PatchEnd: 40},
-	})...)
-	ranges = append(ranges, repository.BuildMinorRanges(4, []repository.MinorRange{
-		{Minor: 0, PatchEnd: 6},
-		{Minor: 1, PatchEnd: 2},
-		{Minor: 2, PatchEnd: 3},
-		{Minor: 3, PatchEnd: 11},
-		{Minor: 4, PatchEnd: 9},
-	})...)
+	switch name {
+	case "php":
+		return repository.BuildRegistries(repository.PackageConfig{
+			Name:   "php",
+			Source: "official",
+			Ranges: repository.BuildRanges(
+				repository.BuildMinorRanges(8, []repository.MinorRange{
+					{Minor: 0, PatchEnd: 30},
+					{Minor: 1, PatchEnd: 33},
+					{Minor: 2, PatchEnd: 29},
+					{Minor: 3, PatchEnd: 27},
+					{Minor: 4, PatchEnd: 19},
+				}),
+				repository.BuildMinorRanges(7, []repository.MinorRange{
+					{Minor: 0, PatchEnd: 33},
+					{Minor: 1, PatchEnd: 33},
+					{Minor: 2, PatchEnd: 34},
+					{Minor: 3, PatchEnd: 33},
+					{Minor: 4, PatchEnd: 33},
+				}),
+				repository.BuildMinorRanges(5, []repository.MinorRange{
+					{Minor: 0, PatchEnd: 5},
+					{Minor: 1, PatchEnd: 6},
+					{Minor: 2, PatchEnd: 17},
+					{Minor: 3, PatchEnd: 29},
+					{Minor: 4, PatchEnd: 45},
+					{Minor: 5, PatchEnd: 38},
+					{Minor: 6, PatchEnd: 40},
+				}),
+				repository.BuildMinorRanges(4, []repository.MinorRange{
+					{Minor: 0, PatchEnd: 6},
+					{Minor: 1, PatchEnd: 2},
+					{Minor: 2, PatchEnd: 3},
+					{Minor: 3, PatchEnd: 11},
+					{Minor: 4, PatchEnd: 9},
+				}),
+			),
+			URLTemplate: "https://www.php.net/distributions/php-{version}.tar.gz",
+		}), nil
 
-	// Specific versions to skip (gaps within ranges)
-	skip := []string{}
+	case "cmake":
+		return repository.BuildRegistries(repository.PackageConfig{
+			Name:   "cmake",
+			Source: "binary",
+			Ranges: repository.BuildRanges(
+				repository.BuildMinorRanges(3, []repository.MinorRange{
+					{Minor: 21, PatchEnd: 4},
+					{Minor: 22, PatchEnd: 1},
+					{Minor: 23, PatchEnd: 3},
+					{Minor: 24, PatchEnd: 2},
+					{Minor: 25, PatchEnd: 3},
+					{Minor: 26, PatchEnd: 5},
+					{Minor: 27, PatchEnd: 6},
+				}),
+			),
+			URLTemplate: "https://github.com/Kitware/CMake/releases/download/v{version}/cmake-{version}-linux-x86_64.tar.gz",
+		}), nil
 
-	versions := repository.GenerateVersions(ranges, skip)
-	for _, v := range versions {
-		result = append(result, domain.Registry{
-			Name:    "php",
-			Source:  "official",
-			URL:     fmt.Sprintf("https://www.php.net/distributions/php-%s.tar.gz", v),
-			Version: v,
-		})
+	case "perl":
+		return repository.BuildRegistries(repository.PackageConfig{
+			Name:   "perl",
+			Source: "source",
+			Versions: []string{
+				"5.42.1", "5.40.3", "5.38.5", "5.36.3", "5.34.3",
+				"5.32.1", "5.30.3", "5.28.3", "5.26.3", "5.24.4",
+				"5.22.3", "5.20.0", "5.18.4", "5.16.3", "5.14.4",
+				"5.12.5", "5.10.1", "5.8.9", "5.6.2", "5.5.30",
+				"5.4.50",
+			},
+			URLTemplate: "https://www.cpan.org/src/5.0/perl-{version}.{ext}",
+			Extension: repository.ExtensionConfig{
+				Default: "tar.gz",
+				Override: []repository.ExtOverride{
+					{Before: "5.20.0", Ext: "tar.bz2"},
+				},
+			},
+		}), nil
+
+	default:
+		return nil, fmt.Errorf("unknown package: %s", name)
 	}
-	return result, nil
 }

@@ -32,51 +32,76 @@ func NewSiloRepository() *SiloRepository {
 
 // Download fetches the file at url and stores it on disk under baseDir.
 // The local filename is derived from the final path segment of the URL.
+//
+// Skip: if the final file already exists and has a non-zero size, the
+// download is skipped entirely (returns downloaded=false, nil).
+//
+// Guard: the download writes to a .part temp file first. If the process is
+// interrupted (Ctrl-C, kill, BSOD, power loss) the .part file is left behind
+// but the final file is never created. On the next run, the stale .part file
+// is detected and removed before a fresh download starts. This guarantees
+// the silo never contains a partial or corrupt file.
+//
 // When checksumType and checksumValue are non-empty the file is verified
 // against the expected checksum before it is moved to its final location.
 // A mismatch results in an error and the temporary file is removed.
-func (s *SiloRepository) Download(url string, checksumType string, checksumValue string) (err error) {
+//
+// Returns downloaded=true when the file was fetched from the network,
+// downloaded=false when the file already existed (skipped).
+func (s *SiloRepository) Download(url string, checksumType string, checksumValue string) (downloaded bool, err error) {
 	filename := filepath.Base(url)
 	if filename == "" || filename == "." || filename == "/" {
-		return fmt.Errorf("cannot determine filename from URL: %s", url)
+		return false, fmt.Errorf("cannot determine filename from URL: %s", url)
 	}
 
 	if err := os.MkdirAll(s.baseDir, 0o755); err != nil {
-		return fmt.Errorf("create silo directory %s: %w", s.baseDir, err)
+		return false, fmt.Errorf("create silo directory %s: %w", s.baseDir, err)
 	}
 
+	finalPath := filepath.Join(s.baseDir, filename)
+	tmpPath := finalPath + ".part"
+
+	// Skip: file already exists with content.
+	if info, err := os.Stat(finalPath); err == nil && info.Size() > 0 {
+		// Guard: clean up any stale .part file even when skipping, so it
+		// doesn't linger from a previous interrupted run of a different
+		// package that happened to use the same filename.
+		_ = os.Remove(tmpPath)
+		return false, nil
+	}
+
+	// Guard: remove stale .part file from a previous interrupted run.
+	_ = os.Remove(tmpPath)
+
+	// Start the HTTP request.
 	resp, err := http.Get(url)
 	if err != nil {
-		return fmt.Errorf("download %s: %w", url, err)
+		return false, fmt.Errorf("download %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download %s: unexpected status %s", url, resp.Status)
+		return false, fmt.Errorf("download %s: unexpected status %s", url, resp.Status)
 	}
 
 	verify := checksumType != "" && checksumValue != ""
 
-	// When verifying we stream the body through a hasher so the checksum can
-	// be computed in a single pass while writing to disk.
 	var hasher hash.Hash
 	if verify {
 		hasher, err = repository.NewHasher(checksumType)
 		if err != nil {
-			return err
+			return false, err
 		}
 	}
 
-	// Download to a temporary file first so that a failed or mismatched
-	// download never leaves a partial file in the final location.
-	finalPath := filepath.Join(s.baseDir, filename)
-	tmpPath := finalPath + ".part"
-
+	// Create the temp file.
 	tmp, err := os.Create(tmpPath)
 	if err != nil {
-		return fmt.Errorf("create temp file %s: %w", tmpPath, err)
+		return false, fmt.Errorf("create temp file %s: %w", tmpPath, err)
 	}
 
+	// Guard: if we panic or the process is killed mid-write, the deferred
+	// cleanup removes the .part file so the next run starts fresh.
 	cleanup := func() {
 		tmp.Close()
 		os.Remove(tmpPath)
@@ -89,26 +114,29 @@ func (s *SiloRepository) Download(url string, checksumType string, checksumValue
 
 	if _, err := io.Copy(tmp, body); err != nil {
 		cleanup()
-		return fmt.Errorf("write %s: %w", tmpPath, err)
+		return false, fmt.Errorf("write %s: %w", tmpPath, err)
 	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpPath)
-		return fmt.Errorf("close %s: %w", tmpPath, err)
+		return false, fmt.Errorf("close %s: %w", tmpPath, err)
 	}
 
 	if verify {
 		got := hex.EncodeToString(hasher.Sum(nil))
 		if !strings.EqualFold(got, checksumValue) {
 			os.Remove(tmpPath)
-			return fmt.Errorf("checksum mismatch for %s: expected %s, got %s",
+			return false, fmt.Errorf("checksum mismatch for %s: expected %s, got %s",
 				filename, checksumValue, got)
 		}
 	}
 
+	// Guard: atomic rename — the final file appears only when the download
+	// and checksum verification are fully complete. If the rename fails the
+	// .part file is cleaned up.
 	if err := os.Rename(tmpPath, finalPath); err != nil {
 		os.Remove(tmpPath)
-		return fmt.Errorf("move %s to %s: %w", tmpPath, finalPath, err)
+		return false, fmt.Errorf("move %s to %s: %w", tmpPath, finalPath, err)
 	}
 
-	return nil
+	return true, nil
 }

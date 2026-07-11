@@ -10,8 +10,11 @@ import (
 // file from the given URL and storing it in the silo (local storage).
 // When checksumType and checksumValue are non-empty the implementation is
 // expected to verify the downloaded file against them.
+//
+// Download returns true when the file was actually fetched from the network,
+// and false when the file already existed (skipped).
 type SiloRepository interface {
-	Download(url string, checksumType string, checksumValue string) (err error)
+	Download(url string, checksumType string, checksumValue string) (downloaded bool, err error)
 }
 
 type Service struct {
@@ -30,10 +33,12 @@ func NewService(sr SiloRepository, rr registry.RegistryRepository) *Service {
 // then delegates the actual download to the SiloRepository. The registry
 // entry provides the download URL and, when available, the checksum used
 // to verify the integrity of the downloaded file.
-func (s *Service) Download(name string, version string) (err error) {
-	r, err := s.registryRep.Get(name, version, true, runtime.GOOS)
+func (s *Service) Download(name string, version string) (bool, error) {
+	// checksum=false for now — we skip verification until checksums
+	// are populated for all packages.
+	r, err := s.registryRep.Get(name, version, false, runtime.GOOS)
 	if err != nil {
-		return err
+		return false, err
 	}
 	return s.siloRep.Download(r.URL, r.ChecksumType, r.ChecksumValue)
 }

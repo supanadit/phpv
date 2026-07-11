@@ -97,6 +97,14 @@ func TestRenderTemplate(t *testing.T) {
 	}
 }
 
+func TestRenderTemplate_MajorMinor(t *testing.T) {
+	got := RenderTemplate("https://download.gnome.org/sources/libxml2/{major}.{minor}/libxml2-{version}.tar.xz", "2.9.14")
+	want := "https://download.gnome.org/sources/libxml2/2.9/libxml2-2.9.14.tar.xz"
+	if got != want {
+		t.Fatalf("RenderTemplate() = %q, want %q", got, want)
+	}
+}
+
 func TestCompareVersions(t *testing.T) {
 	tests := []struct {
 		a, b string

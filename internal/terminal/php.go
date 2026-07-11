@@ -4,21 +4,23 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/supanadit/phpv/silo"
+	"github.com/supanadit/phpv/assembler"
 )
 
 // PHPHandler represents the terminal handler for PHP commands.
-// It handles download, and in the future install, uninstall, etc.
+// It orchestrates the download workflow by delegating to the assembler
+// service, which resolves transitive dependencies and downloads all
+// packages in parallel.
 type PHPHandler struct {
-	siloService *silo.Service
+	assemblerService *assembler.Service
 }
 
 // NewPHPHandler registers all PHP subcommands onto the given root command.
 // This mirrors NewArticleHandler in the REST delivery layer which
 // registers routes onto the Echo instance.
-func NewPHPHandler(rootCmd *cobra.Command, svc *silo.Service) {
+func NewPHPHandler(rootCmd *cobra.Command, svc *assembler.Service) {
 	handler := &PHPHandler{
-		siloService: svc,
+		assemblerService: svc,
 	}
 	rootCmd.AddCommand(handler.downloadCmd())
 }
@@ -28,7 +30,7 @@ func (h *PHPHandler) downloadCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "download <version>",
 		Short: "Download a PHP version",
-		Long:  "Download a specific version of PHP to the local cache.",
+		Long:  "Download a specific version of PHP and all its transitive dependencies to the local cache.",
 		Args:  cobra.ExactArgs(1),
 		RunE:  h.download,
 	}
@@ -47,12 +49,28 @@ func (h *PHPHandler) download(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("Downloading %s %s...\n", name, version)
+	fmt.Printf("Downloading %s %s and its dependencies...\n", name, version)
 
-	if err := h.siloService.Download(name, version); err != nil {
+	results, err := h.assemblerService.Download(name, version)
+	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Successfully downloaded %s %s\n", name, version)
+	var downloaded, skipped int
+	for _, r := range results {
+		if r.Err != nil {
+			fmt.Printf("  ✗ Failed %s@%s: %v\n", r.Name, r.Version, r.Err)
+			continue
+		}
+		if r.Downloaded {
+			fmt.Printf("  ✓ Downloaded %s@%s\n", r.Name, r.Version)
+			downloaded++
+		} else {
+			fmt.Printf("  → Skipped %s@%s (already exists)\n", r.Name, r.Version)
+			skipped++
+		}
+	}
+
+	fmt.Printf("Done: %d downloaded, %d skipped\n", downloaded, skipped)
 	return nil
 }

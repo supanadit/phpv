@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 
+	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/terminal"
@@ -40,7 +41,8 @@ func main() {
 			NewRootCmd,
 			fx.Annotate(memory.NewRegistryRepository, fx.As(new(registry.RegistryRepository))),
 			fx.Annotate(disk.NewSiloRepository, fx.As(new(silo.SiloRepository))),
-			silo.NewService,
+			fx.Annotate(memory.NewAssemblerRepository, fx.As(new(assembler.AssemblerRepository))),
+			assembler.NewService,
 		),
 		fx.Invoke(
 			terminal.NewPHPHandler,

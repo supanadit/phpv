@@ -52,10 +52,21 @@ func BuildMinorRanges(major int, minors []MinorRange) []VersionRange {
 	return ranges
 }
 
-// RenderTemplate replaces "{version}" placeholders in a URL template
-// with the given version string.
+// RenderTemplate replaces placeholders in a URL template with the given
+// version string. Supported placeholders:
+//   - {version} — full version string (e.g., "8.2.1")
+//   - {major}   — major version number (e.g., "8")
+//   - {minor}   — minor version number (e.g., "2")
+//   - {patch}   — patch version number (e.g., "1")
 func RenderTemplate(tmpl, version string) string {
-	return strings.ReplaceAll(tmpl, "{version}", version)
+	s := ParseVersion(version)
+	r := strings.NewReplacer(
+		"{version}", version,
+		"{major}", strconv.Itoa(s.Major),
+		"{minor}", strconv.Itoa(s.Minor),
+		"{patch}", strconv.Itoa(s.Patch),
+	)
+	return r.Replace(tmpl)
 }
 
 // CompareVersions compares two semver strings.

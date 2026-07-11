@@ -1,8 +1,6 @@
 package registry
 
 import (
-	"fmt"
-
 	"github.com/supanadit/phpv/domain"
 )
 
@@ -26,14 +24,5 @@ func (reg *Service) List(name string, checksum bool, os string) (r []domain.Regi
 }
 
 func (reg *Service) Get(name string, checksum bool, version string, os string) (r domain.Registry, err error) {
-	registries, err := reg.List(name, checksum, os)
-	if err != nil {
-		return r, err
-	}
-	for _, registry := range registries {
-		if registry.Name == version {
-			return registry, nil
-		}
-	}
-	return r, fmt.Errorf("registry %s version %s not found", name, version)
+	return reg.registryRepository.Get(name, version, checksum, os)
 }

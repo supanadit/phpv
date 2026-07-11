@@ -17,9 +17,9 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 	switch name {
 	case "php":
 		result = repository.BuildRegistries(repository.PackageConfig{
-			Name:   "php",
+			Name: "php",
 			Type: "source_code",
-			OS:     "all",
+			OS:   "all",
 			Ranges: repository.BuildRanges(
 				repository.BuildMinorRanges(8, []repository.MinorRange{
 					{Minor: 0, PatchEnd: 30},
@@ -65,9 +65,9 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 
 	case "cmake":
 		result = repository.BuildRegistries(repository.PackageConfig{
-			Name:   "cmake",
+			Name: "cmake",
 			Type: "binary",
-			OS:     "linux",
+			OS:   "linux",
 			Ranges: repository.BuildRanges(
 				repository.BuildMinorRanges(3, []repository.MinorRange{
 					{Minor: 21, PatchEnd: 4},
@@ -84,9 +84,9 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 
 	case "perl":
 		result = repository.BuildRegistries(repository.PackageConfig{
-			Name:   "perl",
+			Name: "perl",
 			Type: "source_code",
-			OS:     "all",
+			OS:   "all",
 			Versions: []string{
 				"5.42.1", "5.40.3", "5.38.5", "5.36.3", "5.34.3",
 				"5.32.1", "5.30.3", "5.28.3", "5.26.3", "5.24.4",
@@ -130,4 +130,18 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 	}
 
 	return result, err
+}
+
+// Get implements [registry.RegistryRepository].
+func (reg *RegistryRepository) Get(name string, version string, checksum bool, os string) (r domain.Registry, err error) {
+	registries, err := reg.List(name, checksum, os)
+	if err != nil {
+		return r, err
+	}
+	for _, registry := range registries {
+		if registry.Version == version {
+			return registry, nil
+		}
+	}
+	return r, fmt.Errorf("registry %s version %s not found", name, version)
 }

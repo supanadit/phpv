@@ -1,9 +1,14 @@
 package main
 
 import (
-	"fmt"
+	"github.com/supanadit/phpv/internal/repository/disk"
+	"github.com/supanadit/phpv/internal/repository/memory"
+	"github.com/supanadit/phpv/silo"
 )
 
 func main() {
-	fmt.Println("Hello World")
+	registryRepo := memory.NewRegistryRepository()
+	siloRepo := disk.NewSiloRepository()
+
+	_ = silo.NewService(siloRepo, registryRepo)
 }

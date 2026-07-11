@@ -231,4 +231,107 @@ func TestRegistryRepository_List_PHP_SortedByVersion(t *testing.T) {
 	}
 }
 
+func TestRegistryRepository_Get_PHP(t *testing.T) {
+	repo := NewRegistryRepository()
+	got, err := repo.Get("php", "8.0.0", false, "")
+	if err != nil {
+		t.Fatalf("Get(php, 8.0.0) returned error: %v", err)
+	}
+	if got.Name != "php" {
+		t.Fatalf("Get(php, 8.0.0).Name = %q, want php", got.Name)
+	}
+	if got.Version != "8.0.0" {
+		t.Fatalf("Get(php, 8.0.0).Version = %q, want 8.0.0", got.Version)
+	}
+	if !strings.Contains(got.URL, "https://www.php.net/distributions/php-8.0.0.tar.gz") {
+		t.Fatalf("Get(php, 8.0.0).URL = %q, want php.net URL", got.URL)
+	}
+}
+
+func TestRegistryRepository_Get_PHP_WithChecksum(t *testing.T) {
+	repo := NewRegistryRepository()
+	got, err := repo.Get("php", "8.5.8", true, "")
+	if err != nil {
+		t.Fatalf("Get(php, 8.5.8, true) returned error: %v", err)
+	}
+	if got.Version != "8.5.8" {
+		t.Fatalf("Get(php, 8.5.8, true).Version = %q, want 8.5.8", got.Version)
+	}
+	if got.ChecksumType != "sha256" {
+		t.Fatalf("Get(php, 8.5.8, true).ChecksumType = %q, want sha256", got.ChecksumType)
+	}
+	want := "6ebc55e52af4396385e689f7af0f28944fbbf966843433b573e9dc1dc03df539"
+	if got.ChecksumValue != want {
+		t.Fatalf("Get(php, 8.5.8, true).ChecksumValue = %q, want %q", got.ChecksumValue, want)
+	}
+}
+
+func TestRegistryRepository_Get_PHP_VersionNotFound(t *testing.T) {
+	repo := NewRegistryRepository()
+	_, err := repo.Get("php", "99.99.99", false, "")
+	if err == nil {
+		t.Fatal("Get(php, 99.99.99) expected error, got nil")
+	}
+}
+
+func TestRegistryRepository_Get_UnknownPackage(t *testing.T) {
+	repo := NewRegistryRepository()
+	_, err := repo.Get("unknown", "1.0.0", false, "")
+	if err == nil {
+		t.Fatal("Get(unknown, 1.0.0) expected error, got nil")
+	}
+}
+
+func TestRegistryRepository_Get_CMake_OSSFilter(t *testing.T) {
+	repo := NewRegistryRepository()
+
+	// cmake is linux-only; requesting linux returns the entry
+	got, err := repo.Get("cmake", "3.27.6", false, "linux")
+	if err != nil {
+		t.Fatalf("Get(cmake, 3.27.6, linux) returned error: %v", err)
+	}
+	if got.Version != "3.27.6" {
+		t.Fatalf("Get(cmake, 3.27.6, linux).Version = %q, want 3.27.6", got.Version)
+	}
+
+	// Requesting darwin returns error (cmake is linux-only)
+	_, err = repo.Get("cmake", "3.27.6", false, "darwin")
+	if err == nil {
+		t.Fatal("Get(cmake, 3.27.6, darwin) expected error, got nil")
+	}
+}
+
+func TestRegistryRepository_Get_PHP_ChecksumFilter(t *testing.T) {
+	repo := NewRegistryRepository()
+
+	// PHP 8.5.8 has a checksum, so it is returned when checksum=true
+	got, err := repo.Get("php", "8.5.8", true, "")
+	if err != nil {
+		t.Fatalf("Get(php, 8.5.8, true) returned error: %v", err)
+	}
+	if got.ChecksumType != "sha256" {
+		t.Fatalf("Get(php, 8.5.8, true).ChecksumType = %q, want sha256", got.ChecksumType)
+	}
+
+	// PHP 8.0.0 has no checksum, so it is not found when checksum=true
+	_, err = repo.Get("php", "8.0.0", true, "")
+	if err == nil {
+		t.Fatal("Get(php, 8.0.0, true) expected error, got nil")
+	}
+}
+
+func TestRegistryRepository_Get_Perl(t *testing.T) {
+	repo := NewRegistryRepository()
+	got, err := repo.Get("perl", "5.42.1", false, "")
+	if err != nil {
+		t.Fatalf("Get(perl, 5.42.1) returned error: %v", err)
+	}
+	if got.Version != "5.42.1" {
+		t.Fatalf("Get(perl, 5.42.1).Version = %q, want 5.42.1", got.Version)
+	}
+	if !strings.HasSuffix(got.URL, ".tar.gz") {
+		t.Fatalf("Get(perl, 5.42.1).URL = %q, want .tar.gz suffix", got.URL)
+	}
+}
+
 var _ domain.Registry = domain.Registry{}

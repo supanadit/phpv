@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -24,19 +23,29 @@ func NewRootCmd() *cobra.Command {
 	}
 }
 
-func main() {
-	rootCmd := NewRootCmd()
+// RegisterRootCmd executes the root command when the app starts.
+func RegisterRootCmd(rootCmd *cobra.Command, lc fx.Lifecycle) {
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			return rootCmd.Execute()
+		},
+	})
+}
 
+func main() {
 	// Create Default Options
 	options := []fx.Option{
 		fx.NopLogger,
 		fx.Provide(
-			func() *cobra.Command { return rootCmd },
+			NewRootCmd,
 			fx.Annotate(memory.NewRegistryRepository, fx.As(new(registry.RegistryRepository))),
 			fx.Annotate(disk.NewSiloRepository, fx.As(new(silo.SiloRepository))),
 			silo.NewService,
 		),
-		fx.Invoke(terminal.NewPHPHandler),
+		fx.Invoke(
+			terminal.NewPHPHandler,
+			RegisterRootCmd,
+		),
 	}
 
 	// Create Inversion of Control
@@ -44,17 +53,13 @@ func main() {
 
 	// Start Context
 	if err := app.Start(context.Background()); err != nil {
-		log.Fatal(err)
-	}
-
-	// Execute
-	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
 	// Stop Context
 	if err := app.Stop(context.Background()); err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }

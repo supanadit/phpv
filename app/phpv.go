@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -14,13 +16,19 @@ import (
 	"github.com/supanadit/phpv/silo"
 )
 
-func main() {
-	rootCmd := &cobra.Command{
+// NewRootCmd provides the root cobra command.
+func NewRootCmd() *cobra.Command {
+	return &cobra.Command{
 		Use:   "phpv",
 		Short: "PHP version manager",
 	}
+}
 
-	app := fx.New(
+func main() {
+	rootCmd := NewRootCmd()
+
+	// Create Default Options
+	options := []fx.Option{
 		fx.NopLogger,
 		fx.Provide(
 			func() *cobra.Command { return rootCmd },
@@ -28,18 +36,25 @@ func main() {
 			fx.Annotate(disk.NewSiloRepository, fx.As(new(silo.SiloRepository))),
 			silo.NewService,
 		),
-		fx.Invoke(func(svc *silo.Service, rootCmd *cobra.Command) {
-			terminal.NewPHPHandler(rootCmd, svc)
-		}),
-	)
+		fx.Invoke(terminal.NewPHPHandler),
+	}
 
-	if err := app.Err(); err != nil {
+	// Create Inversion of Control
+	app := fx.New(options...)
+
+	// Start Context
+	if err := app.Start(context.Background()); err != nil {
+		log.Fatal(err)
+	}
+
+	// Execute
+	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	// Stop Context
+	if err := app.Stop(context.Background()); err != nil {
+		log.Fatal(err)
 	}
 }

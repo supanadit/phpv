@@ -4,32 +4,21 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/supanadit/phpv/silo"
 )
-
-// PHPService represents the usecase contract for the PHP delivery layer.
-// This mirrors the pattern in the REST delivery layer where the handler
-// defines its own interface rather than importing the service directly,
-// keeping the dependency direction pointing inward.
-type PHPService interface {
-	Download(name string, version string) (err error)
-}
 
 // PHPHandler represents the terminal handler for PHP commands.
 // It handles download, and in the future install, uninstall, etc.
 type PHPHandler struct {
-	Service PHPService
+	siloService *silo.Service
 }
-
-// defaultName is the package name used when no --name flag is provided.
-// Since phpv is a PHP version manager, "php" is the sensible default.
-const defaultName = "php"
 
 // NewPHPHandler registers all PHP subcommands onto the given root command.
 // This mirrors NewArticleHandler in the REST delivery layer which
 // registers routes onto the Echo instance.
-func NewPHPHandler(rootCmd *cobra.Command, svc PHPService) {
+func NewPHPHandler(rootCmd *cobra.Command, svc *silo.Service) {
 	handler := &PHPHandler{
-		Service: svc,
+		siloService: svc,
 	}
 	rootCmd.AddCommand(handler.downloadCmd())
 }
@@ -44,7 +33,7 @@ func (h *PHPHandler) downloadCmd() *cobra.Command {
 		RunE:  h.download,
 	}
 
-	cmd.Flags().StringP("name", "n", defaultName, "package name to download")
+	cmd.Flags().StringP("name", "n", "php", "package name to download")
 
 	return cmd
 }
@@ -60,7 +49,7 @@ func (h *PHPHandler) download(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Downloading %s %s...\n", name, version)
 
-	if err := h.Service.Download(name, version); err != nil {
+	if err := h.siloService.Download(name, version); err != nil {
 		return err
 	}
 

@@ -1,12 +1,16 @@
 package disk
 
 import (
+	"archive/tar"
+	"compress/bzip2"
+	"compress/gzip"
 	"encoding/hex"
 	"fmt"
 	"hash"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -136,6 +140,224 @@ func (s *SiloRepository) Download(url string, checksumType string, checksumValue
 	if err := os.Rename(tmpPath, finalPath); err != nil {
 		os.Remove(tmpPath)
 		return false, fmt.Errorf("move %s to %s: %w", tmpPath, finalPath, err)
+	}
+
+	return true, nil
+}
+
+// Extract decompresses and untars an archive into destDir.
+// Supports .tar.gz, .tgz, .tar.xz, .tar.bz2.
+//
+// Skip: if destDir already exists and is non-empty, extraction is skipped
+// (returns extracted=false, nil).
+//
+// Guard: extraction goes to a .tmp directory first. If interrupted, the .tmp
+// dir is left behind but destDir is never created partially. On the next
+// run, the stale .tmp dir is removed before a fresh extraction starts.
+//
+// Returns extracted=true when the archive was actually extracted,
+// extracted=false when the destination already existed (skipped).
+func (s *SiloRepository) Extract(archivePath string, destDir string) (extracted bool, err error) {
+	// Skip: destination already exists with content.
+	if entries, err := os.ReadDir(destDir); err == nil && len(entries) > 0 {
+		return false, nil
+	}
+
+	tmpDir := destDir + ".tmp"
+
+	// Guard: remove stale .tmp dir from a previous interrupted run.
+	_ = os.RemoveAll(tmpDir)
+
+	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
+		return false, fmt.Errorf("create temp dir %s: %w", tmpDir, err)
+	}
+
+	f, err := os.Open(archivePath)
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		return false, fmt.Errorf("open archive %s: %w", archivePath, err)
+	}
+	defer f.Close()
+
+	var tarReader *tar.Reader
+
+	ext := strings.ToLower(filepath.Ext(archivePath))
+	// Handle double extensions like .tar.gz
+	if ext == ".gz" || ext == ".xz" || ext == ".bz2" {
+		// Check the full extension for .tar.*
+		if strings.HasSuffix(strings.ToLower(archivePath), ".tar.gz") ||
+			strings.HasSuffix(strings.ToLower(archivePath), ".tgz") {
+			gz, err := gzip.NewReader(f)
+			if err != nil {
+				os.RemoveAll(tmpDir)
+				return false, fmt.Errorf("gzip reader for %s: %w", archivePath, err)
+			}
+			defer gz.Close()
+			tarReader = tar.NewReader(gz)
+		} else if strings.HasSuffix(strings.ToLower(archivePath), ".tar.xz") {
+			// stdlib has no xz reader in compress — use a minimal approach
+			// via io via external xz. But Go 1.25 has no xz in stdlib.
+			// We'll handle xz by shelling out.
+			f.Close()
+			return s.extractXz(archivePath, tmpDir, destDir)
+		} else if strings.HasSuffix(strings.ToLower(archivePath), ".tar.bz2") {
+			bz := bzip2.NewReader(f)
+			tarReader = tar.NewReader(bz)
+		} else {
+			os.RemoveAll(tmpDir)
+			return false, fmt.Errorf("unsupported archive format: %s", archivePath)
+		}
+	} else if ext == ".tgz" {
+		gz, err := gzip.NewReader(f)
+		if err != nil {
+			os.RemoveAll(tmpDir)
+			return false, fmt.Errorf("gzip reader for %s: %w", archivePath, err)
+		}
+		defer gz.Close()
+		tarReader = tar.NewReader(gz)
+	} else {
+		os.RemoveAll(tmpDir)
+		return false, fmt.Errorf("unsupported archive format: %s", archivePath)
+	}
+
+	// Extract tar entries into tmpDir.
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			os.RemoveAll(tmpDir)
+			return false, fmt.Errorf("tar read %s: %w", archivePath, err)
+		}
+
+		target := filepath.Join(tmpDir, header.Name)
+
+		// Guard against path traversal.
+		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(tmpDir)+string(os.PathSeparator)) {
+			continue
+		}
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, os.FileMode(header.Mode)); err != nil {
+				os.RemoveAll(tmpDir)
+				return false, fmt.Errorf("mkdir %s: %w", target, err)
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				os.RemoveAll(tmpDir)
+				return false, fmt.Errorf("mkdir for %s: %w", target, err)
+			}
+			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
+			if err != nil {
+				os.RemoveAll(tmpDir)
+				return false, fmt.Errorf("create %s: %w", target, err)
+			}
+			if _, err := io.Copy(out, tarReader); err != nil {
+				out.Close()
+				os.RemoveAll(tmpDir)
+				return false, fmt.Errorf("write %s: %w", target, err)
+			}
+			out.Close()
+		case tar.TypeSymlink:
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				os.RemoveAll(tmpDir)
+				return false, fmt.Errorf("mkdir for symlink %s: %w", target, err)
+			}
+			os.Symlink(header.Linkname, target)
+		}
+	}
+
+	// Guard: atomic rename — destDir appears only when extraction is complete.
+	if err := os.Rename(tmpDir, destDir); err != nil {
+		os.RemoveAll(tmpDir)
+		return false, fmt.Errorf("move %s to %s: %w", tmpDir, destDir, err)
+	}
+
+	return true, nil
+}
+
+// extractXz handles .tar.xz archives by shelling out to the xz binary
+// since Go stdlib has no xz decompressor.
+func (s *SiloRepository) extractXz(archivePath string, tmpDir string, destDir string) (bool, error) {
+	// Try using xz command to decompress to a pipe, then tar extract.
+	// If xz is not available, fall back to an error.
+	cmd := exec.Command("xz", "-dc", archivePath)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		return false, fmt.Errorf("xz pipe: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		os.RemoveAll(tmpDir)
+		return false, fmt.Errorf("xz command not found, cannot extract .tar.xz: %w", err)
+	}
+
+	tarReader := tar.NewReader(stdout)
+
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			cmd.Wait()
+			os.RemoveAll(tmpDir)
+			return false, fmt.Errorf("tar read: %w", err)
+		}
+
+		target := filepath.Join(tmpDir, header.Name)
+
+		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(tmpDir)+string(os.PathSeparator)) {
+			continue
+		}
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, os.FileMode(header.Mode)); err != nil {
+				cmd.Wait()
+				os.RemoveAll(tmpDir)
+				return false, fmt.Errorf("mkdir %s: %w", target, err)
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				cmd.Wait()
+				os.RemoveAll(tmpDir)
+				return false, fmt.Errorf("mkdir for %s: %w", target, err)
+			}
+			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
+			if err != nil {
+				cmd.Wait()
+				os.RemoveAll(tmpDir)
+				return false, fmt.Errorf("create %s: %w", target, err)
+			}
+			if _, err := io.Copy(out, tarReader); err != nil {
+				out.Close()
+				cmd.Wait()
+				os.RemoveAll(tmpDir)
+				return false, fmt.Errorf("write %s: %w", target, err)
+			}
+			out.Close()
+		case tar.TypeSymlink:
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				cmd.Wait()
+				os.RemoveAll(tmpDir)
+				return false, fmt.Errorf("mkdir for symlink %s: %w", target, err)
+			}
+			os.Symlink(header.Linkname, target)
+		}
+	}
+
+	if err := cmd.Wait(); err != nil {
+		os.RemoveAll(tmpDir)
+		return false, fmt.Errorf("xz decompression: %w", err)
+	}
+
+	// Guard: atomic rename.
+	if err := os.Rename(tmpDir, destDir); err != nil {
+		os.RemoveAll(tmpDir)
+		return false, fmt.Errorf("move %s to %s: %w", tmpDir, destDir, err)
 	}
 
 	return true, nil

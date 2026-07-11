@@ -2,6 +2,8 @@ package assembler
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -43,6 +45,7 @@ type DownloadResult struct {
 	Name       string
 	Version    string
 	Downloaded bool // true = fetched from network, false = skipped (already existed)
+	Extracted  bool // true = extracted from archive, false = skipped (already existed)
 	Err        error
 }
 
@@ -117,6 +120,16 @@ func (s *Service) Download(name string, version string) ([]DownloadResult, error
 				return
 			}
 			results[idx].Downloaded = downloaded
+
+			// Extract to sources directory.
+			archivePath := filepath.Join(cacheDir(), filepath.Base(r.URL))
+			sourceDir := filepath.Join(sourcesDir(), itemName, itemVersion)
+			extracted, err := s.siloRep.Extract(archivePath, sourceDir)
+			if err != nil {
+				results[idx].Err = fmt.Errorf("extract %s@%s: %w", itemName, itemVersion, err)
+				return
+			}
+			results[idx].Extracted = extracted
 		}(i, item.name, item.version)
 	}
 
@@ -138,6 +151,16 @@ func (s *Service) Download(name string, version string) ([]DownloadResult, error
 	return results, nil
 }
 
+// DownloadFailed returns true if any result has an error.
+func DownloadFailed(results []DownloadResult) bool {
+	for _, r := range results {
+		if r.Err != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // extractVersion parses a dependency version string in the format
 // "exactVersion|constraint" and returns just the exact version part.
 // If there is no pipe, the entire string is returned.
@@ -150,4 +173,24 @@ func extractVersion(v string) string {
 		return before
 	}
 	return v
+}
+
+// cacheDir returns the PHPV_ROOT/caches directory.
+func cacheDir() string {
+	return resolvePHPVRoot("caches")
+}
+
+// sourcesDir returns the PHPV_ROOT/sources directory.
+func sourcesDir() string {
+	return resolvePHPVRoot("sources")
+}
+
+// resolvePHPVRoot builds a path under $PHPV_ROOT (or ~/.phpv).
+func resolvePHPVRoot(parts ...string) string {
+	root := os.Getenv("PHPV_ROOT")
+	if root == "" {
+		home, _ := os.UserHomeDir()
+		root = filepath.Join(home, ".phpv")
+	}
+	return filepath.Join(append([]string{root}, parts...)...)
 }

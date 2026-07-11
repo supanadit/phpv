@@ -6,15 +6,18 @@ import (
 	"github.com/supanadit/phpv/registry"
 )
 
-// SiloRepository is the low-level downloader responsible for fetching a
-// file from the given URL and storing it in the silo (local storage).
-// When checksumType and checksumValue are non-empty the implementation is
-// expected to verify the downloaded file against them.
+// SiloRepository is the low-level storage interface. It owns downloads and
+// archive extraction. Cache archives are kept intact — extraction goes to
+// the sources directory so the cache can be reused.
 //
 // Download returns true when the file was actually fetched from the network,
 // and false when the file already existed (skipped).
+//
+// Extract returns true when the archive was actually extracted, and false
+// when the source directory already existed (skipped).
 type SiloRepository interface {
 	Download(url string, checksumType string, checksumValue string) (downloaded bool, err error)
+	Extract(archivePath string, destDir string) (extracted bool, err error)
 }
 
 type Service struct {
@@ -41,4 +44,11 @@ func (s *Service) Download(name string, version string) (bool, error) {
 		return false, err
 	}
 	return s.siloRep.Download(r.URL, r.ChecksumType, r.ChecksumValue)
+}
+
+// ExtractArchive extracts a downloaded archive from the cache into the
+// sources directory. The archivePath is the full path to the cached file.
+// destDir is the target directory under sources/.
+func (s *Service) ExtractArchive(archivePath string, destDir string) (bool, error) {
+	return s.siloRep.Extract(archivePath, destDir)
 }

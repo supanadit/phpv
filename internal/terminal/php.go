@@ -51,15 +51,14 @@ func (h *PHPHandler) download(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Downloading %s %s and its dependencies...\n", name, version)
 
-	results, err := h.assemblerService.Download(name, version)
-	if err != nil {
-		return err
-	}
+	results, _ := h.assemblerService.Download(name, version)
 
-	var downloaded, skipped int
+	var downloaded, skipped, extracted int
+	var hasErr bool
 	for _, r := range results {
 		if r.Err != nil {
 			fmt.Printf("  ✗ Failed %s@%s: %v\n", r.Name, r.Version, r.Err)
+			hasErr = true
 			continue
 		}
 		if r.Downloaded {
@@ -69,8 +68,14 @@ func (h *PHPHandler) download(cmd *cobra.Command, args []string) error {
 			fmt.Printf("  → Skipped %s@%s (already exists)\n", r.Name, r.Version)
 			skipped++
 		}
+		if r.Extracted {
+			extracted++
+		}
 	}
 
-	fmt.Printf("Done: %d downloaded, %d skipped\n", downloaded, skipped)
+	fmt.Printf("Done: %d downloaded, %d skipped, %d extracted\n", downloaded, skipped, extracted)
+	if hasErr {
+		return fmt.Errorf("one or more packages failed")
+	}
 	return nil
 }

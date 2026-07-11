@@ -9,12 +9,12 @@ import (
 
 func TestRegistryRepository_List_PHP(t *testing.T) {
 	repo := NewRegistryRepository()
-	got, err := repo.List("php", false)
+	got, err := repo.List("php", false, "")
 	if err != nil {
-		t.Fatalf("List(php, false) returned error: %v", err)
+		t.Fatalf("List(php, false, \"\") returned error: %v", err)
 	}
 	if len(got) == 0 {
-		t.Fatal("List(php, false) returned empty result")
+		t.Fatal("List(php, false, \"\") returned empty result")
 	}
 
 	first := got[0]
@@ -27,30 +27,33 @@ func TestRegistryRepository_List_PHP(t *testing.T) {
 	if !strings.Contains(first.URL, "https://www.php.net/distributions/") {
 		t.Fatalf("first entry.URL = %q, missing php.net domain", first.URL)
 	}
+	if first.OS != "all" {
+		t.Fatalf("first entry.OS = %q, want %q", first.OS, "all")
+	}
 }
 
 func TestRegistryRepository_List_PHP_ChecksumFilter(t *testing.T) {
 	repo := NewRegistryRepository()
 
 	// checksum=false returns all entries (including those without checksums)
-	all, err := repo.List("php", false)
+	all, err := repo.List("php", false, "")
 	if err != nil {
-		t.Fatalf("List(php, false) returned error: %v", err)
+		t.Fatalf("List(php, false, \"\") returned error: %v", err)
 	}
 	if len(all) == 0 {
-		t.Fatal("List(php, false) returned empty result")
+		t.Fatal("List(php, false, \"\") returned empty result")
 	}
 
 	// checksum=true returns only entries that have checksums
-	onlyWithChecksum, err := repo.List("php", true)
+	onlyWithChecksum, err := repo.List("php", true, "")
 	if err != nil {
-		t.Fatalf("List(php, true) returned error: %v", err)
+		t.Fatalf("List(php, true, \"\") returned error: %v", err)
 	}
 	if len(onlyWithChecksum) != 1 {
-		t.Fatalf("List(php, true) returned %d entries, want 1", len(onlyWithChecksum))
+		t.Fatalf("List(php, true, \"\") returned %d entries, want 1", len(onlyWithChecksum))
 	}
 	if onlyWithChecksum[0].Version != "8.5.8" {
-		t.Fatalf("List(php, true) version = %q, want 8.5.8", onlyWithChecksum[0].Version)
+		t.Fatalf("List(php, true, \"\") version = %q, want 8.5.8", onlyWithChecksum[0].Version)
 	}
 	if onlyWithChecksum[0].ChecksumType != "sha256" {
 		t.Fatalf("8.5.8 ChecksumType = %q, want sha256", onlyWithChecksum[0].ChecksumType)
@@ -61,18 +64,18 @@ func TestRegistryRepository_List_PHP_ChecksumFilter(t *testing.T) {
 	}
 
 	// checksum=true for a package with no checksums returns empty
-	none, err := repo.List("cmake", true)
+	none, err := repo.List("cmake", true, "")
 	if err != nil {
-		t.Fatalf("List(cmake, true) returned error: %v", err)
+		t.Fatalf("List(cmake, true, \"\") returned error: %v", err)
 	}
 	if len(none) != 0 {
-		t.Fatalf("List(cmake, true) returned %d entries, want 0", len(none))
+		t.Fatalf("List(cmake, true, \"\") returned %d entries, want 0", len(none))
 	}
 }
 
 func TestRegistryRepository_List_CMake(t *testing.T) {
 	repo := NewRegistryRepository()
-	got, err := repo.List("cmake", false)
+	got, err := repo.List("cmake", false, "")
 	if err != nil {
 		t.Fatalf("List(cmake) returned error: %v", err)
 	}
@@ -90,11 +93,58 @@ func TestRegistryRepository_List_CMake(t *testing.T) {
 	if !strings.Contains(first.URL, "github.com/Kitware/CMake") {
 		t.Fatalf("first entry.URL = %q, missing github.com/Kitware/CMake", first.URL)
 	}
+	if first.OS != "linux" {
+		t.Fatalf("first entry.OS = %q, want linux", first.OS)
+	}
+}
+
+func TestRegistryRepository_List_CMake_OSSilter(t *testing.T) {
+	repo := NewRegistryRepository()
+
+	// Requesting linux returns cmake entries
+	linux, err := repo.List("cmake", false, "linux")
+	if err != nil {
+		t.Fatalf("List(cmake, false, linux) returned error: %v", err)
+	}
+	if len(linux) == 0 {
+		t.Fatal("List(cmake, false, linux) returned empty result")
+	}
+	for _, r := range linux {
+		if r.OS != "linux" {
+			t.Fatalf("entry.OS = %q, want linux", r.OS)
+		}
+	}
+
+	// Requesting darwin returns no cmake entries (cmake is linux-only)
+	darwin, err := repo.List("cmake", false, "darwin")
+	if err != nil {
+		t.Fatalf("List(cmake, false, darwin) returned error: %v", err)
+	}
+	if len(darwin) != 0 {
+		t.Fatalf("List(cmake, false, darwin) returned %d entries, want 0", len(darwin))
+	}
+}
+
+func TestRegistryRepository_List_PHP_OSFilter_AllOSIncluded(t *testing.T) {
+	repo := NewRegistryRepository()
+
+	// PHP is OS-agnostic, so requesting linux should still return all entries
+	linux, err := repo.List("php", false, "linux")
+	if err != nil {
+		t.Fatalf("List(php, false, linux) returned error: %v", err)
+	}
+	all, err := repo.List("php", false, "")
+	if err != nil {
+		t.Fatalf("List(php, false, \"\") returned error: %v", err)
+	}
+	if len(linux) != len(all) {
+		t.Fatalf("List(php, false, linux) returned %d entries, want %d (same as no OS filter)", len(linux), len(all))
+	}
 }
 
 func TestRegistryRepository_List_Perl(t *testing.T) {
 	repo := NewRegistryRepository()
-	got, err := repo.List("perl", false)
+	got, err := repo.List("perl", false, "")
 	if err != nil {
 		t.Fatalf("List(perl) returned error: %v", err)
 	}
@@ -108,6 +158,9 @@ func TestRegistryRepository_List_Perl(t *testing.T) {
 		}
 		if r.Type != "source_code" {
 			t.Fatalf("entry.Type = %q, want source_code", r.Type)
+		}
+		if r.OS != "all" {
+			t.Fatalf("entry.OS = %q, want %q", r.OS, "all")
 		}
 		if !strings.Contains(r.URL, "https://www.cpan.org/src/5.0/") {
 			t.Fatalf("entry.URL = %q, missing cpan.org domain", r.URL)
@@ -130,7 +183,7 @@ func TestRegistryRepository_List_Perl(t *testing.T) {
 
 func TestRegistryRepository_List_Unknown(t *testing.T) {
 	repo := NewRegistryRepository()
-	got, err := repo.List("unknown", false)
+	got, err := repo.List("unknown", false, "")
 	if err == nil {
 		t.Fatal("List(unknown) expected error, got nil")
 	}
@@ -143,12 +196,12 @@ func TestRegistryRepository_List_ConsistentShape(t *testing.T) {
 	repo := NewRegistryRepository()
 	packages := []string{"php", "cmake", "perl"}
 	for _, name := range packages {
-		entries, err := repo.List(name, false)
+		entries, err := repo.List(name, false, "")
 		if err != nil {
 			t.Fatalf("List(%q) returned error: %v", name, err)
 		}
 		for i, e := range entries {
-			if e.Name == "" || e.Type == "" || e.URL == "" || e.Version == "" {
+			if e.Name == "" || e.Type == "" || e.URL == "" || e.Version == "" || e.OS == "" {
 				t.Fatalf("List(%q)[%d] has empty field: %+v", name, i, e)
 			}
 		}
@@ -157,7 +210,7 @@ func TestRegistryRepository_List_ConsistentShape(t *testing.T) {
 
 func TestRegistryRepository_List_PHP_SortedByVersion(t *testing.T) {
 	repo := NewRegistryRepository()
-	entries, err := repo.List("php", false)
+	entries, err := repo.List("php", false, "")
 	if err != nil {
 		t.Fatalf("List(php) returned error: %v", err)
 	}

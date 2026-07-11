@@ -7,8 +7,8 @@ import (
 )
 
 type RegistryRepository interface {
-	List(name string, checksum bool) (r []domain.Registry, err error)
-	Get(name string, version string, checksum bool) (r domain.Registry, err error)
+	List(name string, checksum bool, os string) (r []domain.Registry, err error)
+	Get(name string, version string, checksum bool, os string) (r domain.Registry, err error)
 }
 
 type Service struct {
@@ -21,12 +21,12 @@ func NewService(rr RegistryRepository) *Service {
 	}
 }
 
-func (reg *Service) List(name string, checkum bool) (r []domain.Registry, err error) {
-	return reg.registryRepository.List(name, checkum)
+func (reg *Service) List(name string, checksum bool, os string) (r []domain.Registry, err error) {
+	return reg.registryRepository.List(name, checksum, os)
 }
 
-func (reg *Service) Get(name string, checksum bool, version string) (r domain.Registry, err error) {
-	registries, err := reg.List(name, checksum)
+func (reg *Service) Get(name string, checksum bool, version string, os string) (r domain.Registry, err error) {
+	registries, err := reg.List(name, checksum, os)
 	if err != nil {
 		return r, err
 	}

@@ -16,9 +16,9 @@ func TestBuildRegistries_FromRanges(t *testing.T) {
 	}
 	got := BuildRegistries(cfg)
 	want := []domain.Registry{
-		{Name: "php", Type: "source_code", Version: "8.0.0", URL: "https://php.net/distributions/php-8.0.0.tar.gz"},
-		{Name: "php", Type: "source_code", Version: "8.0.1", URL: "https://php.net/distributions/php-8.0.1.tar.gz"},
-		{Name: "php", Type: "source_code", Version: "8.0.2", URL: "https://php.net/distributions/php-8.0.2.tar.gz"},
+		{Name: "php", Type: "source_code", Version: "8.0.0", OS: "all", URL: "https://php.net/distributions/php-8.0.0.tar.gz"},
+		{Name: "php", Type: "source_code", Version: "8.0.1", OS: "all", URL: "https://php.net/distributions/php-8.0.1.tar.gz"},
+		{Name: "php", Type: "source_code", Version: "8.0.2", OS: "all", URL: "https://php.net/distributions/php-8.0.2.tar.gz"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("BuildRegistries(ranges) = %v, want %v", got, want)
@@ -34,11 +34,34 @@ func TestBuildRegistries_FromVersions(t *testing.T) {
 	}
 	got := BuildRegistries(cfg)
 	want := []domain.Registry{
-		{Name: "perl", Type: "source_code", Version: "5.22.3", URL: "https://cpan.org/src/5.0/perl-5.22.3.tar.gz"},
-		{Name: "perl", Type: "source_code", Version: "5.20.0", URL: "https://cpan.org/src/5.0/perl-5.20.0.tar.gz"},
+		{Name: "perl", Type: "source_code", Version: "5.22.3", OS: "all", URL: "https://cpan.org/src/5.0/perl-5.22.3.tar.gz"},
+		{Name: "perl", Type: "source_code", Version: "5.20.0", OS: "all", URL: "https://cpan.org/src/5.0/perl-5.20.0.tar.gz"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("BuildRegistries(versions) = %v, want %v", got, want)
+	}
+}
+
+func TestBuildRegistries_OS_Specific(t *testing.T) {
+	cfg := PackageConfig{
+		Name:        "cmake",
+		Type:        "binary",
+		OS:          "linux",
+		Versions:    []string{"3.27.6"},
+		URLTemplate: "https://github.com/Kitware/CMake/releases/download/v{version}/cmake-{version}-linux-x86_64.tar.gz",
+	}
+	got := BuildRegistries(cfg)
+	want := []domain.Registry{
+		{
+			Name:    "cmake",
+			Type:    "binary",
+			Version: "3.27.6",
+			OS:      "linux",
+			URL:     "https://github.com/Kitware/CMake/releases/download/v3.27.6/cmake-3.27.6-linux-x86_64.tar.gz",
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("BuildRegistries(os) = %v, want %v", got, want)
 	}
 }
 
@@ -57,8 +80,8 @@ func TestBuildRegistries_ExtensionOverride(t *testing.T) {
 	}
 	got := BuildRegistries(cfg)
 	want := []domain.Registry{
-		{Name: "perl", Type: "source_code", Version: "5.22.3", URL: "https://cpan.org/src/5.0/perl-5.22.3.tar.gz"},
-		{Name: "perl", Type: "source_code", Version: "5.18.4", URL: "https://cpan.org/src/5.0/perl-5.18.4.tar.bz2"},
+		{Name: "perl", Type: "source_code", Version: "5.22.3", OS: "all", URL: "https://cpan.org/src/5.0/perl-5.22.3.tar.gz"},
+		{Name: "perl", Type: "source_code", Version: "5.18.4", OS: "all", URL: "https://cpan.org/src/5.0/perl-5.18.4.tar.bz2"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("BuildRegistries(extension) = %v, want %v", got, want)
@@ -81,6 +104,7 @@ func TestBuildRegistries_Checksums(t *testing.T) {
 			Name:          "php",
 			Type:          "source_code",
 			Version:       "8.5.8",
+			OS:            "all",
 			URL:           "https://php.net/distributions/php-8.5.8.tar.gz",
 			ChecksumType:  "sha256",
 			ChecksumValue: "abc123",
@@ -89,6 +113,7 @@ func TestBuildRegistries_Checksums(t *testing.T) {
 			Name:    "php",
 			Type:    "source_code",
 			Version: "8.5.7",
+			OS:      "all",
 			URL:     "https://php.net/distributions/php-8.5.7.tar.gz",
 		},
 	}

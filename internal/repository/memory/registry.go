@@ -13,12 +13,13 @@ func NewRegistryRepository() *RegistryRepository {
 	return &RegistryRepository{}
 }
 
-func (reg *RegistryRepository) List(name string, checksum bool) (result []domain.Registry, err error) {
+func (reg *RegistryRepository) List(name string, checksum bool, os string) (result []domain.Registry, err error) {
 	switch name {
 	case "php":
 		result = repository.BuildRegistries(repository.PackageConfig{
 			Name:   "php",
 			Type: "source_code",
+			OS:     "all",
 			Ranges: repository.BuildRanges(
 				repository.BuildMinorRanges(8, []repository.MinorRange{
 					{Minor: 0, PatchEnd: 30},
@@ -66,6 +67,7 @@ func (reg *RegistryRepository) List(name string, checksum bool) (result []domain
 		result = repository.BuildRegistries(repository.PackageConfig{
 			Name:   "cmake",
 			Type: "binary",
+			OS:     "linux",
 			Ranges: repository.BuildRanges(
 				repository.BuildMinorRanges(3, []repository.MinorRange{
 					{Minor: 21, PatchEnd: 4},
@@ -84,6 +86,7 @@ func (reg *RegistryRepository) List(name string, checksum bool) (result []domain
 		result = repository.BuildRegistries(repository.PackageConfig{
 			Name:   "perl",
 			Type: "source_code",
+			OS:     "all",
 			Versions: []string{
 				"5.42.1", "5.40.3", "5.38.5", "5.36.3", "5.34.3",
 				"5.32.1", "5.30.3", "5.28.3", "5.26.3", "5.24.4",
@@ -102,6 +105,18 @@ func (reg *RegistryRepository) List(name string, checksum bool) (result []domain
 
 	default:
 		return nil, fmt.Errorf("unknown package: %s", name)
+	}
+
+	// Filter by OS when a specific OS is requested.
+	// Entries with OS="all" are always included.
+	if os != "" && os != "all" {
+		filtered := make([]domain.Registry, 0, len(result))
+		for _, r := range result {
+			if r.OS == "all" || r.OS == os {
+				filtered = append(filtered, r)
+			}
+		}
+		result = filtered
 	}
 
 	if checksum {

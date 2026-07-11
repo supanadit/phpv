@@ -45,6 +45,11 @@ type ExtensionConfig struct {
 // URLTemplate supports placeholders:
 //   - {version} — replaced with the version string
 //   - {ext}     — replaced by evaluating Extension rules
+//
+// OS sets the OS property on every generated entry. Use "all" (or
+// leave empty) for packages that are OS-agnostic (e.g., source code).
+// Use a specific OS value such as "linux", "darwin", or "windows" for
+// pre-built binaries that target a single platform.
 type PackageConfig struct {
 	Name        string
 	Type        string
@@ -53,6 +58,7 @@ type PackageConfig struct {
 	Skip        []string
 	URLTemplate string
 	Extension   ExtensionConfig
+	OS          string
 	Checksums   []Checksum
 }
 
@@ -60,7 +66,8 @@ type PackageConfig struct {
 // If Ranges is provided, versions are generated via GenerateVersions.
 // Otherwise, Versions is used directly.
 // Each version's URL is built from URLTemplate with {version} and {ext}
-// placeholders resolved.
+// placeholders resolved. The OS field is set from cfg.OS, defaulting to
+// "all" when empty.
 func BuildRegistries(cfg PackageConfig) []domain.Registry {
 	var versions []string
 	if len(cfg.Ranges) > 0 {
@@ -72,6 +79,11 @@ func BuildRegistries(cfg PackageConfig) []domain.Registry {
 	checksumMap := make(map[string]Checksum, len(cfg.Checksums))
 	for _, c := range cfg.Checksums {
 		checksumMap[c.Version] = c
+	}
+
+	os := cfg.OS
+	if os == "" {
+		os = "all"
 	}
 
 	registries := make([]domain.Registry, 0, len(versions))
@@ -87,6 +99,7 @@ func BuildRegistries(cfg PackageConfig) []domain.Registry {
 			Type:    cfg.Type,
 			URL:     url,
 			Version: v,
+			OS:      os,
 		}
 		if c, ok := checksumMap[v]; ok {
 			entry.ChecksumType = c.Type

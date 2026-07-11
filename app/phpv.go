@@ -26,9 +26,11 @@ func main() {
 			func() *cobra.Command { return rootCmd },
 			fx.Annotate(memory.NewRegistryRepository, fx.As(new(registry.RegistryRepository))),
 			fx.Annotate(disk.NewSiloRepository, fx.As(new(silo.SiloRepository))),
-			fx.Annotate(silo.NewService, fx.As(new(terminal.PHPService))),
+			silo.NewService,
 		),
-		fx.Invoke(terminal.NewPHPHandler),
+		fx.Invoke(func(svc *silo.Service, rootCmd *cobra.Command) {
+			terminal.NewPHPHandler(rootCmd, svc)
+		}),
 	)
 
 	if err := app.Err(); err != nil {

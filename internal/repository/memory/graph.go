@@ -30,6 +30,7 @@ func NewGraphRepository() *GraphRepository {
 		implied:    make(map[string][]string),
 	}
 	r.registerPackages()
+	r.registerExtensions()
 	return r
 }
 
@@ -101,6 +102,16 @@ func (r *GraphRepository) GetExtensionDef(name string) (domain.ExtensionDef, boo
 }
 
 func (r *GraphRepository) IsExtensionValidForPHPVersion(name, phpVersion string) bool {
+	def, ok := r.extensions[name]
+	if !ok {
+		return false
+	}
+	if def.MinPHPVersion != "" && repository.CompareVersions(phpVersion, def.MinPHPVersion) < 0 {
+		return false
+	}
+	if def.MaxPHPVersion != "" && repository.CompareVersions(phpVersion, def.MaxPHPVersion) > 0 {
+		return false
+	}
 	return true
 }
 
@@ -109,31 +120,100 @@ func (r *GraphRepository) GetConflictingExtensions(name string) []string {
 }
 
 func (r *GraphRepository) GetExtensionDependency(name string) (string, bool) {
-	return "", false
+	def, ok := r.extensions[name]
+	if !ok {
+		return "", false
+	}
+	if def.RequiresPackage == "" {
+		return "", false
+	}
+	return def.RequiresPackage, true
 }
 
 func (r *GraphRepository) GetExtensionDependencyWithVersion(extName, phpVersion string) (string, string, bool) {
-	return "", "", false
+	def, ok := r.extensions[extName]
+	if !ok || def.RequiresPackage == "" {
+		return "", "", false
+	}
+	return def.RequiresPackage, "", true
 }
 
 func (r *GraphRepository) ValidateExtensions(extensions []string, phpVersion string) ([]string, error) {
-	return nil, nil
+	var unknown []string
+	for _, ext := range extensions {
+		if _, ok := r.extensions[ext]; !ok {
+			unknown = append(unknown, ext)
+		}
+	}
+	return unknown, nil
 }
 
 func (r *GraphRepository) CheckExtensionConflicts(extensions []string) ([]string, [][]string) {
-	return nil, nil
+	var conflicts []string
+	var groups [][]string
+	for _, ext := range extensions {
+		if c, ok := r.conflicts[ext]; ok {
+			for _, other := range extensions {
+				for _, conflict := range c {
+					if other == conflict {
+						conflicts = append(conflicts, ext)
+						groups = append(groups, []string{ext, other})
+					}
+				}
+			}
+		}
+	}
+	return conflicts, groups
 }
 
 func (r *GraphRepository) ListExtensions() []domain.ExtensionInfo {
-	return nil
+	var list []domain.ExtensionInfo
+	for name, def := range r.extensions {
+		list = append(list, domain.ExtensionInfo{
+			Name:        name,
+			Description: def.Description,
+		})
+	}
+	return list
 }
 
 func (r *GraphRepository) ListExtensionsForPHP(phpVersion string) []domain.ExtensionInfo {
-	return nil
+	var list []domain.ExtensionInfo
+	for name, def := range r.extensions {
+		if r.IsExtensionValidForPHPVersion(name, phpVersion) {
+			list = append(list, domain.ExtensionInfo{
+				Name:        name,
+				Description: def.Description,
+			})
+		}
+	}
+	return list
 }
 
 func (r *GraphRepository) ExpandImplied(extensions []string) ([]string, []string) {
-	return extensions, nil
+	seen := make(map[string]bool)
+	var expanded []string
+	var added []string
+	var expand func(name string)
+	expand = func(name string) {
+		if seen[name] {
+			return
+		}
+		seen[name] = true
+		expanded = append(expanded, name)
+		if implied, ok := r.implied[name]; ok {
+			for _, imp := range implied {
+				if !seen[imp] {
+					added = append(added, imp)
+					expand(imp)
+				}
+			}
+		}
+	}
+	for _, ext := range extensions {
+		expand(ext)
+	}
+	return expanded, added
 }
 
 func (r *GraphRepository) GetConfigureFlags(name, version string) []string {
@@ -141,7 +221,19 @@ func (r *GraphRepository) GetConfigureFlags(name, version string) []string {
 }
 
 func (r *GraphRepository) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
-	return nil
+	var flags []string
+	for _, ext := range extensions {
+		flags = append(flags, r.GetExtensionConfigureFlags(ext, phpVersion)...)
+	}
+	return flags
+}
+
+func (r *GraphRepository) GetExtensionConfigureFlags(name string, phpVersion string) []string {
+	def, ok := r.extensions[name]
+	if !ok {
+		return nil
+	}
+	return def.ConfigureFlags
 }
 
 func (r *GraphRepository) GetCompilerStdRule(phpVersion string) domain.CompilerRule {
@@ -171,6 +263,17 @@ func (r *GraphRepository) getDependencies(name string, version string) ([]domain
 func (r *GraphRepository) registerPackages() {
 	for _, pkg := range builtInPackages() {
 		r.packages[pkg.Package] = pkg
+	}
+}
+
+func (r *GraphRepository) registerExtensions() {
+	for _, ext := range builtInExtensions() {
+		r.extensions[ext.Name] = ext
+	}
+	for _, ext := range builtInExtensions() {
+		for _, imp := range ext.Implied {
+			r.implied[ext.Name] = append(r.implied[ext.Name], imp)
+		}
 	}
 }
 
@@ -543,6 +646,166 @@ func builtInPackages() []domain.Package {
 			Package:     "zig",
 			Default:     []domain.Dependency{},
 			Constraints: []domain.VersionConstraint{},
+		},
+	}
+}
+
+func builtInExtensions() []domain.ExtensionDef {
+	return []domain.ExtensionDef{
+		{
+			Name:        "openssl",
+			Description: "OpenSSL support",
+			ConfigureFlags: []string{
+				"--with-openssl",
+				"--with-system-ciphers",
+			},
+		},
+		{
+			Name:        "curl",
+			Description: "cURL support",
+			ConfigureFlags: []string{
+				"--with-curl",
+			},
+		},
+		{
+			Name:        "pdo",
+			Description: "PHP Data Objects",
+			ConfigureFlags: []string{
+				"--enable-pdo",
+			},
+			Implied: []string{"pdo_mysql", "pdo_pgsql", "pdo_sqlite"},
+		},
+		{
+			Name:        "pdo_mysql",
+			Description: "MySQL driver for PDO",
+			ConfigureFlags: []string{
+				"--with-pdo-mysql=mysqlnd",
+			},
+		},
+		{
+			Name:        "pdo_pgsql",
+			Description: "PostgreSQL driver for PDO",
+			ConfigureFlags: []string{
+				"--with-pdo-pgsql",
+			},
+		},
+		{
+			Name:        "pdo_sqlite",
+			Description: "SQLite driver for PDO",
+			ConfigureFlags: []string{
+				"--with-pdo-sqlite",
+			},
+		},
+		{
+			Name:        "mysqli",
+			Description: "MySQL Improved Extension",
+			ConfigureFlags: []string{
+				"--with-mysqli=mysqlnd",
+			},
+		},
+		{
+			Name:        "mbstring",
+			Description: "Multibyte String support",
+			ConfigureFlags: []string{
+				"--enable-mbstring",
+			},
+		},
+		{
+			Name:        "xml",
+			Description: "XML support",
+			ConfigureFlags: []string{
+				"--enable-xml",
+				"--enable-libxml",
+				"--enable-simplexml",
+				"--enable-xmlreader",
+				"--enable-xmlwriter",
+				"--enable-dom",
+			},
+		},
+		{
+			Name:        "zip",
+			Description: "ZIP archive support",
+			ConfigureFlags: []string{
+				"--enable-zip",
+				"--with-zip",
+			},
+		},
+		{
+			Name:        "gd",
+			Description: "GD image processing",
+			ConfigureFlags: []string{
+				"--with-gd",
+			},
+		},
+		{
+			Name:        "intl",
+			Description: "Internationalization support",
+			ConfigureFlags: []string{
+				"--enable-intl",
+			},
+		},
+		{
+			Name:        "json",
+			Description: "JSON support",
+			ConfigureFlags: []string{
+				"--enable-json",
+			},
+		},
+		{
+			Name:        "bcmath",
+			Description: "BC Math arbitrary precision",
+			ConfigureFlags: []string{
+				"--enable-bcmath",
+			},
+		},
+		{
+			Name:        "ctype",
+			Description: "Character type checking",
+			ConfigureFlags: []string{
+				"--enable-ctype",
+			},
+		},
+		{
+			Name:        "filter",
+			Description: "Data filtering",
+			ConfigureFlags: []string{
+				"--enable-filter",
+			},
+		},
+		{
+			Name:        "hash",
+			Description: "HASH message digest",
+			ConfigureFlags: []string{
+				"--enable-hash",
+			},
+		},
+		{
+			Name:        "session",
+			Description: "Session support",
+			ConfigureFlags: []string{
+				"--enable-session",
+			},
+		},
+		{
+			Name:        "tokenizer",
+			Description: "Tokenizer support",
+			ConfigureFlags: []string{
+				"--enable-tokenizer",
+			},
+		},
+		{
+			Name:        "opcache",
+			Description: "OPcache",
+			ConfigureFlags: []string{
+				"--enable-opcache",
+			},
+		},
+		{
+			Name:        "fileinfo",
+			Description: "File information",
+			ConfigureFlags: []string{
+				"--enable-fileinfo",
+			},
 		},
 	}
 }

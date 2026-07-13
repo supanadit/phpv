@@ -2,12 +2,13 @@ package domain
 
 // ExtensionDef defines a PHP extension that can be enabled at build time.
 type ExtensionDef struct {
-	Name           string
-	Description    string
+	Name            string
+	Description     string
 	RequiresPackage string
-	MinPHPVersion  string
-	MaxPHPVersion  string
-	Implied        []string
+	MinPHPVersion   string
+	MaxPHPVersion   string
+	Implied         []string
+	ConfigureFlags  []string
 }
 
 // ExtensionInfo describes an extension for listing/display purposes.

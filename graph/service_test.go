@@ -50,6 +50,9 @@ func (m *mockGraphRepo) GetConfigureFlags(name, version string) []string {
 func (m *mockGraphRepo) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
 	return nil
 }
+func (m *mockGraphRepo) GetExtensionConfigureFlags(name string, phpVersion string) []string {
+	return nil
+}
 func (m *mockGraphRepo) GetCompilerStdRule(phpVersion string) domain.CompilerRule {
 	return domain.CompilerRule{CStd: "-std=gnu11", CXXStd: "-std=gnu++17"}
 }

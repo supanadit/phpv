@@ -87,6 +87,7 @@ Version syntax:
 	}
 	cmd.Flags().String("from", "", "Install from a bundle file instead of building from source")
 	cmd.Flags().Bool("static", false, "Build with static linking for cross-distro portability")
+	cmd.Flags().String("ext", "", "Comma-separated list of extensions to build (e.g., openssl,curl,pdo_mysql)")
 	return cmd
 }
 
@@ -104,6 +105,17 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	}
 
 	static, _ := cmd.Flags().GetBool("static")
+	extStr, _ := cmd.Flags().GetString("ext")
+
+	var extensions []string
+	if extStr != "" {
+		for _, e := range strings.Split(extStr, ",") {
+			e = strings.TrimSpace(e)
+			if e != "" {
+				extensions = append(extensions, e)
+			}
+		}
+	}
 
 	fmt.Printf("Installing PHP %s...\n\n", version)
 
@@ -136,7 +148,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	result, err := h.assemblerSvc.Assemble("php", version, static, func(stage, message string) {
+	result, err := h.assemblerSvc.Assemble("php", version, static, extensions, func(stage, message string) {
 		progressCh <- progressMsg{stage: stage, message: message}
 	})
 	close(progressCh)

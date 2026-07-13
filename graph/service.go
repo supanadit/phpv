@@ -25,6 +25,7 @@ type GraphRepository interface {
 	// Flag knowledge
 	GetConfigureFlags(name string, version string) []string
 	GetPHPConfigureFlags(phpVersion string, extensions []string) []string
+	GetExtensionConfigureFlags(name string, phpVersion string) []string
 
 	// Compiler knowledge
 	GetCompilerStdRule(phpVersion string) domain.CompilerRule
@@ -137,6 +138,13 @@ func (s *Service) GetConfigureFlags(name string, version string) []string {
 // GetPHPConfigureFlags returns configure flags for PHP with given extensions.
 func (s *Service) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
 	return s.repo.GetPHPConfigureFlags(phpVersion, extensions)
+}
+
+// GetExtensionConfigureFlags returns configure flags for a single extension
+// at a specific PHP version. Flags are version-gated (e.g., --with-external-pcre
+// only in PHP 7.4+).
+func (s *Service) GetExtensionConfigureFlags(name string, phpVersion string) []string {
+	return s.repo.GetExtensionConfigureFlags(name, phpVersion)
 }
 
 // GetCompilerStdRule returns C/C++ compiler standard flags for a PHP version.

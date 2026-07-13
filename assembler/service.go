@@ -3,6 +3,7 @@ package assembler
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -59,7 +60,7 @@ func NewService(g *graph.Service, s *silo.Service, f *forge.Service, p *patcher.
 }
 
 // Assemble runs the full pipeline for (name, version).
-func (s *Service) Assemble(name string, version string, static bool, progress ProgressFunc) (*AssemblerResult, error) {
+func (s *Service) Assemble(name string, version string, static bool, extensions []string, progress ProgressFunc) (*AssemblerResult, error) {
 	emit := func(stage, msg string) {
 		if progress != nil {
 			progress(stage, msg)
@@ -96,7 +97,7 @@ func (s *Service) Assemble(name string, version string, static bool, progress Pr
 	}()
 
 	emit("deps", "Resolving dependency graph...")
-	plan, err := s.graph.GetBuildPlan(name, exactVersion, nil)
+	plan, err := s.graph.GetBuildPlan(name, exactVersion, extensions)
 	if err != nil {
 		return nil, fmt.Errorf("resolve build plan for %s@%s: %w", name, exactVersion, err)
 	}
@@ -218,6 +219,23 @@ func (s *Service) Assemble(name string, version string, static bool, progress Pr
 
 	emit("done", fmt.Sprintf("✓ %s %s installed at %s", name, exactVersion, prefix))
 
+	if len(extensions) > 0 {
+		emit("extensions", fmt.Sprintf("Building %d extension(s)...", len(extensions)))
+		sourceDir := s.silo.SourcePath(name, exactVersion)
+		srcPath := findSourceDir(sourceDir, name, exactVersion)
+		if srcPath == "" {
+			return nil, fmt.Errorf("could not find source directory for extensions in %s", sourceDir)
+		}
+		for _, ext := range extensions {
+			emit("extensions", fmt.Sprintf("Building extension %s...", ext))
+			if err := s.InstallExtension(exactVersion, ext, srcPath, prefix); err != nil {
+				emit("error", fmt.Sprintf("Extension %s failed: %v", ext, err))
+				return nil, fmt.Errorf("extension %s: %w", ext, err)
+			}
+			emit("extensions", fmt.Sprintf("✓ %s built", ext))
+		}
+	}
+
 	var depLibraryPaths []string
 	for _, dep := range plan.Deps {
 		if isBuildTool(dep.Name) {
@@ -266,6 +284,71 @@ func (s *Service) collectDepFlags(prefix string, cppFlags, ldFlags, pcPaths []st
 		pcPaths = appendUnique(pcPaths, pc64Path)
 	}
 	return cppFlags, ldFlags, pcPaths
+}
+
+// InstallExtension builds a single PHP extension from the PHP source tree
+// using phpize. The extension source must be at ext/<name>/ inside the
+// PHP source tree. After building, it adds extension=<name>.so to php.ini.
+func (s *Service) InstallExtension(phpVersion, extName, phpSourceDir, phpPrefix string) error {
+	extDir := filepath.Join(phpSourceDir, "ext", extName)
+	if _, err := os.Stat(extDir); os.IsNotExist(err) {
+		return fmt.Errorf("extension %q not found in PHP source tree at %s", extName, extDir)
+	}
+
+	phpize := filepath.Join(phpPrefix, "bin", "phpize")
+	if _, err := os.Stat(phpize); os.IsNotExist(err) {
+		return fmt.Errorf("phpize not found at %s (PHP not installed)", phpize)
+	}
+
+	phpConfig := filepath.Join(phpPrefix, "bin", "php-config")
+	if _, err := os.Stat(phpConfig); os.IsNotExist(err) {
+		return fmt.Errorf("php-config not found at %s", phpConfig)
+	}
+
+	cmd := exec.Command(phpize)
+	cmd.Dir = extDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("phpize %s: %w\n%s", extName, err, out)
+	}
+
+	args := []string{"--with-php-config=" + phpConfig}
+	extFlags := s.graph.GetExtensionConfigureFlags(extName, phpVersion)
+	args = append(args, extFlags...)
+
+	configure := exec.Command("./configure", args...)
+	configure.Dir = extDir
+	if out, err := configure.CombinedOutput(); err != nil {
+		return fmt.Errorf("configure %s: %w\n%s", extName, err, out)
+	}
+
+	make := exec.Command("make", "-j4")
+	make.Dir = extDir
+	if out, err := make.CombinedOutput(); err != nil {
+		return fmt.Errorf("make %s: %w\n%s", extName, err, out)
+	}
+
+	install := exec.Command("make", "install")
+	install.Dir = extDir
+	if out, err := install.CombinedOutput(); err != nil {
+		return fmt.Errorf("make install %s: %w\n%s", extName, err, out)
+	}
+
+	iniDir := filepath.Join(phpPrefix, "etc")
+	if err := os.MkdirAll(iniDir, 0755); err != nil {
+		return fmt.Errorf("create ini dir: %w", err)
+	}
+	iniPath := filepath.Join(iniDir, "php.ini")
+	entry := "extension=" + extName + ".so\n"
+	f, err := os.OpenFile(iniPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("open php.ini: %w", err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(entry); err != nil {
+		return fmt.Errorf("write php.ini: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Service) downloadAll(name, version string, deps []domain.Dependency) ([]DownloadResult, error) {

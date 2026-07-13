@@ -41,14 +41,14 @@ type ProgressFunc func(stage, message string)
 // It composes service wrappers that each add value over their underlying repositories.
 type Service struct {
 	graph   *graph.Service
-	silo    silo.SiloRepository
+	silo    *silo.Service
 	forge   *forge.Service
 	patcher *patcher.Service
 	reg     *registry.Service
 }
 
 // NewService creates a new assembler service.
-func NewService(g *graph.Service, s silo.SiloRepository, f *forge.Service, p *patcher.Service, r *registry.Service) *Service {
+func NewService(g *graph.Service, s *silo.Service, f *forge.Service, p *patcher.Service, r *registry.Service) *Service {
 	return &Service{
 		graph:   g,
 		silo:    s,
@@ -297,7 +297,7 @@ func (s *Service) downloadAll(name, version string, deps []domain.Dependency) ([
 				results[idx].Err = fmt.Errorf("registry resolve %s@%s: %w", n, v, err)
 				return
 			}
-			downloaded, err := s.silo.Download(regEntry.URL, regEntry.ChecksumType, regEntry.ChecksumValue)
+			downloaded, err := s.silo.DownloadURL(regEntry.URL, regEntry.ChecksumType, regEntry.ChecksumValue)
 			if err != nil {
 				results[idx].Err = fmt.Errorf("download %s@%s: %w", n, v, err)
 				return

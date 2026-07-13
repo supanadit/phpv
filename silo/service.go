@@ -61,10 +61,15 @@ func (s *Service) Download(name string, version string) (bool, error) {
 	return s.siloRep.Download(r.URL, r.ChecksumType, r.ChecksumValue)
 }
 
-// ExtractArchive extracts a downloaded archive from the cache into the
-// sources directory. The archivePath is the full path to the cached file.
-// destDir is the target directory under sources/.
-func (s *Service) ExtractArchive(archivePath string, destDir string) (bool, error) {
+// DownloadURL downloads a file from the given URL with optional checksum
+// verification. This is the low-level method used by the assembler when
+// it already has the registry entry resolved.
+func (s *Service) DownloadURL(url, checksumType, checksumValue string) (bool, error) {
+	return s.siloRep.Download(url, checksumType, checksumValue)
+}
+
+// Extract extracts a downloaded archive into the destination directory.
+func (s *Service) Extract(archivePath, destDir string) (bool, error) {
 	return s.siloRep.Extract(archivePath, destDir)
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/supanadit/phpv/internal/terminal"
 	"github.com/supanadit/phpv/patcher"
 	"github.com/supanadit/phpv/registry"
+	"github.com/supanadit/phpv/shim"
 	"github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/system"
 )
@@ -52,6 +53,7 @@ func main() {
 			silo.NewService,
 			bundle.NewService,
 			system.NewService,
+			shim.NewService,
 			assembler.NewService,
 			forge.NewService,
 			patcher.NewService,

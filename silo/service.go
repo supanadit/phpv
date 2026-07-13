@@ -38,6 +38,10 @@ type SiloRepository interface {
 	// Extension manifest.
 	GetExtensionManifest(phpVersion string) (*domain.ExtensionManifest, error)
 	SaveExtensionManifest(phpVersion string, m *domain.ExtensionManifest) error
+
+	// System mode.
+	IsSystemMode() bool
+	SetSystemMode(enabled bool) error
 }
 
 type Service struct {
@@ -134,4 +138,14 @@ func (s *Service) GetExtensionManifest(phpVersion string) (*domain.ExtensionMani
 // SaveExtensionManifest saves the extension manifest for a PHP version.
 func (s *Service) SaveExtensionManifest(phpVersion string, m *domain.ExtensionManifest) error {
 	return s.siloRep.SaveExtensionManifest(phpVersion, m)
+}
+
+// IsSystemMode returns true if the .phpv_system marker exists.
+func (s *Service) IsSystemMode() bool {
+	return s.siloRep.IsSystemMode()
+}
+
+// SetSystemMode creates or removes the .phpv_system marker.
+func (s *Service) SetSystemMode(enabled bool) error {
+	return s.siloRep.SetSystemMode(enabled)
 }

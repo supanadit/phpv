@@ -77,3 +77,8 @@ func StatePath(phpVersion string) string {
 func DefaultPath() string {
 	return filepath.Join(resolveRoot(), "default")
 }
+
+// SystemMarkerPath returns the path to the .phpv_system marker file.
+func SystemMarkerPath() string {
+	return filepath.Join(resolveRoot(), ".phpv_system")
+}

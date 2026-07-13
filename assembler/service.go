@@ -74,7 +74,7 @@ func (s *Service) Assemble(name string, version string, static bool, extensions 
 	}
 
 	emit("resolve", fmt.Sprintf("Resolving %s version %q...", name, version))
-	exactVersion, err := s.resolveVersion(name, version)
+	exactVersion, err := s.ResolveVersion(name, version)
 	if err != nil {
 		return nil, fmt.Errorf("resolve version: %w", err)
 	}
@@ -496,7 +496,7 @@ func (s *Service) downloadAll(name, version string, deps []domain.Dependency) ([
 	return results, nil
 }
 
-func (s *Service) resolveVersion(name, constraint string) (string, error) {
+func (s *Service) ResolveVersion(name, constraint string) (string, error) {
 	entries, err := s.reg.List(name)
 	if err != nil {
 		return "", err

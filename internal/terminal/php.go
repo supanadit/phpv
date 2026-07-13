@@ -14,6 +14,7 @@ import (
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/bundle"
 	"github.com/supanadit/phpv/registry"
+	"github.com/supanadit/phpv/shim"
 	"github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/system"
 )
@@ -25,16 +26,18 @@ type PHPHandler struct {
 	registrySvc  *registry.Service
 	bundleSvc    *bundle.Service
 	systemSvc    *system.Service
+	shimSvc      *shim.Service
 }
 
 // NewPHPHandler registers all PHP subcommands onto the given root command.
-func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service, systemSvc *system.Service) {
+func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service, systemSvc *system.Service, shimSvc *shim.Service) {
 	h := &PHPHandler{
 		siloSvc:      siloSvc,
 		assemblerSvc: assemblerSvc,
 		registrySvc:  registrySvc,
 		bundleSvc:    bundleSvc,
 		systemSvc:    systemSvc,
+		shimSvc:      shimSvc,
 	}
 	rootCmd.AddCommand(h.downloadCmd())
 	rootCmd.AddCommand(h.installCmd())
@@ -45,6 +48,10 @@ func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *
 	rootCmd.AddCommand(h.useCmd())
 	rootCmd.AddCommand(h.shareCmd())
 	rootCmd.AddCommand(h.extensionCmd())
+	rootCmd.AddCommand(h.initCmd())
+	rootCmd.AddCommand(h.rehashCmd())
+	rootCmd.AddCommand(h.pharCmd())
+	rootCmd.AddCommand(h.autoDetectResolveCmd())
 }
 
 func (h *PHPHandler) downloadCmd() *cobra.Command {
@@ -182,6 +189,10 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println()
 	fmt.Printf("✓ PHP %s installed at %s\n", result.Version, result.Prefix)
+
+	if err := h.shimSvc.RegenerateAll(); err != nil {
+		return fmt.Errorf("regenerate shims: %w", err)
+	}
 	return nil
 }
 
@@ -337,31 +348,39 @@ func (h *PHPHandler) use(cmd *cobra.Command, args []string) error {
 	version := args[0]
 
 	if version == "system" {
-		// Check that system PHP exists.
 		systemPHP, err := exec.LookPath("php")
 		if err != nil {
 			return fmt.Errorf("system PHP not found in PATH")
 		}
-		// Make sure it's not a phpv shim.
 		silo := h.siloSvc.GetSilo()
 		phpvBin := filepath.Join(silo.Root, "bin", "php")
 		if systemPHP == phpvBin {
 			return fmt.Errorf("system PHP is managed by phpv; use a specific version instead")
+		}
+		if err := h.shimSvc.SetSystemMode(true); err != nil {
+			return fmt.Errorf("set system mode: %w", err)
+		}
+		if err := h.shimSvc.RegenerateAll(); err != nil {
+			return fmt.Errorf("regenerate shims: %w", err)
 		}
 		fmt.Printf("→ Using system PHP at %s\n", systemPHP)
 		fmt.Println("Run `phpv init` in your shell to enable version switching.")
 		return nil
 	}
 
-	// Resolve the version constraint to an exact installed version.
 	exactVersion, err := h.resolveInstalledVersion(version)
 	if err != nil {
 		return err
 	}
 
-	// Set as default.
+	if err := h.shimSvc.SetSystemMode(false); err != nil {
+		return fmt.Errorf("clear system mode: %w", err)
+	}
 	if err := h.siloSvc.SetDefault(exactVersion); err != nil {
 		return fmt.Errorf("set default: %w", err)
+	}
+	if err := h.shimSvc.RegenerateAll(); err != nil {
+		return fmt.Errorf("regenerate shims: %w", err)
 	}
 
 	silo := h.siloSvc.GetSilo()
@@ -580,6 +599,27 @@ func (h *PHPHandler) share(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("✓ PHP %s exported to %s\n", version, output)
 	return nil
+}
+
+// autoDetectResolveCmd is a hidden subcommand used by shim scripts to resolve version constraints.
+func (h *PHPHandler) autoDetectResolveCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:    "auto-detect-resolve [version]",
+		Hidden: true,
+		Args:   cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			constraint := ""
+			if len(args) == 1 {
+				constraint = args[0]
+			}
+			exact, err := h.assemblerSvc.ResolveVersion("php", constraint)
+			if err != nil {
+				return err
+			}
+			fmt.Println(exact)
+			return nil
+		},
+	}
 }
 
 // progressMsg is sent by the assembler through a progress callback.

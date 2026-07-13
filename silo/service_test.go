@@ -60,6 +60,12 @@ func (m *mockSiloRepo) GetExtensionManifest(phpVersion string) (*domain.Extensio
 func (m *mockSiloRepo) SaveExtensionManifest(phpVersion string, manifest *domain.ExtensionManifest) error {
 	return nil
 }
+func (m *mockSiloRepo) IsSystemMode() bool {
+	return false
+}
+func (m *mockSiloRepo) SetSystemMode(enabled bool) error {
+	return nil
+}
 
 type mockRegistryRepo struct{}
 

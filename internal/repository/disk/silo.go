@@ -337,6 +337,24 @@ func (s *SiloRepository) SetDefault(version string) error {
 	return os.WriteFile(DefaultPath(), []byte(version+"\n"), 0o644)
 }
 
+// IsSystemMode returns true if the .phpv_system marker exists.
+func (s *SiloRepository) IsSystemMode() bool {
+	_, err := os.Stat(SystemMarkerPath())
+	return err == nil
+}
+
+// SetSystemMode creates or removes the .phpv_system marker.
+func (s *SiloRepository) SetSystemMode(enabled bool) error {
+	path := SystemMarkerPath()
+	if enabled {
+		return os.WriteFile(path, []byte{}, 0o644)
+	}
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil
+	}
+	return os.Remove(path)
+}
+
 // PHPOutputPath returns the install prefix for a PHP version.
 func (s *SiloRepository) PHPOutputPath(phpVersion string) string {
 	return PHPOutputPath(phpVersion)

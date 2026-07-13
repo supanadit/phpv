@@ -137,6 +137,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	verbose, _ := cmd.Flags().GetBool("verbose")
 
 	var extensions []string
+	var err error
 	if extStr != "" {
 		for _, e := range strings.Split(extStr, ",") {
 			e = strings.TrimSpace(e)
@@ -146,8 +147,10 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	var systemPkgs map[string]system.Package
 	if !noSystem {
-		if err := h.checkSystemDeps(extensions, autoDeps, dryRun); err != nil {
+		systemPkgs, err = h.checkSystemDeps(extensions, autoDeps, dryRun)
+		if err != nil {
 			return err
 		}
 	}
@@ -172,7 +175,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Installing PHP %s...\n\n", version)
 
 	if verbose {
-		result, err := h.assemblerSvc.Assemble("php", version, static, extensions, true, nil)
+		result, err := h.assemblerSvc.Assemble("php", version, static, extensions, true, nil, systemPkgs)
 		if err != nil {
 			return fmt.Errorf("install failed: %w", err)
 		}
@@ -215,7 +218,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 
 	result, err := h.assemblerSvc.Assemble("php", version, static, extensions, false, func(stage, message string) {
 		progressCh <- progressMsg{stage: stage, message: message}
-	})
+	}, systemPkgs)
 	close(progressCh)
 	<-doneCh
 
@@ -549,7 +552,8 @@ func findPhpvrc() string {
 // checkSystemDeps checks for system packages needed by PHP deps and extensions.
 // If autoDeps is true, installs missing packages without prompting.
 // If dryRun is true, only prints what would be done.
-func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool) error {
+// Returns a map of available system packages (name -> Package) for use in hybrid builds.
+func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool) (map[string]system.Package, error) {
 	phpDeps := []string{"openssl", "libxml2", "zlib", "oniguruma", "curl", "sqlite3", "readline", "icu", "pcre2", "argon2", "sodium"}
 	for _, ext := range extensions {
 		switch ext {
@@ -564,11 +568,16 @@ func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool)
 
 	result, err := h.systemSvc.Check(phpDeps)
 	if err != nil {
-		return fmt.Errorf("system check: %w", err)
+		return nil, fmt.Errorf("system check: %w", err)
+	}
+
+	systemAvail := make(map[string]system.Package)
+	for _, p := range result.Available {
+		systemAvail[p.Name] = p
 	}
 
 	if result.Distro.PM == "unknown" {
-		return nil
+		return systemAvail, nil
 	}
 
 	if len(result.Available) > 0 {
@@ -579,7 +588,7 @@ func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool)
 	}
 
 	if len(result.Missing) == 0 {
-		return nil
+		return systemAvail, nil
 	}
 
 	fmt.Println("\nMissing system packages:")
@@ -595,32 +604,38 @@ func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool)
 		fmt.Println("[Y] (--auto-deps)")
 	} else if dryRun {
 		fmt.Println("[skipped, --dry-run]")
-		return nil
+		return systemAvail, nil
 	} else {
 		stat, _ := os.Stdin.Stat()
 		if (stat.Mode() & os.ModeCharDevice) == 0 {
 			fmt.Println("[non-interactive, skipping]")
-			return nil
+			return systemAvail, nil
 		}
 		reader := bufio.NewReader(os.Stdin)
 		answer, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Printf("[read error: %v, skipping]\n", err)
-			return nil
+			return systemAvail, nil
 		}
 		answer = strings.TrimSpace(strings.ToLower(answer))
 		if answer != "y" && answer != "yes" && answer != "" {
 			fmt.Println("Building from source instead.")
-			return nil
+			return systemAvail, nil
 		}
 	}
 
 	fmt.Println("Installing system packages...")
 	if err := h.systemSvc.Install(result.Missing); err != nil {
-		return fmt.Errorf("install system packages: %w", err)
+		return nil, fmt.Errorf("install system packages: %w", err)
 	}
 	fmt.Println("✓ System packages installed")
-	return nil
+
+	for _, p := range result.Missing {
+		p.Installed = true
+		systemAvail[p.Name] = p
+	}
+
+	return systemAvail, nil
 }
 
 // shareCmd exports an installed PHP version as a portable bundle.

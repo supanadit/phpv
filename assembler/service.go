@@ -12,9 +12,11 @@ import (
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/graph"
+	"github.com/supanadit/phpv/internal/repository"
 	"github.com/supanadit/phpv/patcher"
 	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/silo"
+	"github.com/supanadit/phpv/system"
 )
 
 // AssemblerResult holds the outcome of assembling a package.
@@ -66,7 +68,8 @@ func (s *Service) Graph() *graph.Service {
 }
 
 // Assemble runs the full pipeline for (name, version).
-func (s *Service) Assemble(name string, version string, static bool, extensions []string, verbose bool, progress ProgressFunc) (*AssemblerResult, error) {
+// systemPkgs optionally provides a map of available system packages for hybrid builds.
+func (s *Service) Assemble(name string, version string, static bool, extensions []string, verbose bool, progress ProgressFunc, systemPkgs map[string]system.Package) (*AssemblerResult, error) {
 	emit := func(stage, msg string) {
 		if progress != nil {
 			progress(stage, msg)
@@ -136,6 +139,7 @@ func (s *Service) Assemble(name string, version string, static bool, extensions 
 			continue
 		}
 		depVersion := extractVersion(dep.Version)
+		constraint := extractConstraint(dep.Version)
 		depPrefix := s.silo.PackagePrefix(dep.Name, depVersion)
 		sourceDir := s.silo.SourcePath(dep.Name, depVersion)
 
@@ -143,6 +147,22 @@ func (s *Service) Assemble(name string, version string, static bool, extensions 
 			emit("skip", fmt.Sprintf("Already built %s@%s", dep.Name, depVersion))
 			depCppFlags, depLdFlags, depPkgConfigPaths = s.collectDepFlags(depPrefix, depCppFlags, depLdFlags, depPkgConfigPaths)
 			continue
+		}
+
+		// Hybrid mode: check if system package is available and compatible
+		if !static && systemPkgs != nil {
+			if sysPkg, ok := systemPkgs[dep.Name]; ok && sysPkg.Installed {
+				sysCompat := true
+				if constraint != "" {
+					sysCompat = repository.MatchVersionRange(constraint, sysPkg.Version)
+				}
+				if sysCompat {
+					emit("system-use", fmt.Sprintf("Using system %s@%s (satisfies %s)", dep.Name, sysPkg.Version, constraint))
+					depCppFlags, depLdFlags, depPkgConfigPaths = collectSystemFlags(depCppFlags, depLdFlags, depPkgConfigPaths)
+					continue
+				}
+				emit("system-incompatible", fmt.Sprintf("System %s@%s doesn't satisfy %s, building from source", dep.Name, sysPkg.Version, constraint))
+			}
 		}
 
 		emit("build", fmt.Sprintf("Building %s@%s...", dep.Name, depVersion))
@@ -291,6 +311,16 @@ func (s *Service) collectDepFlags(prefix string, cppFlags, ldFlags, pcPaths []st
 	if _, err := os.Stat(pc64Path); err == nil {
 		pcPaths = appendUnique(pcPaths, pc64Path)
 	}
+	return cppFlags, ldFlags, pcPaths
+}
+
+func collectSystemFlags(cppFlags, ldFlags, pcPaths []string) ([]string, []string, []string) {
+	cppFlags = appendUnique(cppFlags, "-I/usr/include")
+	ldFlags = appendUnique(ldFlags, "-L/usr/lib64")
+	ldFlags = appendUnique(ldFlags, "-Wl,-rpath,/usr/lib64")
+	pcPaths = appendUnique(pcPaths, "/usr/lib/pkgconfig")
+	pcPaths = appendUnique(pcPaths, "/usr/lib64/pkgconfig")
+	pcPaths = appendUnique(pcPaths, "/usr/share/pkgconfig")
 	return cppFlags, ldFlags, pcPaths
 }
 
@@ -557,6 +587,16 @@ func extractVersion(v string) string {
 		return before
 	}
 	return v
+}
+
+func extractConstraint(v string) string {
+	if v == "" {
+		return ""
+	}
+	if _, after, found := strings.Cut(v, "|"); found {
+		return after
+	}
+	return ""
 }
 
 func setEnvVar(env []string, key, value string) []string {

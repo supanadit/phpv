@@ -71,13 +71,34 @@ func (s *Service) Assemble(name string, version string, progress ProgressFunc) (
 		}
 	}
 
-	// 1. Resolve exact version.
-	emit("resolve", fmt.Sprintf("Resolving %s version %q...", name, version))
+	// 1. Resolve the PHP version.
+	emit("resolve", fmt.Sprintf("Resolving php version %q...", version))
 	exactVersion, err := s.resolveVersion(name, version)
 	if err != nil {
-		return nil, fmt.Errorf("resolve version %q: %w", version, err)
+		return nil, fmt.Errorf("resolve version: %w", err)
 	}
-	emit("resolve", fmt.Sprintf("Resolved %s %s", name, exactVersion))
+	emit("resolve", fmt.Sprintf("Resolved php %s", exactVersion))
+
+	// Check state file for already-installed.
+	statePath := filepath.Join(resolvePHPVRoot("versions"), exactVersion, ".state")
+	if data, err := os.ReadFile(statePath); err == nil {
+		if strings.TrimSpace(string(data)) == "installed" {
+			emit("done", fmt.Sprintf("PHP %s is already installed", exactVersion))
+			return &AssemblerResult{PHPVersion: exactVersion}, nil
+		}
+	}
+
+	// Mark in-progress.
+	os.MkdirAll(filepath.Dir(statePath), 0o755)
+	os.WriteFile(statePath, []byte("in_progress"), 0o644)
+
+	// Defer marking failed if we return early.
+	var completed bool
+	defer func() {
+		if !completed {
+			os.WriteFile(statePath, []byte("failed"), 0o644)
+		}
+	}()
 
 	// 2. Resolve dependency graph.
 	emit("deps", "Resolving dependency graph...")
@@ -118,6 +139,24 @@ func (s *Service) Assemble(name string, version string, progress ProgressFunc) (
 		depVersion := extractVersion(dep.Version)
 		prefix := dependencyPrefix(exactVersion, dep.Name, depVersion)
 		sourceDir := filepath.Join(resolvePHPVRoot("sources"), dep.Name, depVersion)
+
+		// Check if this dep is already built and installed.
+		if isDepInstalled(prefix) {
+			emit("skip", fmt.Sprintf("Already built %s@%s", dep.Name, depVersion))
+			depPath := prefix
+			depCppFlags = appendUnique(depCppFlags, "-I"+filepath.Join(depPath, "include"))
+			depLdFlags = appendUnique(depLdFlags, "-L"+filepath.Join(depPath, "lib"))
+			depLdFlags = appendUnique(depLdFlags, "-Wl,-rpath,"+filepath.Join(depPath, "lib"))
+			pcPath := filepath.Join(depPath, "lib", "pkgconfig")
+			if _, err := os.Stat(pcPath); err == nil {
+				depPkgConfigPaths = appendUnique(depPkgConfigPaths, pcPath)
+			}
+			pc64Path := filepath.Join(depPath, "lib64", "pkgconfig")
+			if _, err := os.Stat(pc64Path); err == nil {
+				depPkgConfigPaths = appendUnique(depPkgConfigPaths, pc64Path)
+			}
+			continue
+		}
 
 		emit("build", fmt.Sprintf("Building %s@%s...", dep.Name, depVersion))
 		if err := s.applyPatches(dep.Name, depVersion, sourceDir, emit); err != nil {
@@ -223,6 +262,10 @@ func (s *Service) Assemble(name string, version string, progress ProgressFunc) (
 	depLibraryPaths = appendUnique(depLibraryPaths, filepath.Join(phpPrefix, "lib"))
 
 	emit("done", fmt.Sprintf("✓ %s %s installed at %s", name, exactVersion, phpPrefix))
+
+	// Mark state as installed.
+	completed = true
+	os.WriteFile(statePath, []byte("installed"), 0o644)
 
 	return &AssemblerResult{
 		DownloadResults: downloadResults,
@@ -389,15 +432,24 @@ func (s *Service) resolveVersion(name, constraint string) (string, error) {
 	return resolveVersionConstraint(versions, constraint)
 }
 
-// Helpers.
-
+// isBuildTool returns true if the package is a build tool that should be
+// skipped during source build (we use system-installed versions).
 func isBuildTool(name string) bool {
 	switch name {
-	case "m4", "autoconf", "automake", "libtool", "perl", "bison", "flex", "re2c", "cmake":
+	case "m4", "autoconf", "automake", "libtool", "perl", "bison", "re2c", "flex", "zig":
 		return true
-	default:
+	}
+	return false
+}
+
+// isDepInstalled checks whether a dependency is already built and installed
+// at the given prefix by looking for the include/ directory.
+func isDepInstalled(prefix string) bool {
+	info, err := os.Stat(filepath.Join(prefix, "include"))
+	if err != nil {
 		return false
 	}
+	return info.IsDir()
 }
 
 func phpOutputPath(phpVersion string) string {

@@ -16,6 +16,7 @@ import (
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/terminal"
 	"github.com/supanadit/phpv/patcher"
+	"github.com/supanadit/phpv/pecl"
 	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/shim"
 	"github.com/supanadit/phpv/silo"
@@ -54,6 +55,7 @@ func main() {
 			bundle.NewService,
 			system.NewService,
 			shim.NewService,
+			pecl.NewService,
 			assembler.NewService,
 			forge.NewService,
 			patcher.NewService,

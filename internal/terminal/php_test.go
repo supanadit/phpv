@@ -8,6 +8,7 @@ import (
 	"github.com/supanadit/phpv/bundle"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/repository/disk"
+	"github.com/supanadit/phpv/pecl"
 	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/shim"
 	"github.com/supanadit/phpv/silo"
@@ -178,12 +179,14 @@ func newTestPHPHandler(root string) *PHPHandler {
 	bundleSvc := bundle.NewService(siloSvc)
 	systemSvc := system.NewService()
 	shimSvc := shim.NewService(siloSvc)
+	peclSvc := pecl.NewService(siloSvc)
 	return &PHPHandler{
 		siloSvc:     siloSvc,
 		registrySvc: regSvc,
 		bundleSvc:   bundleSvc,
 		systemSvc:   systemSvc,
 		shimSvc:     shimSvc,
+		peclSvc:     peclSvc,
 	}
 }
 

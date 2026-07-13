@@ -82,3 +82,8 @@ func DefaultPath() string {
 func SystemMarkerPath() string {
 	return filepath.Join(resolveRoot(), ".phpv_system")
 }
+
+// PECLArchivePath returns the download cache path for a PECL archive.
+func PECLArchivePath(name, version string) string {
+	return filepath.Join(resolveRoot(), "packages", "pecl", name+"-"+version+".tgz")
+}

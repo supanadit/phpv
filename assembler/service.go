@@ -361,6 +361,7 @@ func (s *Service) InstallExtension(phpVersion, extName, phpSourceDir, phpPrefix 
 	}
 	manifest.Extensions = append(manifest.Extensions, domain.ExtensionState{
 		Name:        extName,
+		Type:        domain.ExtensionTypeBuiltin,
 		InstalledAt: time.Now(),
 	})
 	if err := s.silo.SaveExtensionManifest(phpVersion, manifest); err != nil {

@@ -41,6 +41,12 @@ func (h *PHPHandler) extensionCmd() *cobra.Command {
 		Args:  cobra.MinimumNArgs(2),
 		RunE:  h.extensionRemove,
 	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "pecl <version>",
+		Short: "List installed PECL extensions for a PHP version",
+		Args:  cobra.ExactArgs(1),
+		RunE:  h.extensionPecl,
+	})
 	return cmd
 }
 
@@ -65,8 +71,12 @@ func (h *PHPHandler) extensionList(cmd *cobra.Command, args []string) error {
 	}
 
 	installed := make(map[string]bool)
+	peclInstalled := make(map[string]bool)
 	for _, e := range manifest.Extensions {
 		installed[e.Name] = true
+		if e.Type == domain.ExtensionTypePECL {
+			peclInstalled[e.Name] = true
+		}
 	}
 
 	fmt.Printf("Extensions for PHP %s:\n", version)
@@ -83,6 +93,18 @@ func (h *PHPHandler) extensionList(cmd *cobra.Command, args []string) error {
 			marker = "✓"
 		}
 		fmt.Printf("  %s %-20s %s\n", marker, name, info.Description)
+	}
+
+	if len(peclInstalled) > 0 {
+		fmt.Println("\nPECL extensions:")
+		var peclNames []string
+		for name := range peclInstalled {
+			peclNames = append(peclNames, name)
+		}
+		sort.Strings(peclNames)
+		for _, name := range peclNames {
+			fmt.Printf("  ✓ %s\n", name)
+		}
 	}
 
 	return nil
@@ -151,12 +173,49 @@ func (h *PHPHandler) extensionRemove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("PHP %s is not installed. Run `phpv install %s` first", version, version)
 	}
 
+	manifest, err := h.siloSvc.GetExtensionManifest(version)
+	if err != nil {
+		return fmt.Errorf("get extension manifest: %w", err)
+	}
+	extMap := make(map[string]string)
+	for _, e := range manifest.Extensions {
+		extMap[e.Name] = e.Type
+	}
+
 	for _, ext := range extNames {
-		fmt.Printf("Removing extension %s...\n", ext)
-		if err := h.assemblerSvc.RemoveExtension(version, ext, prefix); err != nil {
-			return fmt.Errorf("remove extension %s: %w", ext, err)
+		if extMap[ext] == domain.ExtensionTypePECL {
+			fmt.Printf("Removing PECL extension %s...\n", ext)
+			if err := h.peclSvc.Uninstall(ext, version); err != nil {
+				return fmt.Errorf("remove PECL extension %s: %w", ext, err)
+			}
+		} else {
+			fmt.Printf("Removing extension %s...\n", ext)
+			if err := h.assemblerSvc.RemoveExtension(version, ext, prefix); err != nil {
+				return fmt.Errorf("remove extension %s: %w", ext, err)
+			}
 		}
 		fmt.Printf("✓ %s removed\n", ext)
+	}
+	return nil
+}
+
+func (h *PHPHandler) extensionPecl(cmd *cobra.Command, args []string) error {
+	version := args[0]
+	exts, err := h.peclSvc.List(version)
+	if err != nil {
+		return fmt.Errorf("list PECL extensions: %w", err)
+	}
+	if len(exts) == 0 {
+		fmt.Printf("No PECL extensions installed for PHP %s\n", version)
+		return nil
+	}
+	fmt.Printf("PECL extensions for PHP %s:\n", version)
+	for _, e := range exts {
+		v := e.Version
+		if v == "" {
+			v = "?"
+		}
+		fmt.Printf("  ✓ %s (%s)\n", e.Name, v)
 	}
 	return nil
 }

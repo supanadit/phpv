@@ -370,6 +370,11 @@ func (s *SiloRepository) PackagePrefix(name, version string) string {
 	return PackagePrefix(name, version)
 }
 
+// PECLArchivePath returns the download cache path for a PECL archive.
+func (s *SiloRepository) PECLArchivePath(name, version string) string {
+	return PECLArchivePath(name, version)
+}
+
 // GetExtensionManifest reads the extension manifest for a PHP version.
 func (s *SiloRepository) GetExtensionManifest(phpVersion string) (*domain.ExtensionManifest, error) {
 	path := ExtensionManifestPath(phpVersion)

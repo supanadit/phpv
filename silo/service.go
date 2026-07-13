@@ -34,6 +34,7 @@ type SiloRepository interface {
 	PHPOutputPath(phpVersion string) string
 	SourcePath(pkg, version string) string
 	PackagePrefix(name, version string) string
+	PECLArchivePath(name, version string) string
 
 	// Extension manifest.
 	GetExtensionManifest(phpVersion string) (*domain.ExtensionManifest, error)
@@ -128,6 +129,11 @@ func (s *Service) SourcePath(pkg, version string) string {
 // PackagePrefix returns the install prefix for any package.
 func (s *Service) PackagePrefix(name, version string) string {
 	return s.siloRep.PackagePrefix(name, version)
+}
+
+// PECLArchivePath returns the download cache path for a PECL archive.
+func (s *Service) PECLArchivePath(name, version string) string {
+	return s.siloRep.PECLArchivePath(name, version)
 }
 
 // GetExtensionManifest returns the extension manifest for a PHP version.

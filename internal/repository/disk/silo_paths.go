@@ -53,6 +53,11 @@ func DependencyPath(phpVersion, name, depVersion string) string {
 	return filepath.Join(resolveRoot(), "versions", phpVersion, "dependency", name, depVersion)
 }
 
+// PackagePrefix returns the install prefix for any package.
+func PackagePrefix(name, version string) string {
+	return filepath.Join(resolveRoot(), "packages", name, version)
+}
+
 // BinPath returns the shim directory.
 func BinPath() string {
 	return filepath.Join(resolveRoot(), "bin")

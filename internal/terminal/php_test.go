@@ -170,9 +170,8 @@ func createFakePHPInstall(t *testing.T, root, version string) {
 
 func newTestPHPHandler(root string) *PHPHandler {
 	diskRepo := disk.NewSiloRepository()
-	regRepo := &mockRegistryRepo{}
-	siloSvc := silo.NewService(diskRepo, regRepo)
-	regSvc := registry.NewService(regRepo)
+	regSvc := registry.NewService(&mockRegistryRepo{})
+	siloSvc := silo.NewService(diskRepo, regSvc)
 	return &PHPHandler{
 		siloSvc:     siloSvc,
 		registrySvc: regSvc,

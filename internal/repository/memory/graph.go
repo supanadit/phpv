@@ -1,38 +1,43 @@
 package memory
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/repository"
 )
 
-// AssemblerRepository is an in-memory implementation of
-// assembler.AssemblerRepository. It holds a registry of package definitions
-// with version-constrained dependencies and resolves the transitive
-// dependency graph using depth-first traversal.
-type AssemblerRepository struct {
-	packages map[string]domain.Package
+// GraphRepository is an in-memory implementation of graph.GraphRepository.
+// It holds hardcoded build knowledge: dependency graph, extension definitions,
+// flag rules, and compiler rules.
+type GraphRepository struct {
+	packages      map[string]domain.Package
+	extensions    map[string]domain.ExtensionDef
+	flagRules     []domain.FlagRule
+	compilerRules []domain.CompilerRule
+	conflicts     map[string][]string
+	implied       map[string][]string
 }
 
-// NewAssemblerRepository creates a new in-memory assembler repository
-// with the built-in package definitions pre-registered.
-func NewAssemblerRepository() *AssemblerRepository {
-	repo := &AssemblerRepository{
-		packages: make(map[string]domain.Package),
+// NewGraphRepository creates a new in-memory graph repository with
+// the built-in knowledge pre-registered.
+func NewGraphRepository() *GraphRepository {
+	r := &GraphRepository{
+		packages:   make(map[string]domain.Package),
+		extensions: make(map[string]domain.ExtensionDef),
+		conflicts:  make(map[string][]string),
+		implied:    make(map[string][]string),
 	}
-	repo.registerPackages()
-	return repo
+	r.registerPackages()
+	return r
 }
 
 // GetOrderedDependencies returns all transitive dependencies for
 // (name, version) in dependency order — dependencies before dependents.
 // The root package itself is excluded from the result.
 // Circular dependencies are detected and return an error.
-func (r *AssemblerRepository) GetOrderedDependencies(name string, version string) ([]domain.Dependency, error) {
+func (r *GraphRepository) GetOrderedDependencies(name string, version string) ([]domain.Dependency, error) {
 	visiting := make(map[string]bool)
 	visited := make(map[string]bool)
 	seen := make(map[string]bool)
@@ -69,7 +74,6 @@ func (r *AssemblerRepository) GetOrderedDependencies(name string, version string
 		visiting[pkgName] = false
 		visited[pkgName] = true
 
-		// Add this package as a dependency (but not the root).
 		if pkgName != name {
 			key := pkgName + "@" + pkgVersion
 			if !seen[key] {
@@ -91,17 +95,67 @@ func (r *AssemblerRepository) GetOrderedDependencies(name string, version string
 	return result, nil
 }
 
-// Assemble is a stub — memory assembler does not support real builds.
-func (r *AssemblerRepository) Assemble(name, version string, progress assembler.ProgressFunc) (*assembler.AssemblerResult, error) {
-	return nil, errors.New("memory assembler does not support Assemble; use disk")
+func (r *GraphRepository) GetExtensionDef(name string) (domain.ExtensionDef, bool) {
+	def, ok := r.extensions[name]
+	return def, ok
+}
+
+func (r *GraphRepository) IsExtensionValidForPHPVersion(name, phpVersion string) bool {
+	return true
+}
+
+func (r *GraphRepository) GetConflictingExtensions(name string) []string {
+	return r.conflicts[name]
+}
+
+func (r *GraphRepository) GetExtensionDependency(name string) (string, bool) {
+	return "", false
+}
+
+func (r *GraphRepository) GetExtensionDependencyWithVersion(extName, phpVersion string) (string, string, bool) {
+	return "", "", false
+}
+
+func (r *GraphRepository) ValidateExtensions(extensions []string, phpVersion string) ([]string, error) {
+	return nil, nil
+}
+
+func (r *GraphRepository) CheckExtensionConflicts(extensions []string) ([]string, [][]string) {
+	return nil, nil
+}
+
+func (r *GraphRepository) ListExtensions() []domain.ExtensionInfo {
+	return nil
+}
+
+func (r *GraphRepository) ListExtensionsForPHP(phpVersion string) []domain.ExtensionInfo {
+	return nil
+}
+
+func (r *GraphRepository) ExpandImplied(extensions []string) ([]string, []string) {
+	return extensions, nil
+}
+
+func (r *GraphRepository) GetConfigureFlags(name, version string) []string {
+	return nil
+}
+
+func (r *GraphRepository) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
+	return nil
+}
+
+func (r *GraphRepository) GetCompilerStdRule(phpVersion string) domain.CompilerRule {
+	return domain.CompilerRule{}
+}
+
+func (r *GraphRepository) GetCompilerFlags(compiler, phpVersion string) []string {
+	return nil
 }
 
 // getDependencies returns the dependency list for a package at a specific version.
-// It checks version-constrained rules first, falling back to Default.
-func (r *AssemblerRepository) getDependencies(name string, version string) ([]domain.Dependency, error) {
+func (r *GraphRepository) getDependencies(name string, version string) ([]domain.Dependency, error) {
 	pkg, ok := r.packages[name]
 	if !ok {
-		// Unknown packages have no dependencies.
 		return nil, nil
 	}
 
@@ -114,8 +168,12 @@ func (r *AssemblerRepository) getDependencies(name string, version string) ([]do
 	return pkg.Default, nil
 }
 
-// extractVersion parses a dependency version string in the format
-// "exactVersion|constraint" and returns just the exact version part.
+func (r *GraphRepository) registerPackages() {
+	for _, pkg := range builtInPackages() {
+		r.packages[pkg.Package] = pkg
+	}
+}
+
 func extractVersion(v string) string {
 	if v == "" {
 		return ""
@@ -124,12 +182,6 @@ func extractVersion(v string) string {
 		return before
 	}
 	return v
-}
-
-func (r *AssemblerRepository) registerPackages() {
-	for _, pkg := range builtInPackages() {
-		r.packages[pkg.Package] = pkg
-	}
 }
 
 // builtInPackages returns the hardcoded dependency definitions for all

@@ -123,7 +123,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("install failed: %w", err)
 	}
 	fmt.Println()
-	fmt.Printf("✓ PHP %s installed at %s\n", result.PHPVersion, result.Prefix)
+	fmt.Printf("✓ PHP %s installed at %s\n", result.Version, result.Prefix)
 	return nil
 }
 
@@ -195,7 +195,7 @@ func (h *PHPHandler) listCmd() *cobra.Command {
 }
 
 func (h *PHPHandler) listAvailable(cmd *cobra.Command, args []string) error {
-	entries, err := h.registrySvc.List("php", false, "")
+	entries, err := h.registrySvc.List("php")
 	if err != nil {
 		return fmt.Errorf("list php versions: %w", err)
 	}

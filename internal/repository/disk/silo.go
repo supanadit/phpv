@@ -351,6 +351,11 @@ func (s *SiloRepository) DependencyPath(phpVersion, name, depVersion string) str
 	return DependencyPath(phpVersion, name, depVersion)
 }
 
+// PackagePrefix returns the install prefix for any package.
+func (s *SiloRepository) PackagePrefix(name, version string) string {
+	return PackagePrefix(name, version)
+}
+
 // extractXz handles .tar.xz archives by shelling out to the xz binary
 // since Go stdlib has no xz decompressor.
 func (s *SiloRepository) extractXz(archivePath string, tmpDir string, destDir string) (bool, error) {

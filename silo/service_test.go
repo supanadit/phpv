@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/registry"
 )
 
 type mockSiloRepo struct {
@@ -53,6 +54,9 @@ func (m *mockSiloRepo) SourcePath(pkg, version string) string {
 func (m *mockSiloRepo) DependencyPath(phpVersion, name, depVersion string) string {
 	return m.depPath
 }
+func (m *mockSiloRepo) PackagePrefix(name, version string) string {
+	return "/prefix/" + name + "/" + version
+}
 
 type mockRegistryRepo struct{}
 
@@ -65,7 +69,7 @@ func (m *mockRegistryRepo) Get(name, version string, checksum bool, os string) (
 
 func TestService_GetSilo(t *testing.T) {
 	mock := &mockSiloRepo{silo: domain.Silo{Root: "/test/root"}}
-	svc := NewService(mock, &mockRegistryRepo{})
+	svc := NewService(mock, registry.NewService(&mockRegistryRepo{}))
 
 	s := svc.GetSilo()
 	if s.Root != "/test/root" {
@@ -75,7 +79,7 @@ func TestService_GetSilo(t *testing.T) {
 
 func TestService_GetState(t *testing.T) {
 	mock := &mockSiloRepo{state: domain.StateInstalled}
-	svc := NewService(mock, &mockRegistryRepo{})
+	svc := NewService(mock, registry.NewService(&mockRegistryRepo{}))
 
 	state, err := svc.GetState("8.4.0")
 	if err != nil {
@@ -88,7 +92,7 @@ func TestService_GetState(t *testing.T) {
 
 func TestService_GetDefault(t *testing.T) {
 	mock := &mockSiloRepo{defaultVer: "8.4.0"}
-	svc := NewService(mock, &mockRegistryRepo{})
+	svc := NewService(mock, registry.NewService(&mockRegistryRepo{}))
 
 	ver, err := svc.GetDefault()
 	if err != nil {
@@ -105,7 +109,7 @@ func TestService_PathHelpers(t *testing.T) {
 		sourcePath:    "/root/sources/php/8.4.0",
 		depPath:       "/root/versions/8.4.0/dependency/openssl/1.1.1w",
 	}
-	svc := NewService(mock, &mockRegistryRepo{})
+	svc := NewService(mock, registry.NewService(&mockRegistryRepo{}))
 
 	if got := svc.PHPOutputPath("8.4.0"); got != "/root/versions/8.4.0/output" {
 		t.Fatalf("PHPOutputPath = %q", got)

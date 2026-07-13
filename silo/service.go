@@ -1,8 +1,6 @@
 package silo
 
 import (
-	"runtime"
-
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/registry"
 )
@@ -22,7 +20,7 @@ type SiloRepository interface {
 	// GetSilo returns the storage root.
 	GetSilo() domain.Silo
 
-	// State management for PHP installations.
+	// State management for any package.
 	GetState(phpVersion string) (domain.InstallState, error)
 	MarkInProgress(phpVersion string) error
 	MarkComplete(phpVersion string) error
@@ -36,14 +34,15 @@ type SiloRepository interface {
 	PHPOutputPath(phpVersion string) string
 	SourcePath(pkg, version string) string
 	DependencyPath(phpVersion, name, depVersion string) string
+	PackagePrefix(name, version string) string
 }
 
 type Service struct {
 	siloRep     SiloRepository
-	registryRep registry.RegistryRepository
+	registryRep *registry.Service
 }
 
-func NewService(sr SiloRepository, rr registry.RegistryRepository) *Service {
+func NewService(sr SiloRepository, rr *registry.Service) *Service {
 	return &Service{
 		siloRep:     sr,
 		registryRep: rr,
@@ -55,7 +54,7 @@ func NewService(sr SiloRepository, rr registry.RegistryRepository) *Service {
 // entry provides the download URL and, when available, the checksum used
 // to verify the integrity of the downloaded file.
 func (s *Service) Download(name string, version string) (bool, error) {
-	r, err := s.registryRep.Get(name, version, false, runtime.GOOS)
+	r, err := s.registryRep.Get(name, version)
 	if err != nil {
 		return false, err
 	}
@@ -117,4 +116,9 @@ func (s *Service) SourcePath(pkg, version string) string {
 // DependencyPath returns the install prefix for a dependency of a PHP version.
 func (s *Service) DependencyPath(phpVersion, name, depVersion string) string {
 	return s.siloRep.DependencyPath(phpVersion, name, depVersion)
+}
+
+// PackagePrefix returns the install prefix for any package.
+func (s *Service) PackagePrefix(name, version string) string {
+	return s.siloRep.PackagePrefix(name, version)
 }

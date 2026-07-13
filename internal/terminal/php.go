@@ -519,6 +519,7 @@ func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool)
 
 	installCmd := h.systemSvc.InstallCommand(result.Missing)
 	fmt.Printf("\nInstall via %s? ", installCmd)
+	os.Stdout.Sync()
 
 	if autoDeps {
 		fmt.Println("[Y] (--auto-deps)")
@@ -526,8 +527,17 @@ func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool)
 		fmt.Println("[skipped, --dry-run]")
 		return nil
 	} else {
+		stat, _ := os.Stdin.Stat()
+		if (stat.Mode() & os.ModeCharDevice) == 0 {
+			fmt.Println("[non-interactive, skipping]")
+			return nil
+		}
 		reader := bufio.NewReader(os.Stdin)
-		answer, _ := reader.ReadString('\n')
+		answer, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Printf("[read error: %v, skipping]\n", err)
+			return nil
+		}
 		answer = strings.TrimSpace(strings.ToLower(answer))
 		if answer != "y" && answer != "yes" && answer != "" {
 			fmt.Println("Building from source instead.")

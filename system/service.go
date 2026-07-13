@@ -2,6 +2,7 @@ package system
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -60,12 +61,10 @@ func (s *Service) Install(packages []Package) error {
 
 	args := installArgs(distro.PM, names)
 	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("install failed: %w\n%s", err, out)
-	}
-	return nil
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 func (s *Service) InstallCommand(packages []Package) string {
@@ -100,6 +99,20 @@ func isInstalled(pm, name string) bool {
 }
 
 func installArgs(pm string, names []string) []string {
+	if os.Geteuid() == 0 {
+		switch pm {
+		case "apt":
+			return append([]string{"apt-get", "install", "-y"}, names...)
+		case "dnf":
+			return append([]string{"dnf", "install", "-y"}, names...)
+		case "apk":
+			return append([]string{"apk", "add"}, names...)
+		case "pacman":
+			return append([]string{"pacman", "-S", "--noconfirm"}, names...)
+		default:
+			return nil
+		}
+	}
 	switch pm {
 	case "apt":
 		return append([]string{"sudo", "apt-get", "install", "-y"}, names...)

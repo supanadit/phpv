@@ -9,6 +9,7 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/supanadit/phpv/assembler"
+	"github.com/supanadit/phpv/bundle"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/graph"
 	"github.com/supanadit/phpv/internal/repository/disk"
@@ -48,6 +49,7 @@ func main() {
 			fx.Annotate(memory.NewGraphRepository, fx.As(new(graph.GraphRepository))),
 			registry.NewService,
 			silo.NewService,
+			bundle.NewService,
 			assembler.NewService,
 			forge.NewService,
 			patcher.NewService,

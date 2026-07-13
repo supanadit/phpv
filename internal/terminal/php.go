@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/supanadit/phpv/assembler"
+	"github.com/supanadit/phpv/bundle"
 	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/silo"
 )
@@ -20,14 +21,16 @@ type PHPHandler struct {
 	siloSvc      *silo.Service
 	assemblerSvc *assembler.Service
 	registrySvc  *registry.Service
+	bundleSvc    *bundle.Service
 }
 
 // NewPHPHandler registers all PHP subcommands onto the given root command.
-func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service) {
+func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service) {
 	h := &PHPHandler{
 		siloSvc:      siloSvc,
 		assemblerSvc: assemblerSvc,
 		registrySvc:  registrySvc,
+		bundleSvc:    bundleSvc,
 	}
 	rootCmd.AddCommand(h.downloadCmd())
 	rootCmd.AddCommand(h.installCmd())
@@ -36,6 +39,7 @@ func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *
 	rootCmd.AddCommand(h.whichCmd())
 	rootCmd.AddCommand(h.defaultCmd())
 	rootCmd.AddCommand(h.useCmd())
+	rootCmd.AddCommand(h.shareCmd())
 }
 
 func (h *PHPHandler) downloadCmd() *cobra.Command {
@@ -69,17 +73,29 @@ func (h *PHPHandler) download(cmd *cobra.Command, args []string) error {
 }
 
 func (h *PHPHandler) installCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "install <version>",
 		Short: "Install a PHP version",
 		Long:  "Download, build, and install a specific version of PHP with all its dependencies.",
 		Args:  cobra.ExactArgs(1),
 		RunE:  h.install,
 	}
+	cmd.Flags().String("from", "", "Install from a bundle file instead of building from source")
+	return cmd
 }
 
 func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	version := args[0]
+
+	fromBundle, _ := cmd.Flags().GetString("from")
+	if fromBundle != "" {
+		fmt.Printf("Installing PHP %s from bundle %s...\n", version, fromBundle)
+		if err := h.bundleSvc.Import(fromBundle, version); err != nil {
+			return fmt.Errorf("install from bundle failed: %w", err)
+		}
+		fmt.Printf("✓ PHP %s installed from bundle\n", version)
+		return nil
+	}
 
 	fmt.Printf("Installing PHP %s...\n\n", version)
 
@@ -417,6 +433,34 @@ func findPhpvrc() string {
 		dir = parent
 	}
 	return ""
+}
+
+// shareCmd exports an installed PHP version as a portable bundle.
+func (h *PHPHandler) shareCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "share <version>",
+		Short: "Export installed PHP as a portable bundle",
+		Long:  "Export an installed PHP version as a portable .tar.gz bundle that can be shared with others.",
+		Args:  cobra.ExactArgs(1),
+		RunE:  h.share,
+	}
+	cmd.Flags().StringP("output", "o", "", "Output path for the bundle file")
+	return cmd
+}
+
+func (h *PHPHandler) share(cmd *cobra.Command, args []string) error {
+	version := args[0]
+	output, _ := cmd.Flags().GetString("output")
+
+	fmt.Printf("Exporting PHP %s...\n", version)
+	if err := h.bundleSvc.Export(version, output); err != nil {
+		return fmt.Errorf("export failed: %w", err)
+	}
+	if output == "" {
+		output = fmt.Sprintf("php-%s-%s-%s.tar.gz", version, "linux", "amd64")
+	}
+	fmt.Printf("✓ PHP %s exported to %s\n", version, output)
+	return nil
 }
 
 // progressMsg is sent by the assembler through a progress callback.

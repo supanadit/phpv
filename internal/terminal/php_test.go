@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/supanadit/phpv/bundle"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/registry"
@@ -172,9 +173,11 @@ func newTestPHPHandler(root string) *PHPHandler {
 	diskRepo := disk.NewSiloRepository()
 	regSvc := registry.NewService(&mockRegistryRepo{})
 	siloSvc := silo.NewService(diskRepo, regSvc)
+	bundleSvc := bundle.NewService(siloSvc)
 	return &PHPHandler{
 		siloSvc:     siloSvc,
 		registrySvc: regSvc,
+		bundleSvc:   bundleSvc,
 	}
 }
 

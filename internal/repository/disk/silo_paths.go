@@ -48,11 +48,6 @@ func PHPOutputPath(phpVersion string) string {
 	return filepath.Join(resolveRoot(), "versions", phpVersion, "output")
 }
 
-// DependencyPath returns the install prefix for a dependency of a PHP version.
-func DependencyPath(phpVersion, name, depVersion string) string {
-	return filepath.Join(resolveRoot(), "versions", phpVersion, "dependency", name, depVersion)
-}
-
 // PackagePrefix returns the install prefix for any package.
 func PackagePrefix(name, version string) string {
 	return filepath.Join(resolveRoot(), "packages", name, version)

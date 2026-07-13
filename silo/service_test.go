@@ -51,9 +51,6 @@ func (m *mockSiloRepo) PHPOutputPath(phpVersion string) string {
 func (m *mockSiloRepo) SourcePath(pkg, version string) string {
 	return m.sourcePath
 }
-func (m *mockSiloRepo) DependencyPath(phpVersion, name, depVersion string) string {
-	return m.depPath
-}
 func (m *mockSiloRepo) PackagePrefix(name, version string) string {
 	return "/prefix/" + name + "/" + version
 }
@@ -107,7 +104,6 @@ func TestService_PathHelpers(t *testing.T) {
 	mock := &mockSiloRepo{
 		phpOutputPath: "/root/versions/8.4.0/output",
 		sourcePath:    "/root/sources/php/8.4.0",
-		depPath:       "/root/versions/8.4.0/dependency/openssl/1.1.1w",
 	}
 	svc := NewService(mock, registry.NewService(&mockRegistryRepo{}))
 
@@ -117,7 +113,7 @@ func TestService_PathHelpers(t *testing.T) {
 	if got := svc.SourcePath("php", "8.4.0"); got != "/root/sources/php/8.4.0" {
 		t.Fatalf("SourcePath = %q", got)
 	}
-	if got := svc.DependencyPath("8.4.0", "openssl", "1.1.1w"); got != "/root/versions/8.4.0/dependency/openssl/1.1.1w" {
-		t.Fatalf("DependencyPath = %q", got)
+	if got := svc.PackagePrefix("openssl", "1.1.1w"); got != "/prefix/openssl/1.1.1w" {
+		t.Fatalf("PackagePrefix = %q", got)
 	}
 }

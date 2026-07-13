@@ -59,7 +59,7 @@ func NewService(g *graph.Service, s *silo.Service, f *forge.Service, p *patcher.
 }
 
 // Assemble runs the full pipeline for (name, version).
-func (s *Service) Assemble(name string, version string, progress ProgressFunc) (*AssemblerResult, error) {
+func (s *Service) Assemble(name string, version string, static bool, progress ProgressFunc) (*AssemblerResult, error) {
 	emit := func(stage, msg string) {
 		if progress != nil {
 			progress(stage, msg)
@@ -185,6 +185,14 @@ func (s *Service) Assemble(name string, version string, progress ProgressFunc) (
 	if len(plan.CompilerFlags) > 0 {
 		env = setEnvVar(env, "CFLAGS", strings.Join(plan.CompilerFlags, " "))
 		env = setEnvVar(env, "CXXFLAGS", strings.Join(plan.CompilerFlags, " "))
+	}
+
+	configureFlags := plan.ConfigureFlags
+	if static {
+		env = setEnvVar(env, "LDFLAGS", "-static-libgcc -static")
+		env = setEnvVar(env, "CFLAGS", "-Os -fdata-sections -ffunction-sections")
+		env = setEnvVar(env, "CXXFLAGS", "-Os -fdata-sections -ffunction-sections")
+		configureFlags = append([]string{"--enable-static", "--disable-shared"}, configureFlags...)
 	}
 
 	emit("configure", fmt.Sprintf("Configuring %s...", name))

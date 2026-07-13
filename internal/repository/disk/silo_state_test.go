@@ -141,10 +141,10 @@ func TestSiloRepository_PathHelpers(t *testing.T) {
 		t.Fatalf("SourcePath = %q, want %q", got, want)
 	}
 
-	got = repo.DependencyPath("8.4.0", "openssl", "1.1.1w")
-	want = filepath.Join(dir, "versions", "8.4.0", "dependency", "openssl", "1.1.1w")
+	got = repo.PackagePrefix("openssl", "1.1.1w")
+	want = filepath.Join(dir, "packages", "openssl", "1.1.1w")
 	if got != want {
-		t.Fatalf("DependencyPath = %q, want %q", got, want)
+		t.Fatalf("PackagePrefix = %q, want %q", got, want)
 	}
 }
 
@@ -214,8 +214,8 @@ func TestSiloPaths_WithPHPVRoot(t *testing.T) {
 	if got := PHPOutputPath("8.4.0"); got != filepath.Join(dir, "versions", "8.4.0", "output") {
 		t.Fatalf("PHPOutputPath = %q, want %q", got, filepath.Join(dir, "versions", "8.4.0", "output"))
 	}
-	if got := DependencyPath("8.4.0", "openssl", "1.1.1w"); got != filepath.Join(dir, "versions", "8.4.0", "dependency", "openssl", "1.1.1w") {
-		t.Fatalf("DependencyPath = %q, want %q", got, filepath.Join(dir, "versions", "8.4.0", "dependency", "openssl", "1.1.1w"))
+	if got := PackagePrefix("openssl", "1.1.1w"); got != filepath.Join(dir, "packages", "openssl", "1.1.1w") {
+		t.Fatalf("PackagePrefix = %q, want %q", got, filepath.Join(dir, "packages", "openssl", "1.1.1w"))
 	}
 	if got := BinPath(); got != filepath.Join(dir, "bin") {
 		t.Fatalf("BinPath = %q, want %q", got, filepath.Join(dir, "bin"))

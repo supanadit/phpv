@@ -81,6 +81,7 @@ func (h *PHPHandler) installCmd() *cobra.Command {
 		RunE:  h.install,
 	}
 	cmd.Flags().String("from", "", "Install from a bundle file instead of building from source")
+	cmd.Flags().Bool("static", false, "Build with static linking for cross-distro portability")
 	return cmd
 }
 
@@ -96,6 +97,8 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		fmt.Printf("✓ PHP %s installed from bundle\n", version)
 		return nil
 	}
+
+	static, _ := cmd.Flags().GetBool("static")
 
 	fmt.Printf("Installing PHP %s...\n\n", version)
 
@@ -128,7 +131,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	result, err := h.assemblerSvc.Assemble("php", version, func(stage, message string) {
+	result, err := h.assemblerSvc.Assemble("php", version, static, func(stage, message string) {
 		progressCh <- progressMsg{stage: stage, message: message}
 	})
 	close(progressCh)

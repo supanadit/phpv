@@ -33,7 +33,6 @@ type SiloRepository interface {
 	// Path helpers.
 	PHPOutputPath(phpVersion string) string
 	SourcePath(pkg, version string) string
-	DependencyPath(phpVersion, name, depVersion string) string
 	PackagePrefix(name, version string) string
 }
 
@@ -116,11 +115,6 @@ func (s *Service) PHPOutputPath(phpVersion string) string {
 // SourcePath returns the extracted source directory for a package.
 func (s *Service) SourcePath(pkg, version string) string {
 	return s.siloRep.SourcePath(pkg, version)
-}
-
-// DependencyPath returns the install prefix for a dependency of a PHP version.
-func (s *Service) DependencyPath(phpVersion, name, depVersion string) string {
-	return s.siloRep.DependencyPath(phpVersion, name, depVersion)
 }
 
 // PackagePrefix returns the install prefix for any package.

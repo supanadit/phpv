@@ -346,11 +346,6 @@ func (s *SiloRepository) SourcePath(pkg, version string) string {
 	return SourcePath(pkg, version)
 }
 
-// DependencyPath returns the install prefix for a dependency of a PHP version.
-func (s *SiloRepository) DependencyPath(phpVersion, name, depVersion string) string {
-	return DependencyPath(phpVersion, name, depVersion)
-}
-
 // PackagePrefix returns the install prefix for any package.
 func (s *SiloRepository) PackagePrefix(name, version string) string {
 	return PackagePrefix(name, version)

@@ -2,6 +2,8 @@ package terminal
 
 import (
 	"fmt"
+	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/supanadit/phpv/assembler"
@@ -10,14 +12,14 @@ import (
 
 // PHPHandler registers cobra commands and delegates to services.
 type PHPHandler struct {
-	siloSvc     *silo.Service
+	siloSvc      *silo.Service
 	assemblerSvc *assembler.Service
 }
 
 // NewPHPHandler registers all PHP subcommands onto the given root command.
 func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *assembler.Service) {
 	h := &PHPHandler{
-		siloSvc:     siloSvc,
+		siloSvc:      siloSvc,
 		assemblerSvc: assemblerSvc,
 	}
 	rootCmd.AddCommand(h.downloadCmd())
@@ -41,8 +43,6 @@ func (h *PHPHandler) download(cmd *cobra.Command, args []string) error {
 		name = "php"
 	}
 
-	// TODO: silo.Service needs a BatchDownload or similar to handle transitive deps.
-	// For now, just download the single package.
 	fmt.Printf("Downloading %s@%s...\n", name, version)
 	downloaded, err := h.siloSvc.Download(name, version)
 	if err != nil {
@@ -69,29 +69,89 @@ func (h *PHPHandler) installCmd() *cobra.Command {
 func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	version := args[0]
 
-	fmt.Printf("Installing PHP %s...\n", version)
+	fmt.Printf("Installing PHP %s...\n\n", version)
 
-	result, err := h.assemblerSvc.Assemble("php", version)
+	progressCh := make(chan progressMsg, 64)
+	doneCh := make(chan struct{})
+
+	// Spinner goroutine reads progress messages and animates a spinner.
+	go func() {
+		defer close(doneCh)
+		var current string
+		ticker := time.NewTicker(80 * time.Millisecond)
+		defer ticker.Stop()
+		frame := 0
+		for {
+			select {
+			case msg, ok := <-progressCh:
+				if !ok {
+					if current != "" {
+						fmt.Fprintf(os.Stdout, "\r\033[2K%s\n", current)
+					}
+					return
+				}
+				current = fmt.Sprintf("%s %s", stageGlyph(msg.stage), msg.message)
+				fmt.Fprintf(os.Stdout, "\r\033[2K%s %s", spinnerFrames[frame%len(spinnerFrames)], current)
+			case <-ticker.C:
+				if current != "" {
+					fmt.Fprintf(os.Stdout, "\r\033[2K%s %s", spinnerFrames[frame%len(spinnerFrames)], current)
+				}
+				frame++
+			}
+		}
+	}()
+
+	// Assemble runs synchronously; progress is sent via the callback into progressCh.
+	result, err := h.assemblerSvc.Assemble("php", version, func(stage, message string) {
+		progressCh <- progressMsg{stage: stage, message: message}
+	})
+	close(progressCh)
+	<-doneCh
+
 	if err != nil {
+		fmt.Println()
 		return fmt.Errorf("install failed: %w", err)
 	}
-
-	var downloaded, skipped, extracted int
-	for _, r := range result.DownloadResults {
-		if r.Err != nil {
-			fmt.Printf("  ✗ Failed %s@%s: %v\n", r.Name, r.Version, r.Err)
-			continue
-		}
-		if r.Downloaded {
-			downloaded++
-		} else {
-			skipped++
-		}
-		if r.Extracted {
-			extracted++
-		}
-	}
-	fmt.Printf("Downloaded: %d, Skipped: %d, Extracted: %d\n", downloaded, skipped, extracted)
+	fmt.Println()
 	fmt.Printf("✓ PHP %s installed at %s\n", result.PHPVersion, result.Prefix)
 	return nil
+}
+
+// progressMsg is sent by the assembler through a progress callback.
+type progressMsg struct {
+	stage   string
+	message string
+}
+
+// spinnerFrames are the animation frames for the spinner.
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// stageGlyph returns a short glyph for the given stage.
+func stageGlyph(stage string) string {
+	switch stage {
+	case "resolve":
+		return "→"
+	case "deps":
+		return "→"
+	case "download":
+		return "↓"
+	case "build":
+		return "⚙"
+	case "configure":
+		return "⚙"
+	case "make":
+		return "⚙"
+	case "install":
+		return "↑"
+	case "skip":
+		return "↷"
+	case "patch":
+		return "✎"
+	case "error":
+		return "✗"
+	case "done":
+		return "✓"
+	default:
+		return "·"
+	}
 }

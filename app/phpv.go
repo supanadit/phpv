@@ -13,6 +13,7 @@ import (
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/terminal"
+	"github.com/supanadit/phpv/patcher"
 	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/silo"
 )
@@ -44,6 +45,7 @@ func main() {
 			fx.Annotate(disk.NewSiloRepository, fx.As(new(silo.SiloRepository))),
 			fx.Annotate(memory.NewAssemblerRepository, fx.As(new(assembler.AssemblerRepository))),
 			fx.Annotate(disk.NewForgeRepository, fx.As(new(forge.ForgeRepository))),
+			fx.Annotate(memory.NewPatcherRepository, fx.As(new(patcher.PatcherRepository))),
 			silo.NewService,
 			assembler.NewService,
 		),

@@ -11,6 +11,7 @@ import (
 
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/forge"
+	"github.com/supanadit/phpv/patcher"
 	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/silo"
 )
@@ -37,6 +38,10 @@ type DownloadResult struct {
 	Err        error
 }
 
+// ProgressFunc receives human-readable status updates during assembly.
+// Pass nil to disable progress reporting.
+type ProgressFunc func(stage, message string)
+
 // Service orchestrates the full pipeline:
 // resolve deps → download → extract → build deps → build PHP.
 type Service struct {
@@ -44,54 +49,96 @@ type Service struct {
 	registryRep  registry.RegistryRepository
 	siloRep      silo.SiloRepository
 	forgeRep     forge.ForgeRepository
+	patcherRep   patcher.PatcherRepository
 }
 
-func NewService(ar AssemblerRepository, rr registry.RegistryRepository, sr silo.SiloRepository, fr forge.ForgeRepository) *Service {
+func NewService(ar AssemblerRepository, rr registry.RegistryRepository, sr silo.SiloRepository, fr forge.ForgeRepository, pr patcher.PatcherRepository) *Service {
 	return &Service{
 		assemblerRep: ar,
 		registryRep:  rr,
 		siloRep:      sr,
 		forgeRep:     fr,
+		patcherRep:   pr,
 	}
 }
 
 // Assemble runs the full pipeline for (name, version).
-func (s *Service) Assemble(name string, version string) (*AssemblerResult, error) {
+// progress (if non-nil) is called with human-readable status updates at each step.
+func (s *Service) Assemble(name string, version string, progress ProgressFunc) (*AssemblerResult, error) {
+	emit := func(stage, msg string) {
+		if progress != nil {
+			progress(stage, msg)
+		}
+	}
+
 	// 1. Resolve exact version.
+	emit("resolve", fmt.Sprintf("Resolving %s version %q...", name, version))
 	exactVersion, err := s.resolveVersion(name, version)
 	if err != nil {
 		return nil, fmt.Errorf("resolve version %q: %w", version, err)
 	}
+	emit("resolve", fmt.Sprintf("Resolved %s %s", name, exactVersion))
 
 	// 2. Resolve dependency graph.
+	emit("deps", "Resolving dependency graph...")
 	deps, err := s.assemblerRep.GetOrderedDependencies(name, exactVersion)
 	if err != nil {
 		return nil, fmt.Errorf("resolve deps for %s@%s: %w", name, exactVersion, err)
 	}
+	emit("deps", fmt.Sprintf("Found %d dependencies", len(deps)))
 
 	// 3. Download + extract everything in parallel.
+	emit("download", fmt.Sprintf("Downloading and extracting %d packages...", len(deps)+1))
 	downloadResults, err := s.downloadAll(name, exactVersion, deps)
 	if err != nil {
 		return nil, err
 	}
+	var downloaded, skipped, extracted int
+	for _, r := range downloadResults {
+		if r.Err == nil {
+			if r.Downloaded {
+				downloaded++
+			} else {
+				skipped++
+			}
+			if r.Extracted {
+				extracted++
+			}
+		}
+	}
+	emit("download", fmt.Sprintf("Downloaded: %d, Skipped: %d, Extracted: %d", downloaded, skipped, extracted))
 
 	// 4. Build library deps sequentially, accumulating flags.
 	var depCppFlags, depLdFlags, depPkgConfigPaths []string
 	for _, dep := range deps {
 		if isBuildTool(dep.Name) {
+			emit("skip", fmt.Sprintf("Skipping build tool %s", dep.Name))
 			continue
 		}
 		depVersion := extractVersion(dep.Version)
 		prefix := dependencyPrefix(exactVersion, dep.Name, depVersion)
 		sourceDir := filepath.Join(resolvePHPVRoot("sources"), dep.Name, depVersion)
 
-		buildDir, _, err := s.forgeRep.Build(dep.Name, depVersion, sourceDir, nil)
+		emit("build", fmt.Sprintf("Building %s@%s...", dep.Name, depVersion))
+		if err := s.applyPatches(dep.Name, depVersion, sourceDir, emit); err != nil {
+			emit("error", fmt.Sprintf("Patch failed for %s@%s: %v", dep.Name, depVersion, err))
+			return nil, err
+		}
+		var buildEnv []string
+		if flags := s.extraCFlags(dep.Name, depVersion); len(flags) > 0 {
+			buildEnv = []string{"CFLAGS=" + strings.Join(flags, " ")}
+		}
+		buildDir, _, err := s.forgeRep.Build(dep.Name, depVersion, sourceDir, buildEnv)
 		if err != nil {
+			emit("error", fmt.Sprintf("Build failed for %s@%s", dep.Name, depVersion))
 			return nil, fmt.Errorf("forge build %s@%s: %w", dep.Name, depVersion, err)
 		}
+		emit("install", fmt.Sprintf("Installing %s@%s → %s", dep.Name, depVersion, prefix))
 		if err := s.forgeRep.Install(dep.Name, depVersion, buildDir, prefix); err != nil {
+			emit("error", fmt.Sprintf("Install failed for %s@%s", dep.Name, depVersion))
 			return nil, fmt.Errorf("forge install %s@%s: %w", dep.Name, depVersion, err)
 		}
+		emit("done", fmt.Sprintf("✓ %s@%s installed", dep.Name, depVersion))
 
 		depPath := prefix
 		depCppFlags = appendUnique(depCppFlags, "-I"+filepath.Join(depPath, "include"))
@@ -133,24 +180,34 @@ func (s *Service) Assemble(name string, version string) (*AssemblerResult, error
 		env = setEnvVar(env, "PKG_CONFIG_PATH", strings.Join(depPkgConfigPaths, ":"))
 	}
 
+	emit("configure", fmt.Sprintf("Configuring %s...", name))
+	if err := s.applyPatches(name, exactVersion, phpSrcPath, emit); err != nil {
+		emit("error", fmt.Sprintf("Patch failed for %s: %v", name, err))
+		return nil, err
+	}
 	configure := exec.Command("./configure", configureFlags...)
 	configure.Dir = phpSrcPath
 	configure.Env = env
 	if out, err := configure.CombinedOutput(); err != nil {
+		emit("error", fmt.Sprintf("Configure failed for %s", name))
 		return nil, fmt.Errorf("configure %s@%s: %w\n%s", name, exactVersion, err, out)
 	}
 
+	emit("make", fmt.Sprintf("Compiling %s (this may take a while)...", name))
 	makeCmd := exec.Command("make", "-j4")
 	makeCmd.Dir = phpSrcPath
 	makeCmd.Env = env
 	if out, err := makeCmd.CombinedOutput(); err != nil {
+		emit("error", fmt.Sprintf("Make failed for %s", name))
 		return nil, fmt.Errorf("make %s@%s: %w\n%s", name, exactVersion, err, out)
 	}
 
+	emit("install", fmt.Sprintf("Installing %s → %s", name, phpPrefix))
 	install := exec.Command("make", "install")
 	install.Dir = phpSrcPath
 	install.Env = env
 	if out, err := install.CombinedOutput(); err != nil {
+		emit("error", fmt.Sprintf("Install failed for %s", name))
 		return nil, fmt.Errorf("make install %s@%s: %w\n%s", name, exactVersion, err, out)
 	}
 
@@ -164,6 +221,8 @@ func (s *Service) Assemble(name string, version string) (*AssemblerResult, error
 	}
 	depLibraryPaths = appendUnique(depLibraryPaths, filepath.Join(phpPrefix, "lib"))
 
+	emit("done", fmt.Sprintf("✓ %s %s installed at %s", name, exactVersion, phpPrefix))
+
 	return &AssemblerResult{
 		DownloadResults: downloadResults,
 		PHPVersion:      exactVersion,
@@ -172,6 +231,41 @@ func (s *Service) Assemble(name string, version string) (*AssemblerResult, error
 			"LD_LIBRARY_PATH": strings.Join(depLibraryPaths, ":"),
 		},
 	}, nil
+}
+
+// applyPatches applies all patches for the given package to the extracted source tree.
+// Patches are applied in order; if any patch fails, the error is returned immediately.
+func (s *Service) applyPatches(name, version, sourceDir string, emit ProgressFunc) error {
+	if s.patcherRep == nil {
+		return nil
+	}
+	patches := s.patcherRep.PatchesFor(name, version)
+	if len(patches) == 0 {
+		return nil
+	}
+	emit("patch", fmt.Sprintf("Applying %d patch(es) to %s@%s", len(patches), name, version))
+	for _, p := range patches {
+		emit("patch", fmt.Sprintf("  → %s", p.Name))
+		if err := p.Apply(sourceDir); err != nil {
+			return fmt.Errorf("patch %s: %w", p.Name, err)
+		}
+	}
+	return nil
+}
+
+// extraCFlags returns package-specific CFLAGS needed to build old code on
+// modern toolchains. Empty if no special flags are required.
+func (s *Service) extraCFlags(name, version string) []string {
+	if s.patcherRep == nil {
+		return nil
+	}
+	patches := s.patcherRep.PatchesFor(name, version)
+	for _, p := range patches {
+		if p.ExtraCFlags != nil {
+			return p.ExtraCFlags
+		}
+	}
+	return nil
 }
 
 // downloadAll downloads + extracts the root package and all deps in parallel.

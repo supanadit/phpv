@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/forge"
@@ -57,6 +58,11 @@ func NewService(g *graph.Service, s *silo.Service, f *forge.Service, p *patcher.
 		patcher: p,
 		reg:     r,
 	}
+}
+
+// Graph returns the graph service used by the assembler.
+func (s *Service) Graph() *graph.Service {
+	return s.graph
 }
 
 // Assemble runs the full pipeline for (name, version).
@@ -168,7 +174,7 @@ func (s *Service) Assemble(name string, version string, static bool, extensions 
 	}
 
 	sourceDir := s.silo.SourcePath(name, exactVersion)
-	srcPath := findSourceDir(sourceDir, name, exactVersion)
+	srcPath := FindSourceDir(sourceDir, name, exactVersion)
 	if srcPath == "" {
 		return nil, fmt.Errorf("could not find source directory in %s", sourceDir)
 	}
@@ -222,7 +228,7 @@ func (s *Service) Assemble(name string, version string, static bool, extensions 
 	if len(extensions) > 0 {
 		emit("extensions", fmt.Sprintf("Building %d extension(s)...", len(extensions)))
 		sourceDir := s.silo.SourcePath(name, exactVersion)
-		srcPath := findSourceDir(sourceDir, name, exactVersion)
+		srcPath := FindSourceDir(sourceDir, name, exactVersion)
 		if srcPath == "" {
 			return nil, fmt.Errorf("could not find source directory for extensions in %s", sourceDir)
 		}
@@ -288,7 +294,8 @@ func (s *Service) collectDepFlags(prefix string, cppFlags, ldFlags, pcPaths []st
 
 // InstallExtension builds a single PHP extension from the PHP source tree
 // using phpize. The extension source must be at ext/<name>/ inside the
-// PHP source tree. After building, it adds extension=<name>.so to php.ini.
+// PHP source tree. After building, it adds extension=<name>.so to php.ini
+// and records the extension in the manifest.
 func (s *Service) InstallExtension(phpVersion, extName, phpSourceDir, phpPrefix string) error {
 	extDir := filepath.Join(phpSourceDir, "ext", extName)
 	if _, err := os.Stat(extDir); os.IsNotExist(err) {
@@ -348,6 +355,80 @@ func (s *Service) InstallExtension(phpVersion, extName, phpSourceDir, phpPrefix 
 		return fmt.Errorf("write php.ini: %w", err)
 	}
 
+	manifest, err := s.silo.GetExtensionManifest(phpVersion)
+	if err != nil {
+		return fmt.Errorf("get extension manifest: %w", err)
+	}
+	manifest.Extensions = append(manifest.Extensions, domain.ExtensionState{
+		Name:        extName,
+		InstalledAt: time.Now(),
+	})
+	if err := s.silo.SaveExtensionManifest(phpVersion, manifest); err != nil {
+		return fmt.Errorf("save extension manifest: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveExtension removes a PHP extension from an installed PHP version.
+// It deletes the .so file, removes the extension=<name>.so line from php.ini,
+// and updates the extension manifest.
+func (s *Service) RemoveExtension(phpVersion, extName, phpPrefix string) error {
+	manifest, err := s.silo.GetExtensionManifest(phpVersion)
+	if err != nil {
+		return fmt.Errorf("get extension manifest: %w", err)
+	}
+
+	found := false
+	for _, e := range manifest.Extensions {
+		if e.Name == extName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("extension %q is not installed for PHP %s", extName, phpVersion)
+	}
+
+	extDir := filepath.Join(phpPrefix, "lib", "php", "extensions")
+	removed := false
+	filepath.Walk(extDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.Name() == extName+".so" {
+			os.Remove(path)
+			removed = true
+		}
+		return nil
+	})
+
+	iniPath := filepath.Join(phpPrefix, "etc", "php.ini")
+	if data, err := os.ReadFile(iniPath); err == nil {
+		lines := strings.Split(string(data), "\n")
+		var kept []string
+		for _, line := range lines {
+			if strings.TrimSpace(line) != "extension="+extName+".so" {
+				kept = append(kept, line)
+			}
+		}
+		os.WriteFile(iniPath, []byte(strings.Join(kept, "\n")), 0644)
+	}
+
+	var remaining []domain.ExtensionState
+	for _, e := range manifest.Extensions {
+		if e.Name != extName {
+			remaining = append(remaining, e)
+		}
+	}
+	manifest.Extensions = remaining
+	if err := s.silo.SaveExtensionManifest(phpVersion, manifest); err != nil {
+		return fmt.Errorf("save extension manifest: %w", err)
+	}
+
+	if !removed {
+		return fmt.Errorf("extension %q .so file not found at %s", extName, extDir)
+	}
 	return nil
 }
 
@@ -534,8 +615,8 @@ func compareVersions(a, b string) int {
 	return 0
 }
 
-// findSourceDir locates the actual source directory inside the extracted dir.
-func findSourceDir(extractDir, name, version string) string {
+// FindSourceDir locates the actual source directory inside the extracted dir.
+func FindSourceDir(extractDir, name, version string) string {
 	if hasBuildFile(extractDir) {
 		return extractDir
 	}

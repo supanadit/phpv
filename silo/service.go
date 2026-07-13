@@ -34,6 +34,10 @@ type SiloRepository interface {
 	PHPOutputPath(phpVersion string) string
 	SourcePath(pkg, version string) string
 	PackagePrefix(name, version string) string
+
+	// Extension manifest.
+	GetExtensionManifest(phpVersion string) (*domain.ExtensionManifest, error)
+	SaveExtensionManifest(phpVersion string, m *domain.ExtensionManifest) error
 }
 
 type Service struct {
@@ -120,4 +124,14 @@ func (s *Service) SourcePath(pkg, version string) string {
 // PackagePrefix returns the install prefix for any package.
 func (s *Service) PackagePrefix(name, version string) string {
 	return s.siloRep.PackagePrefix(name, version)
+}
+
+// GetExtensionManifest returns the extension manifest for a PHP version.
+func (s *Service) GetExtensionManifest(phpVersion string) (*domain.ExtensionManifest, error) {
+	return s.siloRep.GetExtensionManifest(phpVersion)
+}
+
+// SaveExtensionManifest saves the extension manifest for a PHP version.
+func (s *Service) SaveExtensionManifest(phpVersion string, m *domain.ExtensionManifest) error {
+	return s.siloRep.SaveExtensionManifest(phpVersion, m)
 }

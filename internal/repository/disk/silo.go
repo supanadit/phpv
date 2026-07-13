@@ -5,6 +5,7 @@ import (
 	"compress/bzip2"
 	"compress/gzip"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"hash"
 	"io"
@@ -349,6 +350,36 @@ func (s *SiloRepository) SourcePath(pkg, version string) string {
 // PackagePrefix returns the install prefix for any package.
 func (s *SiloRepository) PackagePrefix(name, version string) string {
 	return PackagePrefix(name, version)
+}
+
+// GetExtensionManifest reads the extension manifest for a PHP version.
+func (s *SiloRepository) GetExtensionManifest(phpVersion string) (*domain.ExtensionManifest, error) {
+	path := ExtensionManifestPath(phpVersion)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &domain.ExtensionManifest{PHPVersion: phpVersion}, nil
+		}
+		return nil, err
+	}
+	var m domain.ExtensionManifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+// SaveExtensionManifest writes the extension manifest for a PHP version.
+func (s *SiloRepository) SaveExtensionManifest(phpVersion string, m *domain.ExtensionManifest) error {
+	path := ExtensionManifestPath(phpVersion)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }
 
 // extractXz handles .tar.xz archives by shelling out to the xz binary

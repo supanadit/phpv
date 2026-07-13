@@ -54,6 +54,12 @@ func (m *mockSiloRepo) SourcePath(pkg, version string) string {
 func (m *mockSiloRepo) PackagePrefix(name, version string) string {
 	return "/prefix/" + name + "/" + version
 }
+func (m *mockSiloRepo) GetExtensionManifest(phpVersion string) (*domain.ExtensionManifest, error) {
+	return &domain.ExtensionManifest{PHPVersion: phpVersion}, nil
+}
+func (m *mockSiloRepo) SaveExtensionManifest(phpVersion string, manifest *domain.ExtensionManifest) error {
+	return nil
+}
 
 type mockRegistryRepo struct{}
 

@@ -44,6 +44,7 @@ func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *
 	rootCmd.AddCommand(h.defaultCmd())
 	rootCmd.AddCommand(h.useCmd())
 	rootCmd.AddCommand(h.shareCmd())
+	rootCmd.AddCommand(h.extensionCmd())
 }
 
 func (h *PHPHandler) downloadCmd() *cobra.Command {

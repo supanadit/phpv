@@ -58,6 +58,11 @@ func PackageStatePath(name, version string) string {
 	return filepath.Join(resolveRoot(), "packages", name, version, ".state")
 }
 
+// ExtensionManifestPath returns the extension manifest path for a PHP version.
+func ExtensionManifestPath(phpVersion string) string {
+	return filepath.Join(resolveRoot(), "packages", "php", phpVersion, "extensions.json")
+}
+
 // BinPath returns the shim directory.
 func BinPath() string {
 	return filepath.Join(resolveRoot(), "bin")

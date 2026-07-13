@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/bundle"
+	"github.com/supanadit/phpv/internal/repository"
 	"github.com/supanadit/phpv/pecl"
 	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/shim"
@@ -352,13 +353,9 @@ func (h *PHPHandler) defaultCmd() *cobra.Command {
 }
 
 func (h *PHPHandler) setDefault(cmd *cobra.Command, args []string) error {
-	version := args[0]
-
-	// Verify the version is installed.
-	silo := h.siloSvc.GetSilo()
-	phpBin := filepath.Join(silo.Root, "packages", "php", version, "bin", "php")
-	if _, err := os.Stat(phpBin); os.IsNotExist(err) {
-		return fmt.Errorf("PHP %s is not installed. Run `phpv install %s` first", version, version)
+	version, err := h.resolveVersion(args[0])
+	if err != nil {
+		return err
 	}
 
 	if err := h.siloSvc.SetDefault(version); err != nil {
@@ -403,7 +400,7 @@ func (h *PHPHandler) use(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	exactVersion, err := h.resolveInstalledVersion(version)
+	exactVersion, err := h.resolveVersion(version)
 	if err != nil {
 		return err
 	}
@@ -465,6 +462,31 @@ func (h *PHPHandler) resolveActivePHP() (string, error) {
 	return "", fmt.Errorf("no PHP version found (install one with `phpv install <version>`)")
 }
 
+// resolveActiveVersion returns the active PHP version string.
+// Priority: PHPV_CURRENT env > .phpvrc > default.
+func (h *PHPHandler) resolveActiveVersion() (string, error) {
+	if envVer := os.Getenv("PHPV_CURRENT"); envVer != "" {
+		return envVer, nil
+	}
+	if ver := findPhpvrc(); ver != "" {
+		return ver, nil
+	}
+	defaultVer, err := h.siloSvc.GetDefault()
+	if err == nil && defaultVer != "" {
+		return defaultVer, nil
+	}
+	return "", fmt.Errorf("no active PHP version (set one with `phpv use <version>` or `export PHPV_CURRENT=<version>`)")
+}
+
+// resolveVersion resolves a version constraint to an exact installed version.
+// Empty string falls back to the active version.
+func (h *PHPHandler) resolveVersion(constraint string) (string, error) {
+	if constraint == "" {
+		return h.resolveActiveVersion()
+	}
+	return h.resolveInstalledVersion(constraint)
+}
+
 // resolveInstalledVersion resolves a version constraint to an exact installed version.
 func (h *PHPHandler) resolveInstalledVersion(constraint string) (string, error) {
 	silo := h.siloSvc.GetSilo()
@@ -493,18 +515,11 @@ func (h *PHPHandler) resolveInstalledVersion(constraint string) (string, error) 
 		}
 	}
 
-	// Major.minor match (e.g., "8.4" → latest 8.4.x).
-	if strings.Count(constraint, ".") == 1 {
+	// Major.minor or major-only match (e.g., "8.4" → latest 8.4.x, "8" → latest 8.x.x).
+	if strings.Count(constraint, ".") == 1 || strings.Count(constraint, ".") == 0 {
 		prefix := constraint + "."
-		var candidates []string
-		for _, v := range installed {
-			if strings.HasPrefix(v, prefix) {
-				candidates = append(candidates, v)
-			}
-		}
-		if len(candidates) > 0 {
-			sort.Sort(sort.Reverse(sort.StringSlice(candidates)))
-			return candidates[0], nil
+		if best := repository.LatestMatching(installed, prefix); best != "" {
+			return best, nil
 		}
 	}
 

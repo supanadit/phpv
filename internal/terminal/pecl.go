@@ -40,15 +40,15 @@ Examples:
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			source := args[0]
-			phpVersion := ""
+			var phpVersion string
+			var err error
 			if len(args) == 2 {
-				phpVersion = args[1]
+				phpVersion, err = h.resolveVersion(args[1])
 			} else {
-				var err error
-				phpVersion, err = h.resolveActiveVersion()
-				if err != nil {
-					return fmt.Errorf("no PHP version specified and no active version found: %w", err)
-				}
+				phpVersion, err = h.resolveVersion("")
+			}
+			if err != nil {
+				return err
 			}
 
 			yes, _ := cmd.Flags().GetBool("yes")
@@ -79,15 +79,12 @@ Examples:
 		Short: "List installed PECL extensions",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			phpVersion := ""
+			phpVersion, err := h.resolveVersion("")
 			if len(args) == 1 {
-				phpVersion = args[0]
-			} else {
-				var err error
-				phpVersion, err = h.resolveActiveVersion()
-				if err != nil {
-					return fmt.Errorf("no PHP version specified and no active version found: %w", err)
-				}
+				phpVersion, err = h.resolveVersion(args[0])
+			}
+			if err != nil {
+				return err
 			}
 
 			exts, err := h.peclSvc.List(phpVersion)
@@ -116,15 +113,12 @@ Examples:
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-			phpVersion := ""
+			phpVersion, err := h.resolveVersion("")
 			if len(args) == 2 {
-				phpVersion = args[1]
-			} else {
-				var err error
-				phpVersion, err = h.resolveActiveVersion()
-				if err != nil {
-					return fmt.Errorf("no PHP version specified and no active version found: %w", err)
-				}
+				phpVersion, err = h.resolveVersion(args[1])
+			}
+			if err != nil {
+				return err
 			}
 
 			if err := h.peclSvc.Uninstall(name, phpVersion); err != nil {

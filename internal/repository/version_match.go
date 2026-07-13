@@ -150,3 +150,16 @@ func satisfyConstraint(version, c constraint) bool {
 
 	return false
 }
+
+// LatestMatching finds the highest version that starts with the given prefix.
+func LatestMatching(versions []string, prefix string) string {
+	var best string
+	for _, v := range versions {
+		if strings.HasPrefix(v, prefix) {
+			if best == "" || CompareVersions(v, best) > 0 {
+				best = v
+			}
+		}
+	}
+	return best
+}

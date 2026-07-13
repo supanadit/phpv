@@ -18,15 +18,15 @@ func (h *PHPHandler) extensionCmd() *cobra.Command {
 		Long:  "List, add, or remove extensions for an installed PHP version.",
 	}
 	cmd.AddCommand(&cobra.Command{
-		Use:   "list <version>",
+		Use:   "list [version]",
 		Short: "List installed extensions for a PHP version",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE:  h.extensionList,
 	})
 	cmd.AddCommand(&cobra.Command{
-		Use:   "available <version>",
+		Use:   "available [version]",
 		Short: "List extensions available for a PHP version",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE:  h.extensionAvailable,
 	})
 	cmd.AddCommand(&cobra.Command{
@@ -42,21 +42,21 @@ func (h *PHPHandler) extensionCmd() *cobra.Command {
 		RunE:  h.extensionRemove,
 	})
 	cmd.AddCommand(&cobra.Command{
-		Use:   "pecl <version>",
+		Use:   "pecl [version]",
 		Short: "List installed PECL extensions for a PHP version",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE:  h.extensionPecl,
 	})
 	return cmd
 }
 
 func (h *PHPHandler) extensionList(cmd *cobra.Command, args []string) error {
-	version := args[0]
-	prefix := h.siloSvc.PackagePrefix("php", version)
-
-	phpBin := filepath.Join(prefix, "bin", "php")
-	if _, err := os.Stat(phpBin); os.IsNotExist(err) {
-		return fmt.Errorf("PHP %s is not installed. Run `phpv install %s` first", version, version)
+	version, err := h.resolveVersion("")
+	if len(args) > 0 {
+		version, err = h.resolveVersion(args[0])
+	}
+	if err != nil {
+		return err
 	}
 
 	manifest, err := h.siloSvc.GetExtensionManifest(version)
@@ -111,7 +111,13 @@ func (h *PHPHandler) extensionList(cmd *cobra.Command, args []string) error {
 }
 
 func (h *PHPHandler) extensionAvailable(cmd *cobra.Command, args []string) error {
-	version := args[0]
+	version, err := h.resolveVersion("")
+	if len(args) > 0 {
+		version, err = h.resolveVersion(args[0])
+	}
+	if err != nil {
+		return err
+	}
 	exts := h.assemblerSvc.Graph().ListExtensionsForPHP(version)
 
 	fmt.Printf("Available extensions for PHP %s:\n", version)
@@ -125,7 +131,10 @@ func (h *PHPHandler) extensionAvailable(cmd *cobra.Command, args []string) error
 }
 
 func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
-	version := args[0]
+	version, err := h.resolveVersion(args[0])
+	if err != nil {
+		return err
+	}
 	extNames := args[1:]
 
 	prefix := h.siloSvc.PackagePrefix("php", version)
@@ -164,7 +173,10 @@ func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
 }
 
 func (h *PHPHandler) extensionRemove(cmd *cobra.Command, args []string) error {
-	version := args[0]
+	version, err := h.resolveVersion(args[0])
+	if err != nil {
+		return err
+	}
 	extNames := args[1:]
 
 	prefix := h.siloSvc.PackagePrefix("php", version)
@@ -200,7 +212,13 @@ func (h *PHPHandler) extensionRemove(cmd *cobra.Command, args []string) error {
 }
 
 func (h *PHPHandler) extensionPecl(cmd *cobra.Command, args []string) error {
-	version := args[0]
+	version, err := h.resolveVersion("")
+	if len(args) > 0 {
+		version, err = h.resolveVersion(args[0])
+	}
+	if err != nil {
+		return err
+	}
 	exts, err := h.peclSvc.List(version)
 	if err != nil {
 		return fmt.Errorf("list PECL extensions: %w", err)

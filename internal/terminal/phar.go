@@ -62,7 +62,7 @@ func (h *PHPHandler) pharCmd() *cobra.Command {
 func (h *PHPHandler) pharInstall(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	version, err := h.resolveActiveVersion()
+	version, err := h.resolveVersion("")
 	if err != nil {
 		return err
 	}
@@ -105,7 +105,7 @@ func (h *PHPHandler) pharList(cmd *cobra.Command, args []string) error {
 		version = args[0]
 	} else {
 		var err error
-		version, err = h.resolveActiveVersion()
+		version, err = h.resolveVersion("")
 		if err != nil {
 			return err
 		}
@@ -192,20 +192,6 @@ func (h *PHPHandler) pharUpdate(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("✓ %s updated for PHP %s\n", name, version)
 	return nil
-}
-
-func (h *PHPHandler) resolveActiveVersion() (string, error) {
-	if envVer := os.Getenv("PHPV_CURRENT"); envVer != "" {
-		return envVer, nil
-	}
-	if ver := findPhpvrc(); ver != "" {
-		return ver, nil
-	}
-	defaultVer, err := h.siloSvc.GetDefault()
-	if err == nil && defaultVer != "" {
-		return defaultVer, nil
-	}
-	return "", fmt.Errorf("no active PHP version (set one with `phpv use <version>` or `export PHPV_CURRENT=<version>`)")
 }
 
 func downloadFile(url, dest string) error {

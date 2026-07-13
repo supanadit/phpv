@@ -608,10 +608,10 @@ func compareVersions(a, b string) int {
 		if i < len(bp) {
 			fmt.Sscanf(bp[i], "%d", &bn)
 		}
-		if an != bn {
-			if an > bn {
-				return 1
-			}
+		if an > bn {
+			return 1
+		}
+		if an < bn {
 			return -1
 		}
 	}

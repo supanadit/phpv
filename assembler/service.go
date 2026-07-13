@@ -409,25 +409,25 @@ func resolveVersionConstraint(versions []string, constraint string) (string, err
 			return v, nil
 		}
 	}
-	if strings.Count(constraint, ".") == 1 {
+	if strings.Count(constraint, ".") == 1 || strings.Count(constraint, ".") == 0 {
 		prefix := constraint + "."
-		var candidates []string
-		for _, v := range versions {
-			if strings.HasPrefix(v, prefix) {
-				candidates = append(candidates, v)
-			}
-		}
-		if len(candidates) > 0 {
-			best := candidates[0]
-			for _, v := range candidates[1:] {
-				if compareVersions(v, best) > 0 {
-					best = v
-				}
-			}
+		if best := latestMatching(versions, prefix); best != "" {
 			return best, nil
 		}
 	}
 	return "", fmt.Errorf("no version matching %q found", constraint)
+}
+
+func latestMatching(versions []string, prefix string) string {
+	var best string
+	for _, v := range versions {
+		if strings.HasPrefix(v, prefix) {
+			if best == "" || compareVersions(v, best) > 0 {
+				best = v
+			}
+		}
+	}
+	return best
 }
 
 func compareVersions(a, b string) int {

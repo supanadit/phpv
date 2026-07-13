@@ -76,7 +76,12 @@ func (h *PHPHandler) installCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install <version>",
 		Short: "Install a PHP version",
-		Long:  "Download, build, and install a specific version of PHP with all its dependencies.",
+		Long: `Download, build, and install a specific version of PHP with all its dependencies.
+
+Version syntax:
+  8.4.4    exact version
+  8.4      latest 8.4.x patch
+  8        latest 8.x.x minor`,
 		Args:  cobra.ExactArgs(1),
 		RunE:  h.install,
 	}

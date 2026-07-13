@@ -18,8 +18,11 @@ func NewForgeRepository() *ForgeRepository {
 }
 
 // Build compiles the package from sourceDir. extraEnv provides additional
-// environment variables (e.g., PATH with build tool bins).
-func (f *ForgeRepository) Build(name string, version string, sourceDir string, extraEnv []string) (buildDir string, env map[string]string, err error) {
+// environment variables (e.g., PATH with build tool bins). extraConfigureFlags
+// are appended to the package's ./configure invocation. installPrefix is the
+// absolute path where the package will be installed (replaces the default
+// source-dir-based prefix derivation).
+func (f *ForgeRepository) Build(name string, version string, sourceDir string, extraEnv []string, extraConfigureFlags []string, installPrefix string) (buildDir string, env map[string]string, err error) {
 	srcPath := findSourceDir(sourceDir, name, version)
 	if srcPath == "" {
 		return "", nil, fmt.Errorf("could not find source directory in %s", sourceDir)
@@ -32,21 +35,25 @@ func (f *ForgeRepository) Build(name string, version string, sourceDir string, e
 	strategy := detectStrategy(name)
 
 	// Build env vars that downstream packages need.
-	env = map[string]string{
-		"PKG_CONFIG_PATH": filepath.Join(filepath.Dir(srcPath), "lib", "pkgconfig"),
+	prefix := installPrefix
+	if prefix == "" {
+		prefix = filepath.Dir(srcPath)
 	}
-	env["CPPFLAGS"] = "-I" + filepath.Join(filepath.Dir(srcPath), "include")
-	env["LDFLAGS"] = "-L" + filepath.Join(filepath.Dir(srcPath), "lib") + " -Wl,-rpath," + filepath.Join(filepath.Dir(srcPath), "lib")
+	env = map[string]string{
+		"PKG_CONFIG_PATH": filepath.Join(prefix, "lib", "pkgconfig"),
+	}
+	env["CPPFLAGS"] = "-I" + filepath.Join(prefix, "include")
+	env["LDFLAGS"] = "-L" + filepath.Join(prefix, "lib") + " -Wl,-rpath," + filepath.Join(prefix, "lib")
 
 	switch strategy {
 	case "cmake":
-		return f.buildCMake(name, version, srcPath, extraEnv)
+		return f.buildCMake(name, version, srcPath, extraEnv, extraConfigureFlags, prefix)
 	case "makeonly":
 		return f.buildMakeOnly(name, version, srcPath, extraEnv)
 	case "configure":
-		return f.buildConfigure(name, version, srcPath, extraEnv)
+		return f.buildConfigure(name, version, srcPath, extraEnv, extraConfigureFlags, prefix)
 	case "autogen":
-		return f.buildAutogen(name, version, srcPath, extraEnv)
+		return f.buildAutogen(name, version, srcPath, extraEnv, extraConfigureFlags, prefix)
 	default:
 		return "", nil, fmt.Errorf("unsupported build strategy: %s for %s", strategy, name)
 	}
@@ -73,16 +80,20 @@ func (f *ForgeRepository) Install(name string, version string, buildDir string, 
 }
 
 // buildCMake runs cmake + make.
-func (f *ForgeRepository) buildCMake(name, version, srcPath string, extraEnv []string) (string, map[string]string, error) {
+func (f *ForgeRepository) buildCMake(name, version, srcPath string, extraEnv []string, extraFlags []string, prefix string) (string, map[string]string, error) {
 	buildDir := filepath.Join(srcPath, "build")
 	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		return "", nil, fmt.Errorf("create build dir: %w", err)
 	}
 
-	cmake := exec.Command("cmake", srcPath,
-		"-DCMAKE_INSTALL_PREFIX="+filepath.Dir(srcPath),
+	cmakeArgs := []string{
+		srcPath,
+		"-DCMAKE_INSTALL_PREFIX=" + prefix,
 		"-DCMAKE_BUILD_TYPE=Release",
-	)
+	}
+	cmakeArgs = append(cmakeArgs, extraFlags...)
+
+	cmake := exec.Command("cmake", cmakeArgs...)
 	cmake.Dir = buildDir
 	cmake.Env = mergeEnv(extraEnv)
 	if out, err := cmake.CombinedOutput(); err != nil {
@@ -96,12 +107,11 @@ func (f *ForgeRepository) buildCMake(name, version, srcPath string, extraEnv []s
 		return "", nil, fmt.Errorf("make %s: %w\n%s", name, err, out)
 	}
 
-	return buildDir, forgeEnv(filepath.Dir(srcPath)), nil
+	return buildDir, forgeEnv(prefix), nil
 }
 
 // buildConfigure runs ./configure + make. Handles OpenSSL's Configure and config.
-func (f *ForgeRepository) buildConfigure(name, version, srcPath string, extraEnv []string) (string, map[string]string, error) {
-	prefix := filepath.Dir(srcPath)
+func (f *ForgeRepository) buildConfigure(name, version, srcPath string, extraEnv []string, extraFlags []string, prefix string) (string, map[string]string, error) {
 
 	// For m4, run autoreconf first.
 	if name == "m4" {
@@ -146,6 +156,7 @@ func (f *ForgeRepository) buildConfigure(name, version, srcPath string, extraEnv
 	}
 
 	args := []string{"--prefix=" + prefix}
+	args = append(args, extraFlags...)
 
 	var configure *exec.Cmd
 	if usePerl {
@@ -178,8 +189,7 @@ func (f *ForgeRepository) buildConfigure(name, version, srcPath string, extraEnv
 }
 
 // buildAutogen runs autoreconf then configure + make.
-func (f *ForgeRepository) buildAutogen(name, version, srcPath string, extraEnv []string) (string, map[string]string, error) {
-	prefix := filepath.Dir(srcPath)
+func (f *ForgeRepository) buildAutogen(name, version, srcPath string, extraEnv []string, extraFlags []string, prefix string) (string, map[string]string, error) {
 
 	autoreconf := exec.Command("autoreconf", "-fi")
 	autoreconf.Dir = srcPath
@@ -188,7 +198,10 @@ func (f *ForgeRepository) buildAutogen(name, version, srcPath string, extraEnv [
 		return "", nil, fmt.Errorf("autoreconf %s: %w\n%s", name, err, out)
 	}
 
-	configure := exec.Command("./configure", "--prefix="+prefix)
+	args := []string{"--prefix=" + prefix}
+	args = append(args, extraFlags...)
+
+	configure := exec.Command("./configure", args...)
 	configure.Dir = srcPath
 	configure.Env = mergeEnv(extraEnv)
 	if out, err := configure.CombinedOutput(); err != nil {

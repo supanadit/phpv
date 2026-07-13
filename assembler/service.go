@@ -128,7 +128,8 @@ func (s *Service) Assemble(name string, version string, progress ProgressFunc) (
 		if flags := s.extraCFlags(dep.Name, depVersion); len(flags) > 0 {
 			buildEnv = []string{"CFLAGS=" + strings.Join(flags, " ")}
 		}
-		buildDir, _, err := s.forgeRep.Build(dep.Name, depVersion, sourceDir, buildEnv)
+		extraFlags := s.extraConfigureFlags(dep.Name, depVersion, exactVersion, prefix, sourceDir)
+		buildDir, _, err := s.forgeRep.Build(dep.Name, depVersion, sourceDir, buildEnv, extraFlags, prefix)
 		if err != nil {
 			emit("error", fmt.Sprintf("Build failed for %s@%s", dep.Name, depVersion))
 			return nil, fmt.Errorf("forge build %s@%s: %w", dep.Name, depVersion, err)
@@ -246,8 +247,10 @@ func (s *Service) applyPatches(name, version, sourceDir string, emit ProgressFun
 	emit("patch", fmt.Sprintf("Applying %d patch(es) to %s@%s", len(patches), name, version))
 	for _, p := range patches {
 		emit("patch", fmt.Sprintf("  → %s", p.Name))
-		if err := p.Apply(sourceDir); err != nil {
-			return fmt.Errorf("patch %s: %w", p.Name, err)
+		if p.Apply != nil {
+			if err := p.Apply(sourceDir); err != nil {
+				return fmt.Errorf("patch %s: %w", p.Name, err)
+			}
 		}
 	}
 	return nil
@@ -264,6 +267,46 @@ func (s *Service) extraCFlags(name, version string) []string {
 		if p.ExtraCFlags != nil {
 			return p.ExtraCFlags
 		}
+	}
+	return nil
+}
+
+// extraConfigureFlags resolves patch-level configure flag templates against
+// the package's install prefix and source directory. Placeholders:
+//   {{prefix}} → install prefix
+//   {{source}} → source dir
+//   {{dep:NAME}} → install prefix of dependency NAME (under phpVersion)
+func (s *Service) extraConfigureFlags(name, depVersion, phpVersion, prefix, sourceDir string) []string {
+	if s.patcherRep == nil {
+		return nil
+	}
+	patches := s.patcherRep.PatchesFor(name, depVersion)
+	for _, p := range patches {
+		if len(p.ConfigureFlags) == 0 {
+			continue
+		}
+		resolved := make([]string, 0, len(p.ConfigureFlags))
+		for _, flag := range p.ConfigureFlags {
+			flag = strings.ReplaceAll(flag, "{{prefix}}", prefix)
+			flag = strings.ReplaceAll(flag, "{{source}}", sourceDir)
+			// Resolve {{dep:NAME}} → the dep's install prefix.
+			if strings.Contains(flag, "{{dep:") {
+				start := strings.Index(flag, "{{dep:")
+				end := strings.Index(flag[start:], "}}")
+				if end > 0 {
+					depName := flag[start+6 : start+end]
+					depBase := filepath.Join(resolvePHPVRoot("versions"), phpVersion, "dependency", depName)
+					depPrefix := filepath.Join(depBase, "1.0.0")
+					entries, _ := os.ReadDir(depBase)
+					if len(entries) > 0 {
+						depPrefix = filepath.Join(depBase, entries[0].Name())
+					}
+					flag = strings.ReplaceAll(flag, "{{dep:"+depName+"}}", depPrefix)
+				}
+			}
+			resolved = append(resolved, flag)
+		}
+		return resolved
 	}
 	return nil
 }

@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,10 +15,10 @@ import (
 // before building. Most patches exist to make old C code compile on modern
 // toolchains (GCC 14+ defaults to -std=gnu23, which is stricter about
 // function pointer types).
+// inMemoryPatcher is the default in-memory patcher for build compatibility
+// on modern toolchains.
 type inMemoryPatcher struct{}
 
-// NewPatcherRepository returns a PatcherRepository with built-in patches
-// for known broken-on-modern-GCC packages.
 func NewPatcherRepository() patcher.PatcherRepository {
 	return &inMemoryPatcher{}
 }
@@ -32,8 +33,82 @@ func (p *inMemoryPatcher) PatchesFor(name string, version string) []patcher.Patc
 			Apply:        patchOnigurumaStForeach,
 			ExtraCFlags:  []string{"-Wno-error=incompatible-pointer-types", "-Wno-incompatible-pointer-types"},
 		}}
+	case "php":
+		// PHP 7.4's scanf.c uses K&R-style function pointer casts that GCC 15
+		// rejects outright. Patch the fn declaration to match the actual
+		// strtoll(str, endptr, base) signature. The call site passes 3 args.
+		return []patcher.Patch{{
+			Name:         "php-gcc15-scanf-fn",
+			Package:      "php",
+			VersionRange: ">=7.0.0, <8.0.0",
+			Apply:        patchPhpScanfFn,
+		}}
+	case "curl":
+		// Curl needs explicit TLS backend + disabled optional features.
+		// The {{dep:openssl}} placeholder is resolved by the assembler to
+		// the openssl install prefix.
+		return []patcher.Patch{{
+			Name:    "curl-openssl-and-disable-extras",
+			Package: "curl",
+			ConfigureFlags: []string{
+				"--with-openssl={{dep:openssl}}",
+				"--without-brotli",
+				"--disable-ldap",
+				"--without-libpsl",
+				"--without-libidn2",
+				"--without-zstd",
+				"--without-nghttp2",
+				"--without-zlib",
+			},
+		}}
 	}
 	return nil
+}
+
+// patchPhpScanfFn rewrites the bad fn typedef in PHP 7.4's scanf.c so the
+// ZEND_STRTOL_PTR function pointer can be called with 3 arguments.
+func patchPhpScanfFn(sourceDir string) error {
+	scanfs, err := findFile(sourceDir, "ext/standard/scanf.c")
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(scanfs)
+	if err != nil {
+		return err
+	}
+	old := "zend_long	(*fn)();"
+	newStr := "zend_long	(*fn)(char *, char **, int);"
+	if !strings.Contains(string(data), old) {
+		// Already patched or different signature; skip.
+		return nil
+	}
+	if err := os.WriteFile(scanfs, []byte(strings.Replace(string(data), old, newStr, 1)), 0o644); err != nil {
+		return err
+	}
+	return nil
+}
+
+func findFile(root, rel string) (string, error) {
+	// Walk source dir looking for the relative path. The extracted source is
+	// nested under e.g. sources/php/7.4.33/php-7.4.33/.
+	var found string
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && (strings.HasSuffix(path, rel) || strings.Contains(path, "/"+rel)) {
+			found = path
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	if err != nil && !errors.Is(err, filepath.SkipAll) {
+		return "", err
+	}
+	if found == "" {
+		return "", fmt.Errorf("not found: %s under %s", rel, root)
+	}
+	return found, nil
 }
 
 // patchOnigurumaStForeach fixes the st_foreach macro in st.h so the function

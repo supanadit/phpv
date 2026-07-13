@@ -16,6 +16,12 @@ type Patch struct {
 	// ExtraCFlags, if non-nil, are additional CFLAGS injected into the
 	// package's build environment (e.g., to relax strict warnings).
 	ExtraCFlags []string
+	// ConfigureFlags are appended to the package's ./configure invocation.
+	// Special placeholders are resolved by the assembler:
+	//   {{prefix}} → the package's install prefix
+	//   {{source}} → the extracted source directory
+	//   {{dep:NAME}} → the install prefix of dependency NAME (e.g., openssl)
+	ConfigureFlags []string
 }
 
 // PatcherRepository resolves the list of patches to apply for a given package.

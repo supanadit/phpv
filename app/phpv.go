@@ -36,18 +36,21 @@ func RegisterRootCmd(rootCmd *cobra.Command, lc fx.Lifecycle) {
 }
 
 func main() {
-	// Create Default Options
 	options := []fx.Option{
 		fx.NopLogger,
 		fx.Provide(
 			NewRootCmd,
 			fx.Annotate(memory.NewRegistryRepository, fx.As(new(registry.RegistryRepository))),
 			fx.Annotate(disk.NewSiloRepository, fx.As(new(silo.SiloRepository))),
-			fx.Annotate(memory.NewAssemblerRepository, fx.As(new(assembler.AssemblerRepository))),
 			fx.Annotate(disk.NewForgeRepository, fx.As(new(forge.ForgeRepository))),
 			fx.Annotate(memory.NewPatcherRepository, fx.As(new(patcher.PatcherRepository))),
+			memory.NewAssemblerRepository,
+			fx.Annotate(disk.NewAssemblerRepository, fx.As(new(assembler.AssemblerRepository))),
 			silo.NewService,
+			registry.NewService,
 			assembler.NewService,
+			forge.NewService,
+			patcher.NewService,
 		),
 		fx.Invoke(
 			terminal.NewPHPHandler,
@@ -55,16 +58,13 @@ func main() {
 		),
 	}
 
-	// Create Inversion of Control
 	app := fx.New(options...)
 
-	// Start Context
 	if err := app.Start(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
-	// Stop Context
 	if err := app.Stop(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

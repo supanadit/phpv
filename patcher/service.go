@@ -28,3 +28,15 @@ type Patch struct {
 type PatcherRepository interface {
 	PatchesFor(name string, version string) []Patch
 }
+
+type Service struct {
+	repo PatcherRepository
+}
+
+func NewService(r PatcherRepository) *Service {
+	return &Service{repo: r}
+}
+
+func (s *Service) PatchesFor(name string, version string) []Patch {
+	return s.repo.PatchesFor(name, version)
+}

@@ -15,24 +15,18 @@ type ForgeRepository interface {
 	Install(name string, version string, buildDir string, prefix string) error
 }
 
-// Service wraps a ForgeRepository and provides the public build/install API.
 type Service struct {
-	forgeRep ForgeRepository
+	repo ForgeRepository
 }
 
-func NewService(fr ForgeRepository) *Service {
-	return &Service{forgeRep: fr}
+func NewService(r ForgeRepository) *Service {
+	return &Service{repo: r}
 }
 
-// Build compiles the package from sourceDir. extraEnv provides additional
-// environment variables (e.g., PATH with build tool bins). extraConfigureFlags
-// are appended to the package's ./configure command. installPrefix is the
-// absolute path where the package should be installed.
-func (s *Service) Build(name string, version string, sourceDir string, extraEnv []string, extraConfigureFlags []string, installPrefix string) (buildDir string, env map[string]string, err error) {
-	return s.forgeRep.Build(name, version, sourceDir, extraEnv, extraConfigureFlags, installPrefix)
+func (s *Service) Build(name string, version string, sourceDir string, extraEnv []string, extraConfigureFlags []string, installPrefix string) (string, map[string]string, error) {
+	return s.repo.Build(name, version, sourceDir, extraEnv, extraConfigureFlags, installPrefix)
 }
 
-// Install installs a previously built package into prefix.
 func (s *Service) Install(name string, version string, buildDir string, prefix string) error {
-	return s.forgeRep.Install(name, version, buildDir, prefix)
+	return s.repo.Install(name, version, buildDir, prefix)
 }

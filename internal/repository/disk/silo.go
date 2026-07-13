@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/repository"
 )
 
@@ -23,6 +24,7 @@ import (
 // final location so that corrupt or mismatched files never reach the silo.
 type SiloRepository struct {
 	baseDir string
+	root    string
 }
 
 // NewSiloRepository creates a SiloRepository that stores downloaded files
@@ -31,6 +33,7 @@ type SiloRepository struct {
 func NewSiloRepository() *SiloRepository {
 	return &SiloRepository{
 		baseDir: repository.ResolveCacheDir(),
+		root:    resolveRoot(),
 	}
 }
 
@@ -276,6 +279,76 @@ func (s *SiloRepository) Extract(archivePath string, destDir string) (extracted 
 	}
 
 	return true, nil
+}
+
+// GetSilo returns the storage root.
+func (s *SiloRepository) GetSilo() domain.Silo {
+	return domain.Silo{Root: s.root}
+}
+
+// GetState reads the install state for a PHP version.
+func (s *SiloRepository) GetState(phpVersion string) (domain.InstallState, error) {
+	path := StatePath(phpVersion)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return domain.StateNone, nil
+		}
+		return domain.StateNone, err
+	}
+	state := domain.InstallState(strings.TrimSpace(string(data)))
+	return state, nil
+}
+
+// MarkInProgress marks a PHP installation as in-progress.
+func (s *SiloRepository) MarkInProgress(phpVersion string) error {
+	path := StatePath(phpVersion)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte("in_progress"), 0o644)
+}
+
+// MarkComplete marks a PHP installation as complete.
+func (s *SiloRepository) MarkComplete(phpVersion string) error {
+	return os.WriteFile(StatePath(phpVersion), []byte("installed"), 0o644)
+}
+
+// MarkFailed marks a PHP installation as failed.
+func (s *SiloRepository) MarkFailed(phpVersion string) error {
+	return os.WriteFile(StatePath(phpVersion), []byte("failed"), 0o644)
+}
+
+// GetDefault reads the default PHP version.
+func (s *SiloRepository) GetDefault() (string, error) {
+	data, err := os.ReadFile(DefaultPath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+// SetDefault writes the default PHP version.
+func (s *SiloRepository) SetDefault(version string) error {
+	return os.WriteFile(DefaultPath(), []byte(version+"\n"), 0o644)
+}
+
+// PHPOutputPath returns the install prefix for a PHP version.
+func (s *SiloRepository) PHPOutputPath(phpVersion string) string {
+	return PHPOutputPath(phpVersion)
+}
+
+// SourcePath returns the extracted source directory for a package.
+func (s *SiloRepository) SourcePath(pkg, version string) string {
+	return SourcePath(pkg, version)
+}
+
+// DependencyPath returns the install prefix for a dependency of a PHP version.
+func (s *SiloRepository) DependencyPath(phpVersion, name, depVersion string) string {
+	return DependencyPath(phpVersion, name, depVersion)
 }
 
 // extractXz handles .tar.xz archives by shelling out to the xz binary

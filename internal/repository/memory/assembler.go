@@ -1,9 +1,11 @@
 package memory
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/repository"
 )
@@ -87,6 +89,11 @@ func (r *AssemblerRepository) GetOrderedDependencies(name string, version string
 	}
 
 	return result, nil
+}
+
+// Assemble is a stub — memory assembler does not support real builds.
+func (r *AssemblerRepository) Assemble(name, version string, progress assembler.ProgressFunc) (*assembler.AssemblerResult, error) {
+	return nil, errors.New("memory assembler does not support Assemble; use disk")
 }
 
 // getDependencies returns the dependency list for a package at a specific version.

@@ -76,7 +76,7 @@ func (s *Service) Assemble(name string, version string, static bool, extensions 
 
 	prefix := s.silo.PackagePrefix(name, exactVersion)
 
-	state, err := s.silo.GetState(exactVersion)
+	state, err := s.silo.GetState(name, exactVersion)
 	if err != nil {
 		return nil, fmt.Errorf("get state: %w", err)
 	}
@@ -85,14 +85,14 @@ func (s *Service) Assemble(name string, version string, static bool, extensions 
 		return &AssemblerResult{Version: exactVersion}, nil
 	}
 
-	if err := s.silo.MarkInProgress(exactVersion); err != nil {
+	if err := s.silo.MarkInProgress(name, exactVersion); err != nil {
 		return nil, fmt.Errorf("mark in-progress: %w", err)
 	}
 
 	var completed bool
 	defer func() {
 		if !completed {
-			s.silo.MarkFailed(exactVersion)
+			s.silo.MarkFailed(name, exactVersion)
 		}
 	}()
 
@@ -247,7 +247,7 @@ func (s *Service) Assemble(name string, version string, static bool, extensions 
 	depLibraryPaths = appendUnique(depLibraryPaths, filepath.Join(prefix, "lib"))
 
 	completed = true
-	if err := s.silo.MarkComplete(exactVersion); err != nil {
+	if err := s.silo.MarkComplete(name, exactVersion); err != nil {
 		return nil, fmt.Errorf("mark complete: %w", err)
 	}
 

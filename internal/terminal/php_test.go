@@ -117,7 +117,7 @@ func TestResolveActivePHP_Default(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveActivePHP returned error: %v", err)
 	}
-	want := filepath.Join(dir, "versions", "8.3.0", "output", "bin", "php")
+	want := filepath.Join(dir, "packages", "php", "8.3.0", "bin", "php")
 	if path != want {
 		t.Fatalf("resolveActivePHP = %q, want %q", path, want)
 	}
@@ -142,7 +142,7 @@ func TestResolveActivePHP_Phpvrc(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveActivePHP returned error: %v", err)
 	}
-	want := filepath.Join(dir, "versions", "7.4.0", "output", "bin", "php")
+	want := filepath.Join(dir, "packages", "php", "7.4.0", "bin", "php")
 	if path != want {
 		t.Fatalf("resolveActivePHP = %q, want %q", path, want)
 	}
@@ -161,7 +161,7 @@ func TestResolveActivePHP_NoPHP(t *testing.T) {
 
 func createFakePHPInstall(t *testing.T, root, version string) {
 	t.Helper()
-	phpBin := filepath.Join(root, "versions", version, "output", "bin", "php")
+	phpBin := filepath.Join(root, "packages", "php", version, "bin", "php")
 	if err := os.MkdirAll(filepath.Dir(phpBin), 0755); err != nil {
 		t.Fatal(err)
 	}

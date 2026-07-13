@@ -11,7 +11,7 @@ func TestSiloRepository_GetState_None(t *testing.T) {
 	t.Setenv("PHPV_ROOT", dir)
 
 	repo := NewSiloRepository()
-	state, err := repo.GetState("8.4.0")
+	state, err := repo.GetState("php", "8.4.0")
 	if err != nil {
 		t.Fatalf("GetState returned error: %v", err)
 	}
@@ -25,11 +25,11 @@ func TestSiloRepository_MarkInProgress(t *testing.T) {
 	t.Setenv("PHPV_ROOT", dir)
 
 	repo := NewSiloRepository()
-	if err := repo.MarkInProgress("8.4.0"); err != nil {
+	if err := repo.MarkInProgress("php", "8.4.0"); err != nil {
 		t.Fatalf("MarkInProgress returned error: %v", err)
 	}
 
-	state, err := repo.GetState("8.4.0")
+	state, err := repo.GetState("php", "8.4.0")
 	if err != nil {
 		t.Fatalf("GetState returned error: %v", err)
 	}
@@ -43,14 +43,14 @@ func TestSiloRepository_MarkComplete(t *testing.T) {
 	t.Setenv("PHPV_ROOT", dir)
 
 	repo := NewSiloRepository()
-	if err := repo.MarkInProgress("8.4.0"); err != nil {
+	if err := repo.MarkInProgress("php", "8.4.0"); err != nil {
 		t.Fatalf("MarkInProgress returned error: %v", err)
 	}
-	if err := repo.MarkComplete("8.4.0"); err != nil {
+	if err := repo.MarkComplete("php", "8.4.0"); err != nil {
 		t.Fatalf("MarkComplete returned error: %v", err)
 	}
 
-	state, err := repo.GetState("8.4.0")
+	state, err := repo.GetState("php", "8.4.0")
 	if err != nil {
 		t.Fatalf("GetState returned error: %v", err)
 	}
@@ -64,14 +64,14 @@ func TestSiloRepository_MarkFailed(t *testing.T) {
 	t.Setenv("PHPV_ROOT", dir)
 
 	repo := NewSiloRepository()
-	if err := repo.MarkInProgress("8.4.0"); err != nil {
+	if err := repo.MarkInProgress("php", "8.4.0"); err != nil {
 		t.Fatalf("MarkInProgress returned error: %v", err)
 	}
-	if err := repo.MarkFailed("8.4.0"); err != nil {
+	if err := repo.MarkFailed("php", "8.4.0"); err != nil {
 		t.Fatalf("MarkFailed returned error: %v", err)
 	}
 
-	state, err := repo.GetState("8.4.0")
+	state, err := repo.GetState("php", "8.4.0")
 	if err != nil {
 		t.Fatalf("GetState returned error: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestSiloRepository_PathHelpers(t *testing.T) {
 	repo := NewSiloRepository()
 
 	got := repo.PHPOutputPath("8.4.0")
-	want := filepath.Join(dir, "versions", "8.4.0", "output")
+	want := filepath.Join(dir, "packages", "php", "8.4.0")
 	if got != want {
 		t.Fatalf("PHPOutputPath = %q, want %q", got, want)
 	}
@@ -155,16 +155,16 @@ func TestSiloRepository_StateFilePersistence(t *testing.T) {
 	repo := NewSiloRepository()
 
 	// Write state via one instance.
-	if err := repo.MarkInProgress("8.4.0"); err != nil {
+	if err := repo.MarkInProgress("php", "8.4.0"); err != nil {
 		t.Fatalf("MarkInProgress: %v", err)
 	}
-	if err := repo.MarkComplete("8.4.0"); err != nil {
+	if err := repo.MarkComplete("php", "8.4.0"); err != nil {
 		t.Fatalf("MarkComplete: %v", err)
 	}
 
 	// Read state via a new instance (proves file persistence).
 	repo2 := NewSiloRepository()
-	state, err := repo2.GetState("8.4.0")
+	state, err := repo2.GetState("php", "8.4.0")
 	if err != nil {
 		t.Fatalf("GetState: %v", err)
 	}
@@ -211,8 +211,8 @@ func TestSiloPaths_WithPHPVRoot(t *testing.T) {
 	if got := VersionPath("8.4.0"); got != filepath.Join(dir, "versions", "8.4.0") {
 		t.Fatalf("VersionPath = %q, want %q", got, filepath.Join(dir, "versions", "8.4.0"))
 	}
-	if got := PHPOutputPath("8.4.0"); got != filepath.Join(dir, "versions", "8.4.0", "output") {
-		t.Fatalf("PHPOutputPath = %q, want %q", got, filepath.Join(dir, "versions", "8.4.0", "output"))
+	if got := PHPOutputPath("8.4.0"); got != filepath.Join(dir, "packages", "php", "8.4.0") {
+		t.Fatalf("PHPOutputPath = %q, want %q", got, filepath.Join(dir, "packages", "php", "8.4.0"))
 	}
 	if got := PackagePrefix("openssl", "1.1.1w"); got != filepath.Join(dir, "packages", "openssl", "1.1.1w") {
 		t.Fatalf("PackagePrefix = %q, want %q", got, filepath.Join(dir, "packages", "openssl", "1.1.1w"))
@@ -220,8 +220,8 @@ func TestSiloPaths_WithPHPVRoot(t *testing.T) {
 	if got := BinPath(); got != filepath.Join(dir, "bin") {
 		t.Fatalf("BinPath = %q, want %q", got, filepath.Join(dir, "bin"))
 	}
-	if got := StatePath("8.4.0"); got != filepath.Join(dir, "versions", "8.4.0", ".state") {
-		t.Fatalf("StatePath = %q, want %q", got, filepath.Join(dir, "versions", "8.4.0", ".state"))
+	if got := PackageStatePath("php", "8.4.0"); got != filepath.Join(dir, "packages", "php", "8.4.0", ".state") {
+		t.Fatalf("PackageStatePath = %q, want %q", got, filepath.Join(dir, "packages", "php", "8.4.0", ".state"))
 	}
 	if got := DefaultPath(); got != filepath.Join(dir, "default") {
 		t.Fatalf("DefaultPath = %q, want %q", got, filepath.Join(dir, "default"))
@@ -244,11 +244,11 @@ func TestSiloPaths_StatePathCreatesDir(t *testing.T) {
 	t.Setenv("PHPV_ROOT", dir)
 
 	repo := NewSiloRepository()
-	if err := repo.MarkInProgress("8.4.0"); err != nil {
+	if err := repo.MarkInProgress("php", "8.4.0"); err != nil {
 		t.Fatalf("MarkInProgress: %v", err)
 	}
 
-	stateFile := StatePath("8.4.0")
+	stateFile := PackageStatePath("php", "8.4.0")
 	if _, err := os.Stat(stateFile); os.IsNotExist(err) {
 		t.Fatalf("state file %s should exist", stateFile)
 	}

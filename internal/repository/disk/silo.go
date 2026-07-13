@@ -286,9 +286,9 @@ func (s *SiloRepository) GetSilo() domain.Silo {
 	return domain.Silo{Root: s.root}
 }
 
-// GetState reads the install state for a PHP version.
-func (s *SiloRepository) GetState(phpVersion string) (domain.InstallState, error) {
-	path := StatePath(phpVersion)
+// GetState reads the install state for a package.
+func (s *SiloRepository) GetState(name, version string) (domain.InstallState, error) {
+	path := PackageStatePath(name, version)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -300,23 +300,23 @@ func (s *SiloRepository) GetState(phpVersion string) (domain.InstallState, error
 	return state, nil
 }
 
-// MarkInProgress marks a PHP installation as in-progress.
-func (s *SiloRepository) MarkInProgress(phpVersion string) error {
-	path := StatePath(phpVersion)
+// MarkInProgress marks a package installation as in-progress.
+func (s *SiloRepository) MarkInProgress(name, version string) error {
+	path := PackageStatePath(name, version)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 	return os.WriteFile(path, []byte("in_progress"), 0o644)
 }
 
-// MarkComplete marks a PHP installation as complete.
-func (s *SiloRepository) MarkComplete(phpVersion string) error {
-	return os.WriteFile(StatePath(phpVersion), []byte("installed"), 0o644)
+// MarkComplete marks a package installation as complete.
+func (s *SiloRepository) MarkComplete(name, version string) error {
+	return os.WriteFile(PackageStatePath(name, version), []byte("installed"), 0o644)
 }
 
-// MarkFailed marks a PHP installation as failed.
-func (s *SiloRepository) MarkFailed(phpVersion string) error {
-	return os.WriteFile(StatePath(phpVersion), []byte("failed"), 0o644)
+// MarkFailed marks a package installation as failed.
+func (s *SiloRepository) MarkFailed(name, version string) error {
+	return os.WriteFile(PackageStatePath(name, version), []byte("failed"), 0o644)
 }
 
 // GetDefault reads the default PHP version.

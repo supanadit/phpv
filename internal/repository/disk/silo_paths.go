@@ -45,12 +45,17 @@ func VersionPath(phpVersion string) string {
 
 // PHPOutputPath returns the install prefix for a specific PHP version.
 func PHPOutputPath(phpVersion string) string {
-	return filepath.Join(resolveRoot(), "versions", phpVersion, "output")
+	return filepath.Join(resolveRoot(), "packages", "php", phpVersion)
 }
 
 // PackagePrefix returns the install prefix for any package.
 func PackagePrefix(name, version string) string {
 	return filepath.Join(resolveRoot(), "packages", name, version)
+}
+
+// PackageStatePath returns the state file path for a specific package version.
+func PackageStatePath(name, version string) string {
+	return filepath.Join(resolveRoot(), "packages", name, version, ".state")
 }
 
 // BinPath returns the shim directory.

@@ -27,16 +27,16 @@ func (m *mockSiloRepo) Extract(archivePath, destDir string) (bool, error) {
 func (m *mockSiloRepo) GetSilo() domain.Silo {
 	return m.silo
 }
-func (m *mockSiloRepo) GetState(phpVersion string) (domain.InstallState, error) {
+func (m *mockSiloRepo) GetState(name, version string) (domain.InstallState, error) {
 	return m.state, m.stateErr
 }
-func (m *mockSiloRepo) MarkInProgress(phpVersion string) error {
+func (m *mockSiloRepo) MarkInProgress(name, version string) error {
 	return nil
 }
-func (m *mockSiloRepo) MarkComplete(phpVersion string) error {
+func (m *mockSiloRepo) MarkComplete(name, version string) error {
 	return nil
 }
-func (m *mockSiloRepo) MarkFailed(phpVersion string) error {
+func (m *mockSiloRepo) MarkFailed(name, version string) error {
 	return nil
 }
 func (m *mockSiloRepo) GetDefault() (string, error) {
@@ -78,7 +78,7 @@ func TestService_GetState(t *testing.T) {
 	mock := &mockSiloRepo{state: domain.StateInstalled}
 	svc := NewService(mock, registry.NewService(&mockRegistryRepo{}))
 
-	state, err := svc.GetState("8.4.0")
+	state, err := svc.GetState("php", "8.4.0")
 	if err != nil {
 		t.Fatalf("GetState returned error: %v", err)
 	}
@@ -102,12 +102,12 @@ func TestService_GetDefault(t *testing.T) {
 
 func TestService_PathHelpers(t *testing.T) {
 	mock := &mockSiloRepo{
-		phpOutputPath: "/root/versions/8.4.0/output",
+		phpOutputPath: "/root/packages/php/8.4.0",
 		sourcePath:    "/root/sources/php/8.4.0",
 	}
 	svc := NewService(mock, registry.NewService(&mockRegistryRepo{}))
 
-	if got := svc.PHPOutputPath("8.4.0"); got != "/root/versions/8.4.0/output" {
+	if got := svc.PHPOutputPath("8.4.0"); got != "/root/packages/php/8.4.0" {
 		t.Fatalf("PHPOutputPath = %q", got)
 	}
 	if got := svc.SourcePath("php", "8.4.0"); got != "/root/sources/php/8.4.0" {

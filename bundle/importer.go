@@ -87,7 +87,7 @@ func importBundle(svc *silo.Service, bundlePath, phpVersion string) error {
 		return fmt.Errorf("bundle built for %s, cannot install on linux", manifest.OS)
 	}
 
-	if err := svc.MarkComplete(phpVersion); err != nil {
+	if err := svc.MarkComplete("php", phpVersion); err != nil {
 		return fmt.Errorf("mark installed: %w", err)
 	}
 

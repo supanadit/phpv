@@ -196,15 +196,15 @@ func (h *PHPHandler) versionsCmd() *cobra.Command {
 
 func (h *PHPHandler) versions(cmd *cobra.Command, args []string) error {
 	silo := h.siloSvc.GetSilo()
-	versionsDir := filepath.Join(silo.Root, "versions")
+	phpDir := filepath.Join(silo.Root, "packages", "php")
 
-	entries, err := os.ReadDir(versionsDir)
+	entries, err := os.ReadDir(phpDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			fmt.Println("No PHP versions installed.")
 			return nil
 		}
-		return fmt.Errorf("read versions dir: %w", err)
+		return fmt.Errorf("read php versions dir: %w", err)
 	}
 
 	defaultVer, _ := h.siloSvc.GetDefault()
@@ -214,7 +214,7 @@ func (h *PHPHandler) versions(cmd *cobra.Command, args []string) error {
 		if !e.IsDir() {
 			continue
 		}
-		phpBin := filepath.Join(versionsDir, e.Name(), "output", "bin", "php")
+		phpBin := filepath.Join(phpDir, e.Name(), "bin", "php")
 		if _, err := os.Stat(phpBin); err == nil {
 			installed = append(installed, e.Name())
 		}
@@ -309,7 +309,7 @@ func (h *PHPHandler) setDefault(cmd *cobra.Command, args []string) error {
 
 	// Verify the version is installed.
 	silo := h.siloSvc.GetSilo()
-	phpBin := filepath.Join(silo.Root, "versions", version, "output", "bin", "php")
+	phpBin := filepath.Join(silo.Root, "packages", "php", version, "bin", "php")
 	if _, err := os.Stat(phpBin); os.IsNotExist(err) {
 		return fmt.Errorf("PHP %s is not installed. Run `phpv install %s` first", version, version)
 	}
@@ -364,7 +364,7 @@ func (h *PHPHandler) use(cmd *cobra.Command, args []string) error {
 	}
 
 	silo := h.siloSvc.GetSilo()
-	phpBin := filepath.Join(silo.Root, "versions", exactVersion, "output", "bin", "php")
+	phpBin := filepath.Join(silo.Root, "packages", "php", exactVersion, "bin", "php")
 	fmt.Printf("✓ Switched to PHP %s (%s)\n", exactVersion, phpBin)
 	fmt.Println("Run `phpv init` in your shell to enable version switching.")
 	return nil
@@ -376,7 +376,7 @@ func (h *PHPHandler) resolveActivePHP() (string, error) {
 	// 1. Check PHPV_CURRENT env var.
 	if envVer := os.Getenv("PHPV_CURRENT"); envVer != "" {
 		silo := h.siloSvc.GetSilo()
-		phpBin := filepath.Join(silo.Root, "versions", envVer, "output", "bin", "php")
+		phpBin := filepath.Join(silo.Root, "packages", "php", envVer, "bin", "php")
 		if _, err := os.Stat(phpBin); err == nil {
 			return phpBin, nil
 		}
@@ -385,7 +385,7 @@ func (h *PHPHandler) resolveActivePHP() (string, error) {
 	// 2. Check .phpvrc in current or parent directories.
 	if ver := findPhpvrc(); ver != "" {
 		silo := h.siloSvc.GetSilo()
-		phpBin := filepath.Join(silo.Root, "versions", ver, "output", "bin", "php")
+		phpBin := filepath.Join(silo.Root, "packages", "php", ver, "bin", "php")
 		if _, err := os.Stat(phpBin); err == nil {
 			return phpBin, nil
 		}
@@ -395,7 +395,7 @@ func (h *PHPHandler) resolveActivePHP() (string, error) {
 	defaultVer, err := h.siloSvc.GetDefault()
 	if err == nil && defaultVer != "" {
 		silo := h.siloSvc.GetSilo()
-		phpBin := filepath.Join(silo.Root, "versions", defaultVer, "output", "bin", "php")
+		phpBin := filepath.Join(silo.Root, "packages", "php", defaultVer, "bin", "php")
 		if _, err := os.Stat(phpBin); err == nil {
 			return phpBin, nil
 		}
@@ -413,9 +413,9 @@ func (h *PHPHandler) resolveActivePHP() (string, error) {
 // resolveInstalledVersion resolves a version constraint to an exact installed version.
 func (h *PHPHandler) resolveInstalledVersion(constraint string) (string, error) {
 	silo := h.siloSvc.GetSilo()
-	versionsDir := filepath.Join(silo.Root, "versions")
+	phpDir := filepath.Join(silo.Root, "packages", "php")
 
-	entries, err := os.ReadDir(versionsDir)
+	entries, err := os.ReadDir(phpDir)
 	if err != nil {
 		return "", fmt.Errorf("no PHP versions installed")
 	}
@@ -425,7 +425,7 @@ func (h *PHPHandler) resolveInstalledVersion(constraint string) (string, error) 
 		if !e.IsDir() {
 			continue
 		}
-		phpBin := filepath.Join(versionsDir, e.Name(), "output", "bin", "php")
+		phpBin := filepath.Join(phpDir, e.Name(), "bin", "php")
 		if _, err := os.Stat(phpBin); err == nil {
 			installed = append(installed, e.Name())
 		}

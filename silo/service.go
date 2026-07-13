@@ -21,10 +21,10 @@ type SiloRepository interface {
 	GetSilo() domain.Silo
 
 	// State management for any package.
-	GetState(phpVersion string) (domain.InstallState, error)
-	MarkInProgress(phpVersion string) error
-	MarkComplete(phpVersion string) error
-	MarkFailed(phpVersion string) error
+	GetState(name, version string) (domain.InstallState, error)
+	MarkInProgress(name, version string) error
+	MarkComplete(name, version string) error
+	MarkFailed(name, version string) error
 
 	// Default version management.
 	GetDefault() (string, error)
@@ -77,24 +77,24 @@ func (s *Service) GetSilo() domain.Silo {
 	return s.siloRep.GetSilo()
 }
 
-// GetState returns the install state for a PHP version.
-func (s *Service) GetState(phpVersion string) (domain.InstallState, error) {
-	return s.siloRep.GetState(phpVersion)
+// GetState returns the install state for a package.
+func (s *Service) GetState(name, version string) (domain.InstallState, error) {
+	return s.siloRep.GetState(name, version)
 }
 
-// MarkInProgress marks a PHP installation as in-progress.
-func (s *Service) MarkInProgress(phpVersion string) error {
-	return s.siloRep.MarkInProgress(phpVersion)
+// MarkInProgress marks a package installation as in-progress.
+func (s *Service) MarkInProgress(name, version string) error {
+	return s.siloRep.MarkInProgress(name, version)
 }
 
-// MarkComplete marks a PHP installation as complete.
-func (s *Service) MarkComplete(phpVersion string) error {
-	return s.siloRep.MarkComplete(phpVersion)
+// MarkComplete marks a package installation as complete.
+func (s *Service) MarkComplete(name, version string) error {
+	return s.siloRep.MarkComplete(name, version)
 }
 
-// MarkFailed marks a PHP installation as failed.
-func (s *Service) MarkFailed(phpVersion string) error {
-	return s.siloRep.MarkFailed(phpVersion)
+// MarkFailed marks a package installation as failed.
+func (s *Service) MarkFailed(name, version string) error {
+	return s.siloRep.MarkFailed(name, version)
 }
 
 // GetDefault returns the default PHP version.

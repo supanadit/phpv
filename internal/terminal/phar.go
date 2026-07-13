@@ -49,6 +49,13 @@ func (h *PHPHandler) pharCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE:  h.pharWhich,
 	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "update <name> [version]",
+		Short: "Update a PHAR tool",
+		Long:  "Re-download and update a PHAR tool for the active PHP version.",
+		Args:  cobra.MinimumNArgs(1),
+		RunE:  h.pharUpdate,
+	})
 	return cmd
 }
 
@@ -144,6 +151,46 @@ func (h *PHPHandler) pharWhich(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%s not installed for PHP %s. Run `phpv phar install %s` first", name, version, name)
 	}
 	fmt.Println(pharPath)
+	return nil
+}
+
+func (h *PHPHandler) pharUpdate(cmd *cobra.Command, args []string) error {
+	name := args[0]
+
+	version, err := h.resolveActiveVersion()
+	if err != nil {
+		return err
+	}
+
+	var def *pharDef
+	for _, p := range knownPhars {
+		if p.Name == name {
+			def = &p
+			break
+		}
+	}
+	if def == nil {
+		return fmt.Errorf("unknown phar tool: %s (known: composer, wp, pie, phpunit)", name)
+	}
+
+	prefix := h.siloSvc.PackagePrefix("php", version)
+	pharDir := filepath.Join(prefix, "phar")
+	if err := os.MkdirAll(pharDir, 0755); err != nil {
+		return fmt.Errorf("create phar dir: %w", err)
+	}
+
+	pharPath := filepath.Join(pharDir, name+".phar")
+	fmt.Printf("Downloading %s...\n", def.URL)
+	if err := downloadFile(def.URL, pharPath); err != nil {
+		return fmt.Errorf("download %s: %w", name, err)
+	}
+
+	pharRel := "phar/" + name + ".phar"
+	if err := h.shimSvc.WritePhar(name, pharRel); err != nil {
+		return fmt.Errorf("write phar shim: %w", err)
+	}
+
+	fmt.Printf("✓ %s updated for PHP %s\n", name, version)
 	return nil
 }
 

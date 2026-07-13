@@ -107,6 +107,9 @@ Version syntax:
 	cmd.Flags().Bool("auto-deps", false, "Install missing system packages without prompting")
 	cmd.Flags().Bool("no-system", false, "Skip system package check, always build from source")
 	cmd.Flags().Bool("dry-run", false, "Show what would be done without doing it")
+	cmd.Flags().Bool("fresh", false, "Delete existing install prefix and rebuild (keeps cached source)")
+	cmd.Flags().Bool("clean", false, "Delete everything including cached source and rebuild from scratch")
+	cmd.Flags().Bool("verbose", false, "Show full build output instead of spinner")
 	return cmd
 }
 
@@ -128,6 +131,9 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	autoDeps, _ := cmd.Flags().GetBool("auto-deps")
 	noSystem, _ := cmd.Flags().GetBool("no-system")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	fresh, _ := cmd.Flags().GetBool("fresh")
+	clean, _ := cmd.Flags().GetBool("clean")
+	verbose, _ := cmd.Flags().GetBool("verbose")
 
 	var extensions []string
 	if extStr != "" {
@@ -150,7 +156,32 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	if clean {
+		prefix := h.siloSvc.PackagePrefix("php", version)
+		fmt.Printf("Cleaning existing install at %s...\n", prefix)
+		os.RemoveAll(prefix)
+		sourceDir := h.siloSvc.SourcePath("php", version)
+		os.RemoveAll(sourceDir)
+	} else if fresh {
+		prefix := h.siloSvc.PackagePrefix("php", version)
+		fmt.Printf("Refreshing install at %s (keeping cached source)...\n", prefix)
+		os.RemoveAll(prefix)
+	}
+
 	fmt.Printf("Installing PHP %s...\n\n", version)
+
+	if verbose {
+		result, err := h.assemblerSvc.Assemble("php", version, static, extensions, true, nil)
+		if err != nil {
+			return fmt.Errorf("install failed: %w", err)
+		}
+		fmt.Println()
+		fmt.Printf("✓ PHP %s installed at %s\n", result.Version, result.Prefix)
+		if err := h.shimSvc.RegenerateAll(); err != nil {
+			return fmt.Errorf("regenerate shims: %w", err)
+		}
+		return nil
+	}
 
 	progressCh := make(chan progressMsg, 64)
 	doneCh := make(chan struct{})
@@ -181,7 +212,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	result, err := h.assemblerSvc.Assemble("php", version, static, extensions, func(stage, message string) {
+	result, err := h.assemblerSvc.Assemble("php", version, static, extensions, false, func(stage, message string) {
 		progressCh <- progressMsg{stage: stage, message: message}
 	})
 	close(progressCh)

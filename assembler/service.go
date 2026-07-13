@@ -66,7 +66,7 @@ func (s *Service) Graph() *graph.Service {
 }
 
 // Assemble runs the full pipeline for (name, version).
-func (s *Service) Assemble(name string, version string, static bool, extensions []string, progress ProgressFunc) (*AssemblerResult, error) {
+func (s *Service) Assemble(name string, version string, static bool, extensions []string, verbose bool, progress ProgressFunc) (*AssemblerResult, error) {
 	emit := func(stage, msg string) {
 		if progress != nil {
 			progress(stage, msg)
@@ -158,13 +158,13 @@ func (s *Service) Assemble(name string, version string, static bool, extensions 
 		if len(prepared.ExtraCFlags) > 0 {
 			buildEnv = []string{"CFLAGS=" + strings.Join(prepared.ExtraCFlags, " ")}
 		}
-		buildDir, _, err := s.forge.Build(dep.Name, depVersion, sourceDir, buildEnv, prepared.ConfigureFlags, depPrefix)
+		buildDir, _, err := s.forge.Build(dep.Name, depVersion, sourceDir, buildEnv, prepared.ConfigureFlags, depPrefix, verbose)
 		if err != nil {
 			emit("error", fmt.Sprintf("Build failed for %s@%s", dep.Name, depVersion))
 			return nil, fmt.Errorf("forge build %s@%s: %w", dep.Name, depVersion, err)
 		}
 		emit("install", fmt.Sprintf("Installing %s@%s → %s", dep.Name, depVersion, depPrefix))
-		if err := s.forge.Install(dep.Name, depVersion, buildDir, depPrefix); err != nil {
+		if err := s.forge.Install(dep.Name, depVersion, buildDir, depPrefix, verbose); err != nil {
 			emit("error", fmt.Sprintf("Install failed for %s@%s", dep.Name, depVersion))
 			return nil, fmt.Errorf("forge install %s@%s: %w", dep.Name, depVersion, err)
 		}
@@ -213,12 +213,14 @@ func (s *Service) Assemble(name string, version string, static bool, extensions 
 	}
 
 	emit("make", fmt.Sprintf("Compiling %s (this may take a while)...", name))
-	buildDir, _, err := s.forge.Build(name, exactVersion, srcPath, env, plan.ConfigureFlags, prefix)
+	buildDir, _, err := s.forge.Build(name, exactVersion, srcPath, env, plan.ConfigureFlags, prefix, verbose)
 	if err != nil {
 		emit("error", fmt.Sprintf("Build failed for %s", name))
 		return nil, fmt.Errorf("build %s@%s: %w", name, exactVersion, err)
+
 	}
-	if err := s.forge.Install(name, exactVersion, buildDir, prefix); err != nil {
+	emit("install", fmt.Sprintf("Installing %s → %s", name, prefix))
+	if err := s.forge.Install(name, exactVersion, buildDir, prefix, verbose); err != nil {
 		emit("error", fmt.Sprintf("Install failed for %s", name))
 		return nil, fmt.Errorf("install %s@%s: %w", name, exactVersion, err)
 	}

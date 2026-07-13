@@ -375,6 +375,11 @@ func (s *SiloRepository) PECLArchivePath(name, version string) string {
 	return PECLArchivePath(name, version)
 }
 
+// BuildLogPath returns the path to a build log file.
+func (s *SiloRepository) BuildLogPath(pkg, version, logName string) string {
+	return BuildLogPath(pkg, version, logName)
+}
+
 // GetExtensionManifest reads the extension manifest for a PHP version.
 func (s *SiloRepository) GetExtensionManifest(phpVersion string) (*domain.ExtensionManifest, error) {
 	path := ExtensionManifestPath(phpVersion)

@@ -55,6 +55,9 @@ func (m *mockSiloRepo) PackagePrefix(name, version string) string {
 func (m *mockSiloRepo) PECLArchivePath(name, version string) string {
 	return "/test/root/packages/pecl/" + name + "-" + version + ".tgz"
 }
+func (m *mockSiloRepo) BuildLogPath(pkg, version, logName string) string {
+	return "/test/root/logs/" + pkg + "/" + version + "/" + logName + ".log"
+}
 func (m *mockSiloRepo) GetExtensionManifest(phpVersion string) (*domain.ExtensionManifest, error) {
 	if m.manifest != nil {
 		return m.manifest, nil

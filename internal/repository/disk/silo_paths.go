@@ -87,3 +87,13 @@ func SystemMarkerPath() string {
 func PECLArchivePath(name, version string) string {
 	return filepath.Join(resolveRoot(), "packages", "pecl", name+"-"+version+".tgz")
 }
+
+// LogsPath returns the build log directory.
+func LogsPath() string {
+	return filepath.Join(resolveRoot(), "logs")
+}
+
+// BuildLogPath returns the path to a build log file for a specific package and stage.
+func BuildLogPath(pkg, version, logName string) string {
+	return filepath.Join(resolveRoot(), "logs", pkg, version, logName+".log")
+}

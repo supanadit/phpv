@@ -10,11 +10,12 @@ type ForgeRepository interface {
 	// extraEnv provides additional environment variables (e.g., CFLAGS, PATH).
 	// extraConfigureFlags are appended to the package's ./configure command.
 	// installPrefix is the absolute path where the package should be installed.
+	// verbose enables live build output to terminal.
 	// Returns the build directory and environment variables needed for installation.
-	Build(name string, version string, sourceDir string, extraEnv []string, extraConfigureFlags []string, installPrefix string) (buildDir string, env map[string]string, err error)
+	Build(name string, version string, sourceDir string, extraEnv []string, extraConfigureFlags []string, installPrefix string, verbose bool) (buildDir string, env map[string]string, err error)
 
 	// Install installs a previously built package into prefix.
-	Install(name string, version string, buildDir string, prefix string) error
+	Install(name string, version string, buildDir string, prefix string, verbose bool) error
 }
 
 // Service wraps ForgeRepository and adds value by resolving
@@ -30,14 +31,14 @@ func NewService(r ForgeRepository) *Service {
 }
 
 // Build resolves placeholders in extraConfigureFlags before delegating.
-func (s *Service) Build(name string, version string, sourceDir string, extraEnv []string, extraConfigureFlags []string, installPrefix string) (string, map[string]string, error) {
+func (s *Service) Build(name string, version string, sourceDir string, extraEnv []string, extraConfigureFlags []string, installPrefix string, verbose bool) (string, map[string]string, error) {
 	resolved := resolvePlaceholders(extraConfigureFlags, installPrefix, sourceDir)
-	return s.repo.Build(name, version, sourceDir, extraEnv, resolved, installPrefix)
+	return s.repo.Build(name, version, sourceDir, extraEnv, resolved, installPrefix, verbose)
 }
 
 // Install delegates to the repository.
-func (s *Service) Install(name string, version string, buildDir string, prefix string) error {
-	return s.repo.Install(name, version, buildDir, prefix)
+func (s *Service) Install(name string, version string, buildDir string, prefix string, verbose bool) error {
+	return s.repo.Install(name, version, buildDir, prefix, verbose)
 }
 
 // resolvePlaceholders replaces {{prefix}}, {{source}}, and {{dep:NAME}}

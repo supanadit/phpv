@@ -86,7 +86,7 @@ func isInstalled(pm, name string) bool {
 	case "apt":
 		args = []string{"dpkg", "-s", name}
 	case "dnf":
-		args = []string{"rpm", "-q", name}
+		args = []string{"rpm", "-q", "--whatprovides", name}
 	case "apk":
 		args = []string{"apk", "info", "-e", name}
 	case "pacman":

@@ -9,6 +9,7 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/supanadit/phpv/assembler"
+	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/terminal"
@@ -42,6 +43,8 @@ func main() {
 			fx.Annotate(memory.NewRegistryRepository, fx.As(new(registry.RegistryRepository))),
 			fx.Annotate(disk.NewSiloRepository, fx.As(new(silo.SiloRepository))),
 			fx.Annotate(memory.NewAssemblerRepository, fx.As(new(assembler.AssemblerRepository))),
+			fx.Annotate(disk.NewForgeRepository, fx.As(new(forge.ForgeRepository))),
+			silo.NewService,
 			assembler.NewService,
 		),
 		fx.Invoke(

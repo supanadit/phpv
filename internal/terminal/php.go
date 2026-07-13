@@ -5,77 +5,93 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/supanadit/phpv/assembler"
+	"github.com/supanadit/phpv/silo"
 )
 
-// PHPHandler represents the terminal handler for PHP commands.
-// It orchestrates the download workflow by delegating to the assembler
-// service, which resolves transitive dependencies and downloads all
-// packages in parallel.
+// PHPHandler registers cobra commands and delegates to services.
 type PHPHandler struct {
-	assemblerService *assembler.Service
+	siloSvc     *silo.Service
+	assemblerSvc *assembler.Service
 }
 
 // NewPHPHandler registers all PHP subcommands onto the given root command.
-// This mirrors NewArticleHandler in the REST delivery layer which
-// registers routes onto the Echo instance.
-func NewPHPHandler(rootCmd *cobra.Command, svc *assembler.Service) {
-	handler := &PHPHandler{
-		assemblerService: svc,
+func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *assembler.Service) {
+	h := &PHPHandler{
+		siloSvc:     siloSvc,
+		assemblerSvc: assemblerSvc,
 	}
-	rootCmd.AddCommand(handler.downloadCmd())
+	rootCmd.AddCommand(h.downloadCmd())
+	rootCmd.AddCommand(h.installCmd())
 }
 
-// downloadCmd creates the cobra command for `phpv download <version>`.
 func (h *PHPHandler) downloadCmd() *cobra.Command {
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "download <version>",
 		Short: "Download a PHP version",
 		Long:  "Download a specific version of PHP and all its transitive dependencies to the local cache.",
 		Args:  cobra.ExactArgs(1),
 		RunE:  h.download,
 	}
-
-	cmd.Flags().StringP("name", "n", "php", "package name to download")
-
-	return cmd
 }
 
-// download is the Run handler for the download command.
 func (h *PHPHandler) download(cmd *cobra.Command, args []string) error {
 	version := args[0]
-
-	name, err := cmd.Flags().GetString("name")
-	if err != nil {
-		return err
+	name, _ := cmd.Flags().GetString("name")
+	if name == "" {
+		name = "php"
 	}
 
-	fmt.Printf("Downloading %s %s and its dependencies...\n", name, version)
+	// TODO: silo.Service needs a BatchDownload or similar to handle transitive deps.
+	// For now, just download the single package.
+	fmt.Printf("Downloading %s@%s...\n", name, version)
+	downloaded, err := h.siloSvc.Download(name, version)
+	if err != nil {
+		return fmt.Errorf("download failed: %w", err)
+	}
+	if downloaded {
+		fmt.Printf("✓ Downloaded %s@%s\n", name, version)
+	} else {
+		fmt.Printf("→ Skipped %s@%s (already exists)\n", name, version)
+	}
+	return nil
+}
 
-	results, _ := h.assemblerService.Download(name, version)
+func (h *PHPHandler) installCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "install <version>",
+		Short: "Install a PHP version",
+		Long:  "Download, build, and install a specific version of PHP with all its dependencies.",
+		Args:  cobra.ExactArgs(1),
+		RunE:  h.install,
+	}
+}
+
+func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
+	version := args[0]
+
+	fmt.Printf("Installing PHP %s...\n", version)
+
+	result, err := h.assemblerSvc.Assemble("php", version)
+	if err != nil {
+		return fmt.Errorf("install failed: %w", err)
+	}
 
 	var downloaded, skipped, extracted int
-	var hasErr bool
-	for _, r := range results {
+	for _, r := range result.DownloadResults {
 		if r.Err != nil {
 			fmt.Printf("  ✗ Failed %s@%s: %v\n", r.Name, r.Version, r.Err)
-			hasErr = true
 			continue
 		}
 		if r.Downloaded {
-			fmt.Printf("  ✓ Downloaded %s@%s\n", r.Name, r.Version)
 			downloaded++
 		} else {
-			fmt.Printf("  → Skipped %s@%s (already exists)\n", r.Name, r.Version)
 			skipped++
 		}
 		if r.Extracted {
 			extracted++
 		}
 	}
-
-	fmt.Printf("Done: %d downloaded, %d skipped, %d extracted\n", downloaded, skipped, extracted)
-	if hasErr {
-		return fmt.Errorf("one or more packages failed")
-	}
+	fmt.Printf("Downloaded: %d, Skipped: %d, Extracted: %d\n", downloaded, skipped, extracted)
+	fmt.Printf("✓ PHP %s installed at %s\n", result.PHPVersion, result.Prefix)
 	return nil
 }

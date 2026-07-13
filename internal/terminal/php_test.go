@@ -10,6 +10,7 @@ import (
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/silo"
+	"github.com/supanadit/phpv/system"
 )
 
 func TestFindPhpvrc_NoFile(t *testing.T) {
@@ -174,10 +175,12 @@ func newTestPHPHandler(root string) *PHPHandler {
 	regSvc := registry.NewService(&mockRegistryRepo{})
 	siloSvc := silo.NewService(diskRepo, regSvc)
 	bundleSvc := bundle.NewService(siloSvc)
+	systemSvc := system.NewService()
 	return &PHPHandler{
 		siloSvc:     siloSvc,
 		registrySvc: regSvc,
 		bundleSvc:   bundleSvc,
+		systemSvc:   systemSvc,
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 	"github.com/supanadit/phpv/patcher"
 	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/silo"
+	"github.com/supanadit/phpv/system"
 )
 
 // NewRootCmd provides the root cobra command.
@@ -50,6 +51,7 @@ func main() {
 			registry.NewService,
 			silo.NewService,
 			bundle.NewService,
+			system.NewService,
 			assembler.NewService,
 			forge.NewService,
 			patcher.NewService,

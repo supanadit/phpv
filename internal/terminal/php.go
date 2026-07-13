@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 	"github.com/supanadit/phpv/bundle"
 	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/silo"
+	"github.com/supanadit/phpv/system"
 )
 
 // PHPHandler registers cobra commands and delegates to services.
@@ -22,15 +24,17 @@ type PHPHandler struct {
 	assemblerSvc *assembler.Service
 	registrySvc  *registry.Service
 	bundleSvc    *bundle.Service
+	systemSvc    *system.Service
 }
 
 // NewPHPHandler registers all PHP subcommands onto the given root command.
-func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service) {
+func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service, systemSvc *system.Service) {
 	h := &PHPHandler{
 		siloSvc:      siloSvc,
 		assemblerSvc: assemblerSvc,
 		registrySvc:  registrySvc,
 		bundleSvc:    bundleSvc,
+		systemSvc:    systemSvc,
 	}
 	rootCmd.AddCommand(h.downloadCmd())
 	rootCmd.AddCommand(h.installCmd())
@@ -88,6 +92,9 @@ Version syntax:
 	cmd.Flags().String("from", "", "Install from a bundle file instead of building from source")
 	cmd.Flags().Bool("static", false, "Build with static linking for cross-distro portability")
 	cmd.Flags().String("ext", "", "Comma-separated list of extensions to build (e.g., openssl,curl,pdo_mysql)")
+	cmd.Flags().Bool("auto-deps", false, "Install missing system packages without prompting")
+	cmd.Flags().Bool("no-system", false, "Skip system package check, always build from source")
+	cmd.Flags().Bool("dry-run", false, "Show what would be done without doing it")
 	return cmd
 }
 
@@ -106,6 +113,9 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 
 	static, _ := cmd.Flags().GetBool("static")
 	extStr, _ := cmd.Flags().GetString("ext")
+	autoDeps, _ := cmd.Flags().GetBool("auto-deps")
+	noSystem, _ := cmd.Flags().GetBool("no-system")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
 
 	var extensions []string
 	if extStr != "" {
@@ -115,6 +125,17 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 				extensions = append(extensions, e)
 			}
 		}
+	}
+
+	if !noSystem {
+		if err := h.checkSystemDeps(extensions, autoDeps, dryRun); err != nil {
+			return err
+		}
+	}
+
+	if dryRun {
+		fmt.Println("Dry run complete. Run without --dry-run to install.")
+		return nil
 	}
 
 	fmt.Printf("Installing PHP %s...\n\n", version)
@@ -453,6 +474,73 @@ func findPhpvrc() string {
 		dir = parent
 	}
 	return ""
+}
+
+// checkSystemDeps checks for system packages needed by PHP deps and extensions.
+// If autoDeps is true, installs missing packages without prompting.
+// If dryRun is true, only prints what would be done.
+func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool) error {
+	phpDeps := []string{"openssl", "libxml2", "zlib", "oniguruma", "curl", "sqlite3", "readline", "icu", "pcre2", "argon2", "sodium"}
+	for _, ext := range extensions {
+		switch ext {
+		case "openssl":
+		case "curl":
+		case "gd":
+			phpDeps = append(phpDeps, "libpng", "libjpeg", "freetype")
+		case "intl":
+			phpDeps = append(phpDeps, "icu")
+		}
+	}
+
+	result, err := h.systemSvc.Check(phpDeps)
+	if err != nil {
+		return fmt.Errorf("system check: %w", err)
+	}
+
+	if result.Distro.PM == "unknown" {
+		return nil
+	}
+
+	if len(result.Available) > 0 {
+		fmt.Println("System packages found:")
+		for _, p := range result.Available {
+			fmt.Printf("  ✓ %s (%s)\n", p.Name, p.SystemName)
+		}
+	}
+
+	if len(result.Missing) == 0 {
+		return nil
+	}
+
+	fmt.Println("\nMissing system packages:")
+	for _, p := range result.Missing {
+		fmt.Printf("  ✗ %s (%s)\n", p.Name, p.SystemName)
+	}
+
+	installCmd := h.systemSvc.InstallCommand(result.Missing)
+	fmt.Printf("\nInstall via %s? ", installCmd)
+
+	if autoDeps {
+		fmt.Println("[Y] (--auto-deps)")
+	} else if dryRun {
+		fmt.Println("[skipped, --dry-run]")
+		return nil
+	} else {
+		reader := bufio.NewReader(os.Stdin)
+		answer, _ := reader.ReadString('\n')
+		answer = strings.TrimSpace(strings.ToLower(answer))
+		if answer != "y" && answer != "yes" && answer != "" {
+			fmt.Println("Building from source instead.")
+			return nil
+		}
+	}
+
+	fmt.Println("Installing system packages...")
+	if err := h.systemSvc.Install(result.Missing); err != nil {
+		return fmt.Errorf("install system packages: %w", err)
+	}
+	fmt.Println("✓ System packages installed")
+	return nil
 }
 
 // shareCmd exports an installed PHP version as a portable bundle.

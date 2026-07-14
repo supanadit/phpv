@@ -237,6 +237,64 @@ func (r *GraphRepository) GetConfigureFlags(name, version string) []string {
 	return nil
 }
 
+// defaultExtensionCandidates is the recommended default extension set for a
+// typical PHP install. Extensions are filtered by MinPHPVersion/MaxPHPVersion
+// at runtime via DefaultExtensions().
+var defaultExtensionCandidates = []string{
+	"bcmath", "curl", "dom", "fileinfo", "filter", "gd",
+	"iconv", "intl", "json", "mbstring", "openssl", "opcache",
+	"pdo", "pdo_mysql", "pdo_sqlite", "phar", "session",
+	"simplexml", "sqlite3", "tokenizer", "xml", "xmlreader",
+	"xmlwriter", "zip", "zlib",
+}
+
+// DefaultExtensions returns the recommended default extension set for a
+// typical PHP install, filtered to those compatible with the given PHP version.
+// Returns (included, skipped) where each skipped entry includes a reason.
+func (r *GraphRepository) DefaultExtensions(phpVersion string) ([]string, []string) {
+	var included []string
+	var skipped []string
+	for _, name := range defaultExtensionCandidates {
+		def, ok := r.extensions[name]
+		if !ok {
+			skipped = append(skipped, name+" (not found in registry)")
+			continue
+		}
+		if def.MinPHPVersion != "" && repository.CompareVersions(phpVersion, def.MinPHPVersion) < 0 {
+			skipped = append(skipped, name+" (requires PHP "+def.MinPHPVersion+"+)")
+			continue
+		}
+		if def.MaxPHPVersion != "" && repository.CompareVersions(phpVersion, def.MaxPHPVersion) > 0 {
+			skipped = append(skipped, name+" (not available in PHP "+def.MaxPHPVersion+"+)")
+			continue
+		}
+		included = append(included, name)
+	}
+	return included, skipped
+}
+
+// SharedOnlyExtensions returns the subset of requested extensions that must
+// be built as shared libraries (phpize) rather than compiled into the main
+// PHP binary, for the given PHP version. An extension is shared-only when
+// its registry entry has a FlagVersions entry with Flag: "" that matches
+// the version range (PHP itself only ships it as a .so on that version).
+func (r *GraphRepository) SharedOnlyExtensions(phpVersion string, requested []string) []string {
+	var result []string
+	for _, name := range requested {
+		def, ok := r.extensions[name]
+		if !ok {
+			continue
+		}
+		for _, fv := range def.FlagVersions {
+			if fv.Flag == "" && repository.MatchVersionRange(fv.VersionRange, phpVersion) {
+				result = append(result, name)
+				break
+			}
+		}
+	}
+	return result
+}
+
 func (r *GraphRepository) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
 	flags := []string{
 		"--disable-all",
@@ -800,8 +858,11 @@ func builtInExtensions() []domain.ExtensionDef {
 		{
 			Name:          "iconv",
 			Description:   "Iconv support",
-			Flag:          "--with-iconv",
 			MinPHPVersion: "5.0",
+			FlagVersions: []domain.FlagVersionDef{
+				{VersionRange: ">=5.0 <8.5.0", Flag: "--with-iconv"},
+				{VersionRange: ">=8.5.0", Flag: ""},
+			},
 		},
 		{
 			Name:          "imap",

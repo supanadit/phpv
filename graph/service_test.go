@@ -44,6 +44,12 @@ func (m *mockGraphRepo) ListExtensionsForPHP(phpVersion string) []domain.Extensi
 func (m *mockGraphRepo) ExpandImplied(extensions []string) ([]string, []string) {
 	return extensions, nil
 }
+func (m *mockGraphRepo) DefaultExtensions(phpVersion string) ([]string, []string) {
+	return nil, nil
+}
+func (m *mockGraphRepo) SharedOnlyExtensions(phpVersion string, requested []string) []string {
+	return nil
+}
 func (m *mockGraphRepo) GetConfigureFlags(name, version string) []string {
 	return nil
 }

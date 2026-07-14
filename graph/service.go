@@ -22,6 +22,12 @@ type GraphRepository interface {
 	ListExtensionsForPHP(phpVersion string) []domain.ExtensionInfo
 	ExpandImplied(extensions []string) (expanded []string, added []string)
 
+	// Default extension set
+	DefaultExtensions(phpVersion string) (included []string, skipped []string)
+
+	// Shared-only extensions (built as shared via phpize, not in main binary)
+	SharedOnlyExtensions(phpVersion string, requested []string) []string
+
 	// Flag knowledge
 	GetConfigureFlags(name string, version string) []string
 	GetPHPConfigureFlags(phpVersion string, extensions []string) []string
@@ -133,6 +139,17 @@ func (s *Service) ListExtensionsForPHP(phpVersion string) []domain.ExtensionInfo
 // ExpandImplied returns the full extension set after expanding implied deps.
 func (s *Service) ExpandImplied(extensions []string) (expanded []string, added []string) {
 	return s.repo.ExpandImplied(extensions)
+}
+
+// DefaultExtensions returns the recommended default extension set for a
+// typical PHP install, filtered to those compatible with the given PHP version.
+func (s *Service) DefaultExtensions(phpVersion string) ([]string, []string) {
+	return s.repo.DefaultExtensions(phpVersion)
+}
+
+// SharedOnlyExtensions returns extensions that must be built as shared.
+func (s *Service) SharedOnlyExtensions(phpVersion string, requested []string) []string {
+	return s.repo.SharedOnlyExtensions(phpVersion, requested)
 }
 
 // GetConfigureFlags returns configure flags for a package at a specific version.

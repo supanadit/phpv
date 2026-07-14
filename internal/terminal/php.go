@@ -208,6 +208,7 @@ Version syntax:
 	cmd.Flags().Int("jobs", 0, "Number of parallel build jobs (default: CPU count)")
 	cmd.Flags().Bool("yes", false, "Skip confirmation prompts")
 	cmd.Flags().Bool("force", false, "Skip state checks and reinstall")
+	cmd.Flags().Bool("minimal", false, "Build with --enable-cli only (no default extensions)")
 	return cmd
 }
 
@@ -244,6 +245,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 
 	static, _ := cmd.Flags().GetBool("static")
 	extStr, _ := cmd.Flags().GetString("ext")
+	minimal, _ := cmd.Flags().GetBool("minimal")
 	autoDeps, _ := cmd.Flags().GetBool("auto-deps")
 	noSystem, _ := cmd.Flags().GetBool("no-system")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
@@ -255,6 +257,15 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 
 	jobs := resolveJobs(jobsFlag, h.configSvc)
 
+	if extStr != "" && minimal {
+		return fmt.Errorf("cannot use --ext with --minimal")
+	}
+
+	resolvedVersion, resolveErr := h.assemblerSvc.ResolveVersion("php", version)
+	if resolveErr != nil {
+		return fmt.Errorf("resolve version: %w", resolveErr)
+	}
+
 	var extensions []string
 	var err error
 	if extStr != "" {
@@ -264,6 +275,26 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 				extensions = append(extensions, e)
 			}
 		}
+	} else if !minimal {
+		defaults, skipped := h.assemblerSvc.Graph().DefaultExtensions(resolvedVersion)
+		if len(defaults) == 0 && len(skipped) > 0 {
+			fmt.Printf("Note: No extensions from the default set are compatible with PHP %s.\n", resolvedVersion)
+			fmt.Println("Use --ext <list> to build specific extensions, or --minimal for a bare PHP.")
+		} else {
+			fmt.Printf("Default extension set (%d extensions", len(defaults))
+			if len(skipped) > 0 {
+				fmt.Printf(", %d skipped", len(skipped))
+			}
+			fmt.Println("):")
+			fmt.Printf("  %s\n", strings.Join(defaults, ", "))
+			if len(skipped) > 0 {
+				fmt.Println()
+				for _, s := range skipped {
+					fmt.Printf("  skipped: %s\n", s)
+				}
+			}
+		}
+		extensions = defaults
 	}
 	extensions, added := h.assemblerSvc.Graph().ExpandImplied(extensions)
 	if len(added) > 0 {
@@ -289,10 +320,12 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		os.RemoveAll(prefix)
 		sourceDir := h.siloSvc.SourcePath("php", version)
 		os.RemoveAll(sourceDir)
+		force = true
 	} else if fresh {
 		prefix := h.siloSvc.PackagePrefix("php", version)
 		fmt.Printf("Refreshing install at %s (keeping cached source)...\n", prefix)
 		os.RemoveAll(prefix)
+		force = true
 	}
 
 	bannerVersion := version
@@ -312,6 +345,24 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 		fmt.Printf("✓ PHP %s installed at %s\n", result.Version, result.Prefix)
+		sharedOnly := h.assemblerSvc.Graph().SharedOnlyExtensions(resolvedVersion, extensions)
+		if len(sharedOnly) > 0 {
+			sourceDir := h.siloSvc.SourcePath("php", resolvedVersion)
+			srcPath := assembler.FindSourceDir(sourceDir, "php", resolvedVersion)
+			if srcPath == "" {
+				fmt.Printf("Warning: PHP source not found at %s, skipping shared extension builds\n", sourceDir)
+			} else {
+				for _, ext := range sharedOnly {
+					fmt.Printf("Building %s as shared extension...\n", ext)
+					if err := h.assemblerSvc.InstallExtension(h.ctx, resolvedVersion, ext, srcPath, result.Prefix, jobs); err != nil {
+						fmt.Printf("Warning: %s shared build failed: %v\n", ext, err)
+						fmt.Printf("  Run `phpv extension %s add %s` to retry.\n", resolvedVersion, ext)
+					} else {
+						fmt.Printf("✓ %s installed (shared)\n", ext)
+					}
+				}
+			}
+		}
 		if err := h.shimSvc.RegenerateAll(); err != nil {
 			return fmt.Errorf("regenerate shims: %w", err)
 		}
@@ -363,6 +414,25 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	fmt.Printf("✓ PHP %s installed at %s\n", result.Version, result.Prefix)
+
+	sharedOnly := h.assemblerSvc.Graph().SharedOnlyExtensions(resolvedVersion, extensions)
+	if len(sharedOnly) > 0 {
+		sourceDir := h.siloSvc.SourcePath("php", resolvedVersion)
+		srcPath := assembler.FindSourceDir(sourceDir, "php", resolvedVersion)
+		if srcPath == "" {
+			fmt.Printf("Warning: PHP source not found at %s, skipping shared extension builds\n", sourceDir)
+		} else {
+			for _, ext := range sharedOnly {
+				fmt.Printf("Building %s as shared extension...\n", ext)
+				if err := h.assemblerSvc.InstallExtension(h.ctx, resolvedVersion, ext, srcPath, result.Prefix, jobs); err != nil {
+					fmt.Printf("Warning: %s shared build failed: %v\n", ext, err)
+					fmt.Printf("  Run `phpv extension %s add %s` to retry.\n", resolvedVersion, ext)
+				} else {
+					fmt.Printf("✓ %s installed (shared)\n", ext)
+				}
+			}
+		}
+	}
 
 	if err := h.shimSvc.RegenerateAll(); err != nil {
 		return fmt.Errorf("regenerate shims: %w", err)

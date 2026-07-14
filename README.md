@@ -38,10 +38,13 @@ cd phpv && go build -o phpv ./app/phpv.go
 # Initialize your shell (add to ~/.bashrc, ~/.zshrc, or fish config)
 eval "$(phpv init bash)"
 
-# Install PHP — deps auto-resolved, built from source if needed
-phpv install 7.2 --ext curl,openssl,intl,gd,mbstring,pdo_mysql
-phpv install 8.3 --ext curl,openssl,mbstring,phar,pdo
-phpv install 5.6 --compiler zig              # Old PHP with Zig fallback
+# Install PHP — sensible defaults, deps auto-resolved, built from source if needed
+phpv install 8.4                              # 25 default extensions, works out of the box
+phpv install 7.4                              # Same defaults, auto-bundles OpenSSL 1.1.1w
+
+# Customize
+phpv install 8.4 --ext openssl,curl,apcu     # Build exactly this list (no defaults)
+phpv install 8.4 --minimal                    # Bare build (--disable-all --enable-cli only)
 
 # Switch versions
 phpv use 8.3                                  # Current shell
@@ -154,6 +157,23 @@ sudo dnf install @development-tools openssl-devel libcurl-devel \
 
 - Xcode Command Line Tools
 - Homebrew packages may be required for some dependencies
+
+---
+
+## Supported PHP Versions
+
+| PHP | Default extensions | Notes |
+|-----|--------------------|-------|
+| 8.x | 25 | Full default set |
+| 7.0+ | 25 | Full default set |
+| 5.6 | 24 | `opcache` skipped (requires PHP 7.0+) |
+| 5.2–5.5 | 23 | `opcache` + `json` skipped |
+| 5.0–5.1 | 23 | Same as 5.2 |
+| 4.x | 0 | Use `--ext` to pick extensions |
+
+Default extensions: `bcmath`, `curl`, `dom`, `fileinfo`, `filter`, `gd`, `iconv`, `intl`, `json`, `mbstring`, `openssl`, `opcache`, `pdo`, `pdo_mysql`, `pdo_sqlite`, `phar`, `session`, `simplexml`, `sqlite3`, `tokenizer`, `xml`, `xmlreader`, `xmlwriter`, `zip`, `zlib`
+
+Use `--minimal` for a bare build (`--disable-all --enable-cli` only), or `--ext` to specify your own list.
 
 ---
 

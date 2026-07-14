@@ -457,18 +457,35 @@ func (h *PHPHandler) which(cmd *cobra.Command, args []string) error {
 
 // defaultCmd sets the global default PHP version.
 func (h *PHPHandler) defaultCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "default <version>",
-		Short: "Set global default PHP version",
-		Args:  cobra.ExactArgs(1),
-		RunE:  h.setDefault,
+		Short: "Set default PHP version",
+		Long: `Set the default PHP version.
+
+--global (default) writes to ~/.phpv/default.
+--local writes to .php-version in the current directory.`,
+		Args: cobra.ExactArgs(1),
+		RunE: h.setDefault,
 	}
+	cmd.Flags().Bool("global", true, "Set as global default (writes to ~/.phpv/default)")
+	cmd.Flags().Bool("local", false, "Set as local project version (writes .php-version in CWD)")
+	cmd.MarkFlagsMutuallyExclusive("global", "local")
+	return cmd
 }
 
 func (h *PHPHandler) setDefault(cmd *cobra.Command, args []string) error {
 	version, err := h.resolveVersion(args[0])
 	if err != nil {
 		return err
+	}
+
+	local, _ := cmd.Flags().GetBool("local")
+	if local {
+		if err := writeLocalVersionFile(version); err != nil {
+			return fmt.Errorf("write local version: %w", err)
+		}
+		fmt.Printf("✓ Local PHP version set to %s (.php-version)\n", version)
+		return nil
 	}
 
 	if err := h.siloSvc.SetDefault(version); err != nil {
@@ -480,13 +497,20 @@ func (h *PHPHandler) setDefault(cmd *cobra.Command, args []string) error {
 
 // useCmd switches the active PHP version for the current session.
 func (h *PHPHandler) useCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "use <version>",
 		Short: "Switch to a PHP version",
-		Long:  "Switch to a specific PHP version. Use 'system' to use the system PHP.",
-		Args:  cobra.ExactArgs(1),
-		RunE:  h.use,
+		Long: `Switch to a specific PHP version. Use 'system' to use the system PHP.
+
+--global (default) writes to ~/.phpv/default and regenerates shims.
+--local writes to .php-version in the current directory only.`,
+		Args: cobra.ExactArgs(1),
+		RunE: h.use,
 	}
+	cmd.Flags().Bool("global", true, "Set as global default (writes to ~/.phpv/default, regenerates shims)")
+	cmd.Flags().Bool("local", false, "Set as local project version (writes .php-version in CWD)")
+	cmd.MarkFlagsMutuallyExclusive("global", "local")
+	return cmd
 }
 
 func (h *PHPHandler) use(cmd *cobra.Command, args []string) error {
@@ -516,6 +540,15 @@ func (h *PHPHandler) use(cmd *cobra.Command, args []string) error {
 	exactVersion, err := h.resolveVersion(version)
 	if err != nil {
 		return err
+	}
+
+	local, _ := cmd.Flags().GetBool("local")
+	if local {
+		if err := writeLocalVersionFile(exactVersion); err != nil {
+			return fmt.Errorf("write local version: %w", err)
+		}
+		fmt.Printf("✓ Switched to PHP %s (local, .php-version)\n", exactVersion)
+		return nil
 	}
 
 	if err := h.shimSvc.SetSystemMode(false); err != nil {
@@ -660,6 +693,12 @@ func findProjectVersionFile() string {
 		dir = parent
 	}
 	return ""
+}
+
+// writeLocalVersionFile writes the given version to .php-version in the
+// current working directory.
+func writeLocalVersionFile(version string) error {
+	return os.WriteFile(".php-version", []byte(version+"\n"), 0644)
 }
 
 // checkSystemDeps checks for system packages needed by PHP deps and extensions.

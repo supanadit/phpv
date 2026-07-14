@@ -221,7 +221,10 @@ func (r *GraphRepository) GetConfigureFlags(name, version string) []string {
 }
 
 func (r *GraphRepository) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
-	var flags []string
+	flags := []string{
+		"--disable-all",
+		"--enable-cli",
+	}
 	for _, ext := range extensions {
 		flags = append(flags, r.GetExtensionConfigureFlags(ext, phpVersion)...)
 	}
@@ -237,11 +240,11 @@ func (r *GraphRepository) GetExtensionConfigureFlags(name string, phpVersion str
 }
 
 func (r *GraphRepository) GetCompilerStdRule(phpVersion string) domain.CompilerRule {
-	return domain.CompilerRule{}
+	return getCompilerStdRule(phpVersion)
 }
 
 func (r *GraphRepository) GetCompilerFlags(compiler, phpVersion string) []string {
-	return nil
+	return getCompilerFlags(compiler, phpVersion)
 }
 
 // getDependencies returns the dependency list for a package at a specific version.

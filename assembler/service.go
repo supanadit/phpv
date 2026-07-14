@@ -14,6 +14,7 @@ import (
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/graph"
 	"github.com/supanadit/phpv/internal/repository"
+	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/patcher"
 	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/silo"
@@ -215,9 +216,13 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 	if len(depPkgConfigPaths) > 0 {
 		env = setEnvVar(env, "PKG_CONFIG_PATH", strings.Join(depPkgConfigPaths, ":"))
 	}
-	if len(plan.CompilerFlags) > 0 {
-		env = setEnvVar(env, "CFLAGS", strings.Join(plan.CompilerFlags, " "))
-		env = setEnvVar(env, "CXXFLAGS", strings.Join(plan.CompilerFlags, " "))
+	if len(plan.CFlags) > 0 || len(plan.CompilerFlags) > 0 {
+		allCFlags := plan.CFlags
+		allCFlags = append(allCFlags, plan.CompilerFlags...)
+		env = setEnvVar(env, "CFLAGS", strings.Join(allCFlags, " "))
+		compilerRule := s.graph.GetCompilerStdRule(version)
+		cxxflags := memory.CXXFlagsFromCFlagsWithStd(allCFlags, true, compilerRule)
+		env = setEnvVar(env, "CXXFLAGS", strings.Join(cxxflags, " "))
 	}
 
 	configureFlags := plan.ConfigureFlags

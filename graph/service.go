@@ -57,7 +57,12 @@ func (s *Service) GetBuildPlan(name string, version string, extensions []string)
 	if err != nil {
 		return nil, err
 	}
-	configureFlags := s.repo.GetConfigureFlags(name, version)
+	var configureFlags []string
+	if name == "php" {
+		configureFlags = s.repo.GetPHPConfigureFlags(version, extensions)
+	} else {
+		configureFlags = s.repo.GetConfigureFlags(name, version)
+	}
 	cflags := s.repo.GetCompilerFlags("gcc", version)
 	compilerRule := s.repo.GetCompilerStdRule(version)
 	var compilerFlags []string

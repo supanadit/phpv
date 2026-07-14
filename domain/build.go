@@ -8,6 +8,13 @@ type FlagRule struct {
 	Flag       string
 }
 
+// CompilerFlagDef describes a compiler flag with its version requirements and purpose.
+type CompilerFlagDef struct {
+	Flag    string
+	Needs   string
+	Purpose string
+}
+
 // CompilerRule defines C/C++ compiler standard flags for a PHP version range.
 type CompilerRule struct {
 	MinVersion string

@@ -225,7 +225,14 @@ func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
 	sourceDir := h.siloSvc.SourcePath("php", version)
 	srcPath := assembler.FindSourceDir(sourceDir, "php", version)
 	if srcPath == "" {
-		return fmt.Errorf("PHP source not found at %s (re-run `phpv install %s` to download it)", sourceDir, version)
+		fmt.Printf("PHP source not found, downloading PHP %s source...\n", version)
+		if err := h.downloadPHPSource(version); err != nil {
+			return fmt.Errorf("download PHP source: %w", err)
+		}
+		srcPath = assembler.FindSourceDir(sourceDir, "php", version)
+		if srcPath == "" {
+			return fmt.Errorf("PHP source not found at %s after download", sourceDir)
+		}
 	}
 
 	manifest, err := h.siloSvc.GetExtensionManifest(version)
@@ -249,6 +256,35 @@ func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
 		fmt.Printf("✓ %s installed\n", ext)
 	}
 	return nil
+}
+
+func (h *PHPHandler) downloadPHPSource(version string) error {
+	regEntry, err := h.registrySvc.Get("php", version)
+	if err != nil {
+		return fmt.Errorf("registry resolve php@%s: %w", version, err)
+	}
+	if _, err := h.siloSvc.DownloadURL(regEntry.URL, regEntry.ChecksumType, regEntry.ChecksumValue); err != nil {
+		return fmt.Errorf("download php source: %w", err)
+	}
+	archivePath := filepath.Join(cacheDir(), filepath.Base(regEntry.URL))
+	sourceDir := h.siloSvc.SourcePath("php", version)
+	if _, err := h.siloSvc.Extract(archivePath, sourceDir); err != nil {
+		return fmt.Errorf("extract php source: %w", err)
+	}
+	return nil
+}
+
+func cacheDir() string {
+	return filepath.Join(resolvePHPVRoot(), "caches")
+}
+
+func resolvePHPVRoot(parts ...string) string {
+	root := os.Getenv("PHPV_ROOT")
+	if root == "" {
+		home, _ := os.UserHomeDir()
+		root = filepath.Join(home, ".phpv")
+	}
+	return filepath.Join(append([]string{root}, parts...)...)
 }
 
 func (h *PHPHandler) extensionRemove(cmd *cobra.Command, args []string) error {

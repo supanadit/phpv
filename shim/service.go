@@ -89,7 +89,44 @@ func (s *Service) WritePhar(name, pharRelPath string) error {
 }
 
 func (s *Service) RegenerateAll() error {
-	return s.WriteAll()
+	if err := s.WriteAll(); err != nil {
+		return err
+	}
+	// Regenerate phar shims (composer, pie, etc.) by scanning installed
+	// PHP versions for phar directories.
+	if s.silo == nil {
+		return nil
+	}
+	phpDir := filepath.Join(s.silo.GetSilo().Root, "packages", "php")
+	entries, err := os.ReadDir(phpDir)
+	if err != nil {
+		return nil // no installed PHP versions yet, not an error
+	}
+	seen := make(map[string]bool)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		pharDir := filepath.Join(phpDir, entry.Name(), "phar")
+		pharEntries, err := os.ReadDir(pharDir)
+		if err != nil {
+			continue
+		}
+		for _, pe := range pharEntries {
+			if pe.IsDir() || !strings.HasSuffix(pe.Name(), ".phar") {
+				continue
+			}
+			name := strings.TrimSuffix(pe.Name(), ".phar")
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			if err := s.WritePhar(name, "phar/"+pe.Name()); err != nil {
+				return fmt.Errorf("write phar shim %s: %w", name, err)
+			}
+		}
+	}
+	return nil
 }
 
 func defaultShims() []shimDef {

@@ -57,6 +57,46 @@ func TestRenderShim_Binary(t *testing.T) {
 	}
 }
 
+func TestRenderShim_DropsParentLdLibraryPath(t *testing.T) {
+	s := &Service{}
+	content, err := s.renderShim(shimDef{Name: "php", Kind: kindBinary})
+	if err != nil {
+		t.Fatalf("renderShim: %v", err)
+	}
+	if strings.Contains(content, `"$PHPV_PREFIX/lib:$LD_LIBRARY_PATH"`) {
+		t.Error("shim should NOT prepend to parent LD_LIBRARY_PATH")
+	}
+	if !strings.Contains(content, "PHPV_EXTRA_LD_LIBRARY_PATH") {
+		t.Error("shim should support PHPV_EXTRA_LD_LIBRARY_PATH allowlist")
+	}
+}
+
+func TestRenderShim_HasCleanRoomBlock(t *testing.T) {
+	s := &Service{}
+	content, err := s.renderShim(shimDef{Name: "php", Kind: kindBinary})
+	if err != nil {
+		t.Fatalf("renderShim: %v", err)
+	}
+	if !strings.Contains(content, "LD_LIBRARY_PATH=\"$PHPV_PREFIX/lib\"") {
+		t.Error("shim should start LD_LIBRARY_PATH with only PHP prefix")
+	}
+	if !strings.Contains(content, "export LD_LIBRARY_PATH") {
+		t.Error("shim should export LD_LIBRARY_PATH")
+	}
+}
+
+func TestRenderShim_SystemModeUnaffected(t *testing.T) {
+	s := &Service{}
+	content, err := s.renderShim(shimDef{Name: "php", Kind: kindBinary})
+	if err != nil {
+		t.Fatalf("renderShim: %v", err)
+	}
+	// The system block should exec the system binary without touching LD_LIBRARY_PATH.
+	if !strings.Contains(content, `exec "$PHP_PATH" "$@"`) {
+		t.Error("system block should exec system binary as-is")
+	}
+}
+
 func TestRenderShim_Phar(t *testing.T) {
 	s := &Service{}
 	content, err := s.renderShim(shimDef{Name: "composer", Kind: kindPhar, PharRel: "phar/composer.phar"})

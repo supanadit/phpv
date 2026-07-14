@@ -462,7 +462,18 @@ func builtInPackages() []domain.Package {
 					},
 				},
 				{
-					VersionRange: ">=7.1.0 <8.1.0",
+					VersionRange: ">=8.0.0 <8.1.0",
+					Dependencies: []domain.Dependency{
+						{Name: "openssl", Version: "1.1.1w|>=1.0.2,<4.0.0"},
+						{Name: "libxml2", Version: "2.9.14|~2.9.0"},
+						{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
+						{Name: "oniguruma", Version: "6.9.9|~6.9.0"},
+						{Name: "curl", Version: "7.88.1|>=7.80.0"},
+						{Name: "icu", Version: "63.1|>=63.1,<74"},
+					},
+				},
+				{
+					VersionRange: ">=7.1.0 <8.0.0",
 					Dependencies: []domain.Dependency{
 						{Name: "openssl", Version: "1.1.1w|>=1.1.1,<1.3.0"},
 						{Name: "libxml2", Version: "2.9.14|~2.9.0"},

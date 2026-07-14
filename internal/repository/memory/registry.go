@@ -297,6 +297,7 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				"75.1", "74.2", "74.1", "73.2", "73.1",
 				"72.1", "71.1", "70.1",
 				"69.1", "68.2", "67.1", "66.1",
+				"65.1", "64.2", "63.2", "63.1",
 				"58.2", "57.2", "57.1",
 			},
 			URLTemplate: "https://github.com/unicode-org/icu/releases/download/release-{major}-{minor}/icu4c-{major}_{minor}-src.tgz",

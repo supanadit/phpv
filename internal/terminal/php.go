@@ -302,6 +302,10 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("install failed: %w", err)
 		}
 		fmt.Println()
+		if result.AlreadyInstalled {
+			fmt.Printf("✓ PHP %s is already installed\n", result.Version)
+			return nil
+		}
 		fmt.Printf("✓ PHP %s installed at %s\n", result.Version, result.Prefix)
 		if err := h.shimSvc.RegenerateAll(); err != nil {
 			return fmt.Errorf("regenerate shims: %w", err)
@@ -349,6 +353,10 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("install failed: %w", err)
 	}
 	fmt.Println()
+	if result.AlreadyInstalled {
+		fmt.Printf("✓ PHP %s is already installed\n", result.Version)
+		return nil
+	}
 	fmt.Printf("✓ PHP %s installed at %s\n", result.Version, result.Prefix)
 
 	if err := h.shimSvc.RegenerateAll(); err != nil {

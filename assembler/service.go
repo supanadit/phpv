@@ -26,6 +26,7 @@ type AssemblerResult struct {
 	Version         string
 	Prefix          string
 	Env             map[string]string
+	AlreadyInstalled bool
 }
 
 // DownloadResult holds the outcome of downloading + extracting a single package.
@@ -92,8 +93,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		return nil, fmt.Errorf("get state: %w", err)
 	}
 	if state == domain.StateInstalled {
-		emit("done", fmt.Sprintf("%s %s is already installed", name, exactVersion))
-		return &AssemblerResult{Version: exactVersion}, nil
+		return &AssemblerResult{Version: exactVersion, AlreadyInstalled: true}, nil
 	}
 
 	if err := s.silo.MarkInProgress(name, exactVersion); err != nil {

@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/bundle"
+	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/repository"
 	"github.com/supanadit/phpv/pecl"
 	"github.com/supanadit/phpv/registry"
@@ -57,6 +58,78 @@ func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *
 	rootCmd.AddCommand(h.pharCmd())
 	rootCmd.AddCommand(h.autoDetectResolveCmd())
 	rootCmd.AddCommand(h.peclCmd())
+	rootCmd.AddCommand(h.uninstallCmd())
+}
+
+func (h *PHPHandler) uninstallCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "uninstall <version>",
+		Short: "Remove an installed PHP version",
+		Long:  "Remove an installed PHP version including its prefix, source, and state files.",
+		Args:  cobra.ExactArgs(1),
+		RunE:  h.uninstall,
+	}
+	cmd.Flags().Bool("yes", false, "Skip confirmation prompt when uninstalling the default version")
+	return cmd
+}
+
+func (h *PHPHandler) uninstall(cmd *cobra.Command, args []string) error {
+	version, err := h.resolveVersion(args[0])
+	if err != nil {
+		return err
+	}
+
+	state, err := h.siloSvc.GetState("php", version)
+	if err != nil {
+		return fmt.Errorf("check state: %w", err)
+	}
+	if state != domain.StateInstalled {
+		return fmt.Errorf("PHP %s is not installed (run `phpv versions` to see installed versions)", version)
+	}
+
+	defaultVer, _ := h.siloSvc.GetDefault()
+	if version == defaultVer {
+		yes, _ := cmd.Flags().GetBool("yes")
+		if !yes {
+			fmt.Printf("PHP %s is the current default version. Uninstall anyway? [y/N] ", version)
+			os.Stdout.Sync()
+			stat, _ := os.Stdin.Stat()
+			if (stat.Mode() & os.ModeCharDevice) == 0 {
+				fmt.Println("[non-interactive, skipping]")
+				return fmt.Errorf("uninstall cancelled: default version requires confirmation; use --yes to skip")
+			}
+			reader := bufio.NewReader(os.Stdin)
+			answer, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("read input: %w", err)
+			}
+			answer = strings.TrimSpace(strings.ToLower(answer))
+			if answer != "y" && answer != "yes" {
+				return fmt.Errorf("uninstall cancelled")
+			}
+		}
+		if err := h.siloSvc.SetDefault(""); err != nil {
+			return fmt.Errorf("clear default: %w", err)
+		}
+		fmt.Printf("→ Cleared default version\n")
+	}
+
+	prefix := h.siloSvc.PackagePrefix("php", version)
+	fmt.Printf("Removing %s...\n", prefix)
+	os.RemoveAll(prefix)
+
+	sourceDir := h.siloSvc.SourcePath("php", version)
+	if _, err := os.Stat(sourceDir); err == nil {
+		fmt.Printf("Removing source %s...\n", sourceDir)
+		os.RemoveAll(sourceDir)
+	}
+
+	if err := h.shimSvc.RegenerateAll(); err != nil {
+		return fmt.Errorf("regenerate shims: %w", err)
+	}
+
+	fmt.Printf("✓ PHP %s uninstalled\n", version)
+	return nil
 }
 
 func (h *PHPHandler) downloadCmd() *cobra.Command {

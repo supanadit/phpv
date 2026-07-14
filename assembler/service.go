@@ -366,6 +366,17 @@ func collectSystemFlags(cppFlags, ldFlags, pcPaths []string) ([]string, []string
 	return cppFlags, ldFlags, pcPaths
 }
 
+// getPHPIniDir returns the directory where PHP expects to find php.ini
+// by querying php-config --ini-path. Falls back to prefix/etc if query fails.
+func getPHPIniDir(phpPrefix string) string {
+	phpConfig := filepath.Join(phpPrefix, "bin", "php-config")
+	out, err := exec.Command(phpConfig, "--ini-path").Output()
+	if err != nil {
+		return filepath.Join(phpPrefix, "etc")
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // InstallExtension builds a single PHP extension from the PHP source tree
 // using phpize. The extension source must be at ext/<name>/ inside the
 // PHP source tree. After building, it adds extension=<name>.so to php.ini
@@ -424,7 +435,7 @@ func (s *Service) InstallExtension(ctx context.Context, phpVersion, extName, php
 		return fmt.Errorf("make install %s: %w\n%s", extName, err, out)
 	}
 
-	iniDir := filepath.Join(phpPrefix, "etc")
+	iniDir := getPHPIniDir(phpPrefix)
 	if err := os.MkdirAll(iniDir, 0755); err != nil {
 		return fmt.Errorf("create ini dir: %w", err)
 	}
@@ -488,7 +499,7 @@ func (s *Service) RemoveExtension(phpVersion, extName, phpPrefix string) error {
 		return nil
 	})
 
-	iniPath := filepath.Join(phpPrefix, "etc", "php.ini")
+	iniPath := filepath.Join(getPHPIniDir(phpPrefix), "php.ini")
 	if data, err := os.ReadFile(iniPath); err == nil {
 		lines := strings.Split(string(data), "\n")
 		var kept []string

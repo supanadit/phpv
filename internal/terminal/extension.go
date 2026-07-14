@@ -45,6 +45,7 @@ func (h *PHPHandler) extensionCmd() *cobra.Command {
 		RunE:  h.extensionAdd,
 	}
 	extCmd.Flags().Int("jobs", 0, "Number of parallel build jobs (default: CPU count)")
+	extCmd.Flags().Bool("force", false, "Force rebuild even if already installed")
 	cmd.AddCommand(extCmd)
 	cmd.AddCommand(&cobra.Command{
 		Use:   "remove <version> <name>...",
@@ -299,6 +300,29 @@ func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
 	installed := make(map[string]bool)
 	for _, e := range manifest.Extensions {
 		installed[e.Name] = true
+	}
+
+	// Self-healing: cross-check manifest against php -m. If manifest says
+	// installed but php -m doesn't show it, the entry is stale (e.g., wrong
+	// php.ini path or partial build). Remove stale entries from manifest.
+	compiledIn, err := h.getCompiledModules(version)
+	if err == nil {
+		for name := range installed {
+			if !compiledIn[name] {
+				// Stale entry: remove from manifest
+				delete(installed, name)
+				var clean []domain.ExtensionState
+				for _, e := range manifest.Extensions {
+					if e.Name != name {
+						clean = append(clean, e)
+					}
+				}
+				manifest.Extensions = clean
+			}
+		}
+		if err := h.siloSvc.SaveExtensionManifest(version, manifest); err != nil {
+			return fmt.Errorf("clean stale manifest: %w", err)
+		}
 	}
 
 	for _, ext := range extNames {

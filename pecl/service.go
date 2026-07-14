@@ -30,7 +30,7 @@ func NewService(siloSvc *silo.Service) *Service {
 	}
 }
 
-func (s *Service) Install(source, phpVersion string) (*InstallResult, error) {
+func (s *Service) Install(source, phpVersion string, jobs int) (*InstallResult, error) {
 	prefix := s.silo.PackagePrefix("php", phpVersion)
 	phpBin := filepath.Join(prefix, "bin", "php")
 	if _, err := os.Stat(phpBin); os.IsNotExist(err) {
@@ -113,7 +113,7 @@ func (s *Service) Install(source, phpVersion string) (*InstallResult, error) {
 		return nil, fmt.Errorf("configure %s: %w\n%s", extName, err, out)
 	}
 
-	make := exec.Command("make", "-j4")
+	make := exec.Command("make", fmt.Sprintf("-j%d", jobs))
 	make.Dir = sourceDir
 	if out, err := make.CombinedOutput(); err != nil {
 		cleanup()

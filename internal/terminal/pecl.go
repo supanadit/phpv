@@ -63,7 +63,10 @@ Examples:
 				}
 			}
 
-			result, err := h.peclSvc.Install(source, phpVersion)
+			jobsFlag, _ := cmd.Flags().GetInt("jobs")
+			jobs := resolveJobs(jobsFlag, h.configSvc)
+
+			result, err := h.peclSvc.Install(source, phpVersion, jobs)
 			if err != nil {
 				return fmt.Errorf("pecl install: %w", err)
 			}
@@ -73,6 +76,7 @@ Examples:
 		},
 	}
 	installCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
+	installCmd.Flags().Int("jobs", 0, "Number of parallel build jobs (default: CPU count)")
 
 	listCmd := &cobra.Command{
 		Use:   "list [version]",

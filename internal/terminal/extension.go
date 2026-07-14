@@ -36,12 +36,14 @@ func (h *PHPHandler) extensionCmd() *cobra.Command {
 	availCmd.Flags().Bool("json", false, "Output in JSON format")
 	cmd.AddCommand(availCmd)
 
-	cmd.AddCommand(&cobra.Command{
+	extCmd := &cobra.Command{
 		Use:   "add <version> <name>...",
 		Short: "Install one or more extensions",
 		Args:  cobra.MinimumNArgs(2),
 		RunE:  h.extensionAdd,
-	})
+	}
+	extCmd.Flags().Int("jobs", 0, "Number of parallel build jobs (default: CPU count)")
+	cmd.AddCommand(extCmd)
 	cmd.AddCommand(&cobra.Command{
 		Use:   "remove <version> <name>...",
 		Short: "Remove one or more extensions",
@@ -211,6 +213,9 @@ func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
 	}
 	extNames := args[1:]
 
+	jobsFlag, _ := cmd.Flags().GetInt("jobs")
+	jobs := resolveJobs(jobsFlag, h.configSvc)
+
 	prefix := h.siloSvc.PackagePrefix("php", version)
 	phpBin := filepath.Join(prefix, "bin", "php")
 	if _, err := os.Stat(phpBin); os.IsNotExist(err) {
@@ -238,7 +243,7 @@ func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		fmt.Printf("Building extension %s...\n", ext)
-		if err := h.assemblerSvc.InstallExtension(version, ext, srcPath, prefix); err != nil {
+		if err := h.assemblerSvc.InstallExtension(version, ext, srcPath, prefix, jobs); err != nil {
 			return fmt.Errorf("install extension %s: %w", ext, err)
 		}
 		fmt.Printf("✓ %s installed\n", ext)

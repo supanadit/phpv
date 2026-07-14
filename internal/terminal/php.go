@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -190,6 +192,7 @@ Version syntax:
 	cmd.Flags().Bool("fresh", false, "Delete existing install prefix and rebuild (keeps cached source)")
 	cmd.Flags().Bool("clean", false, "Delete everything including cached source and rebuild from scratch")
 	cmd.Flags().Bool("verbose", false, "Show full build output instead of spinner")
+	cmd.Flags().Int("jobs", 0, "Number of parallel build jobs (default: CPU count)")
 	return cmd
 }
 
@@ -214,6 +217,9 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	fresh, _ := cmd.Flags().GetBool("fresh")
 	clean, _ := cmd.Flags().GetBool("clean")
 	verbose, _ := cmd.Flags().GetBool("verbose")
+	jobsFlag, _ := cmd.Flags().GetInt("jobs")
+
+	jobs := resolveJobs(jobsFlag, h.configSvc)
 
 	var extensions []string
 	var err error
@@ -254,7 +260,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Installing PHP %s...\n\n", version)
 
 	if verbose {
-		result, err := h.assemblerSvc.Assemble("php", version, static, extensions, true, nil, systemPkgs)
+		result, err := h.assemblerSvc.Assemble("php", version, static, extensions, true, nil, systemPkgs, jobs)
 		if err != nil {
 			return fmt.Errorf("install failed: %w", err)
 		}
@@ -297,7 +303,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 
 	result, err := h.assemblerSvc.Assemble("php", version, static, extensions, false, func(stage, message string) {
 		progressCh <- progressMsg{stage: stage, message: message}
-	}, systemPkgs)
+	}, systemPkgs, jobs)
 	close(progressCh)
 	<-doneCh
 
@@ -704,6 +710,23 @@ func findProjectVersionFile() string {
 // current working directory.
 func writeLocalVersionFile(version string) error {
 	return os.WriteFile(".php-version", []byte(version+"\n"), 0644)
+}
+
+// resolveJobs resolves the effective parallelism value.
+// Priority: CLI flag > config concurrency > runtime.NumCPU().
+func resolveJobs(flagVal int, cfgSvc *config.Service) int {
+	if flagVal > 0 {
+		return flagVal
+	}
+	if cfgSvc != nil {
+		val, err := cfgSvc.Get("concurrency")
+		if err == nil && val != "" {
+			if n, err := strconv.Atoi(val); err == nil && n > 0 {
+				return n
+			}
+		}
+	}
+	return runtime.NumCPU()
 }
 
 // checkSystemDeps checks for system packages needed by PHP deps and extensions.

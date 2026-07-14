@@ -217,6 +217,18 @@ func (r *GraphRepository) ExpandImplied(extensions []string) ([]string, []string
 }
 
 func (r *GraphRepository) GetConfigureFlags(name, version string) []string {
+	switch name {
+	case "openssl":
+		return []string{"shared", "no-ssl3", "no-tests"}
+	case "m4":
+		return []string{"--disable-maintainer-mode"}
+	case "libxml2":
+		return []string{"--disable-shared", "--enable-static", "--without-lzma", "--without-python", "--disable-dependency-tracking", "--with-zlib"}
+	case "curl":
+		return []string{"--with-ssl", "--without-brotli", "--disable-ldap", "--without-libpsl", "--without-libidn2", "--without-zstd", "--without-nghttp2", "--without-zlib"}
+	case "icu":
+		return []string{"--disable-extras", "--disable-samples"}
+	}
 	return nil
 }
 

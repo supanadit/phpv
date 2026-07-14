@@ -158,7 +158,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 
 		// Hybrid mode: check if system package is available and compatible
 		if !static && systemPkgs != nil {
-			if sysPkg, ok := systemPkgs[dep.Name]; ok && sysPkg.Installed {
+			if sysPkg, ok := systemPkgs[dep.Name]; ok && sysPkg.Installed && sysPkg.Version != "" {
 				sysCompat := true
 				if constraint != "" {
 					sysCompat = repository.MatchVersionRange(constraint, sysPkg.Version)
@@ -185,7 +185,9 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		if len(prepared.ExtraCFlags) > 0 {
 			buildEnv = []string{"CFLAGS=" + strings.Join(prepared.ExtraCFlags, " ")}
 		}
-		buildDir, _, err := s.forge.Build(ctx, dep.Name, depVersion, sourceDir, buildEnv, prepared.ConfigureFlags, depPrefix, verbose, jobs)
+		depFlags := s.graph.GetConfigureFlags(dep.Name, depVersion)
+		depFlags = append(depFlags, s.resolveDepPlaceholders(prepared.ConfigureFlags, plan.Deps)...)
+		buildDir, _, err := s.forge.Build(ctx, dep.Name, depVersion, sourceDir, buildEnv, depFlags, depPrefix, verbose, jobs)
 		if err != nil {
 			emit("error", fmt.Sprintf("Build failed for %s@%s", dep.Name, depVersion))
 			return nil, fmt.Errorf("forge build %s@%s: %w", dep.Name, depVersion, err)
@@ -223,6 +225,51 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		compilerRule := s.graph.GetCompilerStdRule(version)
 		cxxflags := memory.CXXFlagsFromCFlagsWithStd(allCFlags, true, compilerRule)
 		env = setEnvVar(env, "CXXFLAGS", strings.Join(cxxflags, " "))
+	}
+
+	// Isolation: ensure local libs are found before system libs at both
+	// link time and runtime. Without this, the system OpenSSL 3.x shadows
+	// the locally-built OpenSSL 1.1.1w at link time, causing ABI mismatches
+	// and "undefined reference" errors for symbols that differ between versions.
+	//
+	// 1. Prepend -Wl,-rpath,<local>/lib to LDFLAGS so the linker searches
+	//    local lib directories first (before system /usr/lib64).
+	// 2. Set LD_LIBRARY_PATH to local lib paths only for runtime isolation.
+	// 3. Overwrite CPPFLAGS (not append) so system /usr/include is excluded.
+	// 4. Add local include paths to CFLAGS so PHP's configure test programs
+	//    find the local OpenSSL headers first (not the system 3.x headers).
+	if len(depLdFlags) > 0 {
+		var rpathFlags, libPaths []string
+		for _, flag := range depLdFlags {
+			if strings.HasPrefix(flag, "-L") {
+				path := strings.TrimPrefix(flag, "-L")
+				rpathFlags = append(rpathFlags, "-Wl,-rpath,"+path)
+				libPaths = append(libPaths, path)
+			}
+		}
+		if len(rpathFlags) > 0 {
+			env = setEnvVar(env, "LDFLAGS", strings.Join(append(rpathFlags, depLdFlags...), " "))
+		}
+		if len(libPaths) > 0 {
+			env = setEnvVar(env, "LD_LIBRARY_PATH", strings.Join(libPaths, ":"))
+		}
+	}
+	if len(depCppFlags) > 0 {
+		// Also add local include paths to CFLAGS so PHP's configure test
+		// programs find the local headers first. CPPFLAGS alone is not
+		// enough because PHP's configure uses CFLAGS for its test compiles.
+		existingCFlags := ""
+		for _, e := range env {
+			if strings.HasPrefix(e, "CFLAGS=") {
+				existingCFlags = strings.TrimPrefix(e, "CFLAGS=")
+				break
+			}
+		}
+		if existingCFlags != "" {
+			env = setEnvVar(env, "CFLAGS", existingCFlags+" "+strings.Join(depCppFlags, " "))
+		} else {
+			env = setEnvVar(env, "CFLAGS", strings.Join(depCppFlags, " "))
+		}
 	}
 
 	configureFlags := plan.ConfigureFlags

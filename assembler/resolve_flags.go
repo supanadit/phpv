@@ -8,6 +8,34 @@ import (
 	"github.com/supanadit/phpv/domain"
 )
 
+// resolveDepPlaceholders replaces {{dep:NAME}} placeholders in configure flags
+// with the install prefix of the named dependency. This is used by the patcher
+// to inject dependency paths (e.g., curl's --with-openssl={{dep:openssl}}).
+func (s *Service) resolveDepPlaceholders(flags []string, deps []domain.Dependency) []string {
+	result := make([]string, len(flags))
+	for i, flag := range flags {
+		for _, dep := range deps {
+			placeholder := "{{dep:" + dep.Name + "}}"
+			if !strings.Contains(flag, placeholder) {
+				continue
+			}
+			ver := dep.Version
+			if idx := strings.Index(ver, "|"); idx != -1 {
+				ver = ver[:idx]
+			}
+			if ver == "" {
+				continue
+			}
+			prefix := s.silo.PackagePrefix(dep.Name, ver)
+			if fi, err := os.Stat(prefix); err == nil && fi.IsDir() {
+				flag = strings.ReplaceAll(flag, placeholder, prefix)
+			}
+		}
+		result[i] = flag
+	}
+	return result
+}
+
 // resolveDependencyFlags resolves package-relative configure flags
 // (e.g. --with-openssl, --with-zlib, --with-libxml) to absolute paths
 // pointing at the locally-built dependency install prefix. Without this

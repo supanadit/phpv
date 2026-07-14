@@ -66,7 +66,7 @@ Examples:
 			jobsFlag, _ := cmd.Flags().GetInt("jobs")
 			jobs := resolveJobs(jobsFlag, h.configSvc)
 
-			result, err := h.peclSvc.Install(source, phpVersion, jobs)
+			result, err := h.peclSvc.Install(h.ctx, source, phpVersion, jobs)
 			if err != nil {
 				return fmt.Errorf("pecl install: %w", err)
 			}

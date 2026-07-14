@@ -1,6 +1,7 @@
 package forge
 
 import (
+	"context"
 	"testing"
 )
 
@@ -10,13 +11,13 @@ type mockForgeRepo struct {
 	lastFlags     []string
 }
 
-func (m *mockForgeRepo) Build(name, version, sourceDir string, extraEnv, extraConfigureFlags []string, installPrefix string, verbose bool, jobs int) (string, map[string]string, error) {
+func (m *mockForgeRepo) Build(ctx context.Context, name, version, sourceDir string, extraEnv, extraConfigureFlags []string, installPrefix string, verbose bool, jobs int) (string, map[string]string, error) {
 	m.buildCalled = true
 	m.lastFlags = extraConfigureFlags
 	return "/build", map[string]string{"PATH": "/prefix/bin"}, nil
 }
 
-func (m *mockForgeRepo) Install(name, version, buildDir, prefix string, verbose bool, jobs int) error {
+func (m *mockForgeRepo) Install(ctx context.Context, name, version, buildDir, prefix string, verbose bool, jobs int) error {
 	m.installCalled = true
 	return nil
 }
@@ -26,7 +27,7 @@ func TestService_Build_ResolvesPlaceholders(t *testing.T) {
 	svc := NewService(mock)
 
 	flags := []string{"--with-openssl={{prefix}}", "--with-source={{source}}"}
-	_, _, err := svc.Build("php", "8.3.0", "/src", nil, flags, "/opt/php/8.3.0", false, 4)
+	_, _, err := svc.Build(context.Background(), "php", "8.3.0", "/src", nil, flags, "/opt/php/8.3.0", false, 4)
 	if err != nil {
 		t.Fatalf("Build returned error: %v", err)
 	}
@@ -49,7 +50,7 @@ func TestService_Build_NoPlaceholders(t *testing.T) {
 	svc := NewService(mock)
 
 	flags := []string{"--enable-mbstring", "--with-pdo-mysql=mysqlnd"}
-	_, _, err := svc.Build("php", "8.3.0", "/src", nil, flags, "/opt/php/8.3.0", false, 4)
+	_, _, err := svc.Build(context.Background(), "php", "8.3.0", "/src", nil, flags, "/opt/php/8.3.0", false, 4)
 	if err != nil {
 		t.Fatalf("Build returned error: %v", err)
 	}
@@ -65,7 +66,7 @@ func TestService_Install_Delegates(t *testing.T) {
 	mock := &mockForgeRepo{}
 	svc := NewService(mock)
 
-	err := svc.Install("php", "8.3.0", "/build", "/prefix", false, 4)
+	err := svc.Install(context.Background(), "php", "8.3.0", "/build", "/prefix", false, 4)
 	if err != nil {
 		t.Fatalf("Install returned error: %v", err)
 	}

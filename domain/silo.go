@@ -13,4 +13,5 @@ const (
 	StateInProgress InstallState = "in_progress"
 	StateInstalled  InstallState = "installed"
 	StateFailed     InstallState = "failed"
+	StateInterrupted InstallState = "interrupted"
 )

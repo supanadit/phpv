@@ -1,6 +1,9 @@
 package forge
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
 
 // ForgeRepository handles building and installing packages from source.
 // Build and Install are separate so you can compile once and install later,
@@ -13,10 +16,10 @@ type ForgeRepository interface {
 	// verbose enables live build output to terminal.
 	// jobs controls make parallelism (0 = auto).
 	// Returns the build directory and environment variables needed for installation.
-	Build(name string, version string, sourceDir string, extraEnv []string, extraConfigureFlags []string, installPrefix string, verbose bool, jobs int) (buildDir string, env map[string]string, err error)
+	Build(ctx context.Context, name string, version string, sourceDir string, extraEnv []string, extraConfigureFlags []string, installPrefix string, verbose bool, jobs int) (buildDir string, env map[string]string, err error)
 
 	// Install installs a previously built package into prefix.
-	Install(name string, version string, buildDir string, prefix string, verbose bool, jobs int) error
+	Install(ctx context.Context, name string, version string, buildDir string, prefix string, verbose bool, jobs int) error
 }
 
 // Service wraps ForgeRepository and adds value by resolving
@@ -32,14 +35,14 @@ func NewService(r ForgeRepository) *Service {
 }
 
 // Build resolves placeholders in extraConfigureFlags before delegating.
-func (s *Service) Build(name string, version string, sourceDir string, extraEnv []string, extraConfigureFlags []string, installPrefix string, verbose bool, jobs int) (string, map[string]string, error) {
+func (s *Service) Build(ctx context.Context, name string, version string, sourceDir string, extraEnv []string, extraConfigureFlags []string, installPrefix string, verbose bool, jobs int) (string, map[string]string, error) {
 	resolved := resolvePlaceholders(extraConfigureFlags, installPrefix, sourceDir)
-	return s.repo.Build(name, version, sourceDir, extraEnv, resolved, installPrefix, verbose, jobs)
+	return s.repo.Build(ctx, name, version, sourceDir, extraEnv, resolved, installPrefix, verbose, jobs)
 }
 
 // Install delegates to the repository.
-func (s *Service) Install(name string, version string, buildDir string, prefix string, verbose bool, jobs int) error {
-	return s.repo.Install(name, version, buildDir, prefix, verbose, jobs)
+func (s *Service) Install(ctx context.Context, name string, version string, buildDir string, prefix string, verbose bool, jobs int) error {
+	return s.repo.Install(ctx, name, version, buildDir, prefix, verbose, jobs)
 }
 
 // resolvePlaceholders replaces {{prefix}}, {{source}}, and {{dep:NAME}}

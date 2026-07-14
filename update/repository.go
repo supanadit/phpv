@@ -1,6 +1,7 @@
 package update
 
 import (
+	"context"
 	"os"
 )
 
@@ -10,14 +11,14 @@ type Release struct {
 }
 
 type Asset struct {
-	Name         string
-	DownloadURL  string
-	Size         int64
+	Name        string
+	DownloadURL string
+	Size        int64
 }
 
 type Repository interface {
 	FetchLatestRelease() (Release, error)
-	DownloadFile(url, destPath string) error
+	DownloadFile(ctx context.Context, url, destPath string) error
 	FetchChecksums(url string) (map[string]string, error)
 	VerifyChecksum(filePath, expectedHash string) error
 	ExecutablePath() (string, error)

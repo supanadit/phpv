@@ -243,7 +243,7 @@ func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		fmt.Printf("Building extension %s...\n", ext)
-		if err := h.assemblerSvc.InstallExtension(version, ext, srcPath, prefix, jobs); err != nil {
+		if err := h.assemblerSvc.InstallExtension(h.ctx, version, ext, srcPath, prefix, jobs); err != nil {
 			return fmt.Errorf("install extension %s: %w", ext, err)
 		}
 		fmt.Printf("✓ %s installed\n", ext)

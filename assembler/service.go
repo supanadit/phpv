@@ -1,6 +1,7 @@
 package assembler
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -70,7 +71,7 @@ func (s *Service) Graph() *graph.Service {
 // Assemble runs the full pipeline for (name, version).
 // systemPkgs optionally provides a map of available system packages for hybrid builds.
 // jobs controls make parallelism (0 = auto).
-func (s *Service) Assemble(name string, version string, static bool, extensions []string, verbose bool, progress ProgressFunc, systemPkgs map[string]system.Package, jobs int) (*AssemblerResult, error) {
+func (s *Service) Assemble(ctx context.Context, name string, version string, static bool, extensions []string, verbose bool, progress ProgressFunc, systemPkgs map[string]system.Package, jobs int) (*AssemblerResult, error) {
 	emit := func(stage, msg string) {
 		if progress != nil {
 			progress(stage, msg)
@@ -102,7 +103,11 @@ func (s *Service) Assemble(name string, version string, static bool, extensions 
 	var completed bool
 	defer func() {
 		if !completed {
-			s.silo.MarkFailed(name, exactVersion)
+			if ctx.Err() != nil {
+				s.silo.MarkInterrupted(name, exactVersion)
+			} else {
+				s.silo.MarkFailed(name, exactVersion)
+			}
 		}
 	}()
 
@@ -179,13 +184,13 @@ func (s *Service) Assemble(name string, version string, static bool, extensions 
 		if len(prepared.ExtraCFlags) > 0 {
 			buildEnv = []string{"CFLAGS=" + strings.Join(prepared.ExtraCFlags, " ")}
 		}
-		buildDir, _, err := s.forge.Build(dep.Name, depVersion, sourceDir, buildEnv, prepared.ConfigureFlags, depPrefix, verbose, jobs)
+		buildDir, _, err := s.forge.Build(ctx, dep.Name, depVersion, sourceDir, buildEnv, prepared.ConfigureFlags, depPrefix, verbose, jobs)
 		if err != nil {
 			emit("error", fmt.Sprintf("Build failed for %s@%s", dep.Name, depVersion))
 			return nil, fmt.Errorf("forge build %s@%s: %w", dep.Name, depVersion, err)
 		}
 		emit("install", fmt.Sprintf("Installing %s@%s → %s", dep.Name, depVersion, depPrefix))
-		if err := s.forge.Install(dep.Name, depVersion, buildDir, depPrefix, verbose, jobs); err != nil {
+		if err := s.forge.Install(ctx, dep.Name, depVersion, buildDir, depPrefix, verbose, jobs); err != nil {
 			emit("error", fmt.Sprintf("Install failed for %s@%s", dep.Name, depVersion))
 			return nil, fmt.Errorf("forge install %s@%s: %w", dep.Name, depVersion, err)
 		}
@@ -234,14 +239,14 @@ func (s *Service) Assemble(name string, version string, static bool, extensions 
 	}
 
 	emit("make", fmt.Sprintf("Compiling %s (this may take a while)...", name))
-	buildDir, _, err := s.forge.Build(name, exactVersion, srcPath, env, plan.ConfigureFlags, prefix, verbose, jobs)
+	buildDir, _, err := s.forge.Build(ctx, name, exactVersion, srcPath, env, plan.ConfigureFlags, prefix, verbose, jobs)
 	if err != nil {
 		emit("error", fmt.Sprintf("Build failed for %s", name))
 		return nil, fmt.Errorf("build %s@%s: %w", name, exactVersion, err)
 
 	}
 	emit("install", fmt.Sprintf("Installing %s → %s", name, prefix))
-	if err := s.forge.Install(name, exactVersion, buildDir, prefix, verbose, jobs); err != nil {
+	if err := s.forge.Install(ctx, name, exactVersion, buildDir, prefix, verbose, jobs); err != nil {
 		emit("error", fmt.Sprintf("Install failed for %s", name))
 		return nil, fmt.Errorf("install %s@%s: %w", name, exactVersion, err)
 	}
@@ -257,7 +262,7 @@ func (s *Service) Assemble(name string, version string, static bool, extensions 
 		}
 		for _, ext := range extensions {
 			emit("extensions", fmt.Sprintf("Building extension %s...", ext))
-			if err := s.InstallExtension(exactVersion, ext, srcPath, prefix, jobs); err != nil {
+			if err := s.InstallExtension(ctx, exactVersion, ext, srcPath, prefix, jobs); err != nil {
 				emit("error", fmt.Sprintf("Extension %s failed: %v", ext, err))
 				return nil, fmt.Errorf("extension %s: %w", ext, err)
 			}
@@ -329,7 +334,7 @@ func collectSystemFlags(cppFlags, ldFlags, pcPaths []string) ([]string, []string
 // using phpize. The extension source must be at ext/<name>/ inside the
 // PHP source tree. After building, it adds extension=<name>.so to php.ini
 // and records the extension in the manifest.
-func (s *Service) InstallExtension(phpVersion, extName, phpSourceDir, phpPrefix string, jobs int) error {
+func (s *Service) InstallExtension(ctx context.Context, phpVersion, extName, phpSourceDir, phpPrefix string, jobs int) error {
 	extDir := filepath.Join(phpSourceDir, "ext", extName)
 	if _, err := os.Stat(extDir); os.IsNotExist(err) {
 		return fmt.Errorf("extension %q not found in PHP source tree at %s", extName, extDir)
@@ -345,7 +350,7 @@ func (s *Service) InstallExtension(phpVersion, extName, phpSourceDir, phpPrefix 
 		return fmt.Errorf("php-config not found at %s", phpConfig)
 	}
 
-	cmd := exec.Command(phpize)
+	cmd := exec.CommandContext(ctx, phpize)
 	cmd.Dir = extDir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("phpize %s: %w\n%s", extName, err, out)
@@ -355,19 +360,19 @@ func (s *Service) InstallExtension(phpVersion, extName, phpSourceDir, phpPrefix 
 	extFlags := s.graph.GetExtensionConfigureFlags(extName, phpVersion)
 	args = append(args, extFlags...)
 
-	configure := exec.Command("./configure", args...)
+	configure := exec.CommandContext(ctx, "./configure", args...)
 	configure.Dir = extDir
 	if out, err := configure.CombinedOutput(); err != nil {
 		return fmt.Errorf("configure %s: %w\n%s", extName, err, out)
 	}
 
-	make := exec.Command("make", fmt.Sprintf("-j%d", jobs))
+	make := exec.CommandContext(ctx, "make", fmt.Sprintf("-j%d", jobs))
 	make.Dir = extDir
 	if out, err := make.CombinedOutput(); err != nil {
 		return fmt.Errorf("make %s: %w\n%s", extName, err, out)
 	}
 
-	install := exec.Command("make", "install")
+	install := exec.CommandContext(ctx, "make", "install")
 	install.Dir = extDir
 	if out, err := install.CombinedOutput(); err != nil {
 		return fmt.Errorf("make install %s: %w\n%s", extName, err, out)

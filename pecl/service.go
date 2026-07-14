@@ -1,6 +1,7 @@
 package pecl
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -30,7 +31,7 @@ func NewService(siloSvc *silo.Service) *Service {
 	}
 }
 
-func (s *Service) Install(source, phpVersion string, jobs int) (*InstallResult, error) {
+func (s *Service) Install(ctx context.Context, source, phpVersion string, jobs int) (*InstallResult, error) {
 	prefix := s.silo.PackagePrefix("php", phpVersion)
 	phpBin := filepath.Join(prefix, "bin", "php")
 	if _, err := os.Stat(phpBin); os.IsNotExist(err) {
@@ -99,28 +100,28 @@ func (s *Service) Install(source, phpVersion string, jobs int) (*InstallResult, 
 	phpize := filepath.Join(prefix, "bin", "phpize")
 	phpConfig := filepath.Join(prefix, "bin", "php-config")
 
-	cmd := exec.Command(phpize)
+	cmd := exec.CommandContext(ctx, phpize)
 	cmd.Dir = sourceDir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		cleanup()
 		return nil, fmt.Errorf("phpize %s: %w\n%s", extName, err, out)
 	}
 
-	configure := exec.Command("./configure", "--with-php-config="+phpConfig)
+	configure := exec.CommandContext(ctx, "./configure", "--with-php-config="+phpConfig)
 	configure.Dir = sourceDir
 	if out, err := configure.CombinedOutput(); err != nil {
 		cleanup()
 		return nil, fmt.Errorf("configure %s: %w\n%s", extName, err, out)
 	}
 
-	make := exec.Command("make", fmt.Sprintf("-j%d", jobs))
+	make := exec.CommandContext(ctx, "make", fmt.Sprintf("-j%d", jobs))
 	make.Dir = sourceDir
 	if out, err := make.CombinedOutput(); err != nil {
 		cleanup()
 		return nil, fmt.Errorf("make %s: %w\n%s", extName, err, out)
 	}
 
-	install := exec.Command("make", "install")
+	install := exec.CommandContext(ctx, "make", "install")
 	install.Dir = sourceDir
 	if out, err := install.CombinedOutput(); err != nil {
 		cleanup()

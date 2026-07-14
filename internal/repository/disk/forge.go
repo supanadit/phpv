@@ -1,28 +1,23 @@
 package disk
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
-// ForgeRepository is a disk-backed implementation of forge.ForgeRepository.
-// It builds packages from source using per-package strategy detection.
 type ForgeRepository struct{}
 
 func NewForgeRepository() *ForgeRepository {
 	return &ForgeRepository{}
 }
 
-// Build compiles the package from sourceDir. extraEnv provides additional
-// environment variables (e.g., PATH with build tool bins). extraConfigureFlags
-// are appended to the package's ./configure invocation. installPrefix is the
-// absolute path where the package will be installed (replaces the default
-// source-dir-based prefix derivation).
-func (f *ForgeRepository) Build(name string, version string, sourceDir string, extraEnv []string, extraConfigureFlags []string, installPrefix string, verbose bool, jobs int) (buildDir string, env map[string]string, err error) {
+func (f *ForgeRepository) Build(ctx context.Context, name string, version string, sourceDir string, extraEnv []string, extraConfigureFlags []string, installPrefix string, verbose bool, jobs int) (buildDir string, env map[string]string, err error) {
 	srcPath := findSourceDir(sourceDir, name, version)
 	if srcPath == "" {
 		return "", nil, fmt.Errorf("could not find source directory in %s", sourceDir)
@@ -31,10 +26,8 @@ func (f *ForgeRepository) Build(name string, version string, sourceDir string, e
 	chmodBuildScripts(srcPath)
 	touchAutotools(srcPath)
 
-	// Per-package strategy detection (mirrors legacy).
 	strategy := detectStrategy(name)
 
-	// Build env vars that downstream packages need.
 	prefix := installPrefix
 	if prefix == "" {
 		prefix = filepath.Dir(srcPath)
@@ -47,20 +40,19 @@ func (f *ForgeRepository) Build(name string, version string, sourceDir string, e
 
 	switch strategy {
 	case "cmake":
-		return f.buildCMake(name, version, srcPath, extraEnv, extraConfigureFlags, prefix, verbose, jobs)
+		return f.buildCMake(ctx, name, version, srcPath, extraEnv, extraConfigureFlags, prefix, verbose, jobs)
 	case "makeonly":
-		return f.buildMakeOnly(name, version, srcPath, extraEnv, verbose, jobs)
+		return f.buildMakeOnly(ctx, name, version, srcPath, extraEnv, verbose, jobs)
 	case "configure":
-		return f.buildConfigure(name, version, srcPath, extraEnv, extraConfigureFlags, prefix, verbose, jobs)
+		return f.buildConfigure(ctx, name, version, srcPath, extraEnv, extraConfigureFlags, prefix, verbose, jobs)
 	case "autogen":
-		return f.buildAutogen(name, version, srcPath, extraEnv, extraConfigureFlags, prefix, verbose, jobs)
+		return f.buildAutogen(ctx, name, version, srcPath, extraEnv, extraConfigureFlags, prefix, verbose, jobs)
 	default:
 		return "", nil, fmt.Errorf("unsupported build strategy: %s for %s", strategy, name)
 	}
 }
 
-// Install installs a previously built package into prefix.
-func (f *ForgeRepository) Install(name string, version string, buildDir string, prefix string, verbose bool, jobs int) error {
+func (f *ForgeRepository) Install(ctx context.Context, name string, version string, buildDir string, prefix string, verbose bool, jobs int) error {
 	if err := os.MkdirAll(prefix, 0o755); err != nil {
 		return fmt.Errorf("create prefix %s: %w", prefix, err)
 	}
@@ -70,8 +62,9 @@ func (f *ForgeRepository) Install(name string, version string, buildDir string, 
 		installTarget = "install_sw"
 	}
 
-	install := exec.Command("make", fmt.Sprintf("-j%d", jobs), installTarget)
+	install := exec.CommandContext(ctx, "make", fmt.Sprintf("-j%d", jobs), installTarget)
 	install.Dir = buildDir
+	install.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if verbose {
 		install.Stdout = os.Stdout
 		install.Stderr = os.Stderr
@@ -87,9 +80,8 @@ func (f *ForgeRepository) Install(name string, version string, buildDir string, 
 	return nil
 }
 
-// runCmd runs a command, returning its combined output. When verbose is true,
-// it streams stdout/stderr to the terminal and returns only stderr on error.
-func runCmd(cmd *exec.Cmd, verbose bool) ([]byte, error) {
+func runCmd(ctx context.Context, cmd *exec.Cmd, verbose bool) ([]byte, error) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if verbose {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -102,8 +94,7 @@ func runCmd(cmd *exec.Cmd, verbose bool) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 
-// buildCMake runs cmake + make.
-func (f *ForgeRepository) buildCMake(name, version, srcPath string, extraEnv []string, extraFlags []string, prefix string, verbose bool, jobs int) (string, map[string]string, error) {
+func (f *ForgeRepository) buildCMake(ctx context.Context, name, version, srcPath string, extraEnv []string, extraFlags []string, prefix string, verbose bool, jobs int) (string, map[string]string, error) {
 	buildDir := filepath.Join(srcPath, "build")
 	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		return "", nil, fmt.Errorf("create build dir: %w", err)
@@ -116,44 +107,39 @@ func (f *ForgeRepository) buildCMake(name, version, srcPath string, extraEnv []s
 	}
 	cmakeArgs = append(cmakeArgs, extraFlags...)
 
-	cmake := exec.Command("cmake", cmakeArgs...)
+	cmake := exec.CommandContext(ctx, "cmake", cmakeArgs...)
 	cmake.Dir = buildDir
 	cmake.Env = mergeEnv(extraEnv)
-	if out, err := runCmd(cmake, verbose); err != nil {
+	if out, err := runCmd(ctx, cmake, verbose); err != nil {
 		return "", nil, fmt.Errorf("cmake %s: %w\n%s", name, err, out)
 	}
 
-	make := exec.Command("make", fmt.Sprintf("-j%d", jobs))
+	make := exec.CommandContext(ctx, "make", fmt.Sprintf("-j%d", jobs))
 	make.Dir = buildDir
 	make.Env = mergeEnv(extraEnv)
-	if out, err := runCmd(make, verbose); err != nil {
+	if out, err := runCmd(ctx, make, verbose); err != nil {
 		return "", nil, fmt.Errorf("make %s: %w\n%s", name, err, out)
 	}
 
 	return buildDir, forgeEnv(prefix), nil
 }
 
-// buildConfigure runs ./configure + make. Handles OpenSSL's Configure and config.
-func (f *ForgeRepository) buildConfigure(name, version, srcPath string, extraEnv []string, extraFlags []string, prefix string, verbose bool, jobs int) (string, map[string]string, error) {
-
-	// For m4, run autoreconf first.
+func (f *ForgeRepository) buildConfigure(ctx context.Context, name, version, srcPath string, extraEnv []string, extraFlags []string, prefix string, verbose bool, jobs int) (string, map[string]string, error) {
 	if name == "m4" {
 		if _, err := os.Stat(filepath.Join(srcPath, "configure")); os.IsNotExist(err) {
-			autoreconf := exec.Command("autoreconf", "-fi")
+			autoreconf := exec.CommandContext(ctx, "autoreconf", "-fi")
 			autoreconf.Dir = srcPath
 			autoreconf.Env = mergeEnv(extraEnv)
-			if out, err := runCmd(autoreconf, verbose); err != nil {
+			if out, err := runCmd(ctx, autoreconf, verbose); err != nil {
 				return "", nil, fmt.Errorf("autoreconf %s: %w\n%s", name, err, out)
 			}
 		}
 	}
 
-	// For automake, touch all generated files to prevent regeneration.
 	if name == "automake" {
 		touchAllGeneratedFiles(srcPath)
 	}
 
-	// Determine which configure script to use.
 	var configurePath string
 	var usePerl bool
 	var useConfig bool
@@ -187,70 +173,66 @@ func (f *ForgeRepository) buildConfigure(name, version, srcPath string, extraEnv
 		for _, a := range args {
 			perlArgs = append(perlArgs, a)
 		}
-		configure = exec.Command("perl", perlArgs...)
+		configure = exec.CommandContext(ctx, "perl", perlArgs...)
 		configure.Dir = srcPath
 		configure.Env = mergeEnv(extraEnv)
 	} else if useConfig {
-		configure = exec.Command("./config", args...)
+		configure = exec.CommandContext(ctx, "./config", args...)
 		configure.Dir = srcPath
 		configure.Env = mergeEnv(extraEnv)
 	} else {
-		configure = exec.Command("./configure", args...)
+		configure = exec.CommandContext(ctx, "./configure", args...)
 		configure.Dir = srcPath
 		configure.Env = mergeEnv(extraEnv)
 	}
 
-	if out, err := runCmd(configure, verbose); err != nil {
+	if out, err := runCmd(ctx, configure, verbose); err != nil {
 		return "", nil, fmt.Errorf("configure %s: %w\n%s", name, err, out)
 	}
 
-	if err := runMake(name, srcPath, extraEnv, verbose, jobs); err != nil {
+	if err := runMake(ctx, name, srcPath, extraEnv, verbose, jobs); err != nil {
 		return "", nil, err
 	}
 
 	return srcPath, forgeEnv(prefix), nil
 }
 
-// buildAutogen runs autoreconf then configure + make.
-func (f *ForgeRepository) buildAutogen(name, version, srcPath string, extraEnv []string, extraFlags []string, prefix string, verbose bool, jobs int) (string, map[string]string, error) {
-
-	autoreconf := exec.Command("autoreconf", "-fi")
+func (f *ForgeRepository) buildAutogen(ctx context.Context, name, version, srcPath string, extraEnv []string, extraFlags []string, prefix string, verbose bool, jobs int) (string, map[string]string, error) {
+	autoreconf := exec.CommandContext(ctx, "autoreconf", "-fi")
 	autoreconf.Dir = srcPath
 	autoreconf.Env = mergeEnv(extraEnv)
-	if out, err := runCmd(autoreconf, verbose); err != nil {
+	if out, err := runCmd(ctx, autoreconf, verbose); err != nil {
 		return "", nil, fmt.Errorf("autoreconf %s: %w\n%s", name, err, out)
 	}
 
 	args := []string{"--prefix=" + prefix}
 	args = append(args, extraFlags...)
 
-	configure := exec.Command("./configure", args...)
+	configure := exec.CommandContext(ctx, "./configure", args...)
 	configure.Dir = srcPath
 	configure.Env = mergeEnv(extraEnv)
-	if out, err := runCmd(configure, verbose); err != nil {
+	if out, err := runCmd(ctx, configure, verbose); err != nil {
 		return "", nil, fmt.Errorf("configure %s: %w\n%s", name, err, out)
 	}
 
-	if err := runMake(name, srcPath, extraEnv, verbose, jobs); err != nil {
+	if err := runMake(ctx, name, srcPath, extraEnv, verbose, jobs); err != nil {
 		return "", nil, err
 	}
 
 	return srcPath, forgeEnv(prefix), nil
 }
 
-// buildMakeOnly runs make (no configure step).
-func (f *ForgeRepository) buildMakeOnly(name, version, srcPath string, extraEnv []string, verbose bool, jobs int) (string, map[string]string, error) {
+func (f *ForgeRepository) buildMakeOnly(ctx context.Context, name, version, srcPath string, extraEnv []string, verbose bool, jobs int) (string, map[string]string, error) {
 	prefix := filepath.Dir(srcPath)
 
-	if err := runMake(name, srcPath, extraEnv, verbose, jobs); err != nil {
+	if err := runMake(ctx, name, srcPath, extraEnv, verbose, jobs); err != nil {
 		return "", nil, err
 	}
 
 	return srcPath, forgeEnv(prefix), nil
 }
 
-// runMake runs make with per-package settings.
-func runMake(name, srcPath string, extraEnv []string, verbose bool, jobs int) error {
+func runMake(ctx context.Context, name, srcPath string, extraEnv []string, verbose bool, jobs int) error {
 	if jobs < 1 {
 		jobs = 4
 	}
@@ -260,16 +242,15 @@ func runMake(name, srcPath string, extraEnv []string, verbose bool, jobs int) er
 		args = []string{"-j1", "MAKEINFO=true", "HELP2MAN=true"}
 	}
 
-	make := exec.Command("make", args...)
+	make := exec.CommandContext(ctx, "make", args...)
 	make.Dir = srcPath
 	make.Env = mergeEnv(extraEnv)
-	if out, err := runCmd(make, verbose); err != nil {
+	if out, err := runCmd(ctx, make, verbose); err != nil {
 		return fmt.Errorf("make %s: %w\n%s", name, err, out)
 	}
 	return nil
 }
 
-// mergeEnv merges extraEnv into the current process environment.
 func mergeEnv(extraEnv []string) []string {
 	if len(extraEnv) == 0 {
 		return nil
@@ -281,7 +262,6 @@ func mergeEnv(extraEnv []string) []string {
 	return env
 }
 
-// detectStrategy returns the build strategy for a package name.
 func detectStrategy(name string) string {
 	switch name {
 	case "zlib", "openssl", "ossl", "libtool", "libxml2", "php", "m4", "automake", "autoconf":
@@ -295,7 +275,6 @@ func detectStrategy(name string) string {
 	}
 }
 
-// chmodBuildScripts makes build scripts executable.
 func chmodBuildScripts(sourcePath string) {
 	for _, dir := range []string{"build", "ext", "build-aux", "lib", "scripts"} {
 		exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, dir)).Run()
@@ -309,7 +288,6 @@ func chmodBuildScripts(sourcePath string) {
 	}
 }
 
-// touchAutotools touches autotools files to prevent regeneration.
 func touchAutotools(sourcePath string) {
 	for _, f := range []string{"aclocal.m4", "Makefile.in", "configure", "config.h.in"} {
 		p := filepath.Join(sourcePath, f)
@@ -319,7 +297,6 @@ func touchAutotools(sourcePath string) {
 	}
 }
 
-// touchAllGeneratedFiles touches .am then .in files to prevent make regeneration.
 func touchAllGeneratedFiles(sourcePath string) {
 	now := time.Now()
 	filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
@@ -344,7 +321,6 @@ func touchAllGeneratedFiles(sourcePath string) {
 	})
 }
 
-// forgeEnv builds the environment variables for downstream packages.
 func forgeEnv(prefix string) map[string]string {
 	env := map[string]string{
 		"PKG_CONFIG_PATH": filepath.Join(prefix, "lib", "pkgconfig"),
@@ -354,7 +330,6 @@ func forgeEnv(prefix string) map[string]string {
 	return env
 }
 
-// findSourceDir locates the actual source directory inside the extracted dir.
 func findSourceDir(extractDir, name, version string) string {
 	if hasBuildFile(extractDir) {
 		return extractDir

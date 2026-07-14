@@ -25,6 +25,7 @@ type SiloRepository interface {
 	MarkInProgress(name, version string) error
 	MarkComplete(name, version string) error
 	MarkFailed(name, version string) error
+	MarkInterrupted(name, version string) error
 
 	// Default version management.
 	GetDefault() (string, error)
@@ -105,6 +106,10 @@ func (s *Service) MarkComplete(name, version string) error {
 // MarkFailed marks a package installation as failed.
 func (s *Service) MarkFailed(name, version string) error {
 	return s.siloRep.MarkFailed(name, version)
+}
+
+func (s *Service) MarkInterrupted(name, version string) error {
+	return s.siloRep.MarkInterrupted(name, version)
 }
 
 // GetDefault returns the default PHP version.

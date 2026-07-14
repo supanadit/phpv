@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -277,6 +278,7 @@ func newTestPHPHandler(root string) *PHPHandler {
 	doctorSvc := doctor.NewService(disk.NewDoctorRepository())
 	updateSvc := update.NewService(disk.NewUpdateRepository(), "dev")
 	return &PHPHandler{
+		ctx:         context.Background(),
 		siloSvc:     siloSvc,
 		registrySvc: regSvc,
 		bundleSvc:   bundleSvc,

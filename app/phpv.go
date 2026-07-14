@@ -16,6 +16,7 @@ import (
 	"github.com/supanadit/phpv/graph"
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/internal/repository/memory"
+	"github.com/supanadit/phpv/internal/shutdown"
 	"github.com/supanadit/phpv/internal/terminal"
 	"github.com/supanadit/phpv/patcher"
 	"github.com/supanadit/phpv/pecl"
@@ -26,11 +27,8 @@ import (
 	"github.com/supanadit/phpv/update"
 )
 
-// Version is set at build time via -ldflags.
-// Example: go build -ldflags "-X main.Version=v0.1.0" -o phpv ./app/phpv.go
 var Version = "dev"
 
-// NewRootCmd provides the root cobra command.
 func NewRootCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "phpv",
@@ -38,7 +36,6 @@ func NewRootCmd() *cobra.Command {
 	}
 }
 
-// RegisterRootCmd executes the root command when the app starts.
 func RegisterRootCmd(rootCmd *cobra.Command, lc fx.Lifecycle) {
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
@@ -48,9 +45,18 @@ func RegisterRootCmd(rootCmd *cobra.Command, lc fx.Lifecycle) {
 }
 
 func main() {
+	mgr := shutdown.New(shutdown.DefaultSignals...)
+	shutdownCtx := mgr.Context()
+
+	go func() {
+		sig := mgr.Wait()
+		shutdown.PrintInterrupted(sig)
+	}()
+
 	options := []fx.Option{
 		fx.NopLogger,
 		fx.Supply(Version),
+		fx.Supply(shutdownCtx),
 		fx.Provide(
 			NewRootCmd,
 			fx.Annotate(memory.NewRegistryRepository, fx.As(new(registry.RegistryRepository))),
@@ -86,9 +92,12 @@ func main() {
 	app := fx.New(options...)
 
 	if err := app.Start(context.Background()); err != nil {
+		mgr.Stop()
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+
+	mgr.Stop()
 
 	if err := app.Stop(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, err)

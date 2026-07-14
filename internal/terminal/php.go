@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -30,6 +31,7 @@ import (
 
 // PHPHandler registers cobra commands and delegates to services.
 type PHPHandler struct {
+	ctx          context.Context
 	siloSvc      *silo.Service
 	assemblerSvc *assembler.Service
 	registrySvc  *registry.Service
@@ -43,8 +45,9 @@ type PHPHandler struct {
 	version      string
 }
 
-func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service, systemSvc *system.Service, shimSvc *shim.Service, peclSvc *pecl.Service, configSvc *config.Service, doctorSvc *doctor.Service, updateSvc *update.Service, version string) {
+func NewPHPHandler(rootCmd *cobra.Command, ctx context.Context, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service, systemSvc *system.Service, shimSvc *shim.Service, peclSvc *pecl.Service, configSvc *config.Service, doctorSvc *doctor.Service, updateSvc *update.Service, version string) {
 	h := &PHPHandler{
+		ctx:          ctx,
 		siloSvc:      siloSvc,
 		assemblerSvc: assemblerSvc,
 		registrySvc:  registrySvc,
@@ -202,6 +205,7 @@ Version syntax:
 	cmd.Flags().Bool("clean", false, "Delete everything including cached source and rebuild from scratch")
 	cmd.Flags().Bool("verbose", false, "Show full build output instead of spinner")
 	cmd.Flags().Int("jobs", 0, "Number of parallel build jobs (default: CPU count)")
+	cmd.Flags().Bool("yes", false, "Skip confirmation prompts")
 	return cmd
 }
 
@@ -216,6 +220,29 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Printf("✓ PHP %s installed from bundle\n", version)
 		return nil
+	}
+
+	state, _ := h.siloSvc.GetState("php", version)
+	if state == domain.StateInterrupted {
+		yes, _ := cmd.Flags().GetBool("yes")
+		if !yes {
+			fmt.Printf("Previous install of PHP %s was interrupted. Reinstall? [y/N] ", version)
+			os.Stdout.Sync()
+			stat, _ := os.Stdin.Stat()
+			if (stat.Mode() & os.ModeCharDevice) == 0 {
+				fmt.Println("[non-interactive, skipping]")
+				return fmt.Errorf("previous install was interrupted; use --yes to reinstall")
+			}
+			reader := bufio.NewReader(os.Stdin)
+			answer, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("read input: %w", err)
+			}
+			answer = strings.TrimSpace(strings.ToLower(answer))
+			if answer != "y" && answer != "yes" {
+				return fmt.Errorf("reinstall cancelled")
+			}
+		}
 	}
 
 	static, _ := cmd.Flags().GetBool("static")
@@ -269,7 +296,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Installing PHP %s...\n\n", version)
 
 	if verbose {
-		result, err := h.assemblerSvc.Assemble("php", version, static, extensions, true, nil, systemPkgs, jobs)
+		result, err := h.assemblerSvc.Assemble(h.ctx, "php", version, static, extensions, true, nil, systemPkgs, jobs)
 		if err != nil {
 			return fmt.Errorf("install failed: %w", err)
 		}
@@ -310,7 +337,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	result, err := h.assemblerSvc.Assemble("php", version, static, extensions, false, func(stage, message string) {
+	result, err := h.assemblerSvc.Assemble(h.ctx, "php", version, static, extensions, false, func(stage, message string) {
 		progressCh <- progressMsg{stage: stage, message: message}
 	}, systemPkgs, jobs)
 	close(progressCh)

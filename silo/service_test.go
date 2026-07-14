@@ -39,6 +39,9 @@ func (m *mockSiloRepo) MarkComplete(name, version string) error {
 func (m *mockSiloRepo) MarkFailed(name, version string) error {
 	return nil
 }
+func (m *mockSiloRepo) MarkInterrupted(name, version string) error {
+	return nil
+}
 func (m *mockSiloRepo) GetDefault() (string, error) {
 	return m.defaultVer, m.defaultErr
 }

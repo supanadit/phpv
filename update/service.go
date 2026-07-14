@@ -1,6 +1,7 @@
 package update
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -32,7 +33,7 @@ func (s *Service) CheckForUpdate() (latest string, hasUpdate bool, err error) {
 	return latest, true, nil
 }
 
-func (s *Service) SelfUpdate() error {
+func (s *Service) SelfUpdate(ctx context.Context) error {
 	latest, hasUpdate, err := s.CheckForUpdate()
 	if err != nil {
 		return err
@@ -90,7 +91,7 @@ func (s *Service) SelfUpdate() error {
 	tmpFile := filepath.Join(execDir, ".phpv_update_download")
 	fmt.Printf("Downloading %s (%d bytes)...\n", downloadURL, assetSize)
 
-	if err := s.repo.DownloadFile(downloadURL, tmpFile); err != nil {
+	if err := s.repo.DownloadFile(ctx, downloadURL, tmpFile); err != nil {
 		return fmt.Errorf("download: %w", err)
 	}
 

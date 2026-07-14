@@ -38,5 +38,5 @@ func (h *PHPHandler) update(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	return h.updateSvc.SelfUpdate()
+	return h.updateSvc.SelfUpdate(h.ctx)
 }

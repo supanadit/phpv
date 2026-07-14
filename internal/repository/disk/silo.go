@@ -320,6 +320,10 @@ func (s *SiloRepository) MarkFailed(name, version string) error {
 	return os.WriteFile(PackageStatePath(name, version), []byte("failed"), 0o644)
 }
 
+func (s *SiloRepository) MarkInterrupted(name, version string) error {
+	return os.WriteFile(PackageStatePath(name, version), []byte("interrupted"), 0o644)
+}
+
 // GetDefault reads the default PHP version.
 func (s *SiloRepository) GetDefault() (string, error) {
 	data, err := os.ReadFile(DefaultPath())

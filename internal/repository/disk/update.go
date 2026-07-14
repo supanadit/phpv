@@ -1,6 +1,7 @@
 package disk
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -54,14 +55,19 @@ func (r *UpdateRepository) FetchLatestRelease() (update.Release, error) {
 	return rel, nil
 }
 
-func (r *UpdateRepository) DownloadFile(url, destPath string) error {
+func (r *UpdateRepository) DownloadFile(ctx context.Context, url, destPath string) error {
 	out, err := os.Create(destPath)
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
 	defer out.Close()
 
-	resp, err := r.httpClient.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := r.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("download: %w", err)
 	}

@@ -532,10 +532,14 @@ func (s *Service) downloadAll(name, version string, deps []domain.Dependency) ([
 	}
 
 	wg.Wait()
+	var failed []string
 	for _, dr := range results {
 		if dr.Err != nil {
-			return results, fmt.Errorf("one or more downloads failed")
+			failed = append(failed, fmt.Sprintf("%s@%s: %v", dr.Name, dr.Version, dr.Err))
 		}
+	}
+	if len(failed) > 0 {
+		return results, fmt.Errorf("download failed:\n  - %s", strings.Join(failed, "\n  - "))
 	}
 	return results, nil
 }

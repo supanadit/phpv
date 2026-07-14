@@ -344,7 +344,6 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 			fmt.Printf("✓ PHP %s is already installed\n", result.Version)
 			return nil
 		}
-		fmt.Printf("✓ PHP %s installed at %s\n", result.Version, result.Prefix)
 		sharedOnly := h.assemblerSvc.Graph().SharedOnlyExtensions(resolvedVersion, extensions)
 		if len(sharedOnly) > 0 {
 			sourceDir := h.siloSvc.SourcePath("php", resolvedVersion)
@@ -382,13 +381,15 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 			select {
 			case msg, ok := <-progressCh:
 				if !ok {
-					if current != "" {
-						fmt.Fprintf(os.Stdout, "\r\033[2K%s\n", current)
-					}
 					return
 				}
-				current = fmt.Sprintf("%s %s", stageGlyph(msg.stage), msg.message)
-				fmt.Fprintf(os.Stdout, "\r\033[2K%s %s", spinnerFrames[frame%len(spinnerFrames)], current)
+				glyph := stageGlyph(msg.stage)
+				if msg.stage == "done" {
+					fmt.Fprintf(os.Stdout, "\r\033[2K%s %s\n", glyph, msg.message)
+				} else {
+					current = fmt.Sprintf("%s %s", glyph, msg.message)
+					fmt.Fprintf(os.Stdout, "\r\033[2K%s %s", spinnerFrames[frame%len(spinnerFrames)], current)
+				}
 			case <-ticker.C:
 				if current != "" {
 					fmt.Fprintf(os.Stdout, "\r\033[2K%s %s", spinnerFrames[frame%len(spinnerFrames)], current)
@@ -413,7 +414,6 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		fmt.Printf("✓ PHP %s is already installed\n", result.Version)
 		return nil
 	}
-	fmt.Printf("✓ PHP %s installed at %s\n", result.Version, result.Prefix)
 
 	sharedOnly := h.assemblerSvc.Graph().SharedOnlyExtensions(resolvedVersion, extensions)
 	if len(sharedOnly) > 0 {

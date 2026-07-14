@@ -308,7 +308,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		return nil, fmt.Errorf("install %s@%s: %w", name, exactVersion, err)
 	}
 
-	emit("done", fmt.Sprintf("✓ %s %s installed at %s", name, exactVersion, prefix))
+	emit("done", fmt.Sprintf("%s %s installed at %s", name, exactVersion, prefix))
 
 	var depLibraryPaths []string
 	for _, dep := range plan.Deps {

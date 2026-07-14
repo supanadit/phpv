@@ -207,6 +207,7 @@ Version syntax:
 	cmd.Flags().Bool("verbose", false, "Show full build output instead of spinner")
 	cmd.Flags().Int("jobs", 0, "Number of parallel build jobs (default: CPU count)")
 	cmd.Flags().Bool("yes", false, "Skip confirmation prompts")
+	cmd.Flags().Bool("force", false, "Skip state checks and reinstall")
 	return cmd
 }
 
@@ -224,25 +225,20 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	}
 
 	state, _ := h.siloSvc.GetState("php", version)
-	if state == domain.StateInterrupted {
-		yes, _ := cmd.Flags().GetBool("yes")
-		if !yes {
-			fmt.Printf("Previous install of PHP %s was interrupted. Reinstall? [y/N] ", version)
-			os.Stdout.Sync()
-			stat, _ := os.Stdin.Stat()
-			if (stat.Mode() & os.ModeCharDevice) == 0 {
-				fmt.Println("[non-interactive, skipping]")
-				return fmt.Errorf("previous install was interrupted; use --yes to reinstall")
+	if state == domain.StateFailed || state == domain.StateInterrupted || state == domain.StateInProgress {
+		force, _ := cmd.Flags().GetBool("force")
+		clean, _ := cmd.Flags().GetBool("clean")
+		if !force && !clean {
+			stateMsg := string(state)
+			if state == domain.StateInterrupted {
+				stateMsg = "interrupted (you pressed Ctrl+C)"
+			} else if state == domain.StateInProgress {
+				stateMsg = "in_progress (likely crashed)"
 			}
-			reader := bufio.NewReader(os.Stdin)
-			answer, err := reader.ReadString('\n')
-			if err != nil {
-				return fmt.Errorf("read input: %w", err)
-			}
-			answer = strings.TrimSpace(strings.ToLower(answer))
-			if answer != "y" && answer != "yes" {
-				return fmt.Errorf("reinstall cancelled")
-			}
+			fmt.Printf("Previous install of PHP %s was '%s'.\n", version, stateMsg)
+			fmt.Printf("Run `phpv install %s --force` to retry (deps preserved).\n", version)
+			fmt.Printf("Or use `--clean` to delete the PHP prefix/source first.\n")
+			return nil
 		}
 	}
 

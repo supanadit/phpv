@@ -157,7 +157,21 @@ func (s *Service) checkStateFiles(root string) []Issue {
 				Severity: SeverityWarning,
 				Title:    fmt.Sprintf("PHP %s installation failed", e.Name()),
 				Detail:   fmt.Sprintf("State file at %s contains 'failed'", statePath),
-				Fix:      fmt.Sprintf("Run `phpv install %s --clean` to retry", e.Name()),
+				Fix:      fmt.Sprintf("Run `phpv install %s --force` to retry (deps preserved), or `--clean` to start fresh", e.Name()),
+			})
+		} else if state == domain.StateInterrupted {
+			issues = append(issues, Issue{
+				Severity: SeverityWarning,
+				Title:    fmt.Sprintf("PHP %s installation was interrupted", e.Name()),
+				Detail:   fmt.Sprintf("State file at %s contains 'interrupted'", statePath),
+				Fix:      fmt.Sprintf("Run `phpv install %s --force` to retry (deps preserved), or `--clean` to start fresh", e.Name()),
+			})
+		} else if state == domain.StateInProgress {
+			issues = append(issues, Issue{
+				Severity: SeverityWarning,
+				Title:    fmt.Sprintf("PHP %s installation is in progress (likely crashed)", e.Name()),
+				Detail:   fmt.Sprintf("State file at %s contains 'in_progress'", statePath),
+				Fix:      fmt.Sprintf("Run `phpv install %s --force` to retry (deps preserved), or `--clean` to start fresh", e.Name()),
 			})
 		}
 	}

@@ -14,6 +14,9 @@ var fedoraPackages = pkgMap{
 	"pcre2":     "pcre2-devel",
 	"argon2":    "libargon2-devel",
 	"sodium":    "libsodium-devel",
+	"libpng":    "libpng-devel",
+	"libjpeg":   "libjpeg-turbo-devel",
+	"freetype":  "freetype-devel",
 }
 
 var ubuntuPackages = pkgMap{
@@ -28,6 +31,9 @@ var ubuntuPackages = pkgMap{
 	"pcre2":     "libpcre2-dev",
 	"argon2":    "libargon2-dev",
 	"sodium":    "libsodium-dev",
+	"libpng":    "libpng-dev",
+	"libjpeg":   "libjpeg-dev",
+	"freetype":  "libfreetype-dev",
 }
 
 var alpinePackages = pkgMap{
@@ -42,6 +48,9 @@ var alpinePackages = pkgMap{
 	"pcre2":     "pcre2-dev",
 	"argon2":    "argon2-dev",
 	"sodium":    "libsodium-dev",
+	"libpng":    "libpng-dev",
+	"libjpeg":   "libjpeg-dev",
+	"freetype":  "freetype-dev",
 }
 
 var archPackages = pkgMap{
@@ -56,6 +65,9 @@ var archPackages = pkgMap{
 	"pcre2":     "pcre2",
 	"argon2":    "argon2",
 	"sodium":    "libsodium",
+	"libpng":    "libpng",
+	"libjpeg":   "libjpeg-turbo",
+	"freetype":  "freetype2",
 }
 
 var fedoraBuildTools = pkgMap{

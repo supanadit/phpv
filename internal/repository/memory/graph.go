@@ -8,6 +8,13 @@ import (
 	"github.com/supanadit/phpv/internal/repository"
 )
 
+type configureFlagRule struct {
+	MinVer string
+	MaxVer string
+	Flags  []string
+	Needs  string
+}
+
 // GraphRepository is an in-memory implementation of graph.GraphRepository.
 // It holds hardcoded build knowledge: dependency graph, extension definitions,
 // flag rules, and compiler rules.
@@ -226,18 +233,36 @@ func (r *GraphRepository) ExpandImplied(extensions []string) ([]string, []string
 	return expanded, added
 }
 
+var configureFlagRules = map[string][]configureFlagRule{
+	"openssl": {
+		{MaxVer: "1.0.2", Flags: []string{"shared", "no-ssl3"}},
+		{MinVer: "1.1.0", Flags: []string{"shared", "no-ssl3", "no-tests"}},
+	},
+	"m4": {
+		{Flags: []string{"--disable-maintainer-mode"}},
+	},
+	"libxml2": {
+		{Flags: []string{"--disable-shared", "--enable-static", "--without-lzma", "--without-python", "--disable-dependency-tracking", "--with-zlib"}},
+	},
+	"curl": {
+		{Flags: []string{"--with-ssl", "--without-brotli", "--disable-ldap", "--without-libpsl", "--without-libidn2", "--without-zstd", "--without-nghttp2", "--without-zlib"}},
+	},
+	"icu": {
+		{Flags: []string{"--disable-extras", "--disable-samples"}},
+	},
+}
+
 func (r *GraphRepository) GetConfigureFlags(name, version string) []string {
-	switch name {
-	case "openssl":
-		return []string{"shared", "no-ssl3", "no-tests"}
-	case "m4":
-		return []string{"--disable-maintainer-mode"}
-	case "libxml2":
-		return []string{"--disable-shared", "--enable-static", "--without-lzma", "--without-python", "--disable-dependency-tracking", "--with-zlib"}
-	case "curl":
-		return []string{"--with-ssl", "--without-brotli", "--disable-ldap", "--without-libpsl", "--without-libidn2", "--without-zstd", "--without-nghttp2", "--without-zlib"}
-	case "icu":
-		return []string{"--disable-extras", "--disable-samples"}
+	rules, ok := configureFlagRules[name]
+	if !ok {
+		return nil
+	}
+	for _, rule := range rules {
+		minOK := rule.MinVer == "" || repository.CompareVersions(version, rule.MinVer) >= 0
+		maxOK := rule.MaxVer == "" || repository.CompareVersions(version, rule.MaxVer) <= 0
+		if minOK && maxOK {
+			return rule.Flags
+		}
 	}
 	return nil
 }
@@ -363,7 +388,8 @@ func (r *GraphRepository) GetPHPConfigureFlags(phpVersion string, extensions []s
 		"--enable-cli",
 	}
 	for _, ext := range extensions {
-		flags = append(flags, r.GetExtensionConfigureFlags(ext, phpVersion)...)
+		extFlags := r.GetExtensionConfigureFlags(ext, phpVersion)
+		flags = append(flags, extFlags...)
 	}
 	return flags
 }

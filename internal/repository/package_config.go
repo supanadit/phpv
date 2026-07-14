@@ -37,6 +37,13 @@ type ExtensionConfig struct {
 	Override []ExtOverride
 }
 
+// URLOverride defines a URL template override for versions older than Before.
+// Overrides are evaluated in order — first match wins.
+type URLOverride struct {
+	Before string
+	URL    string
+}
+
 // PackageConfig defines a package's registry entries declaratively.
 // Provide either Ranges (for contiguous version ranges) or Versions (for
 // explicit individual versions). BuildRegistries will generate or use the
@@ -45,6 +52,11 @@ type ExtensionConfig struct {
 // URLTemplate supports placeholders:
 //   - {version} — replaced with the version string
 //   - {ext}     — replaced by evaluating Extension rules
+//
+// URLOverrides allows version-conditional URL templates. The first override
+// whose Before version is greater than the current version wins. This is
+// useful for packages that moved their archive host (e.g., PHP < 5.3 is on
+// museum.php.net instead of www.php.net).
 //
 // OS sets the OS property on every generated entry. Use "all" (or
 // leave empty) for packages that are OS-agnostic (e.g., source code).
@@ -57,6 +69,7 @@ type PackageConfig struct {
 	Versions    []string
 	Skip        []string
 	URLTemplate string
+	URLOverrides []URLOverride
 	Extension   ExtensionConfig
 	OS          string
 	Checksums   []Checksum
@@ -88,7 +101,14 @@ func BuildRegistries(cfg PackageConfig) []domain.Registry {
 
 	registries := make([]domain.Registry, 0, len(versions))
 	for _, v := range versions {
-		url := RenderTemplate(cfg.URLTemplate, v)
+		tmpl := cfg.URLTemplate
+		for _, override := range cfg.URLOverrides {
+			if CompareVersions(v, override.Before) < 0 {
+				tmpl = override.URL
+				break
+			}
+		}
+		url := RenderTemplate(tmpl, v)
 		if cfg.Extension.Default != "" {
 			ext := resolveExtension(cfg.Extension, v)
 			url = strings.ReplaceAll(url, "{ext}", ext)

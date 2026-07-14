@@ -54,6 +54,10 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				}),
 			),
 			URLTemplate: "https://www.php.net/distributions/php-{version}.tar.gz",
+			URLOverrides: []repository.URLOverride{
+				{Before: "5.0.0", URL: "https://museum.php.net/php4/php-{version}.tar.gz"},
+				{Before: "5.3.0", URL: "https://museum.php.net/php5/php-{version}.tar.gz"},
+			},
 			Checksums: []repository.Checksum{
 				{
 					Version: "8.5.8",

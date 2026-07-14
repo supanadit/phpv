@@ -135,6 +135,11 @@ func (r *GraphRepository) GetExtensionDependencyWithVersion(extName, phpVersion 
 	if !ok || def.RequiresPackage == "" {
 		return "", "", false
 	}
+	for _, v := range def.Versions {
+		if repository.MatchVersionRange(v.VersionRange, phpVersion) {
+			return def.RequiresPackage, v.Version, true
+		}
+	}
 	return def.RequiresPackage, "", true
 }
 
@@ -248,7 +253,20 @@ func (r *GraphRepository) GetExtensionConfigureFlags(name string, phpVersion str
 	if !ok {
 		return nil
 	}
-	return def.ConfigureFlags
+	if len(def.ConfigureFlags) > 0 {
+		return def.ConfigureFlags
+	}
+	if def.Flag == "" {
+		return nil
+	}
+	flag := def.Flag
+	for _, fv := range def.FlagVersions {
+		if repository.MatchVersionRange(fv.VersionRange, phpVersion) {
+			flag = fv.Flag
+			break
+		}
+	}
+	return []string{flag}
 }
 
 func (r *GraphRepository) GetCompilerStdRule(phpVersion string) domain.CompilerRule {
@@ -288,6 +306,9 @@ func (r *GraphRepository) registerExtensions() {
 	for _, ext := range builtInExtensions() {
 		for _, imp := range ext.Implied {
 			r.implied[ext.Name] = append(r.implied[ext.Name], imp)
+		}
+		for _, conflict := range ext.Conflicts {
+			r.conflicts[ext.Name] = append(r.conflicts[ext.Name], conflict)
 		}
 	}
 }
@@ -668,158 +689,490 @@ func builtInPackages() []domain.Package {
 func builtInExtensions() []domain.ExtensionDef {
 	return []domain.ExtensionDef{
 		{
-			Name:        "openssl",
-			Description: "OpenSSL support",
-			ConfigureFlags: []string{
-				"--with-openssl",
-				"--with-system-ciphers",
+			Name:          "bcmath",
+			Description:   "BC Math arbitrary precision",
+			Flag:          "--enable-bcmath",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:            "bz2",
+			Description:     "BZip2 compression",
+			Flag:            "--with-bz2",
+			MinPHPVersion:   "5.0",
+			RequiresPackage: "bzip2",
+		},
+		{
+			Name:          "calendar",
+			Description:   "Calendar conversion support",
+			Flag:          "--enable-calendar",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "ctype",
+			Description:   "Character type checking",
+			Flag:          "--enable-ctype",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:            "curl",
+			Description:     "cURL support",
+			Flag:            "--with-curl",
+			MinPHPVersion:   "5.0",
+			RequiresPackage: "curl",
+			Versions: []domain.VersionConstraintDef{
+				{VersionRange: ">=8.0.0", Version: "8.10.1|>=8.0.0"},
+				{VersionRange: ">=7.0.0 <8.0.0", Version: "7.88.1|>=7.80.0"},
+				{VersionRange: ">=5.6.0 <7.0.0", Version: "7.20.0|>=7.20.0,<7.21.0"},
+				{VersionRange: ">=5.1.0 <5.6.0", Version: "7.12.1|>=7.12.0,<7.13.0"},
+				{VersionRange: ">=5.0.0 <5.1.0", Version: "7.12.0|>=7.12.0,<7.13.0"},
 			},
 		},
 		{
-			Name:        "curl",
-			Description: "cURL support",
-			ConfigureFlags: []string{
-				"--with-curl",
+			Name:          "dba",
+			Description:   "Database (dbm-style) abstraction layer",
+			Flag:          "--enable-dba",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "dom",
+			Description:   "DOM support",
+			Flag:          "--enable-dom",
+			MinPHPVersion: "5.0",
+			Implied:       []string{"libxml"},
+		},
+		{
+			Name:          "enchant",
+			Description:   "Enchant spelling library",
+			Flag:          "--with-enchant",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "exif",
+			Description:   "EXIF headers",
+			Flag:          "--enable-exif",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "fileinfo",
+			Description:   "File information",
+			Flag:          "--enable-fileinfo",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "filter",
+			Description:   "Data filtering",
+			Flag:          "--enable-filter",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "ftp",
+			Description:   "FTP support",
+			Flag:          "--enable-ftp",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "gd",
+			Description:   "GD image processing",
+			Flag:          "--with-gd",
+			MinPHPVersion: "5.0",
+			FlagVersions: []domain.FlagVersionDef{
+				{VersionRange: ">=7.4", Flag: "--enable-gd"},
 			},
 		},
 		{
-			Name:        "pdo",
-			Description: "PHP Data Objects",
-			ConfigureFlags: []string{
-				"--enable-pdo",
-			},
-			Implied: []string{"pdo_mysql", "pdo_pgsql", "pdo_sqlite"},
+			Name:          "gettext",
+			Description:   "Gettext support",
+			Flag:          "--with-gettext",
+			MinPHPVersion: "5.0",
 		},
 		{
-			Name:        "pdo_mysql",
-			Description: "MySQL driver for PDO",
-			ConfigureFlags: []string{
-				"--with-pdo-mysql=mysqlnd",
-			},
+			Name:          "gmp",
+			Description:   "GNU MP support",
+			Flag:          "--with-gmp",
+			MinPHPVersion: "5.0",
 		},
 		{
-			Name:        "pdo_pgsql",
-			Description: "PostgreSQL driver for PDO",
-			ConfigureFlags: []string{
-				"--with-pdo-pgsql",
-			},
+			Name:          "hash",
+			Description:   "HASH message digest",
+			Flag:          "--enable-hash",
+			MinPHPVersion: "5.0",
 		},
 		{
-			Name:        "pdo_sqlite",
-			Description: "SQLite driver for PDO",
-			ConfigureFlags: []string{
-				"--with-pdo-sqlite",
-			},
+			Name:          "iconv",
+			Description:   "Iconv support",
+			Flag:          "--with-iconv",
+			MinPHPVersion: "5.0",
 		},
 		{
-			Name:        "mysqli",
-			Description: "MySQL Improved Extension",
-			ConfigureFlags: []string{
-				"--with-mysqli=mysqlnd",
-			},
+			Name:          "imap",
+			Description:   "IMAP support",
+			Flag:          "--with-imap",
+			MinPHPVersion: "5.0",
 		},
 		{
-			Name:        "mbstring",
-			Description: "Multibyte String support",
-			ConfigureFlags: []string{
-				"--enable-mbstring",
-			},
+			Name:          "interbase",
+			Description:   "InterBase support",
+			Flag:          "--with-interbase",
+			MinPHPVersion: "5.0",
 		},
 		{
-			Name:        "xml",
-			Description: "XML support",
-			ConfigureFlags: []string{
-				"--enable-xml",
-				"--enable-libxml",
-				"--enable-simplexml",
-				"--enable-xmlreader",
-				"--enable-xmlwriter",
-				"--enable-dom",
+			Name:            "intl",
+			Description:     "Internationalization support",
+			Flag:            "--enable-intl",
+			MinPHPVersion:   "5.0",
+			RequiresPackage: "icu",
+			Versions: []domain.VersionConstraintDef{
+				{VersionRange: ">=8.0", Version: "74.2|>=74.2"},
+				{VersionRange: ">=7.4", Version: "63.1|>=63.1,<74"},
+				{VersionRange: ">=5.0 <7.4", Version: "57.2|>=57.0,<60"},
 			},
 		},
 		{
-			Name:        "zip",
-			Description: "ZIP archive support",
-			ConfigureFlags: []string{
-				"--enable-zip",
-				"--with-zip",
+			Name:          "json",
+			Description:   "JSON support",
+			Flag:          "--enable-json",
+			MinPHPVersion: "5.2",
+		},
+		{
+			Name:          "ldap",
+			Description:   "LDAP support",
+			Flag:          "--with-ldap",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:            "libxml",
+			Description:     "LIBXML support",
+			Flag:            "--enable-libxml",
+			MinPHPVersion:   "5.0",
+			RequiresPackage: "libxml2",
+			FlagVersions: []domain.FlagVersionDef{
+				{VersionRange: ">=7.4", Flag: "--with-libxml"},
+			},
+			Versions: []domain.VersionConstraintDef{
+				{VersionRange: ">=8.2.0", Version: "2.12.7|~2.12.0"},
+				{VersionRange: ">=8.0.0 <8.2.0", Version: "2.11.7|~2.11.0"},
+				{VersionRange: ">=5.0.0 <8.0.0", Version: "2.9.14|~2.9.0"},
 			},
 		},
 		{
-			Name:        "gd",
-			Description: "GD image processing",
-			ConfigureFlags: []string{
-				"--with-gd",
+			Name:            "mbstring",
+			Description:     "Multibyte String support",
+			Flag:            "--enable-mbstring",
+			MinPHPVersion:   "5.0",
+			RequiresPackage: "oniguruma",
+			Versions: []domain.VersionConstraintDef{
+				{VersionRange: ">=8.0.0", Version: "6.9.9|~6.9.0"},
+				{VersionRange: ">=7.4.0 <8.0.0", Version: "6.9.8|~6.9.0"},
+				{VersionRange: ">=5.0.0 <7.4.0", Version: "5.9.6|~5.9.0"},
 			},
 		},
 		{
-			Name:        "intl",
-			Description: "Internationalization support",
-			ConfigureFlags: []string{
-				"--enable-intl",
+			Name:          "mysql",
+			Description:   "MySQL support (deprecated)",
+			Flag:          "--with-mysql",
+			MinPHPVersion: "5.0",
+			MaxPHPVersion: "5.6",
+			Conflicts:     []string{"mysqli", "pdo_mysql"},
+			Implied:       []string{"zlib"},
+		},
+		{
+			Name:          "mysqli",
+			Description:   "MySQL Improved Extension",
+			Flag:          "--with-mysqli",
+			MinPHPVersion: "5.0",
+			Conflicts:     []string{"mysql", "pdo_mysql"},
+			Implied:       []string{"zlib"},
+		},
+		{
+			Name:          "odbc",
+			Description:   "ODBC support",
+			Flag:          "--with-odbc",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "opcache",
+			Description:   "OPcache",
+			Flag:          "--enable-opcache",
+			MinPHPVersion: "7.0",
+		},
+		{
+			Name:            "openssl",
+			Description:     "OpenSSL support",
+			Flag:            "--with-openssl",
+			MinPHPVersion:   "5.0",
+			RequiresPackage: "openssl",
+			Versions: []domain.VersionConstraintDef{
+				{VersionRange: ">=8.4.0", Version: "1.1.1w|>=1.1.1,<4.0.0"},
+				{VersionRange: ">=8.1.0 <8.4.0", Version: "1.1.1w|>=1.0.2,<4.0.0"},
+				{VersionRange: ">=7.1.0 <8.1.0", Version: "1.1.1w|>=1.1.1,<1.3.0"},
+				{VersionRange: ">=7.0.0 <7.1.0", Version: "1.0.1u|>=0.9.8,<1.2.0"},
+				{VersionRange: ">=5.0.0 <7.0.0", Version: "1.0.1u|>=1.0.0,<1.1.0"},
 			},
 		},
 		{
-			Name:        "json",
-			Description: "JSON support",
-			ConfigureFlags: []string{
-				"--enable-json",
+			Name:          "pcntl",
+			Description:   "PCNTL process control",
+			Flag:          "--enable-pcntl",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "pcre",
+			Description:   "PCRE regex support",
+			Flag:          "--with-pcre-regex",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "pdo",
+			Description:   "PHP Data Objects",
+			Flag:          "--enable-pdo",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "pdo_dblib",
+			Description:   "Sybase driver for PDO",
+			Flag:          "--with-pdo-dblib",
+			MinPHPVersion: "5.0",
+			Implied:       []string{"pdo"},
+		},
+		{
+			Name:          "pdo_firebird",
+			Description:   "Firebird driver for PDO",
+			Flag:          "--with-pdo-firebird",
+			MinPHPVersion: "5.0",
+			Implied:       []string{"pdo"},
+		},
+		{
+			Name:          "pdo_mysql",
+			Description:   "MySQL driver for PDO",
+			Flag:          "--with-pdo-mysql=mysqlnd",
+			MinPHPVersion: "5.0",
+			Conflicts:     []string{"mysql", "mysqli"},
+			Implied:       []string{"pdo", "zlib"},
+		},
+		{
+			Name:          "pdo_oci",
+			Description:   "Oracle driver for PDO",
+			Flag:          "--with-pdo-oci",
+			MinPHPVersion: "5.0",
+			Implied:       []string{"pdo"},
+		},
+		{
+			Name:          "pdo_odbc",
+			Description:   "ODBC driver for PDO",
+			Flag:          "--with-pdo-odbc",
+			MinPHPVersion: "5.0",
+			Implied:       []string{"pdo"},
+		},
+		{
+			Name:            "pdo_pgsql",
+			Description:     "PostgreSQL driver for PDO",
+			Flag:            "--with-pdo-pgsql",
+			MinPHPVersion:   "5.0",
+			RequiresPackage: "libpq",
+			Implied:         []string{"pdo"},
+		},
+		{
+			Name:          "pdo_sqlite",
+			Description:   "SQLite driver for PDO",
+			Flag:          "--with-pdo-sqlite",
+			MinPHPVersion: "5.0",
+			Implied:       []string{"pdo"},
+		},
+		{
+			Name:            "pgsql",
+			Description:     "PostgreSQL support",
+			Flag:            "--with-pgsql",
+			MinPHPVersion:   "5.0",
+			RequiresPackage: "libpq",
+		},
+		{
+			Name:          "phar",
+			Description:   "Phar archive support",
+			Flag:          "--enable-phar",
+			MinPHPVersion: "5.0",
+			Implied:       []string{"json", "hash"},
+		},
+		{
+			Name:          "posix",
+			Description:   "POSIX system calls",
+			Flag:          "--enable-posix",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "pspell",
+			Description:   "PSpell support",
+			Flag:          "--with-pspell",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "random",
+			Description:   "Random number generator",
+			Flag:          "--with-random",
+			MinPHPVersion: "7.0",
+		},
+		{
+			Name:          "readline",
+			Description:   "Readline support",
+			Flag:          "--with-readline",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "recode",
+			Description:   "Recode support",
+			Flag:          "--with-recode",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "session",
+			Description:   "Session support",
+			Flag:          "--enable-session",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "shmop",
+			Description:   "Shared memory operations",
+			Flag:          "--enable-shmop",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "simplexml",
+			Description:   "SimpleXML support",
+			Flag:          "--enable-simplexml",
+			MinPHPVersion: "5.0",
+			Implied:       []string{"libxml"},
+		},
+		{
+			Name:          "snmp",
+			Description:   "SNMP support",
+			Flag:          "--with-snmp",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "soap",
+			Description:   "SOAP support",
+			Flag:          "--enable-soap",
+			MinPHPVersion: "5.0",
+			Implied:       []string{"libxml"},
+		},
+		{
+			Name:          "sockets",
+			Description:   "Socket support",
+			Flag:          "--enable-sockets",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "sodium",
+			Description:   "Sodium support",
+			Flag:          "--with-sodium",
+			MinPHPVersion: "7.2",
+		},
+		{
+			Name:          "sqlite3",
+			Description:   "SQLite3 support",
+			Flag:          "--enable-sqlite3",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "standard",
+			Description:   "Standard PHP functions",
+			Flag:          "--enable-standard",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "sysvmsg",
+			Description:   "System V message queues",
+			Flag:          "--enable-sysvmsg",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "sysvsem",
+			Description:   "System V semaphores",
+			Flag:          "--enable-sysvsem",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "sysvshm",
+			Description:   "System V shared memory",
+			Flag:          "--enable-sysvshm",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "tidy",
+			Description:   "Tidy HTML cleaner",
+			Flag:          "--with-tidy",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "tokenizer",
+			Description:   "Tokenizer support",
+			Flag:          "--enable-tokenizer",
+			MinPHPVersion: "5.0",
+		},
+		{
+			Name:          "tokenizer_all",
+			Description:   "Tokenizer all tokens",
+			Flag:          "--enable-tokenizer-all",
+			MinPHPVersion: "7.0",
+		},
+		{
+			Name:          "xml",
+			Description:   "XML support",
+			Flag:          "--enable-xml",
+			MinPHPVersion: "5.0",
+			Implied:       []string{"libxml"},
+		},
+		{
+			Name:          "xmlreader",
+			Description:   "XMLReader support",
+			Flag:          "--enable-xmlreader",
+			MinPHPVersion: "5.0",
+			Implied:       []string{"libxml"},
+		},
+		{
+			Name:          "xmlrpc",
+			Description:   "XML-RPC support",
+			Flag:          "--enable-xmlrpc",
+			MinPHPVersion: "5.0",
+			Implied:       []string{"libxml"},
+		},
+		{
+			Name:          "xmlwriter",
+			Description:   "XMLWriter support",
+			Flag:          "--enable-xmlwriter",
+			MinPHPVersion: "5.0",
+			Implied:       []string{"libxml"},
+		},
+		{
+			Name:          "xsl",
+			Description:   "XSL support",
+			Flag:          "--with-xsl",
+			MinPHPVersion: "5.0",
+			Implied:       []string{"libxml"},
+		},
+		{
+			Name:          "zend_test",
+			Description:   "Zend test extension",
+			Flag:          "--enable-zend-test",
+			MinPHPVersion: "7.0",
+		},
+		{
+			Name:          "zip",
+			Description:   "ZIP archive support",
+			Flag:          "--enable-zip",
+			MinPHPVersion: "5.0",
+			FlagVersions: []domain.FlagVersionDef{
+				{VersionRange: ">=7.4", Flag: "--with-zip"},
 			},
 		},
 		{
-			Name:        "bcmath",
-			Description: "BC Math arbitrary precision",
-			ConfigureFlags: []string{
-				"--enable-bcmath",
-			},
-		},
-		{
-			Name:        "ctype",
-			Description: "Character type checking",
-			ConfigureFlags: []string{
-				"--enable-ctype",
-			},
-		},
-		{
-			Name:        "filter",
-			Description: "Data filtering",
-			ConfigureFlags: []string{
-				"--enable-filter",
-			},
-		},
-		{
-			Name:        "hash",
-			Description: "HASH message digest",
-			ConfigureFlags: []string{
-				"--enable-hash",
-			},
-		},
-		{
-			Name:        "session",
-			Description: "Session support",
-			ConfigureFlags: []string{
-				"--enable-session",
-			},
-		},
-		{
-			Name:        "tokenizer",
-			Description: "Tokenizer support",
-			ConfigureFlags: []string{
-				"--enable-tokenizer",
-			},
-		},
-		{
-			Name:        "opcache",
-			Description: "OPcache",
-			ConfigureFlags: []string{
-				"--enable-opcache",
-			},
-		},
-		{
-			Name:        "fileinfo",
-			Description: "File information",
-			ConfigureFlags: []string{
-				"--enable-fileinfo",
+			Name:            "zlib",
+			Description:     "Zlib compression",
+			Flag:            "--with-zlib",
+			MinPHPVersion:   "5.0",
+			RequiresPackage: "zlib",
+			Versions: []domain.VersionConstraintDef{
+				{VersionRange: ">=8.0.0", Version: "1.3.1|>=1.3.0"},
+				{VersionRange: ">=5.0.0 <8.0.0", Version: "1.2.13|>=1.2.0,<1.3.0"},
 			},
 		},
 	}

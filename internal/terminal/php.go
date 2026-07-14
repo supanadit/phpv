@@ -265,6 +265,10 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
+	extensions, added := h.assemblerSvc.Graph().ExpandImplied(extensions)
+	if len(added) > 0 {
+		fmt.Printf("Including implied extensions: %s\n", strings.Join(added, ", "))
+	}
 
 	var systemPkgs map[string]system.Package
 	if !noSystem {
@@ -789,6 +793,8 @@ func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool)
 			phpDeps = append(phpDeps, "libpng", "libjpeg", "freetype")
 		case "intl":
 			phpDeps = append(phpDeps, "icu")
+		case "libxml":
+			phpDeps = append(phpDeps, "libxml2")
 		}
 	}
 

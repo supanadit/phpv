@@ -306,23 +306,6 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 
 	emit("done", fmt.Sprintf("✓ %s %s installed at %s", name, exactVersion, prefix))
 
-	if len(extensions) > 0 {
-		emit("extensions", fmt.Sprintf("Building %d extension(s)...", len(extensions)))
-		sourceDir := s.silo.SourcePath(name, exactVersion)
-		srcPath := FindSourceDir(sourceDir, name, exactVersion)
-		if srcPath == "" {
-			return nil, fmt.Errorf("could not find source directory for extensions in %s", sourceDir)
-		}
-		for _, ext := range extensions {
-			emit("extensions", fmt.Sprintf("Building extension %s...", ext))
-			if err := s.InstallExtension(ctx, exactVersion, ext, srcPath, prefix, jobs); err != nil {
-				emit("error", fmt.Sprintf("Extension %s failed: %v", ext, err))
-				return nil, fmt.Errorf("extension %s: %w", ext, err)
-			}
-			emit("extensions", fmt.Sprintf("✓ %s built", ext))
-		}
-	}
-
 	var depLibraryPaths []string
 	for _, dep := range plan.Deps {
 		if isBuildTool(dep.Name) {

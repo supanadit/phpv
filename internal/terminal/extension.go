@@ -3,8 +3,10 @@ package terminal
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/supanadit/phpv/assembler"
@@ -106,6 +108,13 @@ func (h *PHPHandler) extensionList(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	compiledIn, err := h.getCompiledModules(version)
+	if err == nil {
+		for name := range compiledIn {
+			installed[name] = true
+		}
+	}
+
 	if jsonFlag {
 		var entries []extListEntry
 		for _, e := range allExts {
@@ -131,18 +140,20 @@ func (h *PHPHandler) extensionList(cmd *cobra.Command, args []string) error {
 		}})
 	}
 
-	fmt.Printf("Extensions for PHP %s:\n", version)
+	fmt.Printf("Extensions for PHP %s (compiled in + manifest):\n", version)
 	var names []string
 	for _, e := range allExts {
 		names = append(names, e.Name)
 	}
 	sort.Strings(names)
 
+	var installedCount int
 	for _, name := range names {
 		info := extMap[name]
 		marker := "✗"
 		if installed[name] {
 			marker = "✓"
+			installedCount++
 		}
 		fmt.Printf("  %s %-20s %s\n", marker, name, info.Description)
 	}
@@ -159,7 +170,53 @@ func (h *PHPHandler) extensionList(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	fmt.Printf("\n%d installed, %d available\n", installedCount, len(allExts))
+
 	return nil
+}
+
+// getCompiledModules runs php -m for the given version and returns the set
+// of compiled-in module names (lowercased). Returns an error if the PHP
+// binary is not found or cannot be executed.
+func (h *PHPHandler) getCompiledModules(version string) (map[string]bool, error) {
+	prefix := h.siloSvc.PackagePrefix("php", version)
+	phpBin := filepath.Join(prefix, "bin", "php")
+	if _, err := os.Stat(phpBin); os.IsNotExist(err) {
+		return nil, fmt.Errorf("PHP binary not found at %s", phpBin)
+	}
+
+	cmd := exec.Command(phpBin, "-m")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("php -m failed: %w", err)
+	}
+
+	modules := make(map[string]bool)
+	inZend := false
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if line == "[Zend Modules]" {
+			inZend = true
+			continue
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			continue
+		}
+		moduleName := strings.ToLower(line)
+		modules[moduleName] = true
+		if inZend {
+			// Zend modules like "Zend OPcache" → also register as "opcache"
+			shortName := strings.TrimPrefix(moduleName, "zend ")
+			if shortName != moduleName {
+				modules[shortName] = true
+			}
+		}
+	}
+
+	return modules, nil
 }
 
 type extAvailEntry struct {

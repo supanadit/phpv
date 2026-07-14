@@ -10,6 +10,7 @@ import (
 
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/bundle"
+	"github.com/supanadit/phpv/config"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/graph"
 	"github.com/supanadit/phpv/internal/repository/disk"
@@ -56,6 +57,7 @@ func main() {
 			system.NewService,
 			shim.NewService,
 			pecl.NewService,
+			config.NewService,
 			assembler.NewService,
 			forge.NewService,
 			patcher.NewService,

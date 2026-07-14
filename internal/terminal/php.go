@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/bundle"
+	"github.com/supanadit/phpv/config"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/repository"
 	"github.com/supanadit/phpv/pecl"
@@ -32,10 +33,11 @@ type PHPHandler struct {
 	systemSvc    *system.Service
 	shimSvc      *shim.Service
 	peclSvc      *pecl.Service
+	configSvc    *config.Service
 }
 
 // NewPHPHandler registers all PHP subcommands onto the given root command.
-func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service, systemSvc *system.Service, shimSvc *shim.Service, peclSvc *pecl.Service) {
+func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service, systemSvc *system.Service, shimSvc *shim.Service, peclSvc *pecl.Service, configSvc *config.Service) {
 	h := &PHPHandler{
 		siloSvc:      siloSvc,
 		assemblerSvc: assemblerSvc,
@@ -44,6 +46,7 @@ func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *
 		systemSvc:    systemSvc,
 		shimSvc:      shimSvc,
 		peclSvc:      peclSvc,
+		configSvc:    configSvc,
 	}
 	rootCmd.AddCommand(h.downloadCmd())
 	rootCmd.AddCommand(h.installCmd())
@@ -60,6 +63,7 @@ func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *
 	rootCmd.AddCommand(h.autoDetectResolveCmd())
 	rootCmd.AddCommand(h.peclCmd())
 	rootCmd.AddCommand(h.uninstallCmd())
+	rootCmd.AddCommand(h.configCmd())
 }
 
 func (h *PHPHandler) uninstallCmd() *cobra.Command {

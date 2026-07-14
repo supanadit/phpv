@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/supanadit/phpv/bundle"
+	"github.com/supanadit/phpv/config"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/pecl"
@@ -264,6 +265,7 @@ func newTestPHPHandler(root string) *PHPHandler {
 	systemSvc := system.NewService()
 	shimSvc := shim.NewService(siloSvc)
 	peclSvc := pecl.NewService(siloSvc)
+	configSvc := config.NewService()
 	return &PHPHandler{
 		siloSvc:     siloSvc,
 		registrySvc: regSvc,
@@ -271,6 +273,7 @@ func newTestPHPHandler(root string) *PHPHandler {
 		systemSvc:   systemSvc,
 		shimSvc:     shimSvc,
 		peclSvc:     peclSvc,
+		configSvc:   configSvc,
 	}
 }
 

@@ -345,6 +345,16 @@ func (s *Service) InstallExtension(ctx context.Context, phpVersion, extName, php
 		return fmt.Errorf("extension %q not found in PHP source tree at %s", extName, extDir)
 	}
 
+	configM4 := filepath.Join(extDir, "config.m4")
+	config0M4 := filepath.Join(extDir, "config0.m4")
+	if _, err := os.Stat(configM4); os.IsNotExist(err) {
+		if _, err := os.Stat(config0M4); err == nil {
+			if err := os.Rename(config0M4, configM4); err != nil {
+				return fmt.Errorf("restore config.m4 for %s: %w", extName, err)
+			}
+		}
+	}
+
 	phpize := filepath.Join(phpPrefix, "bin", "phpize")
 	if _, err := os.Stat(phpize); os.IsNotExist(err) {
 		return fmt.Errorf("phpize not found at %s (PHP not installed)", phpize)

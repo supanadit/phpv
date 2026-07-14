@@ -45,6 +45,30 @@ func (s *Service) Check(phpDeps []string) (*CheckResult, error) {
 	return result, nil
 }
 
+func (s *Service) CheckBuildTools(toolNames []string) (*CheckResult, error) {
+	distro, err := Detect()
+	if err != nil {
+		return nil, fmt.Errorf("detect distro: %w", err)
+	}
+
+	pkgs := buildToolsForDistro(distro.Name)
+	result := &CheckResult{Distro: distro}
+
+	for _, name := range toolNames {
+		sysName, ok := pkgs[name]
+		if !ok {
+			sysName = name
+		}
+		installed := isInstalled(distro.PM, sysName)
+		result.Available = append(result.Available, Package{
+			Name:       name,
+			SystemName: sysName,
+			Installed:  installed,
+		})
+	}
+	return result, nil
+}
+
 func (s *Service) Install(packages []Package) error {
 	if len(packages) == 0 {
 		return nil
@@ -78,6 +102,11 @@ func (s *Service) InstallCommand(packages []Package) string {
 	}
 	args := installArgs(distro.PM, names)
 	return strings.Join(args, " ")
+}
+
+func (s *Service) DistroInfo() Distro {
+	d, _ := Detect()
+	return d
 }
 
 func isInstalled(pm, name string) bool {

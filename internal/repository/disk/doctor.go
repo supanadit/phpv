@@ -2,6 +2,7 @@ package disk
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"syscall"
 )
@@ -54,4 +55,8 @@ func (r *DoctorRepository) Statfs(path string) (bavail, bsize uint64, err error)
 		return 0, 0, err
 	}
 	return stat.Bavail, uint64(stat.Bsize), nil
+}
+
+func (r *DoctorRepository) LookPath(name string) (string, error) {
+	return exec.LookPath(name)
 }

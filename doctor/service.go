@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/system"
 )
 
 type Severity string
@@ -24,15 +25,19 @@ type Issue struct {
 }
 
 type Service struct {
-	repo Repository
+	repo     Repository
+	sysSvc   *system.Service
 }
 
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository, sysSvc *system.Service) *Service {
+	return &Service{repo: repo, sysSvc: sysSvc}
 }
 
 func (s *Service) Check(root string) []Issue {
 	var issues []Issue
+	issues = append(issues, s.checkDistroInfo()...)
+	issues = append(issues, s.checkBuildTools()...)
+	issues = append(issues, s.checkSystemPackages()...)
 	issues = append(issues, s.checkShimPresent(root)...)
 	issues = append(issues, s.checkDefaultVersion(root)...)
 	issues = append(issues, s.checkCacheWritable(root)...)
@@ -43,6 +48,93 @@ func (s *Service) Check(root string) []Issue {
 	issues = append(issues, s.checkSystemMode(root)...)
 	issues = append(issues, s.checkDiskSpace(root)...)
 	return issues
+}
+
+func (s *Service) checkDistroInfo() []Issue {
+	d := s.sysSvc.DistroInfo()
+	return []Issue{{
+		Severity: SeverityInfo,
+		Title:    fmt.Sprintf("Detected OS: %s (%s)", d.Name, d.Version),
+		Detail:   fmt.Sprintf("Package manager: %s", d.PM),
+	}}
+}
+
+func (s *Service) checkBuildTools() []Issue {
+	criticalTools := []string{"gcc", "g++", "make"}
+	optionalTools := []string{"cmake", "autoconf", "automake", "m4", "perl", "bison", "re2c", "flex", "pkg-config", "xz"}
+
+	var issues []Issue
+
+	// Check critical tools first (must be on PATH)
+	var missingCritical []string
+	for _, tool := range criticalTools {
+		if _, err := s.repo.LookPath(tool); err != nil {
+			missingCritical = append(missingCritical, tool)
+		}
+	}
+	if len(missingCritical) > 0 {
+		issues = append(issues, Issue{
+			Severity: SeverityCritical,
+			Title:    fmt.Sprintf("Missing build tools: %s", strings.Join(missingCritical, ", ")),
+			Detail:   fmt.Sprintf("These tools are required to compile PHP from source: %s", strings.Join(missingCritical, ", ")),
+			Fix:      s.installCommandFor(missingCritical),
+		})
+	}
+
+	// Check optional build tools
+	var missingOptional []string
+	for _, tool := range optionalTools {
+		if _, err := s.repo.LookPath(tool); err != nil {
+			missingOptional = append(missingOptional, tool)
+		}
+	}
+	if len(missingOptional) > 0 {
+		issues = append(issues, Issue{
+			Severity: SeverityWarning,
+			Title:    fmt.Sprintf("Optional build tools missing: %s", strings.Join(missingOptional, ", ")),
+			Detail:   fmt.Sprintf("Some packages may require: %s", strings.Join(missingOptional, ", ")),
+			Fix:      s.installCommandFor(missingOptional),
+		})
+	}
+
+	return issues
+}
+
+func (s *Service) checkSystemPackages() []Issue {
+	phpDeps := []string{"openssl", "libxml2", "zlib", "oniguruma", "curl", "sqlite3", "readline", "icu", "pcre2", "argon2", "sodium"}
+	result, err := s.sysSvc.Check(phpDeps)
+	if err != nil {
+		return []Issue{{
+			Severity: SeverityWarning,
+			Title:    "Could not check system packages",
+			Detail:   fmt.Sprintf("Error: %v", err),
+		}}
+	}
+	if len(result.Missing) == 0 {
+		return nil
+	}
+	var names []string
+	for _, p := range result.Missing {
+		names = append(names, p.Name)
+	}
+	return []Issue{{
+		Severity: SeverityWarning,
+		Title:    fmt.Sprintf("Missing system libraries (%d of %d)", len(result.Missing), len(phpDeps)),
+		Detail:   fmt.Sprintf("Required dev libraries not installed: %s", strings.Join(names, ", ")),
+		Fix:      s.sysSvc.InstallCommand(result.Missing),
+	}}
+}
+
+func (s *Service) installCommandFor(tools []string) string {
+	pkgs := make([]system.Package, 0, len(tools))
+	for _, name := range tools {
+		pkgs = append(pkgs, system.Package{Name: name, SystemName: name})
+	}
+	cmd := s.sysSvc.InstallCommand(pkgs)
+	if cmd == "" {
+		return fmt.Sprintf("Install %s using your system package manager", strings.Join(tools, ", "))
+	}
+	return cmd
 }
 
 func (s *Service) checkShimPresent(root string) []Issue {

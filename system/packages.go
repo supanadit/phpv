@@ -58,6 +58,70 @@ var archPackages = pkgMap{
 	"sodium":    "libsodium",
 }
 
+var fedoraBuildTools = pkgMap{
+	"gcc":        "gcc",
+	"g++":        "gcc-c++",
+	"make":       "make",
+	"cmake":      "cmake",
+	"autoconf":   "autoconf",
+	"automake":   "automake",
+	"m4":         "m4",
+	"perl":       "perl",
+	"bison":      "bison",
+	"re2c":       "re2c",
+	"flex":       "flex",
+	"pkg-config": "pkgconfig",
+	"xz":         "xz-devel",
+}
+
+var ubuntuBuildTools = pkgMap{
+	"gcc":        "gcc",
+	"g++":        "g++",
+	"make":       "make",
+	"cmake":      "cmake",
+	"autoconf":   "autoconf",
+	"automake":   "automake",
+	"m4":         "m4",
+	"perl":       "perl",
+	"bison":      "bison",
+	"re2c":       "re2c",
+	"flex":       "flex",
+	"pkg-config": "pkg-config",
+	"xz":         "xz-utils",
+}
+
+var alpineBuildTools = pkgMap{
+	"gcc":        "gcc",
+	"g++":        "g++",
+	"make":       "make",
+	"cmake":      "cmake",
+	"autoconf":   "autoconf",
+	"automake":   "automake",
+	"m4":         "m4",
+	"perl":       "perl",
+	"bison":      "bison",
+	"re2c":       "re2c",
+	"flex":       "flex",
+	"pkg-config": "pkgconfig",
+	"xz":         "xz",
+}
+
+var archBuildTools = pkgMap{
+	"gcc":        "gcc",
+	"g++":        "gcc",
+	"make":       "make",
+	"cmake":      "cmake",
+	"autoconf":   "autoconf",
+	"automake":   "automake",
+	"m4":         "m4",
+	"perl":       "perl",
+	"bison":      "bison",
+	"re2c":       "re2c",
+	"flex":       "flex",
+	"pkg-config": "pkg-config",
+	"xz":         "xz",
+}
+
 func packagesForDistro(distro string) pkgMap {
 	switch distro {
 	case "fedora", "rhel", "centos":
@@ -68,6 +132,21 @@ func packagesForDistro(distro string) pkgMap {
 		return alpinePackages
 	case "arch":
 		return archPackages
+	default:
+		return nil
+	}
+}
+
+func buildToolsForDistro(distro string) pkgMap {
+	switch distro {
+	case "fedora", "rhel", "centos":
+		return fedoraBuildTools
+	case "ubuntu", "debian":
+		return ubuntuBuildTools
+	case "alpine":
+		return alpineBuildTools
+	case "arch":
+		return archBuildTools
 	default:
 		return nil
 	}

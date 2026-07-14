@@ -2,6 +2,7 @@ package doctor
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"syscall"
 )
@@ -17,6 +18,7 @@ type Repository interface {
 	Getenv(key string) string
 	PathList() []string
 	Statfs(path string) (bavail, bsize uint64, err error)
+	LookPath(name string) (string, error)
 }
 
 type osRepository struct{}
@@ -59,6 +61,10 @@ func (r *osRepository) Getenv(key string) string {
 
 func (r *osRepository) PathList() []string {
 	return filepath.SplitList(os.Getenv("PATH"))
+}
+
+func (r *osRepository) LookPath(name string) (string, error) {
+	return exec.LookPath(name)
 }
 
 func (r *osRepository) Statfs(path string) (bavail, bsize uint64, err error) {

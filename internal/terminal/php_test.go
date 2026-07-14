@@ -275,7 +275,7 @@ func newTestPHPHandler(root string) *PHPHandler {
 	shimSvc := shim.NewService(siloSvc)
 	peclSvc := pecl.NewService(siloSvc)
 	configSvc := config.NewService(&mockConfigRepo{})
-	doctorSvc := doctor.NewService(disk.NewDoctorRepository())
+	doctorSvc := doctor.NewService(disk.NewDoctorRepository(), system.NewService())
 	updateSvc := update.NewService(disk.NewUpdateRepository(), "dev")
 	return &PHPHandler{
 		ctx:         context.Background(),

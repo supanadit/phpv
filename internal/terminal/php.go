@@ -437,8 +437,8 @@ func (h *PHPHandler) resolveActivePHP() (string, error) {
 		}
 	}
 
-	// 2. Check .phpvrc in current or parent directories.
-	if ver := findPhpvrc(); ver != "" {
+	// 2. Check .php-version or .phpvrc in current or parent directories.
+	if ver := findProjectVersionFile(); ver != "" {
 		silo := h.siloSvc.GetSilo()
 		phpBin := filepath.Join(silo.Root, "packages", "php", ver, "bin", "php")
 		if _, err := os.Stat(phpBin); err == nil {
@@ -466,12 +466,12 @@ func (h *PHPHandler) resolveActivePHP() (string, error) {
 }
 
 // resolveActiveVersion returns the active PHP version string.
-// Priority: PHPV_CURRENT env > .phpvrc > default.
+// Priority: PHPV_CURRENT env > .php-version > .phpvrc > default.
 func (h *PHPHandler) resolveActiveVersion() (string, error) {
 	if envVer := os.Getenv("PHPV_CURRENT"); envVer != "" {
 		return envVer, nil
 	}
-	if ver := findPhpvrc(); ver != "" {
+	if ver := findProjectVersionFile(); ver != "" {
 		return ver, nil
 	}
 	defaultVer, err := h.siloSvc.GetDefault()
@@ -529,15 +529,18 @@ func (h *PHPHandler) resolveInstalledVersion(constraint string) (string, error) 
 	return "", fmt.Errorf("PHP %s is not installed. Run `phpv install %s` first", constraint, constraint)
 }
 
-// findPhpvrc walks up from the current directory looking for a .phpvrc file.
-func findPhpvrc() string {
+// findProjectVersionFile walks up from the current directory looking for
+// a .php-version or .phpvrc file. .php-version takes priority.
+func findProjectVersionFile() string {
 	dir, err := os.Getwd()
 	if err != nil {
 		return ""
 	}
 	for {
-		rcPath := filepath.Join(dir, ".phpvrc")
-		if data, err := os.ReadFile(rcPath); err == nil {
+		if data, err := os.ReadFile(filepath.Join(dir, ".php-version")); err == nil {
+			return strings.TrimSpace(string(data))
+		}
+		if data, err := os.ReadFile(filepath.Join(dir, ".phpvrc")); err == nil {
 			return strings.TrimSpace(string(data))
 		}
 		parent := filepath.Dir(dir)

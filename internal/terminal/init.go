@@ -9,7 +9,7 @@ import (
 )
 
 func (h *PHPHandler) initCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "init [shell]",
 		Short: "Generate shell integration script",
 		Long: `Generate shell integration for PHP version switching.
@@ -18,9 +18,24 @@ If no shell is specified, auto-detects from $SHELL.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: h.initShell,
 	}
+	cmd.Flags().Bool("local", false, "Create .php-version file in current directory with the active version")
+	return cmd
 }
 
 func (h *PHPHandler) initShell(cmd *cobra.Command, args []string) error {
+	local, _ := cmd.Flags().GetBool("local")
+	if local {
+		ver, err := h.resolveActiveVersion()
+		if err != nil {
+			return fmt.Errorf("resolve active version: %w", err)
+		}
+		if err := os.WriteFile(".php-version", []byte(ver+"\n"), 0644); err != nil {
+			return fmt.Errorf("write .php-version: %w", err)
+		}
+		fmt.Printf("✓ Created .php-version with version %s\n", ver)
+		return nil
+	}
+
 	shell := ""
 	if len(args) == 1 {
 		shell = args[0]

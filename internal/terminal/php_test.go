@@ -15,18 +15,18 @@ import (
 	"github.com/supanadit/phpv/system"
 )
 
-func TestFindPhpvrc_NoFile(t *testing.T) {
+func TestFindProjectVersionFile_NoFile(t *testing.T) {
 	dir := t.TempDir()
 	origWd, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(origWd)
 
-	if got := findPhpvrc(); got != "" {
-		t.Fatalf("findPhpvrc() = %q, want empty", got)
+	if got := findProjectVersionFile(); got != "" {
+		t.Fatalf("findProjectVersionFile() = %q, want empty", got)
 	}
 }
 
-func TestFindPhpvrc_Found(t *testing.T) {
+func TestFindProjectVersionFile_Phpvrc(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ".phpvrc"), []byte("8.4.0\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -35,14 +35,45 @@ func TestFindPhpvrc_Found(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origWd)
 
-	if got := findPhpvrc(); got != "8.4.0" {
-		t.Fatalf("findPhpvrc() = %q, want 8.4.0", got)
+	if got := findProjectVersionFile(); got != "8.4.0" {
+		t.Fatalf("findProjectVersionFile() = %q, want 8.4.0", got)
 	}
 }
 
-func TestFindPhpvrc_WalksUp(t *testing.T) {
+func TestFindProjectVersionFile_PhpVersion(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".php-version"), []byte("8.4.0\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	origWd, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origWd)
+
+	if got := findProjectVersionFile(); got != "8.4.0" {
+		t.Fatalf("findProjectVersionFile() = %q, want 8.4.0", got)
+	}
+}
+
+func TestFindProjectVersionFile_PhpVersionPreferred(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".php-version"), []byte("8.4.0\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".phpvrc"), []byte("7.4.0\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	origWd, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origWd)
+
+	if got := findProjectVersionFile(); got != "8.4.0" {
+		t.Fatalf("findProjectVersionFile() = %q, want 8.4.0 (.php-version preferred)", got)
+	}
+}
+
+func TestFindProjectVersionFile_WalksUp(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, ".phpvrc"), []byte("7.4.0\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".php-version"), []byte("7.4.0\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	subdir := filepath.Join(root, "a", "b", "c")
@@ -53,8 +84,8 @@ func TestFindPhpvrc_WalksUp(t *testing.T) {
 	os.Chdir(subdir)
 	defer os.Chdir(origWd)
 
-	if got := findPhpvrc(); got != "7.4.0" {
-		t.Fatalf("findPhpvrc() = %q, want 7.4.0", got)
+	if got := findProjectVersionFile(); got != "7.4.0" {
+		t.Fatalf("findProjectVersionFile() = %q, want 7.4.0", got)
 	}
 }
 
@@ -147,6 +178,59 @@ func TestResolveActivePHP_Phpvrc(t *testing.T) {
 	want := filepath.Join(dir, "packages", "php", "7.4.0", "bin", "php")
 	if path != want {
 		t.Fatalf("resolveActivePHP = %q, want %q", path, want)
+	}
+}
+
+func TestResolveActivePHP_PhpVersion(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PHPV_ROOT", dir)
+
+	createFakePHPInstall(t, dir, "8.4.0")
+	createFakePHPInstall(t, dir, "7.4.0")
+
+	if err := os.WriteFile(filepath.Join(dir, ".php-version"), []byte("8.4.0\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	origWd, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origWd)
+
+	h := newTestPHPHandler(dir)
+	path, err := h.resolveActivePHP()
+	if err != nil {
+		t.Fatalf("resolveActivePHP returned error: %v", err)
+	}
+	want := filepath.Join(dir, "packages", "php", "8.4.0", "bin", "php")
+	if path != want {
+		t.Fatalf("resolveActivePHP = %q, want %q", path, want)
+	}
+}
+
+func TestResolveActivePHP_PhpVersionPreferred(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PHPV_ROOT", dir)
+
+	createFakePHPInstall(t, dir, "8.4.0")
+	createFakePHPInstall(t, dir, "7.4.0")
+
+	if err := os.WriteFile(filepath.Join(dir, ".php-version"), []byte("8.4.0\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".phpvrc"), []byte("7.4.0\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	origWd, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origWd)
+
+	h := newTestPHPHandler(dir)
+	path, err := h.resolveActivePHP()
+	if err != nil {
+		t.Fatalf("resolveActivePHP returned error: %v", err)
+	}
+	want := filepath.Join(dir, "packages", "php", "8.4.0", "bin", "php")
+	if path != want {
+		t.Fatalf("resolveActivePHP = %q, want %q (.php-version preferred)", path, want)
 	}
 }
 

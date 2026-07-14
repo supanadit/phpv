@@ -6,6 +6,11 @@ PHPV_ROOT="${PHPV_ROOT:-$HOME/.phpv}"
 {{SYSTEM_BLOCK}}
 if [ -n "$PHPV_CURRENT" ]; then
     PHPV_VERSION="$PHPV_CURRENT"
+elif [ -f .php-version ] && [ -s .php-version ]; then
+    PHPV_VERSION="$(phpv auto-detect-resolve "$(cat .php-version)" 2>/dev/null)"
+    if [ -z "$PHPV_VERSION" ]; then
+        PHPV_VERSION="$(cat .php-version)"
+    fi
 elif [ -f .phpvrc ] && [ -s .phpvrc ]; then
     PHPV_VERSION="$(phpv auto-detect-resolve "$(cat .phpvrc)" 2>/dev/null)"
     if [ -z "$PHPV_VERSION" ]; then

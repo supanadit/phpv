@@ -226,6 +226,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 	}
 
 	configureFlags := plan.ConfigureFlags
+	configureFlags = s.resolveDependencyFlags(name, exactVersion, configureFlags, plan.Deps)
 	if static {
 		env = setEnvVar(env, "LDFLAGS", "-static-libgcc -static")
 		env = setEnvVar(env, "CFLAGS", "-Os -fdata-sections -ffunction-sections")
@@ -244,7 +245,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 	}
 
 	emit("make", fmt.Sprintf("Compiling %s (this may take a while)...", name))
-	buildDir, _, err := s.forge.Build(ctx, name, exactVersion, srcPath, env, plan.ConfigureFlags, prefix, verbose, jobs)
+	buildDir, _, err := s.forge.Build(ctx, name, exactVersion, srcPath, env, configureFlags, prefix, verbose, jobs)
 	if err != nil {
 		emit("error", fmt.Sprintf("Build failed for %s", name))
 		return nil, fmt.Errorf("build %s@%s: %w", name, exactVersion, err)

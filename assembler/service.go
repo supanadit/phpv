@@ -386,6 +386,24 @@ func getPHPIniDir(phpPrefix string) string {
 // PHP source tree. After building, it adds extension=<name>.so to php.ini
 // and records the extension in the manifest.
 func (s *Service) InstallExtension(ctx context.Context, phpVersion, extName, phpSourceDir, phpPrefix string, jobs int) error {
+	// Safety check: skip if the extension is already built into PHP.
+	// This prevents "Module already loaded" warnings for extensions that
+	// are compiled into the PHP binary (e.g. iconv in PHP 8.5+).
+	phpBin := filepath.Join(phpPrefix, "bin", "php")
+	if fi, err := os.Stat(phpBin); err == nil && !fi.IsDir() {
+		cmd := exec.Command(phpBin, "-m")
+		out, err := cmd.Output()
+		if err == nil {
+			modules := strings.Split(string(out), "\n")
+			for _, mod := range modules {
+				mod = strings.TrimSpace(mod)
+				if strings.EqualFold(mod, extName) {
+					return nil
+				}
+			}
+		}
+	}
+
 	extDir := filepath.Join(phpSourceDir, "ext", extName)
 	if _, err := os.Stat(extDir); os.IsNotExist(err) {
 		return fmt.Errorf("extension %q not found in PHP source tree at %s", extName, extDir)
@@ -444,19 +462,33 @@ func (s *Service) InstallExtension(ctx context.Context, phpVersion, extName, php
 		return fmt.Errorf("create ini dir: %w", err)
 	}
 	iniPath := filepath.Join(iniDir, "php.ini")
-	entry := "extension=" + extName + ".so\n"
+	entry := "extension=" + extName + ".so"
+	// Check if the extension line already exists in php.ini to avoid duplicates.
+	if data, err := os.ReadFile(iniPath); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.TrimSpace(line) == entry {
+				return nil
+			}
+		}
+	}
 	f, err := os.OpenFile(iniPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("open php.ini: %w", err)
 	}
 	defer f.Close()
-	if _, err := f.WriteString(entry); err != nil {
+	if _, err := f.WriteString(entry + "\n"); err != nil {
 		return fmt.Errorf("write php.ini: %w", err)
 	}
 
 	manifest, err := s.silo.GetExtensionManifest(phpVersion)
 	if err != nil {
 		return fmt.Errorf("get extension manifest: %w", err)
+	}
+	// Deduplicate manifest: skip if this extension is already recorded.
+	for _, e := range manifest.Extensions {
+		if e.Name == extName {
+			return nil
+		}
 	}
 	manifest.Extensions = append(manifest.Extensions, domain.ExtensionState{
 		Name:        extName,

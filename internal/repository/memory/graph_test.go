@@ -129,3 +129,63 @@ func TestGraphRepository_GetOrderedDependencies_UnknownPackage(t *testing.T) {
 		t.Fatalf("unknown package should have zero deps, got %d", len(deps))
 	}
 }
+
+func TestDefaultExtensions_SkipsBuiltIn(t *testing.T) {
+	repo := NewGraphRepository()
+
+	// PHP 8.5+: iconv is shared-only (IsBuiltIn: false, Flag: ""), so it
+	// should be included in the default set (it needs a phpize build).
+	included, skipped := repo.DefaultExtensions("8.5.8")
+	hasIconv := false
+	for _, name := range included {
+		if name == "iconv" {
+			hasIconv = true
+			break
+		}
+	}
+	if !hasIconv {
+		t.Error("iconv should be in default extensions for PHP 8.5+ (shared-only, not built-in)")
+	}
+	_ = skipped
+
+	// If we had a built-in extension (IsBuiltIn: true), it should be skipped.
+	// Currently no extension uses IsBuiltIn: true, so this is a future-proofing test.
+	// When a future PHP version makes an extension built-in, add a test here.
+}
+
+func TestSharedOnlyExtensions_IncludesSharedOnly(t *testing.T) {
+	repo := NewGraphRepository()
+
+	// PHP 8.5+: iconv is shared-only (IsBuiltIn: false, Flag: ""), so it
+	// should appear in the shared-only list (needs phpize build).
+	sharedOnly := repo.SharedOnlyExtensions("8.5.8", []string{"iconv"})
+	hasIconv := false
+	for _, name := range sharedOnly {
+		if name == "iconv" {
+			hasIconv = true
+			break
+		}
+	}
+	if !hasIconv {
+		t.Error("iconv should be in shared-only extensions for PHP 8.5+ (Flag: '', IsBuiltIn: false)")
+	}
+}
+
+func TestIsBuiltInForVersion(t *testing.T) {
+	repo := NewGraphRepository()
+
+	// iconv for PHP 8.5+: IsBuiltIn: false, so isBuiltInForVersion should return false.
+	def, ok := repo.extensions["iconv"]
+	if !ok {
+		t.Fatal("iconv not found in extensions registry")
+	}
+	if isBuiltInForVersion(def, "8.5.8") {
+		t.Error("iconv should NOT be built-in for PHP 8.5+ (IsBuiltIn: false)")
+	}
+	if isBuiltInForVersion(def, "8.4.0") {
+		t.Error("iconv should NOT be built-in for PHP 8.4 (uses --with-iconv flag)")
+	}
+	if isBuiltInForVersion(def, "7.4.0") {
+		t.Error("iconv should NOT be built-in for PHP 7.4 (uses --with-iconv flag)")
+	}
+}

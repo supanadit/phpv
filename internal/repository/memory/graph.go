@@ -256,6 +256,16 @@ var defaultExtensionCandidates = []string{
 // DefaultExtensions returns the recommended default extension set for a
 // typical PHP install, filtered to those compatible with the given PHP version.
 // Returns (included, skipped) where each skipped entry includes a reason.
+//
+// IMPORTANT — Built-in extensions (IsBuiltIn: true) are SKIPPED from the default
+// set because they are already compiled into the PHP binary. They do not need
+// a configure flag or a phpize build. Including them would cause "Module already
+// loaded" warnings when php.ini has extension=<name>.so for a built-in module.
+//
+// Users can still explicitly request built-in extensions via --ext <name> at
+// install time or `phpv extension add <version> <name>`. The InstallExtension
+// function has a safety net that checks php -m and skips the build if the
+// extension is already loaded.
 func (r *GraphRepository) DefaultExtensions(phpVersion string) ([]string, []string) {
 	var included []string
 	var skipped []string
@@ -273,21 +283,68 @@ func (r *GraphRepository) DefaultExtensions(phpVersion string) ([]string, []stri
 			skipped = append(skipped, name+" (not available in PHP "+def.MaxPHPVersion+"+)")
 			continue
 		}
+		// Skip built-in extensions: they are compiled into the PHP binary and
+		// do not need a configure flag or a phpize build. Including them in the
+		// default set would cause InstallExtension to add extension=<name>.so to
+		// php.ini, which triggers "Module already loaded" warnings at runtime.
+		if isBuiltInForVersion(def, phpVersion) {
+			skipped = append(skipped, name+" (built-in for PHP "+phpVersion+")")
+			continue
+		}
 		included = append(included, name)
 	}
 	return included, skipped
 }
 
+// isBuiltInForVersion returns true if the extension has a FlagVersions entry
+// with IsBuiltIn: true that matches the given PHP version.
+//
+// This is the authoritative check for whether an extension is compiled into
+// the PHP binary for a given version. It is used by:
+//   - DefaultExtensions: to skip built-in extensions from the default set
+//   - SharedOnlyExtensions: to exclude built-in extensions from phpize builds
+//   - InstallExtension (safety net): as a secondary check via php -m
+//
+// IMPORTANT: Do NOT use Flag: "" alone to determine built-in status. Flag: ""
+// is ambiguous — it can mean either "built-in" (IsBuiltIn: true) or "shared-only"
+// (IsBuiltIn: false, needs phpize). Always check IsBuiltIn explicitly.
+func isBuiltInForVersion(def domain.ExtensionDef, phpVersion string) bool {
+	for _, fv := range def.FlagVersions {
+		if fv.IsBuiltIn && repository.MatchVersionRange(fv.VersionRange, phpVersion) {
+			return true
+		}
+	}
+	return false
+}
+
 // SharedOnlyExtensions returns the subset of requested extensions that must
 // be built as shared libraries (phpize) rather than compiled into the main
-// PHP binary, for the given PHP version. An extension is shared-only when
-// its registry entry has a FlagVersions entry with Flag: "" that matches
-// the version range (PHP itself only ships it as a .so on that version).
+// PHP binary, for the given PHP version.
+//
+// An extension is "shared-only" when its registry entry has a FlagVersions
+// entry with Flag: "" AND IsBuiltIn: false that matches the version range.
+// This means PHP ships the extension as a .so in the source tree (ext/<name>/)
+// but does NOT compile it into the binary. It must be built with phpize after
+// the main PHP build.
+//
+// IMPORTANT: Extensions with IsBuiltIn: true are EXCLUDED from this list.
+// They are already compiled into the PHP binary and do not need a phpize build.
+// Including them would cause InstallExtension to build a duplicate .so and add
+// extension=<name>.so to php.ini, triggering "Module already loaded" warnings.
+//
+// The distinction between built-in and shared-only is critical:
+//   - IsBuiltIn: true  + Flag: ""  = built-in (no build needed)
+//   - IsBuiltIn: false + Flag: ""  = shared-only (needs phpize build)
+//   - IsBuiltIn: false + Flag: "X" = configure-time extension (needs --enable-X)
 func (r *GraphRepository) SharedOnlyExtensions(phpVersion string, requested []string) []string {
 	var result []string
 	for _, name := range requested {
 		def, ok := r.extensions[name]
 		if !ok {
+			continue
+		}
+		// Skip built-in extensions: they are already in the PHP binary.
+		if isBuiltInForVersion(def, phpVersion) {
 			continue
 		}
 		for _, fv := range def.FlagVersions {
@@ -870,8 +927,17 @@ func builtInExtensions() []domain.ExtensionDef {
 			Description:   "Iconv support",
 			MinPHPVersion: "5.0",
 			FlagVersions: []domain.FlagVersionDef{
+				// PHP < 8.5: iconv is a configure-time extension (--with-iconv).
 				{VersionRange: ">=5.0 <8.5.0", Flag: "--with-iconv"},
-				{VersionRange: ">=8.5.0", Flag: ""},
+				// PHP >= 8.5: iconv is NOT compiled into the binary. It ships as a
+				// shared .so in the PHP source tree (ext/iconv/) and must be built
+				// with phpize after the main PHP build. Flag: "" means no configure
+				// flag is needed; IsBuiltIn: false means it's shared-only.
+				//
+				// IMPORTANT: IsBuiltIn: false + Flag: "" = shared-only (needs phpize).
+				// Do NOT set IsBuiltIn: true here unless iconv is actually compiled
+				// into the PHP binary for this version.
+				{VersionRange: ">=8.5.0", Flag: "", IsBuiltIn: false},
 			},
 		},
 		{

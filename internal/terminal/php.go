@@ -20,6 +20,7 @@ import (
 	"github.com/supanadit/phpv/config"
 	"github.com/supanadit/phpv/doctor"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/appctx"
 	"github.com/supanadit/phpv/internal/repository"
 	"github.com/supanadit/phpv/pecl"
 	"github.com/supanadit/phpv/registry"
@@ -45,9 +46,9 @@ type PHPHandler struct {
 	version      string
 }
 
-func NewPHPHandler(rootCmd *cobra.Command, ctx context.Context, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service, systemSvc *system.Service, shimSvc *shim.Service, peclSvc *pecl.Service, configSvc *config.Service, doctorSvc *doctor.Service, updateSvc *update.Service, version string) {
+func NewPHPHandler(rootCmd *cobra.Command, ac appctx.AppContext, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service, systemSvc *system.Service, shimSvc *shim.Service, peclSvc *pecl.Service, configSvc *config.Service, doctorSvc *doctor.Service, updateSvc *update.Service, version string) {
 	h := &PHPHandler{
-		ctx:          ctx,
+		ctx:          ac.Ctx,
 		siloSvc:      siloSvc,
 		assemblerSvc: assemblerSvc,
 		registrySvc:  registrySvc,

@@ -14,6 +14,7 @@ import (
 	"github.com/supanadit/phpv/doctor"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/graph"
+	"github.com/supanadit/phpv/internal/appctx"
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/internal/shutdown"
@@ -56,7 +57,7 @@ func main() {
 	options := []fx.Option{
 		fx.NopLogger,
 		fx.Supply(Version),
-		fx.Supply(shutdownCtx),
+		fx.Supply(appctx.AppContext{Ctx: shutdownCtx}),
 		fx.Provide(
 			NewRootCmd,
 			fx.Annotate(memory.NewRegistryRepository, fx.As(new(registry.RegistryRepository))),

@@ -26,13 +26,26 @@ func NewPatcherRepository() patcher.PatcherRepository {
 func (p *inMemoryPatcher) PatchesFor(name string, version string) []patcher.Patch {
 	switch name {
 	case "oniguruma":
-		return []patcher.Patch{{
-			Name:         "oniguruma-gcc15-st_foreach",
-			Package:      "oniguruma",
-			VersionRange: "<6.9.10",
-			Apply:        patchOnigurumaStForeach,
-			ExtraCFlags:  []string{"-Wno-error=incompatible-pointer-types", "-Wno-incompatible-pointer-types"},
-		}}
+		// Oniguruma 5.9.x (used by PHP 5.x and 7.0) has K&R-style function
+		// pointer declarations in st.h that modern GCC rejects as errors.
+		// Oniguruma 6.9.x has a different st_foreach issue fixed by the
+		// other patch below.
+		return []patcher.Patch{
+			{
+				Name:         "oniguruma-gcc15-st_prototypes",
+				Package:      "oniguruma",
+				VersionRange: ">=5.0.0, <6.0.0",
+				Apply:        patchOnigurumaStPrototypes,
+				ExtraCFlags:  []string{"-Wno-error=incompatible-pointer-types", "-Wno-incompatible-pointer-types"},
+			},
+			{
+				Name:         "oniguruma-gcc15-st_foreach",
+				Package:      "oniguruma",
+				VersionRange: ">=6.0.0, <6.9.10",
+				Apply:        patchOnigurumaStForeach,
+				ExtraCFlags:  []string{"-Wno-error=incompatible-pointer-types", "-Wno-incompatible-pointer-types"},
+			},
+		}
 	case "php":
 		// PHP 7.4's scanf.c uses K&R-style function pointer casts that GCC 15
 		// rejects outright. Patch the fn declaration to match the actual
@@ -109,6 +122,113 @@ func findFile(root, rel string) (string, error) {
 		return "", fmt.Errorf("not found: %s under %s", rel, root)
 	}
 	return found, nil
+}
+
+// patchOnigurumaStPrototypes fixes the K&R-style function pointer declarations
+// in oniguruma 5.9.x's st.h, st.c, and oniguruma.h. Modern GCC interprets
+// `int (*hash)()` as "takes no arguments" and rejects calls with arguments.
+// The fix adds proper prototypes matching the actual call sites.
+func patchOnigurumaStPrototypes(sourceDir string) error {
+	var stPath, stcPath, onigHPath string
+	entries, _ := os.ReadDir(sourceDir)
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		sub := filepath.Join(sourceDir, e.Name())
+		candidates := []string{
+			filepath.Join(sub, "st.h"),
+			filepath.Join(sub, "src", "st.h"),
+		}
+		for _, c := range candidates {
+			if _, err := os.Stat(c); err == nil {
+				stPath = c
+				break
+			}
+		}
+		stcCandidates := []string{
+			filepath.Join(sub, "st.c"),
+			filepath.Join(sub, "src", "st.c"),
+		}
+		for _, c := range stcCandidates {
+			if _, err := os.Stat(c); err == nil {
+				stcPath = c
+				break
+			}
+		}
+		onigHCandidates := []string{
+			filepath.Join(sub, "oniguruma.h"),
+			filepath.Join(sub, "src", "oniguruma.h"),
+		}
+		for _, c := range onigHCandidates {
+			if _, err := os.Stat(c); err == nil {
+				onigHPath = c
+				break
+			}
+		}
+		if stPath != "" && stcPath != "" && onigHPath != "" {
+			break
+		}
+	}
+	if stPath == "" {
+		return fmt.Errorf("patchOnigurumaStPrototypes: st.h not found in %s", sourceDir)
+	}
+
+	// Patch st.h: fix struct st_hash_type function pointer prototypes.
+	data, err := os.ReadFile(stPath)
+	if err != nil {
+		return err
+	}
+	content := string(data)
+	content = strings.Replace(content,
+		"    int (*compare)();\n    int (*hash)();",
+		"    int (*compare)(st_data_t, st_data_t);\n    int (*hash)(st_data_t);", 1)
+	content = strings.Replace(content,
+		"#define ST_NUMCMP\t((int (*)()) 0)",
+		"#define ST_NUMCMP\t((int (*)(st_data_t, st_data_t)) 0)", 1)
+	content = strings.Replace(content,
+		"#define ST_NUMHASH\t((int (*)()) -2)",
+		"#define ST_NUMHASH\t((int (*)(st_data_t)) -2)", 1)
+	// Fix st_foreach declaration: replace the _()/ANYARGS macro-based
+	// K&R-style declaration with a proper prototype.
+	content = strings.Replace(content,
+		"int st_foreach _((st_table *, int (*)(ANYARGS), st_data_t));",
+		"int st_foreach(st_table *, int (*)(st_data_t, st_data_t, st_data_t), st_data_t);", 1)
+	if err := os.WriteFile(stPath, []byte(content), 0o644); err != nil {
+		return err
+	}
+
+	// Patch st.c: fix the local function pointer declaration in st_foreach.
+	if stcPath != "" {
+		data, err := os.ReadFile(stcPath)
+		if err != nil {
+			return err
+		}
+		content := string(data)
+		content = strings.Replace(content,
+			"    int (*func)();",
+			"    int (*func)(st_data_t, st_data_t, st_data_t);", 1)
+		if err := os.WriteFile(stcPath, []byte(content), 0o644); err != nil {
+			return err
+		}
+	}
+
+	// Patch oniguruma.h: force PV_ macro to use proper prototypes.
+	if onigHPath != "" {
+		data, err := os.ReadFile(onigHPath)
+		if err != nil {
+			return err
+		}
+		content := string(data)
+		content = strings.Replace(content,
+			"#ifndef PV_\n#ifdef HAVE_STDARG_PROTOTYPES\n# define PV_(args) args\n#else\n# define PV_(args) ()\n#endif\n#endif",
+			"#ifndef PV_\n# define PV_(args) args\n#endif", 1)
+		if err := os.WriteFile(onigHPath, []byte(content), 0o644); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // patchOnigurumaStForeach fixes the st_foreach macro in st.h so the function

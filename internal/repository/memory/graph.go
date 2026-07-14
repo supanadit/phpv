@@ -368,6 +368,18 @@ func (r *GraphRepository) GetPHPConfigureFlags(phpVersion string, extensions []s
 	return flags
 }
 
+// GetExtensionConfigureFlags returns the configure flags for a single extension
+// for the given PHP version. The flag is resolved in this order:
+//  1. def.ConfigureFlags (if set, returned directly)
+//  2. def.FlagVersions (if a matching VersionRange is found, use that flag)
+//  3. def.Flag (fallback default)
+//  4. If the resolved flag is empty, return nil (no configure flag needed)
+//
+// IMPORTANT: def.FlagVersions is checked BEFORE def.Flag. This allows extensions
+// to define version-specific flags without setting a default Flag field.
+// For example, iconv has no default Flag but has FlagVersions entries for
+// different PHP versions. Without this ordering, extensions that only use
+// FlagVersions would get nil (no flag) and be silently skipped.
 func (r *GraphRepository) GetExtensionConfigureFlags(name string, phpVersion string) []string {
 	def, ok := r.extensions[name]
 	if !ok {
@@ -376,15 +388,16 @@ func (r *GraphRepository) GetExtensionConfigureFlags(name string, phpVersion str
 	if len(def.ConfigureFlags) > 0 {
 		return def.ConfigureFlags
 	}
-	if def.Flag == "" {
-		return nil
-	}
+	// Start with the default flag, then check FlagVersions for an override.
 	flag := def.Flag
 	for _, fv := range def.FlagVersions {
 		if repository.MatchVersionRange(fv.VersionRange, phpVersion) {
 			flag = fv.Flag
 			break
 		}
+	}
+	if flag == "" {
+		return nil
 	}
 	return []string{flag}
 }

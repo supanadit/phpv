@@ -189,3 +189,70 @@ func TestIsBuiltInForVersion(t *testing.T) {
 		t.Error("iconv should NOT be built-in for PHP 7.4 (uses --with-iconv flag)")
 	}
 }
+
+func TestGetExtensionConfigureFlags_Iconv_PHP8_0(t *testing.T) {
+	repo := NewGraphRepository()
+	flags := repo.GetExtensionConfigureFlags("iconv", "8.0.30")
+	if len(flags) == 0 {
+		t.Fatal("iconv should have configure flags for PHP 8.0")
+	}
+	if flags[0] != "--with-iconv" {
+		t.Errorf("iconv flag for PHP 8.0 = %q, want %q", flags[0], "--with-iconv")
+	}
+}
+
+func TestGetExtensionConfigureFlags_Iconv_PHP8_5(t *testing.T) {
+	repo := NewGraphRepository()
+	flags := repo.GetExtensionConfigureFlags("iconv", "8.5.8")
+	if len(flags) != 0 {
+		t.Errorf("iconv should have no configure flags for PHP 8.5+, got %v", flags)
+	}
+}
+
+func TestGetExtensionConfigureFlags_Gd_PHP7_4(t *testing.T) {
+	repo := NewGraphRepository()
+	// gd uses FlagVersions: >=7.4 uses --enable-gd, <7.4 uses --with-gd
+	flags := repo.GetExtensionConfigureFlags("gd", "7.4.33")
+	if len(flags) == 0 {
+		t.Fatal("gd should have configure flags for PHP 7.4")
+	}
+	if flags[0] != "--enable-gd" {
+		t.Errorf("gd flag for PHP 7.4 = %q, want %q", flags[0], "--enable-gd")
+	}
+}
+
+func TestGetExtensionConfigureFlags_Gd_PHP7_3(t *testing.T) {
+	repo := NewGraphRepository()
+	// gd uses FlagVersions: >=7.4 uses --enable-gd, <7.4 uses --with-gd
+	flags := repo.GetExtensionConfigureFlags("gd", "7.3.0")
+	if len(flags) == 0 {
+		t.Fatal("gd should have configure flags for PHP 7.3")
+	}
+	if flags[0] != "--with-gd" {
+		t.Errorf("gd flag for PHP 7.3 = %q, want %q", flags[0], "--with-gd")
+	}
+}
+
+func TestGetExtensionConfigureFlags_Zip_PHP7_4(t *testing.T) {
+	repo := NewGraphRepository()
+	// zip uses FlagVersions: >=7.4 uses --with-zip, <7.4 uses --enable-zip
+	flags := repo.GetExtensionConfigureFlags("zip", "7.4.33")
+	if len(flags) == 0 {
+		t.Fatal("zip should have configure flags for PHP 7.4")
+	}
+	if flags[0] != "--with-zip" {
+		t.Errorf("zip flag for PHP 7.4 = %q, want %q", flags[0], "--with-zip")
+	}
+}
+
+func TestGetExtensionConfigureFlags_Zip_PHP7_3(t *testing.T) {
+	repo := NewGraphRepository()
+	// zip uses FlagVersions: >=7.4 uses --with-zip, <7.4 uses --enable-zip
+	flags := repo.GetExtensionConfigureFlags("zip", "7.3.0")
+	if len(flags) == 0 {
+		t.Fatal("zip should have configure flags for PHP 7.3")
+	}
+	if flags[0] != "--enable-zip" {
+		t.Errorf("zip flag for PHP 7.3 = %q, want %q", flags[0], "--enable-zip")
+	}
+}

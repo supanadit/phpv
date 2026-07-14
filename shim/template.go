@@ -37,7 +37,7 @@ export LD_LIBRARY_PATH="$PHPV_PREFIX/lib:$LD_LIBRARY_PATH"
 for dep_lib in "$PHPV_ROOT/packages"/*/lib; do
     [ -d "$dep_lib" ] && LD_LIBRARY_PATH="$dep_lib:$LD_LIBRARY_PATH"
 done
-exec {{EXEC}} "$@"
+{{EXEC}}
 `
 
 const systemBinaryBlock = `if [ -f "$PHPV_ROOT/.phpv_system" ]; then

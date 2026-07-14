@@ -64,6 +64,7 @@ func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *
 	rootCmd.AddCommand(h.peclCmd())
 	rootCmd.AddCommand(h.uninstallCmd())
 	rootCmd.AddCommand(h.configCmd())
+	rootCmd.AddCommand(h.completionCmd())
 }
 
 func (h *PHPHandler) uninstallCmd() *cobra.Command {

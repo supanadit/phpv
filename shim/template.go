@@ -34,7 +34,7 @@ if [ ! -d "$PHPV_PREFIX" ]; then
 fi
 export PHPV_CURRENT="$PHPV_VERSION"
 export LD_LIBRARY_PATH="$PHPV_PREFIX/lib:$LD_LIBRARY_PATH"
-for dep_lib in "$PHPV_ROOT/packages"/*/lib; do
+for dep_lib in "$PHPV_ROOT/packages"/*/*/lib; do
     [ -d "$dep_lib" ] && LD_LIBRARY_PATH="$dep_lib:$LD_LIBRARY_PATH"
 done
 {{EXEC}}

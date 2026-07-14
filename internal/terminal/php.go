@@ -247,8 +247,9 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	autoDeps, _ := cmd.Flags().GetBool("auto-deps")
 	noSystem, _ := cmd.Flags().GetBool("no-system")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	fresh, _ := cmd.Flags().GetBool("fresh")
+	force, _ := cmd.Flags().GetBool("force")
 	clean, _ := cmd.Flags().GetBool("clean")
+	fresh, _ := cmd.Flags().GetBool("fresh")
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	jobsFlag, _ := cmd.Flags().GetInt("jobs")
 
@@ -293,7 +294,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Installing PHP %s...\n\n", version)
 
 	if verbose {
-		result, err := h.assemblerSvc.Assemble(h.ctx, "php", version, static, extensions, true, nil, systemPkgs, jobs)
+		result, err := h.assemblerSvc.Assemble(h.ctx, "php", version, static, extensions, true, nil, systemPkgs, jobs, force)
 		if err != nil {
 			return fmt.Errorf("install failed: %w", err)
 		}
@@ -340,7 +341,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 
 	result, err := h.assemblerSvc.Assemble(h.ctx, "php", version, static, extensions, false, func(stage, message string) {
 		progressCh <- progressMsg{stage: stage, message: message}
-	}, systemPkgs, jobs)
+	}, systemPkgs, jobs, force)
 	close(progressCh)
 	<-doneCh
 

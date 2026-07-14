@@ -72,7 +72,7 @@ func (s *Service) Graph() *graph.Service {
 // Assemble runs the full pipeline for (name, version).
 // systemPkgs optionally provides a map of available system packages for hybrid builds.
 // jobs controls make parallelism (0 = auto).
-func (s *Service) Assemble(ctx context.Context, name string, version string, static bool, extensions []string, verbose bool, progress ProgressFunc, systemPkgs map[string]system.Package, jobs int) (*AssemblerResult, error) {
+func (s *Service) Assemble(ctx context.Context, name string, version string, static bool, extensions []string, verbose bool, progress ProgressFunc, systemPkgs map[string]system.Package, jobs int, force bool) (*AssemblerResult, error) {
 	emit := func(stage, msg string) {
 		if progress != nil {
 			progress(stage, msg)
@@ -92,7 +92,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 	if err != nil {
 		return nil, fmt.Errorf("get state: %w", err)
 	}
-	if state == domain.StateInstalled {
+	if !force && state == domain.StateInstalled {
 		return &AssemblerResult{Version: exactVersion, AlreadyInstalled: true}, nil
 	}
 

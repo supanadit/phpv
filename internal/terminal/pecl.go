@@ -79,6 +79,8 @@ Examples:
 		Short: "List installed PECL extensions",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			jsonFlag, _ := cmd.Flags().GetBool("json")
+
 			phpVersion, err := h.resolveVersion("")
 			if len(args) == 1 {
 				phpVersion, err = h.resolveVersion(args[0])
@@ -91,6 +93,26 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("pecl list: %w", err)
 			}
+
+			if jsonFlag {
+				type peclListEntry struct {
+					Name    string `json:"name"`
+					Version string `json:"version"`
+				}
+				type peclListResponse struct {
+					PHPVersion string           `json:"php_version"`
+					Extensions []peclListEntry `json:"extensions"`
+				}
+				var entries []peclListEntry
+				for _, e := range exts {
+					entries = append(entries, peclListEntry{Name: e.Name, Version: e.Version})
+				}
+				return printJSON(jsonResponse{SchemaVersion: 1, Data: peclListResponse{
+					PHPVersion: phpVersion,
+					Extensions: entries,
+				}})
+			}
+
 			if len(exts) == 0 {
 				fmt.Printf("No PECL extensions installed for PHP %s\n", phpVersion)
 				return nil
@@ -106,6 +128,7 @@ Examples:
 			return nil
 		},
 	}
+	listCmd.Flags().Bool("json", false, "Output in JSON format")
 
 	uninstallCmd := &cobra.Command{
 		Use:   "uninstall <name> [version]",

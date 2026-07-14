@@ -37,12 +37,14 @@ func (h *PHPHandler) pharCmd() *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		RunE:  h.pharInstall,
 	})
-	cmd.AddCommand(&cobra.Command{
+	listCmd := &cobra.Command{
 		Use:   "list [version]",
 		Short: "List installed PHAR tools",
 		Args:  cobra.MaximumNArgs(1),
 		RunE:  h.pharList,
-	})
+	}
+	listCmd.Flags().Bool("json", false, "Output in JSON format")
+	cmd.AddCommand(listCmd)
 	cmd.AddCommand(&cobra.Command{
 		Use:   "which <name>",
 		Short: "Show path to a PHAR tool",
@@ -100,6 +102,8 @@ func (h *PHPHandler) pharInstall(cmd *cobra.Command, args []string) error {
 }
 
 func (h *PHPHandler) pharList(cmd *cobra.Command, args []string) error {
+	jsonFlag, _ := cmd.Flags().GetBool("json")
+
 	version := ""
 	if len(args) == 1 {
 		version = args[0]
@@ -117,13 +121,25 @@ func (h *PHPHandler) pharList(cmd *cobra.Command, args []string) error {
 	entries, err := os.ReadDir(pharDir)
 	if err != nil {
 		if os.IsNotExist(err) {
+			if jsonFlag {
+				type pharListEntry struct {
+					Name string `json:"name"`
+				}
+				type pharListResponse struct {
+					PHPVersion string           `json:"php_version"`
+					Tools      []pharListEntry `json:"tools"`
+				}
+				return printJSON(jsonResponse{SchemaVersion: 1, Data: pharListResponse{
+					PHPVersion: version,
+					Tools:      []pharListEntry{},
+				}})
+			}
 			fmt.Printf("No PHAR tools installed for PHP %s.\n", version)
 			return nil
 		}
 		return fmt.Errorf("read phar dir: %w", err)
 	}
 
-	fmt.Printf("PHAR tools for PHP %s:\n", version)
 	var names []string
 	for _, e := range entries {
 		if strings.HasSuffix(e.Name(), ".phar") {
@@ -131,6 +147,26 @@ func (h *PHPHandler) pharList(cmd *cobra.Command, args []string) error {
 		}
 	}
 	sort.Strings(names)
+
+	if jsonFlag {
+		type pharListEntry struct {
+			Name string `json:"name"`
+		}
+		type pharListResponse struct {
+			PHPVersion string           `json:"php_version"`
+			Tools      []pharListEntry `json:"tools"`
+		}
+		var tools []pharListEntry
+		for _, n := range names {
+			tools = append(tools, pharListEntry{Name: n})
+		}
+		return printJSON(jsonResponse{SchemaVersion: 1, Data: pharListResponse{
+			PHPVersion: version,
+			Tools:      tools,
+		}})
+	}
+
+	fmt.Printf("PHAR tools for PHP %s:\n", version)
 	for _, n := range names {
 		fmt.Printf("  %s\n", n)
 	}

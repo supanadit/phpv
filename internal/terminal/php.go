@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -310,21 +311,33 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 
 // versionsCmd lists installed PHP versions.
 func (h *PHPHandler) versionsCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "versions",
 		Short: "List installed PHP versions",
 		Args:  cobra.NoArgs,
 		RunE:  h.versions,
 	}
+	cmd.Flags().Bool("json", false, "Output in JSON format")
+	return cmd
+}
+
+type versionEntry struct {
+	Version string `json:"version"`
+	Default bool   `json:"default"`
 }
 
 func (h *PHPHandler) versions(cmd *cobra.Command, args []string) error {
+	jsonFlag, _ := cmd.Flags().GetBool("json")
+
 	silo := h.siloSvc.GetSilo()
 	phpDir := filepath.Join(silo.Root, "packages", "php")
 
 	entries, err := os.ReadDir(phpDir)
 	if err != nil {
 		if os.IsNotExist(err) {
+			if jsonFlag {
+				return printJSON(jsonResponse{SchemaVersion: 1, Data: []versionEntry{}})
+			}
 			fmt.Println("No PHP versions installed.")
 			return nil
 		}
@@ -345,6 +358,14 @@ func (h *PHPHandler) versions(cmd *cobra.Command, args []string) error {
 	}
 
 	sort.Sort(sort.Reverse(sort.StringSlice(installed)))
+
+	if jsonFlag {
+		var vers []versionEntry
+		for _, v := range installed {
+			vers = append(vers, versionEntry{Version: v, Default: v == defaultVer})
+		}
+		return printJSON(jsonResponse{SchemaVersion: 1, Data: vers})
+	}
 
 	if len(installed) == 0 {
 		fmt.Println("No PHP versions installed.")
@@ -367,15 +388,23 @@ func (h *PHPHandler) versions(cmd *cobra.Command, args []string) error {
 
 // listCmd lists available PHP versions from the registry.
 func (h *PHPHandler) listCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List available PHP versions",
 		Args:  cobra.NoArgs,
 		RunE:  h.listAvailable,
 	}
+	cmd.Flags().Bool("json", false, "Output in JSON format")
+	return cmd
+}
+
+type listEntry struct {
+	Version string `json:"version"`
 }
 
 func (h *PHPHandler) listAvailable(cmd *cobra.Command, args []string) error {
+	jsonFlag, _ := cmd.Flags().GetBool("json")
+
 	entries, err := h.registrySvc.List("php")
 	if err != nil {
 		return fmt.Errorf("list php versions: %w", err)
@@ -391,6 +420,14 @@ func (h *PHPHandler) listAvailable(cmd *cobra.Command, args []string) error {
 	}
 
 	sort.Sort(sort.Reverse(sort.StringSlice(versions)))
+
+	if jsonFlag {
+		var vers []listEntry
+		for _, v := range versions {
+			vers = append(vers, listEntry{Version: v})
+		}
+		return printJSON(jsonResponse{SchemaVersion: 1, Data: vers})
+	}
 
 	fmt.Println("Available PHP versions:")
 	for _, v := range versions {
@@ -800,4 +837,18 @@ func stageGlyph(stage string) string {
 	default:
 		return "·"
 	}
+}
+
+// printJSON marshals v to stdout as indented JSON. All JSON responses include
+// a schema_version field for forward compatibility.
+func printJSON(v any) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
+}
+
+// jsonResponse wraps a payload with a schema version.
+type jsonResponse struct {
+	SchemaVersion int `json:"schema_version"`
+	Data          any `json:"data"`
 }

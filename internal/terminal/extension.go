@@ -17,18 +17,25 @@ func (h *PHPHandler) extensionCmd() *cobra.Command {
 		Short: "Manage PHP extensions",
 		Long:  "List, add, or remove extensions for an installed PHP version.",
 	}
-	cmd.AddCommand(&cobra.Command{
+
+	listCmd := &cobra.Command{
 		Use:   "list [version]",
 		Short: "List installed extensions for a PHP version",
 		Args:  cobra.MaximumNArgs(1),
 		RunE:  h.extensionList,
-	})
-	cmd.AddCommand(&cobra.Command{
+	}
+	listCmd.Flags().Bool("json", false, "Output in JSON format")
+	cmd.AddCommand(listCmd)
+
+	availCmd := &cobra.Command{
 		Use:   "available [version]",
 		Short: "List extensions available for a PHP version",
 		Args:  cobra.MaximumNArgs(1),
 		RunE:  h.extensionAvailable,
-	})
+	}
+	availCmd.Flags().Bool("json", false, "Output in JSON format")
+	cmd.AddCommand(availCmd)
+
 	cmd.AddCommand(&cobra.Command{
 		Use:   "add <version> <name>...",
 		Short: "Install one or more extensions",
@@ -41,16 +48,34 @@ func (h *PHPHandler) extensionCmd() *cobra.Command {
 		Args:  cobra.MinimumNArgs(2),
 		RunE:  h.extensionRemove,
 	})
-	cmd.AddCommand(&cobra.Command{
+
+	peclCmd := &cobra.Command{
 		Use:   "pecl [version]",
 		Short: "List installed PECL extensions for a PHP version",
 		Args:  cobra.MaximumNArgs(1),
 		RunE:  h.extensionPecl,
-	})
+	}
+	peclCmd.Flags().Bool("json", false, "Output in JSON format")
+	cmd.AddCommand(peclCmd)
+
 	return cmd
 }
 
+type extListEntry struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Installed   bool   `json:"installed"`
+	Type        string `json:"type,omitempty"`
+}
+
+type extListResponse struct {
+	PHPVersion string         `json:"php_version"`
+	Extensions []extListEntry `json:"extensions"`
+}
+
 func (h *PHPHandler) extensionList(cmd *cobra.Command, args []string) error {
+	jsonFlag, _ := cmd.Flags().GetBool("json")
+
 	version, err := h.resolveVersion("")
 	if len(args) > 0 {
 		version, err = h.resolveVersion(args[0])
@@ -77,6 +102,31 @@ func (h *PHPHandler) extensionList(cmd *cobra.Command, args []string) error {
 		if e.Type == domain.ExtensionTypePECL {
 			peclInstalled[e.Name] = true
 		}
+	}
+
+	if jsonFlag {
+		var entries []extListEntry
+		for _, e := range allExts {
+			entries = append(entries, extListEntry{
+				Name:        e.Name,
+				Description: e.Description,
+				Installed:   installed[e.Name],
+			})
+		}
+		sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
+		for name := range peclInstalled {
+			if _, ok := extMap[name]; !ok {
+				entries = append(entries, extListEntry{
+					Name:      name,
+					Installed: true,
+					Type:      "pecl",
+				})
+			}
+		}
+		return printJSON(jsonResponse{SchemaVersion: 1, Data: extListResponse{
+			PHPVersion: version,
+			Extensions: entries,
+		}})
 	}
 
 	fmt.Printf("Extensions for PHP %s:\n", version)
@@ -110,7 +160,19 @@ func (h *PHPHandler) extensionList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+type extAvailEntry struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+type extAvailResponse struct {
+	PHPVersion string          `json:"php_version"`
+	Extensions []extAvailEntry `json:"extensions"`
+}
+
 func (h *PHPHandler) extensionAvailable(cmd *cobra.Command, args []string) error {
+	jsonFlag, _ := cmd.Flags().GetBool("json")
+
 	version, err := h.resolveVersion("")
 	if len(args) > 0 {
 		version, err = h.resolveVersion(args[0])
@@ -119,6 +181,18 @@ func (h *PHPHandler) extensionAvailable(cmd *cobra.Command, args []string) error
 		return err
 	}
 	exts := h.assemblerSvc.Graph().ListExtensionsForPHP(version)
+
+	if jsonFlag {
+		var entries []extAvailEntry
+		for _, e := range exts {
+			entries = append(entries, extAvailEntry{Name: e.Name, Description: e.Description})
+		}
+		sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
+		return printJSON(jsonResponse{SchemaVersion: 1, Data: extAvailResponse{
+			PHPVersion: version,
+			Extensions: entries,
+		}})
+	}
 
 	fmt.Printf("Available extensions for PHP %s:\n", version)
 	sort.Slice(exts, func(i, j int) bool {
@@ -211,7 +285,19 @@ func (h *PHPHandler) extensionRemove(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+type extPeclEntry struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
+type extPeclResponse struct {
+	PHPVersion string          `json:"php_version"`
+	Extensions []extPeclEntry `json:"extensions"`
+}
+
 func (h *PHPHandler) extensionPecl(cmd *cobra.Command, args []string) error {
+	jsonFlag, _ := cmd.Flags().GetBool("json")
+
 	version, err := h.resolveVersion("")
 	if len(args) > 0 {
 		version, err = h.resolveVersion(args[0])
@@ -223,6 +309,18 @@ func (h *PHPHandler) extensionPecl(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("list PECL extensions: %w", err)
 	}
+
+	if jsonFlag {
+		var entries []extPeclEntry
+		for _, e := range exts {
+			entries = append(entries, extPeclEntry{Name: e.Name, Version: e.Version})
+		}
+		return printJSON(jsonResponse{SchemaVersion: 1, Data: extPeclResponse{
+			PHPVersion: version,
+			Extensions: entries,
+		}})
+	}
+
 	if len(exts) == 0 {
 		fmt.Printf("No PECL extensions installed for PHP %s\n", version)
 		return nil

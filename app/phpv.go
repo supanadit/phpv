@@ -23,6 +23,7 @@ import (
 	"github.com/supanadit/phpv/shim"
 	"github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/system"
+	"github.com/supanadit/phpv/update"
 )
 
 // Version is set at build time via -ldflags.
@@ -67,6 +68,10 @@ func main() {
 			config.NewService,
 			fx.Annotate(disk.NewDoctorRepository, fx.As(new(doctor.Repository))),
 			doctor.NewService,
+			fx.Annotate(disk.NewUpdateRepository, fx.As(new(update.Repository))),
+			func(repo update.Repository) *update.Service {
+				return update.NewService(repo, Version)
+			},
 			assembler.NewService,
 			forge.NewService,
 			patcher.NewService,

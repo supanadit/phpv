@@ -1,83 +1,139 @@
 package update
 
 import (
-	"crypto/sha256"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 )
 
-type release struct {
-	TagName string  `json:"tag_name"`
-	Assets  []asset `json:"assets"`
+type Service struct {
+	repo    Repository
+	version string
 }
 
-type asset struct {
-	Name               string `json:"name"`
-	BrowserDownloadURL string `json:"browser_download_url"`
-	Size               int64  `json:"size"`
+func NewService(repo Repository, version string) *Service {
+	return &Service{repo: repo, version: version}
 }
 
-type checksums struct {
-	entries map[string]string
-}
-
-func fetchChecksums(checksumsURL string) (*checksums, error) {
-	resp, err := http.Get(checksumsURL)
+func (s *Service) CheckForUpdate() (latest string, hasUpdate bool, err error) {
+	rel, err := s.repo.FetchLatestRelease()
 	if err != nil {
-		return nil, fmt.Errorf("fetch checksums: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("checksums: unexpected status %s", resp.Status)
+		return "", false, err
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	latest = rel.TagName
+	if s.version == "dev" || s.version == "" {
+		return latest, true, nil
+	}
+	if s.version == latest {
+		return latest, false, nil
+	}
+	return latest, true, nil
+}
+
+func (s *Service) SelfUpdate() error {
+	latest, hasUpdate, err := s.CheckForUpdate()
 	if err != nil {
-		return nil, fmt.Errorf("read checksums: %w", err)
+		return err
+	}
+	if !hasUpdate {
+		fmt.Printf("Already up to date (%s)\n", s.version)
+		return nil
 	}
 
-	cs := &checksums{entries: make(map[string]string)}
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
+	fmt.Printf("Updating from %s to %s...\n", s.version, latest)
+
+	rel, err := s.repo.FetchLatestRelease()
+	if err != nil {
+		return fmt.Errorf("fetch release: %w", err)
+	}
+
+	myAsset := assetName()
+	var downloadURL string
+	var assetSize int64
+	for _, a := range rel.Assets {
+		if a.Name == myAsset {
+			downloadURL = a.DownloadURL
+			assetSize = a.Size
+			break
 		}
-		parts := strings.Fields(line)
-		if len(parts) >= 2 {
-			cs.entries[parts[1]] = parts[0]
+	}
+	if downloadURL == "" {
+		return fmt.Errorf("no release asset found for %s (available: %s)", myAsset, listAssetNames(rel.Assets))
+	}
+
+	var checksumsURL string
+	for _, a := range rel.Assets {
+		if a.Name == "checksums.txt" || a.Name == "sha256sums.txt" {
+			checksumsURL = a.DownloadURL
+			break
 		}
 	}
-	return cs, nil
-}
 
-func (cs *checksums) verify(filePath, assetName string) error {
-	expectedHash, ok := cs.entries[assetName]
-	if !ok {
-		return fmt.Errorf("no checksum found for %s", assetName)
-	}
-
-	f, err := os.Open(filePath)
+	execPath, err := s.repo.ExecutablePath()
 	if err != nil {
-		return fmt.Errorf("open file for checksum: %w", err)
-	}
-	defer f.Close()
-
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return fmt.Errorf("hash file: %w", err)
+		return fmt.Errorf("get executable path: %w", err)
 	}
 
-	gotHash := fmt.Sprintf("%x", h.Sum(nil))
-	if gotHash != expectedHash {
-		return fmt.Errorf("checksum mismatch for %s: got %s, want %s", assetName, gotHash, expectedHash)
+	execDir := filepath.Dir(execPath)
+	if err := s.repo.MkdirAll(execDir, 0o755); err != nil {
+		return fmt.Errorf("ensure exec dir: %w", err)
 	}
+
+	testFile := filepath.Join(execDir, ".phpv_update_test")
+	if err := s.repo.WriteFile(testFile, []byte{}, 0o644); err != nil {
+		return fmt.Errorf("cannot write to %s (try running with sudo): %w", execDir, err)
+	}
+	s.repo.Remove(testFile)
+
+	tmpFile := filepath.Join(execDir, ".phpv_update_download")
+	fmt.Printf("Downloading %s (%d bytes)...\n", downloadURL, assetSize)
+
+	if err := s.repo.DownloadFile(downloadURL, tmpFile); err != nil {
+		return fmt.Errorf("download: %w", err)
+	}
+
+	if checksumsURL != "" {
+		fmt.Println("Verifying checksum...")
+		cs, err := s.repo.FetchChecksums(checksumsURL)
+		if err != nil {
+			s.repo.Remove(tmpFile)
+			return fmt.Errorf("fetch checksums: %w", err)
+		}
+		expectedHash, ok := cs[myAsset]
+		if !ok {
+			s.repo.Remove(tmpFile)
+			return fmt.Errorf("no checksum found for %s", myAsset)
+		}
+		if err := s.repo.VerifyChecksum(tmpFile, expectedHash); err != nil {
+			s.repo.Remove(tmpFile)
+			return fmt.Errorf("checksum verification failed: %w", err)
+		}
+		fmt.Println("✓ Checksum verified")
+	}
+
+	if err := s.repo.Chmod(tmpFile, 0o755); err != nil {
+		s.repo.Remove(tmpFile)
+		return fmt.Errorf("chmod temp file: %w", err)
+	}
+
+	backupFile := execPath + ".bak"
+	s.repo.Remove(backupFile)
+
+	if err := s.repo.Rename(execPath, backupFile); err != nil {
+		s.repo.Remove(tmpFile)
+		return fmt.Errorf("backup current binary: %w", err)
+	}
+
+	if err := s.repo.Rename(tmpFile, execPath); err != nil {
+		s.repo.Rename(backupFile, execPath)
+		s.repo.Remove(tmpFile)
+		return fmt.Errorf("replace binary: %w", err)
+	}
+
+	s.repo.Remove(backupFile)
+	fmt.Printf("✓ Updated to %s\n", latest)
 	return nil
 }
 
@@ -106,171 +162,7 @@ func assetName() string {
 	return fmt.Sprintf("phpv-%s-%s", osName, arch)
 }
 
-func CheckForUpdate(currentVersion string) (latest string, hasUpdate bool, err error) {
-	resp, err := http.Get("https://api.github.com/repos/supanadit/phpv/releases/latest")
-	if err != nil {
-		return "", false, fmt.Errorf("check for update: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return "", false, fmt.Errorf("GitHub API: unexpected status %s", resp.Status)
-	}
-
-	var rel release
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		return "", false, fmt.Errorf("parse release: %w", err)
-	}
-
-	latest = rel.TagName
-	if currentVersion == "dev" || currentVersion == "" {
-		return latest, true, nil
-	}
-
-	// Simple string comparison (assumes semver tags like v0.1.0, v0.2.0, etc.)
-	if currentVersion == latest {
-		return latest, false, nil
-	}
-
-	return latest, true, nil
-}
-
-func SelfUpdate(currentVersion string) error {
-	latest, hasUpdate, err := CheckForUpdate(currentVersion)
-	if err != nil {
-		return err
-	}
-	if !hasUpdate {
-		fmt.Printf("Already up to date (%s)\n", currentVersion)
-		return nil
-	}
-
-	fmt.Printf("Updating from %s to %s...\n", currentVersion, latest)
-
-	resp, err := http.Get("https://api.github.com/repos/supanadit/phpv/releases/latest")
-	if err != nil {
-		return fmt.Errorf("fetch release: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var rel release
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		return fmt.Errorf("parse release: %w", err)
-	}
-
-	myAsset := assetName()
-	var downloadURL string
-	var assetSize int64
-	for _, a := range rel.Assets {
-		if a.Name == myAsset {
-			downloadURL = a.BrowserDownloadURL
-			assetSize = a.Size
-			break
-		}
-	}
-	if downloadURL == "" {
-		return fmt.Errorf("no release asset found for %s (available: %s)", myAsset, listAssetNames(rel.Assets))
-	}
-
-	// Find checksums file
-	var checksumsURL string
-	for _, a := range rel.Assets {
-		if a.Name == "checksums.txt" || a.Name == "sha256sums.txt" {
-			checksumsURL = a.BrowserDownloadURL
-			break
-		}
-	}
-
-	execPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("get executable path: %w", err)
-	}
-
-	execDir := filepath.Dir(execPath)
-	if err := os.MkdirAll(execDir, 0o755); err != nil {
-		return fmt.Errorf("ensure exec dir: %w", err)
-	}
-
-	// Check writability
-	testFile := filepath.Join(execDir, ".phpv_update_test")
-	if err := os.WriteFile(testFile, []byte{}, 0o644); err != nil {
-		return fmt.Errorf("cannot write to %s (try running with sudo): %w", execDir, err)
-	}
-	os.Remove(testFile)
-
-	// Download to temp file
-	tmpFile := filepath.Join(execDir, ".phpv_update_download")
-	fmt.Printf("Downloading %s (%d bytes)...\n", downloadURL, assetSize)
-
-	out, err := os.Create(tmpFile)
-	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
-	}
-
-	dlResp, err := http.Get(downloadURL)
-	if err != nil {
-		out.Close()
-		os.Remove(tmpFile)
-		return fmt.Errorf("download: %w", err)
-	}
-	defer dlResp.Body.Close()
-
-	if dlResp.StatusCode != 200 {
-		out.Close()
-		os.Remove(tmpFile)
-		return fmt.Errorf("download: unexpected status %s", dlResp.Status)
-	}
-
-	if _, err := io.Copy(out, dlResp.Body); err != nil {
-		out.Close()
-		os.Remove(tmpFile)
-		return fmt.Errorf("download body: %w", err)
-	}
-	out.Close()
-
-	// Verify checksum if available
-	if checksumsURL != "" {
-		fmt.Println("Verifying checksum...")
-		cs, err := fetchChecksums(checksumsURL)
-		if err != nil {
-			os.Remove(tmpFile)
-			return fmt.Errorf("fetch checksums: %w", err)
-		}
-		if err := cs.verify(tmpFile, myAsset); err != nil {
-			os.Remove(tmpFile)
-			return fmt.Errorf("checksum verification failed: %w", err)
-		}
-		fmt.Println("✓ Checksum verified")
-	}
-
-	// Make executable
-	if err := os.Chmod(tmpFile, 0o755); err != nil {
-		os.Remove(tmpFile)
-		return fmt.Errorf("chmod temp file: %w", err)
-	}
-
-	// Replace binary
-	backupFile := execPath + ".bak"
-	os.Remove(backupFile) // remove any stale backup
-
-	if err := os.Rename(execPath, backupFile); err != nil {
-		os.Remove(tmpFile)
-		return fmt.Errorf("backup current binary: %w", err)
-	}
-
-	if err := os.Rename(tmpFile, execPath); err != nil {
-		// Try to restore backup
-		os.Rename(backupFile, execPath)
-		os.Remove(tmpFile)
-		return fmt.Errorf("replace binary: %w", err)
-	}
-
-	os.Remove(backupFile)
-	fmt.Printf("✓ Updated to %s\n", latest)
-	return nil
-}
-
-func listAssetNames(assets []asset) string {
+func listAssetNames(assets []Asset) string {
 	var names []string
 	for _, a := range assets {
 		names = append(names, a.Name)

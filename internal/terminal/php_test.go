@@ -15,6 +15,7 @@ import (
 	"github.com/supanadit/phpv/shim"
 	"github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/system"
+	"github.com/supanadit/phpv/update"
 )
 
 type mockConfigRepo struct{}
@@ -274,6 +275,7 @@ func newTestPHPHandler(root string) *PHPHandler {
 	peclSvc := pecl.NewService(siloSvc)
 	configSvc := config.NewService(&mockConfigRepo{})
 	doctorSvc := doctor.NewService(disk.NewDoctorRepository())
+	updateSvc := update.NewService(disk.NewUpdateRepository(), "dev")
 	return &PHPHandler{
 		siloSvc:     siloSvc,
 		registrySvc: regSvc,
@@ -283,6 +285,7 @@ func newTestPHPHandler(root string) *PHPHandler {
 		peclSvc:     peclSvc,
 		configSvc:   configSvc,
 		doctorSvc:   doctorSvc,
+		updateSvc:   updateSvc,
 	}
 }
 

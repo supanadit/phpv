@@ -119,11 +119,12 @@ type Semver struct {
 	Major, Minor, Patch int
 }
 
-// ParseVersion parses a version string like "8.2.1" or "8.x.x".
-// Wildcard "x"/"X" is represented as -1.
+// ParseVersion parses a version string like "8.2.1", "58.2", or "8.x.x".
+// Wildcard "x"/"X" is represented as -1. Two-part versions (e.g. "58.2")
+// are treated as major.minor with patch=0.
 func ParseVersion(v string) Semver {
 	parts := strings.Split(v, ".")
-	if len(parts) != 3 {
+	if len(parts) < 2 || len(parts) > 3 {
 		return Semver{}
 	}
 	var s Semver

@@ -145,6 +145,10 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 			emit("skip", fmt.Sprintf("Skipping build tool %s", dep.Name))
 			continue
 		}
+		if dep.Optional && dep.Version == "" {
+			emit("skip", fmt.Sprintf("Skipping optional dep %s (no version specified)", dep.Name))
+			continue
+		}
 		depVersion := extractVersion(dep.Version)
 		constraint := extractConstraint(dep.Version)
 		depPrefix := s.silo.PackagePrefix(dep.Name, depVersion)
@@ -183,7 +187,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		}
 		var buildEnv []string
 		if len(prepared.ExtraCFlags) > 0 {
-			buildEnv = []string{"CFLAGS=" + strings.Join(prepared.ExtraCFlags, " ")}
+			buildEnv = []string{"CFLAGS=" + strings.Join(prepared.ExtraCFlags, " "), "CXXFLAGS=" + strings.Join(prepared.ExtraCFlags, " ")}
 		}
 		depFlags := s.graph.GetConfigureFlags(dep.Name, depVersion)
 		depFlags = append(depFlags, s.resolveDepPlaceholders(prepared.ConfigureFlags, plan.Deps)...)
@@ -535,6 +539,9 @@ func (s *Service) downloadAll(name, version string, deps []domain.Dependency) ([
 	}
 	var items []item
 	for _, dep := range deps {
+		if dep.Optional && dep.Version == "" {
+			continue
+		}
 		items = append(items, item{dep.Name, extractVersion(dep.Version)})
 	}
 	items = append(items, item{name, version})
@@ -729,6 +736,13 @@ func compareVersions(a, b string) int {
 func FindSourceDir(extractDir, name, version string) string {
 	if hasBuildFile(extractDir) {
 		return extractDir
+	}
+	// ICU tarballs extract to icu/source/ (nested one level deeper).
+	if name == "icu" {
+		icuSource := filepath.Join(extractDir, "icu", "source")
+		if hasBuildFile(icuSource) {
+			return icuSource
+		}
 	}
 	entries, err := os.ReadDir(extractDir)
 	if err != nil {

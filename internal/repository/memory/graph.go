@@ -42,6 +42,7 @@ func (r *GraphRepository) GetOrderedDependencies(name string, version string) ([
 	visiting := make(map[string]bool)
 	visited := make(map[string]bool)
 	seen := make(map[string]bool)
+	optional := make(map[string]bool)
 	var result []domain.Dependency
 
 	var resolve func(pkgName, pkgVersion string) error
@@ -63,6 +64,9 @@ func (r *GraphRepository) GetOrderedDependencies(name string, version string) ([
 
 		for _, dep := range deps {
 			depVersion := extractVersion(dep.Version)
+			if dep.Optional {
+				optional[dep.Name] = true
+			}
 			if err := resolve(dep.Name, depVersion); err != nil {
 				if dep.Optional {
 					continue
@@ -80,8 +84,9 @@ func (r *GraphRepository) GetOrderedDependencies(name string, version string) ([
 			if !seen[key] {
 				seen[key] = true
 				result = append(result, domain.Dependency{
-					Name:    pkgName,
-					Version: pkgVersion,
+					Name:     pkgName,
+					Version:  pkgVersion,
+					Optional: optional[pkgName],
 				})
 			}
 		}
@@ -417,6 +422,7 @@ func builtInPackages() []domain.Package {
 						{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
 						{Name: "oniguruma", Version: "5.9.6|~5.9.0"},
 						{Name: "curl", Version: "7.88.1|>=7.80.0"},
+						{Name: "icu", Version: "58.2|>=58.0,<60"},
 					},
 				},
 				{
@@ -427,6 +433,7 @@ func builtInPackages() []domain.Package {
 						{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
 						{Name: "oniguruma", Version: "5.9.6|~5.9.0"},
 						{Name: "curl", Version: "7.88.1|>=7.80.0"},
+						{Name: "icu", Version: "58.2|>=58.0,<60"},
 						{Name: "flex", Version: "", Optional: true},
 						{Name: "bison", Version: "", Optional: true},
 					},
@@ -439,6 +446,7 @@ func builtInPackages() []domain.Package {
 						{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
 						{Name: "oniguruma", Version: "5.9.6|~5.9.0"},
 						{Name: "curl", Version: "7.88.1|>=7.80.0"},
+						{Name: "icu", Version: "58.2|>=58.0,<60"},
 						{Name: "flex", Version: "", Optional: true},
 						{Name: "bison", Version: "", Optional: true},
 					},
@@ -451,6 +459,7 @@ func builtInPackages() []domain.Package {
 						{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
 						{Name: "oniguruma", Version: "5.9.6|~5.9.0"},
 						{Name: "curl", Version: "7.12.0|>=7.12.0,<7.13.0"},
+						{Name: "icu", Version: "58.2|>=58.0,<60"},
 						{Name: "flex", Version: "", Optional: true},
 						{Name: "bison", Version: "", Optional: true},
 					},
@@ -463,6 +472,7 @@ func builtInPackages() []domain.Package {
 						{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
 						{Name: "oniguruma", Version: "5.9.6|~5.9.0"},
 						{Name: "curl", Version: "7.12.0|>=7.12.0,<7.13.0"},
+						{Name: "icu", Version: "58.2|>=58.0,<60"},
 						{Name: "flex", Version: "", Optional: true},
 						{Name: "bison", Version: "", Optional: true},
 					},
@@ -885,7 +895,7 @@ func builtInExtensions() []domain.ExtensionDef {
 			Versions: []domain.VersionConstraintDef{
 				{VersionRange: ">=8.0", Version: "74.2|>=74.2"},
 				{VersionRange: ">=7.4", Version: "63.1|>=63.1,<74"},
-				{VersionRange: ">=5.0 <7.4", Version: "57.2|>=57.0,<60"},
+				{VersionRange: ">=5.0 <7.4", Version: "58.2|>=58.0,<60"},
 			},
 		},
 		{
@@ -1130,7 +1140,7 @@ func builtInExtensions() []domain.ExtensionDef {
 		{
 			Name:          "sqlite3",
 			Description:   "SQLite3 support",
-			Flag:          "--enable-sqlite3",
+			Flag:          "--with-sqlite3",
 			MinPHPVersion: "5.0",
 		},
 		{

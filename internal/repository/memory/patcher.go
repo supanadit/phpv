@@ -50,12 +50,34 @@ func (p *inMemoryPatcher) PatchesFor(name string, version string) []patcher.Patc
 		// PHP 7.4's scanf.c uses K&R-style function pointer casts that GCC 15
 		// rejects outright. Patch the fn declaration to match the actual
 		// strtoll(str, endptr, base) signature. The call site passes 3 args.
-		return []patcher.Patch{{
+		patches := []patcher.Patch{{
 			Name:         "php-gcc15-scanf-fn",
 			Package:      "php",
 			VersionRange: ">=7.0.0, <8.0.0",
 			Apply:        patchPhpScanfFn,
 		}}
+		// PHP 5.x and 7.0's generated configure script clobbers CFLAGS during
+		// the "checking for openssl support in libcurl" test by replacing them
+		// with the output of `curl-config --cflags` (which is just an -I path).
+		// The conftest uses strncasecmp() without including <strings.h>, which
+		// is a hard error on GCC 14+ (implicit function declarations default
+		// to error). Append warning-suppression flags to the curl-config
+		// substitution so the test compiles clean.
+		patches = append(patches, patcher.Patch{
+			Name:         "php-configure-curl-cflags-warnings",
+			Package:      "php",
+			VersionRange: ">=5.0.0, <7.1.0",
+			Apply:        patchPhpConfigureCurlCflags,
+		})
+		// PHP 5.x's pre-generated bison parser uses yystrlen/yystpcpy which
+		// are not defined in bison 3.x. Add defines to the parser source.
+		patches = append(patches, patcher.Patch{
+			Name:         "php-bison3-yystrlen",
+			Package:      "php",
+			VersionRange: ">=5.0.0, <6.0.0",
+			Apply:        patchPhpBison3Compat,
+		})
+		return patches
 	case "curl":
 		// Curl needs explicit TLS backend + disabled optional features.
 		// The {{dep:openssl}} placeholder is resolved by the assembler to
@@ -73,6 +95,16 @@ func (p *inMemoryPatcher) PatchesFor(name string, version string) []patcher.Patc
 				"--without-nghttp2",
 				"--without-zlib",
 			},
+		}}
+	case "icu":
+		// ICU 58.x has two issues on modern toolchains:
+		// 1. xlocale.h was removed in glibc 2.26+ (merged into locale.h).
+		// 2. -Wimplicit-fallthrough warnings are treated as errors on GCC 15+.
+		return []patcher.Patch{{
+			Name:         "icu-gcc15-compat",
+			Package:      "icu",
+			VersionRange: ">=58.0, <60.0",
+			Apply:        patchIcu58Compat,
 		}}
 	}
 	return nil
@@ -306,5 +338,100 @@ func patchOnigurumaStForeach(sourceDir string) error {
 		break
 	}
 
+	return nil
+}
+
+// patchPhpConfigureCurlCflags adds -Wno-implicit-function-declaration to the
+// CFLAGS set during the "checking for openssl support in libcurl" and
+// "checking for gnutls support in libcurl" tests in PHP 5.x/7.0's generated
+// configure script.
+//
+// Root cause: PHP 5.x/7.0's configure does:
+//
+//	save_CFLAGS="$CFLAGS"
+//	CFLAGS="`$CURL_CONFIG --cflags`"
+//	...openssl/gnutls tests use $CFLAGS in ac_link...
+//	CFLAGS="$save_CFLAGS"
+//
+// The $CURL_CONFIG --cflags for modern curl returns only an -I include path,
+// stripping all our -Wno-... flags. The conftest programs use strncasecmp()
+// without including <strings.h>, which is a hard error on GCC 14+ where
+// implicit function declarations default to error.
+func patchPhpConfigureCurlCflags(sourceDir string) error {
+	configurePath, err := findFile(sourceDir, "configure")
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(configurePath)
+	if err != nil {
+		return err
+	}
+	content := string(data)
+	old := "CFLAGS=\"`$CURL_CONFIG --cflags`\""
+	newStr := "CFLAGS=\"`$CURL_CONFIG --cflags` -Wno-implicit-function-declaration -Wno-error=implicit-function-declaration\""
+	if !strings.Contains(content, old) {
+		// Already patched or different version; skip silently.
+		return nil
+	}
+	content = strings.Replace(content, old, newStr, 1)
+	return os.WriteFile(configurePath, []byte(content), 0o644)
+}
+
+// patchIcu58Compat fixes ICU 58.x for modern toolchains:
+//   - xlocale.h was removed in glibc 2.26+ (merged into locale.h).
+//   - -Wimplicit-fallthrough warnings are errors on GCC 15+.
+func patchIcu58Compat(sourceDir string) error {
+	// Fix xlocale.h → locale.h in digitlst.cpp
+	digitlstPath, err := findFile(sourceDir, "i18n/digitlst.cpp")
+	if err == nil {
+		data, err := os.ReadFile(digitlstPath)
+		if err == nil {
+			content := string(data)
+			old := "#   include <xlocale.h>"
+			newStr := "#   include <locale.h>"
+			if strings.Contains(content, old) {
+				content = strings.Replace(content, old, newStr, 1)
+				os.WriteFile(digitlstPath, []byte(content), 0o644)
+			}
+		}
+	}
+	// Add -Wno-implicit-fallthrough to CXXFLAGS in the configure script
+	// so ICU's C++ files compile on GCC 15+.
+	configurePath, err := findFile(sourceDir, "configure")
+	if err == nil {
+		data, err := os.ReadFile(configurePath)
+		if err == nil {
+			content := string(data)
+			old := `CXXFLAGS="$CXXFLAGS"`
+			newStr := `CXXFLAGS="$CXXFLAGS -Wno-implicit-fallthrough"`
+			if strings.Contains(content, old) {
+				content = strings.Replace(content, old, newStr, 1)
+				os.WriteFile(configurePath, []byte(content), 0o644)
+			}
+		}
+	}
+	return nil
+}
+
+// patchPhpBison3Compat adds yystrlen/yystpcpy defines to PHP 5.x's
+// pre-generated bison parser. Bison 3.x removed these internal symbols
+// from the generated code, but PHP 5.x's parser.c was generated with
+// bison 2.x and references them.
+func patchPhpBison3Compat(sourceDir string) error {
+	parserPath, err := findFile(sourceDir, "Zend/zend_language_parser.c")
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(parserPath)
+	if err != nil {
+		return err
+	}
+	content := string(data)
+	old := "#include \"zend.h\""
+	newStr := "#include \"zend.h\"\n\n#ifndef yystrlen\n#if defined __STDC_VERSION__ && __STDC_VERSION__ >= 201112L\n#define yystrlen strlen\n#else\nstatic size_t yystrlen(const char *s) { const char *p = s; while (*p) p++; return (size_t)(p - s); }\n#endif\n#endif\n#ifndef yystpcpy\n#if defined __STDC_VERSION__ && __STDC_VERSION__ >= 201112L\n#define yystpcpy stpcpy\n#else\nstatic char *yystpcpy(char *d, const char *s) { while ((*d++ = *s++)); return d - 1; }\n#endif\n#endif"
+	if strings.Contains(content, old) {
+		content = strings.Replace(content, old, newStr, 1)
+		return os.WriteFile(parserPath, []byte(content), 0o644)
+	}
 	return nil
 }

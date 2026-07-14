@@ -334,6 +334,13 @@ func findSourceDir(extractDir, name, version string) string {
 	if hasBuildFile(extractDir) {
 		return extractDir
 	}
+	// ICU tarballs extract to icu/source/ (nested one level deeper).
+	if name == "icu" {
+		icuSource := filepath.Join(extractDir, "icu", "source")
+		if hasBuildFile(icuSource) {
+			return icuSource
+		}
+	}
 	entries, err := os.ReadDir(extractDir)
 	if err != nil {
 		return ""

@@ -291,7 +291,11 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		os.RemoveAll(prefix)
 	}
 
-	fmt.Printf("Installing PHP %s...\n\n", version)
+	bannerVersion := version
+	if exact, err := h.assemblerSvc.ResolveVersion("php", version); err == nil {
+		bannerVersion = exact
+	}
+	fmt.Printf("Installing PHP %s...\n\n", bannerVersion)
 
 	if verbose {
 		result, err := h.assemblerSvc.Assemble(h.ctx, "php", version, static, extensions, true, nil, systemPkgs, jobs, force)

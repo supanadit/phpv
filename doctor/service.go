@@ -2,10 +2,8 @@ package doctor
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/supanadit/phpv/domain"
 )
@@ -25,23 +23,31 @@ type Issue struct {
 	Fix      string   `json:"fix,omitempty"`
 }
 
-func Check(root string) []Issue {
+type Service struct {
+	repo Repository
+}
+
+func NewService(repo Repository) *Service {
+	return &Service{repo: repo}
+}
+
+func (s *Service) Check(root string) []Issue {
 	var issues []Issue
-	issues = append(issues, checkShimPresent(root)...)
-	issues = append(issues, checkDefaultVersion(root)...)
-	issues = append(issues, checkCacheWritable(root)...)
-	issues = append(issues, checkStateFiles(root)...)
-	issues = append(issues, checkExtensionManifests(root)...)
-	issues = append(issues, checkPHPVEnv(root)...)
-	issues = append(issues, checkShimInPath(root)...)
-	issues = append(issues, checkSystemMode(root)...)
-	issues = append(issues, checkDiskSpace(root)...)
+	issues = append(issues, s.checkShimPresent(root)...)
+	issues = append(issues, s.checkDefaultVersion(root)...)
+	issues = append(issues, s.checkCacheWritable(root)...)
+	issues = append(issues, s.checkStateFiles(root)...)
+	issues = append(issues, s.checkExtensionManifests(root)...)
+	issues = append(issues, s.checkPHPVEnv(root)...)
+	issues = append(issues, s.checkShimInPath(root)...)
+	issues = append(issues, s.checkSystemMode(root)...)
+	issues = append(issues, s.checkDiskSpace(root)...)
 	return issues
 }
 
-func checkShimPresent(root string) []Issue {
+func (s *Service) checkShimPresent(root string) []Issue {
 	shimPath := filepath.Join(root, "bin", "php")
-	if _, err := os.Stat(shimPath); os.IsNotExist(err) {
+	if _, err := s.repo.Stat(shimPath); s.repo.IsNotExist(err) {
 		return []Issue{{
 			Severity: SeverityWarning,
 			Title:    "Shim not found",
@@ -52,11 +58,11 @@ func checkShimPresent(root string) []Issue {
 	return nil
 }
 
-func checkDefaultVersion(root string) []Issue {
+func (s *Service) checkDefaultVersion(root string) []Issue {
 	defaultPath := filepath.Join(root, "default")
-	data, err := os.ReadFile(defaultPath)
+	data, err := s.repo.ReadFile(defaultPath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if s.repo.IsNotExist(err) {
 			return []Issue{{
 				Severity: SeverityInfo,
 				Title:    "No default version set",
@@ -80,7 +86,7 @@ func checkDefaultVersion(root string) []Issue {
 		}}
 	}
 	phpBin := filepath.Join(root, "packages", "php", ver, "bin", "php")
-	if _, err := os.Stat(phpBin); os.IsNotExist(err) {
+	if _, err := s.repo.Stat(phpBin); s.repo.IsNotExist(err) {
 		return []Issue{{
 			Severity: SeverityCritical,
 			Title:    "Default version not installed",
@@ -91,9 +97,9 @@ func checkDefaultVersion(root string) []Issue {
 	return nil
 }
 
-func checkCacheWritable(root string) []Issue {
+func (s *Service) checkCacheWritable(root string) []Issue {
 	cacheDir := filepath.Join(root, "caches")
-	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+	if err := s.repo.MkdirAll(cacheDir, 0o755); err != nil {
 		return []Issue{{
 			Severity: SeverityCritical,
 			Title:    "Cache directory not writable",
@@ -102,7 +108,7 @@ func checkCacheWritable(root string) []Issue {
 		}}
 	}
 	testFile := filepath.Join(cacheDir, ".phpv_write_test")
-	if err := os.WriteFile(testFile, []byte{}, 0o644); err != nil {
+	if err := s.repo.WriteFile(testFile, []byte{}, 0o644); err != nil {
 		return []Issue{{
 			Severity: SeverityCritical,
 			Title:    "Cache directory not writable",
@@ -110,15 +116,15 @@ func checkCacheWritable(root string) []Issue {
 			Fix:      "Check permissions on " + cacheDir,
 		}}
 	}
-	os.Remove(testFile)
+	s.repo.Remove(testFile)
 	return nil
 }
 
-func checkStateFiles(root string) []Issue {
+func (s *Service) checkStateFiles(root string) []Issue {
 	phpDir := filepath.Join(root, "packages", "php")
-	entries, err := os.ReadDir(phpDir)
+	entries, err := s.repo.ReadDir(phpDir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if s.repo.IsNotExist(err) {
 			return nil
 		}
 		return []Issue{{
@@ -133,9 +139,9 @@ func checkStateFiles(root string) []Issue {
 			continue
 		}
 		statePath := filepath.Join(phpDir, e.Name(), ".state")
-		data, err := os.ReadFile(statePath)
+		data, err := s.repo.ReadFile(statePath)
 		if err != nil {
-			if os.IsNotExist(err) {
+			if s.repo.IsNotExist(err) {
 				issues = append(issues, Issue{
 					Severity: SeverityWarning,
 					Title:    fmt.Sprintf("Missing state file for PHP %s", e.Name()),
@@ -158,9 +164,9 @@ func checkStateFiles(root string) []Issue {
 	return issues
 }
 
-func checkExtensionManifests(root string) []Issue {
+func (s *Service) checkExtensionManifests(root string) []Issue {
 	phpDir := filepath.Join(root, "packages", "php")
-	entries, err := os.ReadDir(phpDir)
+	entries, err := s.repo.ReadDir(phpDir)
 	if err != nil {
 		return nil
 	}
@@ -170,10 +176,10 @@ func checkExtensionManifests(root string) []Issue {
 			continue
 		}
 		manifestPath := filepath.Join(phpDir, e.Name(), "extensions.json")
-		if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+		if _, err := s.repo.Stat(manifestPath); s.repo.IsNotExist(err) {
 			continue
 		}
-		data, err := os.ReadFile(manifestPath)
+		data, err := s.repo.ReadFile(manifestPath)
 		if err != nil {
 			issues = append(issues, Issue{
 				Severity: SeverityWarning,
@@ -187,8 +193,8 @@ func checkExtensionManifests(root string) []Issue {
 	return issues
 }
 
-func checkPHPVEnv(root string) []Issue {
-	envRoot := os.Getenv("PHPV_ROOT")
+func (s *Service) checkPHPVEnv(root string) []Issue {
+	envRoot := s.repo.Getenv("PHPV_ROOT")
 	if envRoot != "" && envRoot != root {
 		return []Issue{{
 			Severity: SeverityWarning,
@@ -200,10 +206,9 @@ func checkPHPVEnv(root string) []Issue {
 	return nil
 }
 
-func checkShimInPath(root string) []Issue {
+func (s *Service) checkShimInPath(root string) []Issue {
 	binDir := filepath.Join(root, "bin")
-	path := os.Getenv("PATH")
-	for _, dir := range filepath.SplitList(path) {
+	for _, dir := range s.repo.PathList() {
 		if dir == binDir {
 			return nil
 		}
@@ -216,9 +221,9 @@ func checkShimInPath(root string) []Issue {
 	}}
 }
 
-func checkSystemMode(root string) []Issue {
+func (s *Service) checkSystemMode(root string) []Issue {
 	systemMarker := filepath.Join(root, ".phpv_system")
-	if _, err := os.Stat(systemMarker); err == nil {
+	if _, err := s.repo.Stat(systemMarker); err == nil {
 		return []Issue{{
 			Severity: SeverityInfo,
 			Title:    "System mode is active",
@@ -229,12 +234,12 @@ func checkSystemMode(root string) []Issue {
 	return nil
 }
 
-func checkDiskSpace(root string) []Issue {
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(root, &stat); err != nil {
+func (s *Service) checkDiskSpace(root string) []Issue {
+	bavail, bsize, err := s.repo.Statfs(root)
+	if err != nil {
 		return nil
 	}
-	freeBytes := stat.Bavail * uint64(stat.Bsize)
+	freeBytes := bavail * bsize
 	if freeBytes < 500*1024*1024 {
 		return []Issue{{
 			Severity: SeverityWarning,

@@ -7,6 +7,7 @@ import (
 
 	"github.com/supanadit/phpv/bundle"
 	"github.com/supanadit/phpv/config"
+	"github.com/supanadit/phpv/doctor"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/pecl"
@@ -15,6 +16,12 @@ import (
 	"github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/system"
 )
+
+type mockConfigRepo struct{}
+
+func (m *mockConfigRepo) Path() string { return "/tmp/.phpv/config.toml" }
+func (m *mockConfigRepo) Load() (config.Data, error) { return config.Data{}, nil }
+func (m *mockConfigRepo) Save(data config.Data) error { return nil }
 
 func TestFindProjectVersionFile_NoFile(t *testing.T) {
 	dir := t.TempDir()
@@ -265,7 +272,8 @@ func newTestPHPHandler(root string) *PHPHandler {
 	systemSvc := system.NewService()
 	shimSvc := shim.NewService(siloSvc)
 	peclSvc := pecl.NewService(siloSvc)
-	configSvc := config.NewService()
+	configSvc := config.NewService(&mockConfigRepo{})
+	doctorSvc := doctor.NewService(disk.NewDoctorRepository())
 	return &PHPHandler{
 		siloSvc:     siloSvc,
 		registrySvc: regSvc,
@@ -274,6 +282,7 @@ func newTestPHPHandler(root string) *PHPHandler {
 		shimSvc:     shimSvc,
 		peclSvc:     peclSvc,
 		configSvc:   configSvc,
+		doctorSvc:   doctorSvc,
 	}
 }
 

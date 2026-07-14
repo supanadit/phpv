@@ -11,6 +11,7 @@ import (
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/bundle"
 	"github.com/supanadit/phpv/config"
+	"github.com/supanadit/phpv/doctor"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/graph"
 	"github.com/supanadit/phpv/internal/repository/disk"
@@ -23,6 +24,10 @@ import (
 	"github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/system"
 )
+
+// Version is set at build time via -ldflags.
+// Example: go build -ldflags "-X main.Version=v0.1.0" -o phpv ./app/phpv.go
+var Version = "dev"
 
 // NewRootCmd provides the root cobra command.
 func NewRootCmd() *cobra.Command {
@@ -44,6 +49,7 @@ func RegisterRootCmd(rootCmd *cobra.Command, lc fx.Lifecycle) {
 func main() {
 	options := []fx.Option{
 		fx.NopLogger,
+		fx.Supply(Version),
 		fx.Provide(
 			NewRootCmd,
 			fx.Annotate(memory.NewRegistryRepository, fx.As(new(registry.RegistryRepository))),
@@ -57,7 +63,10 @@ func main() {
 			system.NewService,
 			shim.NewService,
 			pecl.NewService,
+			fx.Annotate(disk.NewConfigRepository, fx.As(new(config.ConfigRepository))),
 			config.NewService,
+			fx.Annotate(disk.NewDoctorRepository, fx.As(new(doctor.Repository))),
+			doctor.NewService,
 			assembler.NewService,
 			forge.NewService,
 			patcher.NewService,

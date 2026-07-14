@@ -2,15 +2,11 @@ package config
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
-
-	"github.com/pelletier/go-toml/v2"
 )
 
-type configData struct {
+type Data struct {
 	CacheDir     string `toml:"cache_dir,omitempty"`
 	Concurrency  int    `toml:"concurrency,omitempty"`
 	Compiler     string `toml:"compiler,omitempty"`
@@ -18,10 +14,16 @@ type configData struct {
 	StaticLibGCC bool   `toml:"static_libgcc,omitempty"`
 }
 
+type ConfigRepository interface {
+	Path() string
+	Load() (Data, error)
+	Save(data Data) error
+}
+
 type keyDef struct {
-	key     string
-	typ     string
-	desc    string
+	key  string
+	typ  string
+	desc string
 }
 
 var knownKeys = []keyDef{
@@ -41,56 +43,27 @@ func init() {
 	}
 }
 
-func resolveConfigPath() string {
-	root := os.Getenv("PHPV_ROOT")
-	if root == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return filepath.Join(".", ".phpv", "config.toml")
-		}
-		return filepath.Join(home, ".phpv", "config.toml")
-	}
-	return filepath.Join(root, "config.toml")
-}
-
 type Service struct {
-	mu   sync.RWMutex
-	path string
-	data configData
+	mu   sync.Mutex
+	repo ConfigRepository
+	data Data
 }
 
-func NewService() *Service {
-	return &Service{
-		path: resolveConfigPath(),
-	}
+func NewService(repo ConfigRepository) *Service {
+	return &Service{repo: repo}
 }
 
 func (s *Service) load() error {
-	data, err := os.ReadFile(s.path)
+	data, err := s.repo.Load()
 	if err != nil {
-		if os.IsNotExist(err) {
-			s.data = configData{}
-			return nil
-		}
-		return fmt.Errorf("read config: %w", err)
+		return fmt.Errorf("load config: %w", err)
 	}
-	var cfg configData
-	if err := toml.Unmarshal(data, &cfg); err != nil {
-		return fmt.Errorf("parse config: %w", err)
-	}
-	s.data = cfg
+	s.data = data
 	return nil
 }
 
 func (s *Service) save() error {
-	data, err := toml.Marshal(s.data)
-	if err != nil {
-		return fmt.Errorf("marshal config: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
-		return fmt.Errorf("create config dir: %w", err)
-	}
-	return os.WriteFile(s.path, data, 0o644)
+	return s.repo.Save(s.data)
 }
 
 func (s *Service) Get(key string) (string, error) {

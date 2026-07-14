@@ -17,6 +17,7 @@ import (
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/bundle"
 	"github.com/supanadit/phpv/config"
+	"github.com/supanadit/phpv/doctor"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/repository"
 	"github.com/supanadit/phpv/pecl"
@@ -36,10 +37,12 @@ type PHPHandler struct {
 	shimSvc      *shim.Service
 	peclSvc      *pecl.Service
 	configSvc    *config.Service
+	doctorSvc    *doctor.Service
+	version      string
 }
 
 // NewPHPHandler registers all PHP subcommands onto the given root command.
-func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service, systemSvc *system.Service, shimSvc *shim.Service, peclSvc *pecl.Service, configSvc *config.Service) {
+func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service, systemSvc *system.Service, shimSvc *shim.Service, peclSvc *pecl.Service, configSvc *config.Service, doctorSvc *doctor.Service, version string) {
 	h := &PHPHandler{
 		siloSvc:      siloSvc,
 		assemblerSvc: assemblerSvc,
@@ -49,6 +52,8 @@ func NewPHPHandler(rootCmd *cobra.Command, siloSvc *silo.Service, assemblerSvc *
 		shimSvc:      shimSvc,
 		peclSvc:      peclSvc,
 		configSvc:    configSvc,
+		doctorSvc:    doctorSvc,
+		version:      version,
 	}
 	rootCmd.AddCommand(h.downloadCmd())
 	rootCmd.AddCommand(h.installCmd())

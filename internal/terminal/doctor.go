@@ -24,7 +24,7 @@ func (h *PHPHandler) doctor(cmd *cobra.Command, args []string) error {
 	jsonFlag, _ := cmd.Flags().GetBool("json")
 
 	root := h.siloSvc.GetSilo().Root
-	issues := doctor.Check(root)
+	issues := h.doctorSvc.Check(root)
 
 	if jsonFlag {
 		type doctorResponse struct {

@@ -45,19 +45,23 @@ phpv install 7.4                              # Same defaults, auto-bundles Open
 # Customize
 phpv install 8.4 --ext openssl,curl,apcu     # Build exactly this list (no defaults)
 phpv install 8.4 --minimal                    # Bare build (--disable-all --enable-cli only)
+phpv install 8.4 --jobs 4                     # Parallel make with 4 jobs
+phpv install 8.4 --fresh                      # Clean rebuild (delete prefix, keep cached source)
+phpv install 8.4 --verbose                    # See full build output
 
 # Switch versions
 phpv use 8.3                                  # Current shell
 phpv use system                               # Use system PHP
-phpv default 8.3                              # Global default
+phpv use 8.3 --global                         # Global default
+phpv default 8.3                              # Set global default
 phpv versions                                 # List installed
 phpv which                                    # Path to current PHP
 
+# Per-project version via .php-version
+echo "7.2" > .php-version                     # Auto-switch on cd
+
 # Rebuild with different extensions (smart — only rebuilds PHP, keeps deps)
 phpv rebuild 7.2 --ext phar,iconv,filter,fileinfo,dom,session
-
-# Per-project version via .phpvrc
-echo "7.2" > .phpvrc                          # Auto-switch on cd
 
 # List available extensions for any PHP version
 phpv extensions --php 7.2
@@ -79,97 +83,85 @@ phpv pecl uninstall ext
 phpv doctor                                   # System readiness check
 phpv doctor 8.4                               # Extension analysis for PHP 8.4
 phpv install 8.4 --fresh --verbose
+
+# Export and import PHP builds
+phpv share 8.4                                # Export as portable tar.gz bundle
+phpv install 8.4 --from bundle.tar.gz         # Install from bundle
+
+# Self-update
+phpv update
+
+# Uninstall
+phpv uninstall 8.3
+
+# Shell completion
+phpv completion bash                          # Generate shell completion
 ```
 
 ---
 
-## Features
-
-- **Full dependency resolution** — Transitive dependency graph with version constraints. Missing libraries? Built from source automatically.
-- **Bundled PHP extensions** — Each mapped to the correct `./configure` flag, system library, and compatible version range.
-- **Dependency-sorted configure flags** — `sortByDependency()` ensures `--enable-hash` always precedes `--enable-phar`, enabling native SHA-256/SHA-512 phar signatures on all PHP versions. Composer 2.x works out of the box on PHP 7.x.
-- **Smart `phpv rebuild`** — Runs all three validation gates (unknown extensions, conflicts, implied deps auto-expansion). Only builds missing dependencies, reuses cached ones. No more "configure failed" from missing deps.
-- **Per-version PHAR management** — Each PHP version gets its own isolated phar directory at `versions/<ver>/phar/`. Different versions can have different versions of composer, pie, or wp-cli.
-- **Auto-regenerating shims** — Every `phpv init zsh` call regenerates all shims (php, phpize, composer, pie, wp) to match the current binary. No stale templates.
-- **PECL extension management** — Install, list, and uninstall with full build orchestration.
-- **System library detection** — Discovers installed dev packages via `pkg-config` and header checks. Uses system libs when available, builds from source when not.
-- **Parallel dependency builds** — Dependencies at the same graph level compile concurrently.
-- **Zig compiler fallback** — Old PHP versions that fail with modern GCC get auto-provisioned Zig as a drop-in C compiler.
-- **Multi-version support** — PHP 4.x through 8.x side by side, each with isolated dependencies.
-- **Smart version resolution** — `8` → latest 8.x, `8.4` → latest 8.4.x, `8.4.5` → exact version.
-- **Per-version extension flags (FlagVersions)** — Same extension can use different configure flags per PHP version range (libxml: `--enable-libxml` for <8.0, `--with-libxml` for 8.0+).
-- **Compiler flag probing** — CFLAGS are tested against the actual compiler at runtime. Unsupported flags are silently dropped instead of breaking builds.
-- **ICU version matrix** — `intl` extension auto-selects the right ICU version per PHP version (57.2 for <7.4, 63.1 for 7.4, 74.2 for 8.0+).
-- **Three-tier extension gating** — Unknown extensions halt, conflicting extensions halt, missing implied deps auto-expand with a warning.
-- **`.phpvrc` support** — Per-project PHP version auto-switching.
-- **`phpv init` regenerates shims** — Every shell init call ensures all shims match the current binary.
-- **Doctor command** — Checks system readiness, analyzes extension availability per PHP version, suggests install commands.
-- **Single binary** — No runtime dependencies. Just Go.
+Each PHP version gets its own isolated dependency tree and phar directory — no conflicts between versions. State files track build progress for resume support.
 
 ---
 
-## PHPV_ROOT Structure
+## Commands Reference
 
-```
-$PHPV_ROOT/
-├── bin/                    # Shims (php, php-cgi, phpize, php-config, composer, pie, wp)
-├── build-tools/            # Shared build tools (autoconf, bison, re2c, etc.)
-│   └── {pkg}/{ver}/
-├── cache/                  # Downloaded archives (with resume support)
-├── default                 # Default PHP version file
-├── sources/                # Extracted source code
-│   └── {pkg}/{ver}/
-└── versions/               # Installed PHP versions
-    └── {php-version}/
-        ├── dependency/      # Isolated dependencies per PHP version
-        │   └── {pkg}/{ver}/
-        ├── phar/            # Per-version PHAR binaries (composer.phar, etc.)
-        └── output/          # PHP installation prefix
-```
+| Command | Description |
+| --------- | ------------- |
+| `phpv install <ver>` | Install a PHP version with default extensions |
+| `phpv rebuild <ver>` | Rebuild PHP with different extensions (keeps deps) |
+| `phpv uninstall <ver>` | Remove an installed PHP version |
+| `phpv use <ver>` | Switch PHP version for current shell |
+| `phpv default <ver>` | Set global default PHP version |
+| `phpv versions` | List installed PHP versions |
+| `phpv which` | Show path to current PHP binary |
+| `phpv init <shell>` | Generate shell integration (bash/zsh/fish/pwsh/ksh) |
+| `phpv rehash` | Regenerate all shims |
+| `phpv doctor [ver]` | System readiness check + extension analysis |
+| `phpv update` | Self-update phpv |
+| `phpv config` | View and manage configuration |
+| `phpv completion <shell>` | Generate shell completion |
+| `phpv share <ver>` | Export PHP as portable bundle |
+| `phpv extensions [--php <ver>]` | List available/installed extensions |
+| `phpv extension add <ver> <name>` | Install an extension post-build |
+| `phpv extension remove <ver> <name>` | Remove an extension |
+| `phpv phar install <name>` | Install a PHAR tool (composer/pie/wp-cli/phpunit) |
+| `phpv phar list` | List installed PHAR tools |
+| `phpv phar update <name>` | Update a PHAR tool |
+| `phpv phar which <name>` | Show path to a PHAR tool |
+| `phpv pecl install <archive>` | Install a PECL extension |
+| `phpv pecl list` | List installed PECL extensions |
+| `phpv pecl uninstall <name>` | Remove a PECL extension |
 
-Each PHP version gets its own isolated dependency tree and phar directory — no conflicts between versions.
+### Install Flags
 
----
-
-## Requirements
-
-### Linux
-
-- `build-essential` or equivalent development tools
-- `gcc` or `zig` compiler (phpv auto-provisions zig)
-- `make`, `pkg-config`, `xz-utils`
-
-System libraries are auto-detected. For faster installs, pre-install dev packages:
-
-```bash
-# Debian/Ubuntu
-sudo apt-get install build-essential libssl-dev libcurl4-openssl-dev \
-    libxml2-dev libonig-dev libzip-dev libsqlite3-dev libicu-dev pkg-config \
-    cmake perl m4 autoconf automake libtool re2c bison xz-utils
-
-# Fedora/RHEL
-sudo dnf install @development-tools openssl-devel libcurl-devel \
-    libxml2-devel oniguruma-devel libzip-devel sqlite-devel \
-    pkg-config cmake perl m4 autoconf automake libtool re2c bison xz
-```
-
-### macOS
-
-- Xcode Command Line Tools
-- Homebrew packages may be required for some dependencies
+| Flag | Description |
+| ------ | ------------- |
+| `--ext <list>` | Comma-separated extension list (replaces defaults) |
+| `--minimal` | Bare build (--disable-all --enable-cli only) |
+| `--fresh` | Delete prefix, keep cached source |
+| `--clean` | Delete prefix + source + state |
+| `--force` | Force reinstall even if already installed |
+| `--static` | Fully static build |
+| `--jobs <n>` | Parallel make jobs |
+| `--verbose` | Show full build output |
+| `--auto-deps` | Auto-install system dependencies |
+| `--no-system` | Build all deps from source, skip system packages |
+| `--dry-run` | Show what would be done without doing it |
+| `--from <bundle>` | Install from a bundle file |
 
 ---
 
 ## Supported PHP Versions
 
 | PHP | Default extensions | Notes |
-|-----|--------------------|-------|
+| ----- | -------------------- | ------- |
 | 8.x | 25 | Full default set |
 | 7.0+ | 25 | Full default set |
 | 5.6 | 24 | `opcache` skipped (requires PHP 7.0+) |
 | 5.2–5.5 | 23 | `opcache` + `json` skipped |
-| 5.0–5.1 | 23 | Same as 5.2 |
-| 4.x | 0 | Use `--ext` to pick extensions |
+| 5.0–5.1 | 23 | Same as 5.2 ( Experimental ) |
+| 4.x | 0 | Use `--ext` to pick extensions ( Experimental ) |
 
 Default extensions: `bcmath`, `curl`, `dom`, `fileinfo`, `filter`, `gd`, `iconv`, `intl`, `json`, `mbstring`, `openssl`, `opcache`, `pdo`, `pdo_mysql`, `pdo_sqlite`, `phar`, `session`, `simplexml`, `sqlite3`, `tokenizer`, `xml`, `xmlreader`, `xmlwriter`, `zip`, `zlib`
 

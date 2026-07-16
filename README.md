@@ -60,11 +60,8 @@ phpv which                                    # Path to current PHP
 # Per-project version via .php-version
 echo "7.2" > .php-version                     # Auto-switch on cd
 
-# Rebuild with different extensions (smart — only rebuilds PHP, keeps deps)
-phpv rebuild 7.2 --ext phar,iconv,filter,fileinfo,dom,session
-
 # List available extensions for any PHP version
-phpv extensions --php 7.2
+phpv extensions list
 
 # Manage PHAR tools (per-version — each PHP version has its own phars)
 phpv phar install composer                    # Auto-detects latest compatible
@@ -88,8 +85,6 @@ phpv install 8.4 --fresh --verbose
 phpv share 8.4                                # Export as portable tar.gz bundle
 phpv install 8.4 --from bundle.tar.gz         # Install from bundle
 
-# Self-update
-phpv update
 
 # Uninstall
 phpv uninstall 8.3

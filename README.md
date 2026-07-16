@@ -32,6 +32,22 @@ cd phpv && go build -o phpv ./app/phpv.go
 
 ---
 
+## Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/uninstall.sh | bash
+```
+
+To skip the confirmation prompt:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/supanadit/phpv/main/uninstall.sh | bash -s -- --yes
+```
+
+This removes the `$PHPV_ROOT` directory (default `~/.phpv`) and removes the `phpv init` line from your shell config files (`.bashrc`, `.zshrc`, `config.fish`, etc.).
+
+---
+
 ## Quick Start
 
 ```bash

@@ -825,7 +825,7 @@ func builtInPackages() []domain.Package {
 		},
 		{
 			Package: "m4",
-			Default:     []domain.Dependency{},
+			Default: []domain.Dependency{},
 			Constraints: []domain.VersionConstraint{
 				{VersionRange: ">=1.4.19", Dependencies: []domain.Dependency{}},
 			},

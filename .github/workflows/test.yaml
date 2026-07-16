@@ -12,17 +12,17 @@ jobs:
       fail-fast: false
       matrix:
         php_version:
-          - '7.0'
-          - '7.1'
-          - '7.2'
-          - '7.3'
-          - '7.4'
-          - '8.0'
-          - '8.1'
-          - '8.2'
-          - '8.3'
-          - '8.4'
-          - '8.5'
+          - "7.0"
+          - "7.1"
+          - "7.2"
+          - "7.3"
+          - "7.4"
+          - "8.0"
+          - "8.1"
+          - "8.2"
+          - "8.3"
+          - "8.4"
+          - "8.5"
 
     env:
       PHPV_ROOT: ${{ github.workspace }}/phpv-root-${{ matrix.php_version }}
@@ -34,7 +34,7 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: "1.25"
           cache: true
 
       - name: Install system dependencies
@@ -53,13 +53,17 @@ jobs:
         id: cache-key
         run: |
           HASH=$(sha256sum \
-            internal/repository/memory/extensions.go \
-            internal/repository/memory/flags.go \
-            internal/repository/memory/assembler.go \
-            internal/repository/disk/bundler.go \
-            internal/repository/disk/advisor.go \
-            internal/repository/disk/bundler_packager.go \
-            internal/repository/disk/bundler_php.go \
+            internal/repository/memory/graph.go \
+            internal/repository/memory/compiler.go \
+            internal/repository/memory/registry.go \
+            internal/repository/memory/patcher.go \
+            internal/repository/disk/silo.go \
+            internal/repository/disk/forge.go \
+            internal/repository/disk/config.go \
+            internal/repository/disk/doctor.go \
+            internal/repository/disk/update.go \
+            assembler/service.go \
+            bundle/service.go \
             app/phpv.go \
             go.mod \
             go.sum \
@@ -86,8 +90,8 @@ jobs:
       - name: Get installed PHP version
         id: php-state
         run: |
-          PATTERN="$PHPV_ROOT/versions"
-          INSTALLED=$(ls -d $PATTERN/*/output/bin/php 2>/dev/null || echo "")
+          PATTERN="$PHPV_ROOT/packages/php"
+          INSTALLED=$(ls -d $PATTERN/*/bin/php 2>/dev/null || echo "")
           if [ -n "$INSTALLED" ]; then
             echo "cached=true" >> $GITHUB_OUTPUT
           else
@@ -104,7 +108,7 @@ jobs:
         if: steps.php-state.outputs.cached == 'true'
         run: |
           eval "$($PHPV_ROOT/bin/phpv init bash)"
-          phpv rebuild ${{ matrix.php_version }} --ext $PHPV_EXTENSIONS -v
+          phpv install ${{ matrix.php_version }} --ext $PHPV_EXTENSIONS --force -v
 
       - name: Verify PHP ${{ matrix.php_version }}
         run: |

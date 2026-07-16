@@ -35,7 +35,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: "1.25"
           cache: true
 
       - name: Build binary
@@ -45,7 +45,7 @@ jobs:
           CGO_ENABLED: 0
         run: |
           echo "Building for ${{ matrix.os }}/${{ matrix.arch }}"
-          go build -ldflags "-X github.com/supanadit/phpv/domain.AppVersion=${{ github.event.release.tag_name }}" -o ${{ matrix.artifact_name }} ./app/phpv.go
+          go build -ldflags "-X github.com/supanadit/phpv/app.Version=${{ github.event.release.tag_name }}" -o ${{ matrix.artifact_name }} ./app/phpv.go
           chmod +x ${{ matrix.artifact_name }}
 
       - name: Generate checksums
@@ -61,6 +61,32 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  generate-checksums:
+    name: Generate Combined Checksums
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all .sha256 files
+        run: |
+          gh release download ${{ github.event.release.tag_name }} \
+            --pattern '*.sha256' \
+            --dir /tmp/checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Combine into checksums.txt
+        run: |
+          cat /tmp/checksums/*.sha256 | sort > checksums.txt
+          cat checksums.txt
+
+      - name: Upload checksums.txt
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   generate-completions:
     name: Generate Shell Completions
     runs-on: ubuntu-latest
@@ -72,12 +98,12 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: "1.25"
           cache: true
 
       - name: Build binary
         run: |
-          go build -ldflags "-X github.com/supanadit/phpv/domain.AppVersion=${{ github.event.release.tag_name }}" -o phpv ./app/phpv.go
+          go build -ldflags "-X github.com/supanadit/phpv/app.Version=${{ github.event.release.tag_name }}" -o phpv ./app/phpv.go
 
       - name: Generate bash completion
         run: |

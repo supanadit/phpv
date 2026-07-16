@@ -50,7 +50,9 @@ func (s *Service) SelfUpdate(ctx context.Context) error {
 		return fmt.Errorf("fetch release: %w", err)
 	}
 
-	myAsset := assetName()
+	// Asset name uses the TARGET version (latest), not the current version.
+	// Release artifacts are named: phpv-{tag}-{goos}-{goarch}
+	myAsset := assetName(latest)
 	var downloadURL string
 	var assetSize int64
 	for _, a := range rel.Assets {
@@ -138,29 +140,12 @@ func (s *Service) SelfUpdate(ctx context.Context) error {
 	return nil
 }
 
-func assetName() string {
-	osName := runtime.GOOS
-	arch := runtime.GOARCH
-
-	switch osName {
-	case "darwin":
-		osName = "macOS"
-	case "linux":
-		osName = "Linux"
-	case "windows":
-		osName = "Windows"
-	}
-
-	switch arch {
-	case "amd64":
-		arch = "x86_64"
-	case "arm64":
-		arch = "aarch64"
-	case "386":
-		arch = "i386"
-	}
-
-	return fmt.Sprintf("phpv-%s-%s", osName, arch)
+// assetName constructs the release asset name for a given version.
+// Must match the naming convention in .github/workflows/release.yaml:
+//
+//	phpv-{tag}-{goos}-{goarch}
+func assetName(version string) string {
+	return fmt.Sprintf("phpv-%s-%s-%s", version, runtime.GOOS, runtime.GOARCH)
 }
 
 func listAssetNames(assets []Asset) string {

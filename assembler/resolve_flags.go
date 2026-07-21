@@ -15,16 +15,18 @@ import (
 // to inject dependency paths (e.g., curl's --with-openssl={{dep:openssl}}).
 //
 // The placeholder is resolved for every dependency that appears in the build
-// plan, even if its install directory does not exist yet. The assembler builds
-// dependencies in dependency order, so the directory will be created before any
-// dependent package is configured. This keeps fresh-state builds from passing a
-// literal {{dep:NAME}} string to ./configure.
+// plan, but only if the dependency was actually built locally (not when
+// satisfied by a system package). If the local install directory doesn't exist,
+// the placeholder is removed entirely, letting the package's configure script
+// find the system version via pkg-config or default search paths.
 func (s *Service) resolveDepPlaceholders(flags []string, deps []domain.Dependency) []string {
-	result := make([]string, len(flags))
-	for i, flag := range flags {
+	result := make([]string, 0, len(flags))
+	for _, flag := range flags {
+		resolved := flag
+		skip := false
 		for _, dep := range deps {
 			placeholder := "{{dep:" + dep.Name + "}}"
-			if !strings.Contains(flag, placeholder) {
+			if !strings.Contains(resolved, placeholder) {
 				continue
 			}
 			ver := dep.Version
@@ -35,9 +37,17 @@ func (s *Service) resolveDepPlaceholders(flags []string, deps []domain.Dependenc
 				continue
 			}
 			prefix := s.silo.PackagePrefix(dep.Name, ver)
-			flag = strings.ReplaceAll(flag, placeholder, prefix)
+			// Check if the dependency was actually built locally
+			if fi, err := os.Stat(prefix); err != nil || !fi.IsDir() {
+				// Dependency was satisfied by system package, skip this flag
+				skip = true
+				break
+			}
+			resolved = strings.ReplaceAll(resolved, placeholder, prefix)
 		}
-		result[i] = flag
+		if !skip {
+			result = append(result, resolved)
+		}
 	}
 	return result
 }

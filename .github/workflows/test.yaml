@@ -27,7 +27,6 @@ jobs:
 
     env:
       PHPV_ROOT: ${{ github.workspace }}/phpv-root-${{ matrix.php_version }}
-      PHPV_EXTENSIONS: "opcache,mbstring,curl,pdo_mysql,openssl,intl,bcmath,zip,xml,gd,pdo,zlib,json,phar,filter,dom,fileinfo,session,tokenizer,xmlwriter,simplexml,xmlreader"
 
     steps:
       - uses: actions/checkout@v4
@@ -50,66 +49,16 @@ jobs:
             libmariadb-dev gettext
           version: 1.0
 
-      - name: Compute cache key
-        id: cache-key
-        run: |
-          HASH=$(sha256sum \
-            internal/repository/memory/graph.go \
-            internal/repository/memory/compiler.go \
-            internal/repository/memory/registry.go \
-            internal/repository/memory/patcher.go \
-            internal/repository/disk/silo.go \
-            internal/repository/disk/forge.go \
-            internal/repository/disk/config.go \
-            internal/repository/disk/doctor.go \
-            internal/repository/disk/update.go \
-            assembler/service.go \
-            bundle/service.go \
-            app/phpv.go \
-            go.mod \
-            go.sum \
-            .github/workflows/test.yaml \
-            | sha256sum | cut -d' ' -f1)
-          echo "key=phpv-${{ matrix.php_version }}-$HASH" >> $GITHUB_OUTPUT
-          echo "restore-key=phpv-${{ matrix.php_version }}-" >> $GITHUB_OUTPUT
-
-      - name: Cache phpv build artifacts
-        id: cache-phpv
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.PHPV_ROOT }}
-          key: ${{ steps.cache-key.outputs.key }}
-          restore-keys: |
-            ${{ steps.cache-key.outputs.restore-key }}
-
       - name: Build phpv binary
         run: |
           mkdir -p $PHPV_ROOT/bin
           go build -o $PHPV_ROOT/bin/phpv ./app/phpv.go
           echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
 
-      - name: Get installed PHP version
-        id: php-state
-        run: |
-          PATTERN="$PHPV_ROOT/packages/php"
-          INSTALLED=$(ls -d $PATTERN/*/bin/php 2>/dev/null || echo "")
-          if [ -n "$INSTALLED" ]; then
-            echo "cached=true" >> $GITHUB_OUTPUT
-          else
-            echo "cached=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Install PHP ${{ matrix.php_version }}
-        if: steps.php-state.outputs.cached == 'false'
         run: |
           eval "$($PHPV_ROOT/bin/phpv init bash)"
-          phpv install ${{ matrix.php_version }} --ext $PHPV_EXTENSIONS -v
-
-      - name: Rebuild PHP ${{ matrix.php_version }}
-        if: steps.php-state.outputs.cached == 'true'
-        run: |
-          eval "$($PHPV_ROOT/bin/phpv init bash)"
-          phpv install ${{ matrix.php_version }} --ext $PHPV_EXTENSIONS --force -v
+          phpv install ${{ matrix.php_version }}
 
       - name: Verify PHP ${{ matrix.php_version }}
         run: |
@@ -170,7 +119,6 @@ jobs:
 
     env:
       PHPV_ROOT: ${{ github.workspace }}/phpv-root-${{ matrix.php_version }}
-      PHPV_EXTENSIONS: "opcache,mbstring,curl,pdo_mysql,openssl,intl,bcmath,zip,xml,gd,pdo,zlib,json,phar,filter,dom,fileinfo,session,tokenizer,xmlwriter,simplexml,xmlreader"
 
     steps:
       - uses: actions/checkout@v4
@@ -198,66 +146,16 @@ jobs:
           echo "CPPFLAGS=-I/opt/homebrew/opt/openssl@3/include -I/opt/homebrew/opt/libxml2/include -I/opt/homebrew/opt/sqlite3/include -I/opt/homebrew/opt/oniguruma/include -I/opt/homebrew/opt/icu4c/include -I/opt/homebrew/opt/libpng/include -I/opt/homebrew/opt/jpeg-turbo/include -I/opt/homebrew/opt/freetype/include -I/opt/homebrew/opt/libzip/include -I/opt/homebrew/opt/mariadb-connector-c/include -I/opt/homebrew/opt/webp/include -I/opt/homebrew/opt/libxpm/include -I/opt/homebrew/opt/zlib/include -I/opt/homebrew/opt/bison/include" >> $GITHUB_ENV
           echo "PATH=/opt/homebrew/opt/bison/bin:$PATH" >> $GITHUB_ENV
 
-      - name: Compute cache key
-        id: cache-key
-        run: |
-          HASH=$(sha256sum \
-            internal/repository/memory/graph.go \
-            internal/repository/memory/compiler.go \
-            internal/repository/memory/registry.go \
-            internal/repository/memory/patcher.go \
-            internal/repository/disk/silo.go \
-            internal/repository/disk/forge.go \
-            internal/repository/disk/config.go \
-            internal/repository/disk/doctor.go \
-            internal/repository/disk/update.go \
-            assembler/service.go \
-            bundle/service.go \
-            app/phpv.go \
-            go.mod \
-            go.sum \
-            .github/workflows/test.yaml \
-            | sha256sum | cut -d' ' -f1)
-          echo "key=phpv-macos-${{ matrix.php_version }}-$HASH" >> $GITHUB_OUTPUT
-          echo "restore-key=phpv-macos-${{ matrix.php_version }}-" >> $GITHUB_OUTPUT
-
-      - name: Cache phpv build artifacts
-        id: cache-phpv
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.PHPV_ROOT }}
-          key: ${{ steps.cache-key.outputs.key }}
-          restore-keys: |
-            ${{ steps.cache-key.outputs.restore-key }}
-
       - name: Build phpv binary
         run: |
           mkdir -p $PHPV_ROOT/bin
           go build -o $PHPV_ROOT/bin/phpv ./app/phpv.go
           echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
 
-      - name: Get installed PHP version
-        id: php-state
-        run: |
-          PATTERN="$PHPV_ROOT/packages/php"
-          INSTALLED=$(ls -d $PATTERN/*/bin/php 2>/dev/null || echo "")
-          if [ -n "$INSTALLED" ]; then
-            echo "cached=true" >> $GITHUB_OUTPUT
-          else
-            echo "cached=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Install PHP ${{ matrix.php_version }}
-        if: steps.php-state.outputs.cached == 'false'
         run: |
           eval "$($PHPV_ROOT/bin/phpv init bash)"
-          phpv install ${{ matrix.php_version }} --ext $PHPV_EXTENSIONS -v
-
-      - name: Rebuild PHP ${{ matrix.php_version }}
-        if: steps.php-state.outputs.cached == 'true'
-        run: |
-          eval "$($PHPV_ROOT/bin/phpv init bash)"
-          phpv install ${{ matrix.php_version }} --ext $PHPV_EXTENSIONS --force -v
+          phpv install ${{ matrix.php_version }}
 
       - name: Verify PHP ${{ matrix.php_version }}
         run: |

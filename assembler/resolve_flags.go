@@ -3,6 +3,7 @@ package assembler
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
@@ -154,11 +155,18 @@ func (s *Service) findDepPrefix(deps []domain.Dependency, depName, sentinelPath 
 	}
 	depDir := filepath.Join(resolvePHPVRoot(), "packages", depName)
 	if entries, err := os.ReadDir(depDir); err == nil {
+		var candidates []string
 		for _, entry := range entries {
 			candidate := filepath.Join(depDir, entry.Name())
 			if _, err := os.Stat(filepath.Join(candidate, sentinelPath)); err == nil {
-				return candidate
+				candidates = append(candidates, entry.Name())
 			}
+		}
+		if len(candidates) > 0 {
+			sort.Slice(candidates, func(i, j int) bool {
+				return compareVersions(candidates[i], candidates[j]) > 0
+			})
+			return filepath.Join(depDir, candidates[0])
 		}
 	}
 	return ""

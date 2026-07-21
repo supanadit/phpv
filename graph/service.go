@@ -1,6 +1,9 @@
 package graph
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/supanadit/phpv/domain"
 )
 
@@ -44,6 +47,7 @@ type BuildPlan struct {
 	ConfigureFlags []string
 	CFlags         []string
 	CompilerFlags  []string
+	Warnings       []string // non-fatal warnings (e.g. conflicting dep versions)
 }
 
 // Service wraps GraphRepository and adds value by consolidating
@@ -58,10 +62,22 @@ func NewService(repo GraphRepository) *Service {
 }
 
 // GetBuildPlan returns everything needed to build (name, version) in one call.
+// For PHP builds, the dependency list is derived from the requested extensions'
+// RequiresPackage + Versions (resolved per PHP version), merged with any
+// package-level deps from GetOrderedDependencies. This ensures PHP 8.2+ gets
+// a deterministic dep plan even though the php package has no hardcoded
+// Constraints for those versions.
 func (s *Service) GetBuildPlan(name string, version string, extensions []string) (*BuildPlan, error) {
 	deps, err := s.repo.GetOrderedDependencies(name, version)
 	if err != nil {
 		return nil, err
+	}
+	var warnings []string
+	if name == "php" && len(extensions) > 0 {
+		expanded, _ := s.repo.ExpandImplied(extensions)
+		extDeps, w := s.resolveExtensionDeps(version, expanded)
+		deps = mergeDeps(deps, extDeps)
+		warnings = w
 	}
 	var configureFlags []string
 	if name == "php" {
@@ -83,7 +99,118 @@ func (s *Service) GetBuildPlan(name string, version string, extensions []string)
 		ConfigureFlags: configureFlags,
 		CFlags:         cflags,
 		CompilerFlags:  compilerFlags,
+		Warnings:       warnings,
 	}, nil
+}
+
+// resolveExtensionDeps walks the extension list and returns the full transitive
+// set of source packages (with versions) that must be built. Deduplicates by
+// package name; on conflicting versions, picks the higher and records a warning.
+// Direct extension deps take priority over transitive deps from other packages.
+func (s *Service) resolveExtensionDeps(phpVersion string, extensions []string) ([]domain.Dependency, []string) {
+	direct := make(map[string]string) // pkgName -> versionWithConstraint
+	var warnings []string
+
+	for _, ext := range extensions {
+		pkgName, pkgVersion, ok := s.repo.GetExtensionDependencyWithVersion(ext, phpVersion)
+		if !ok || pkgName == "" {
+			continue
+		}
+		if pkgVersion == "" {
+			// Extension has RequiresPackage but no matching Versions entry
+			// (e.g. bz2, libpq). Skip — the assembler's hybrid mode will
+			// use the system package, or findDepPrefix will find any installed version.
+			continue
+		}
+		if existing, dup := direct[pkgName]; dup && existing != pkgVersion {
+			existingVer := extractExactVersion(existing)
+			newVer := extractExactVersion(pkgVersion)
+			if compareVersions(newVer, existingVer) > 0 {
+				warnings = append(warnings, fmt.Sprintf(
+					"conflicting dep %s: extension %q wants %q, but another extension already pinned %q — using %q (higher)",
+					pkgName, ext, pkgVersion, existing, pkgVersion,
+				))
+				direct[pkgName] = pkgVersion
+			} else if compareVersions(newVer, existingVer) < 0 {
+				warnings = append(warnings, fmt.Sprintf(
+					"conflicting dep %s: extension %q wants %q, but another extension already pinned %q — keeping %q (higher)",
+					pkgName, ext, pkgVersion, existing, existing,
+				))
+			}
+		} else if !dup {
+			direct[pkgName] = pkgVersion
+		}
+	}
+
+	// Seed seen with all direct dep names so they always take priority
+	// over transitive deps with the same name, regardless of iteration order.
+	seen := make(map[string]bool)
+	for name := range direct {
+		seen[name] = true
+	}
+
+	var result []domain.Dependency
+	for name, ver := range direct {
+		result = append(result, domain.Dependency{Name: name, Version: ver})
+		transitive, err := s.repo.GetOrderedDependencies(name, extractExactVersion(ver))
+		if err != nil {
+			continue
+		}
+		for _, td := range transitive {
+			if !seen[td.Name] {
+				seen[td.Name] = true
+				result = append(result, td)
+			}
+		}
+	}
+	return result, warnings
+}
+
+// mergeDeps merges extension-driven deps into the base dep list. Extension deps
+// override base deps with the same name (extension defs are the source of truth).
+func mergeDeps(base, extDeps []domain.Dependency) []domain.Dependency {
+	extIndex := make(map[string]int)
+	for i, d := range extDeps {
+		extIndex[d.Name] = i
+	}
+	var merged []domain.Dependency
+	for _, d := range base {
+		if _, overridden := extIndex[d.Name]; !overridden {
+			merged = append(merged, d)
+		}
+	}
+	merged = append(merged, extDeps...)
+	return merged
+}
+
+// extractExactVersion returns the exact version part from a "exact|constraint" string.
+func extractExactVersion(v string) string {
+	if idx := strings.Index(v, "|"); idx != -1 {
+		return v[:idx]
+	}
+	return v
+}
+
+// compareVersions compares two version strings numerically.
+func compareVersions(a, b string) int {
+	ap := strings.Split(a, ".")
+	bp := strings.Split(b, ".")
+	for i := 0; i < 3; i++ {
+		var an, bn int
+		if i < len(ap) {
+			fmt.Sscanf(ap[i], "%d", &an)
+		}
+		if i < len(bp) {
+			fmt.Sscanf(bp[i], "%d", &bn)
+		}
+		if an > bn {
+			return 1
+		}
+		if an < bn {
+			return -1
+		}
+	}
+	return 0
 }
 
 // GetOrderedDependencies returns all transitive dependencies for (name, version).

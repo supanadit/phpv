@@ -204,5 +204,3 @@ var cOnlyWarnings = map[string]bool{
 	"-Wno-array-parameter":               true,
 	"-Wno-deprecated-non-prototype":      true,
 }
-
-

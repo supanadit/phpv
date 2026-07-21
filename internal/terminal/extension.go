@@ -413,7 +413,7 @@ type extPeclEntry struct {
 }
 
 type extPeclResponse struct {
-	PHPVersion string          `json:"php_version"`
+	PHPVersion string         `json:"php_version"`
 	Extensions []extPeclEntry `json:"extensions"`
 }
 

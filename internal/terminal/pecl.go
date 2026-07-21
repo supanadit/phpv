@@ -104,7 +104,7 @@ Examples:
 					Version string `json:"version"`
 				}
 				type peclListResponse struct {
-					PHPVersion string           `json:"php_version"`
+					PHPVersion string          `json:"php_version"`
 					Extensions []peclListEntry `json:"extensions"`
 				}
 				var entries []peclListEntry

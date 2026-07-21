@@ -9,9 +9,9 @@ type Silo struct {
 type InstallState string
 
 const (
-	StateNone       InstallState = ""
-	StateInProgress InstallState = "in_progress"
-	StateInstalled  InstallState = "installed"
-	StateFailed     InstallState = "failed"
+	StateNone        InstallState = ""
+	StateInProgress  InstallState = "in_progress"
+	StateInstalled   InstallState = "installed"
+	StateFailed      InstallState = "failed"
 	StateInterrupted InstallState = "interrupted"
 )

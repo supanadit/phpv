@@ -2,18 +2,29 @@ package memory
 
 import (
 	"testing"
+
+	"github.com/supanadit/phpv/graph"
 )
 
 func TestGraphRepository_GetOrderedDependencies_PHP7_4(t *testing.T) {
 	repo := NewGraphRepository()
+	svc := graph.NewService(repo)
 
-	deps, err := repo.GetOrderedDependencies("php", "7.4.33")
+	defaults := []string{
+		"bcmath", "curl", "dom", "fileinfo", "filter", "gd",
+		"iconv", "intl", "json", "mbstring", "openssl", "opcache",
+		"pdo", "pdo_mysql", "pdo_sqlite", "phar", "session",
+		"simplexml", "sqlite3", "tokenizer", "xml", "xmlreader",
+		"xmlwriter", "zip", "zlib",
+	}
+
+	plan, err := svc.GetBuildPlan("php", "7.4.33", defaults)
 	if err != nil {
-		t.Fatalf("GetOrderedDependencies(php, 7.4.33) returned error: %v", err)
+		t.Fatalf("GetBuildPlan(php, 7.4.33) returned error: %v", err)
 	}
 
 	depNames := make(map[string]bool)
-	for _, dep := range deps {
+	for _, dep := range plan.Deps {
 		depNames[dep.Name] = true
 	}
 
@@ -38,22 +49,31 @@ func TestGraphRepository_GetOrderedDependencies_PHP7_4(t *testing.T) {
 
 func TestGraphRepository_GetOrderedDependencies_PHP8_1(t *testing.T) {
 	repo := NewGraphRepository()
+	svc := graph.NewService(repo)
 
-	deps, err := repo.GetOrderedDependencies("php", "8.1.0")
+	defaults := []string{
+		"bcmath", "curl", "dom", "fileinfo", "filter", "gd",
+		"iconv", "intl", "json", "mbstring", "openssl", "opcache",
+		"pdo", "pdo_mysql", "pdo_sqlite", "phar", "session",
+		"simplexml", "sqlite3", "tokenizer", "xml", "xmlreader",
+		"xmlwriter", "zip", "zlib",
+	}
+
+	plan, err := svc.GetBuildPlan("php", "8.1.0", defaults)
 	if err != nil {
-		t.Fatalf("GetOrderedDependencies(php, 8.1.0) returned error: %v", err)
+		t.Fatalf("GetBuildPlan(php, 8.1.0) returned error: %v", err)
 	}
 
 	depMap := make(map[string]string)
-	for _, dep := range deps {
+	for _, dep := range plan.Deps {
 		depMap[dep.Name] = dep.Version
 	}
 
-	if v, ok := depMap["openssl"]; !ok || v != "1.1.1w" {
-		t.Errorf("openssl version = %q, want 1.1.1w", v)
+	if v, ok := depMap["openssl"]; !ok || v != "1.1.1w|>=1.0.2,<4.0.0" {
+		t.Errorf("openssl version = %q, want %q", v, "1.1.1w|>=1.0.2,<4.0.0")
 	}
-	if v, ok := depMap["curl"]; !ok || v != "8.5.0" {
-		t.Errorf("curl version = %q, want 8.5.0", v)
+	if v, ok := depMap["curl"]; !ok || v != "8.10.1|>=8.0.0" {
+		t.Errorf("curl version = %q, want %q", v, "8.10.1|>=8.0.0")
 	}
 }
 
@@ -254,5 +274,129 @@ func TestGetExtensionConfigureFlags_Zip_PHP7_3(t *testing.T) {
 	}
 	if flags[0] != "--enable-zip" {
 		t.Errorf("zip flag for PHP 7.3 = %q, want %q", flags[0], "--enable-zip")
+	}
+}
+
+func TestGetBuildPlan_PHP8_4_HasDeps(t *testing.T) {
+	repo := NewGraphRepository()
+	svc := graph.NewService(repo)
+
+	defaults := []string{
+		"bcmath", "curl", "dom", "fileinfo", "filter", "gd",
+		"iconv", "intl", "json", "mbstring", "openssl", "opcache",
+		"pdo", "pdo_mysql", "pdo_sqlite", "phar", "session",
+		"simplexml", "sqlite3", "tokenizer", "xml", "xmlreader",
+		"xmlwriter", "zip", "zlib",
+	}
+
+	plan, err := svc.GetBuildPlan("php", "8.4.0", defaults)
+	if err != nil {
+		t.Fatalf("GetBuildPlan(php, 8.4.0) returned error: %v", err)
+	}
+
+	depMap := make(map[string]string)
+	for _, dep := range plan.Deps {
+		depMap[dep.Name] = dep.Version
+	}
+
+	// PHP 8.4 should get deps from extension Versions, not from php Constraints
+	if v, ok := depMap["openssl"]; !ok {
+		t.Error("openssl dep missing for PHP 8.4")
+	} else if v != "1.1.1w|>=1.1.1,<4.0.0" {
+		t.Errorf("openssl version = %q, want %q", v, "1.1.1w|>=1.1.1,<4.0.0")
+	}
+	if v, ok := depMap["libxml2"]; !ok {
+		t.Error("libxml2 dep missing for PHP 8.4")
+	} else if v != "2.12.7|~2.12.0" {
+		t.Errorf("libxml2 version = %q, want %q", v, "2.12.7|~2.12.0")
+	}
+	if v, ok := depMap["curl"]; !ok {
+		t.Error("curl dep missing for PHP 8.4")
+	} else if v != "8.10.1|>=8.0.0" {
+		t.Errorf("curl version = %q, want %q", v, "8.10.1|>=8.0.0")
+	}
+	if v, ok := depMap["zlib"]; !ok {
+		t.Error("zlib dep missing for PHP 8.4")
+	} else if v != "1.3.1|>=1.3.0" {
+		t.Errorf("zlib version = %q, want %q", v, "1.3.1|>=1.3.0")
+	}
+	if v, ok := depMap["oniguruma"]; !ok {
+		t.Error("oniguruma dep missing for PHP 8.4")
+	} else if v != "6.9.9|~6.9.0" {
+		t.Errorf("oniguruma version = %q, want %q", v, "6.9.9|~6.9.0")
+	}
+	if v, ok := depMap["icu"]; !ok {
+		t.Error("icu dep missing for PHP 8.4")
+	} else if v != "74.2|>=74.2" {
+		t.Errorf("icu version = %q, want %q", v, "74.2|>=74.2")
+	}
+}
+
+func TestGetBuildPlan_PHP8_2_HasDeps(t *testing.T) {
+	repo := NewGraphRepository()
+	svc := graph.NewService(repo)
+
+	defaults := []string{
+		"bcmath", "curl", "dom", "fileinfo", "filter", "gd",
+		"iconv", "intl", "json", "mbstring", "openssl", "opcache",
+		"pdo", "pdo_mysql", "pdo_sqlite", "phar", "session",
+		"simplexml", "sqlite3", "tokenizer", "xml", "xmlreader",
+		"xmlwriter", "zip", "zlib",
+	}
+
+	plan, err := svc.GetBuildPlan("php", "8.2.1", defaults)
+	if err != nil {
+		t.Fatalf("GetBuildPlan(php, 8.2.1) returned error: %v", err)
+	}
+
+	depMap := make(map[string]string)
+	for _, dep := range plan.Deps {
+		depMap[dep.Name] = dep.Version
+	}
+
+	if v, ok := depMap["openssl"]; !ok {
+		t.Error("openssl dep missing for PHP 8.2")
+	} else if v != "1.1.1w|>=1.0.2,<4.0.0" {
+		t.Errorf("openssl version = %q, want %q", v, "1.1.1w|>=1.0.2,<4.0.0")
+	}
+	if v, ok := depMap["libxml2"]; !ok {
+		t.Error("libxml2 dep missing for PHP 8.2")
+	} else if v != "2.12.7|~2.12.0" {
+		t.Errorf("libxml2 version = %q, want %q", v, "2.12.7|~2.12.0")
+	}
+}
+
+func TestGetBuildPlan_Minimal_NoDeps(t *testing.T) {
+	repo := NewGraphRepository()
+	svc := graph.NewService(repo)
+
+	plan, err := svc.GetBuildPlan("php", "8.4.0", nil)
+	if err != nil {
+		t.Fatalf("GetBuildPlan(php, 8.4.0, nil) returned error: %v", err)
+	}
+	if len(plan.Deps) != 0 {
+		t.Errorf("expected 0 deps for --minimal, got %d: %v", len(plan.Deps), plan.Deps)
+	}
+}
+
+func TestGetBuildPlan_ImpliedChains(t *testing.T) {
+	repo := NewGraphRepository()
+	svc := graph.NewService(repo)
+
+	// Request only 'dom' — it should imply 'libxml' ext, which requires 'libxml2' pkg.
+	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"dom"})
+	if err != nil {
+		t.Fatalf("GetBuildPlan(php, 8.4.0, [dom]) returned error: %v", err)
+	}
+
+	depMap := make(map[string]string)
+	for _, dep := range plan.Deps {
+		depMap[dep.Name] = dep.Version
+	}
+
+	if v, ok := depMap["libxml2"]; !ok {
+		t.Error("libxml2 dep missing — dom should imply libxml ext which requires libxml2")
+	} else if v != "2.12.7|~2.12.0" {
+		t.Errorf("libxml2 version = %q, want %q", v, "2.12.7|~2.12.0")
 	}
 }

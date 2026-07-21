@@ -3,17 +3,17 @@ package domain
 import "time"
 
 type BundleManifest struct {
-	FormatVersion int              `json:"format_version"`
-	Package       string           `json:"package"`
-	Version       string           `json:"version"`
-	OS            string           `json:"os"`
-	Arch          string           `json:"arch"`
-	BuildDate     time.Time        `json:"build_date"`
-	Builder       BundleBuilder    `json:"builder"`
+	FormatVersion int                `json:"format_version"`
+	Package       string             `json:"package"`
+	Version       string             `json:"version"`
+	OS            string             `json:"os"`
+	Arch          string             `json:"arch"`
+	BuildDate     time.Time          `json:"build_date"`
+	Builder       BundleBuilder      `json:"builder"`
 	RuntimeDeps   []BundleRuntimeDep `json:"runtime_deps"`
-	BuildDeps     []BundleBuildDep `json:"build_deps"`
-	Extensions    []BundleExtension `json:"extensions"`
-	TotalSize     int64            `json:"total_size"`
+	BuildDeps     []BundleBuildDep   `json:"build_deps"`
+	Extensions    []BundleExtension  `json:"extensions"`
+	TotalSize     int64              `json:"total_size"`
 }
 
 type BundleBuilder struct {

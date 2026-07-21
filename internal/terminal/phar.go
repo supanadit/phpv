@@ -126,7 +126,7 @@ func (h *PHPHandler) pharList(cmd *cobra.Command, args []string) error {
 					Name string `json:"name"`
 				}
 				type pharListResponse struct {
-					PHPVersion string           `json:"php_version"`
+					PHPVersion string          `json:"php_version"`
 					Tools      []pharListEntry `json:"tools"`
 				}
 				return printJSON(jsonResponse{SchemaVersion: 1, Data: pharListResponse{
@@ -153,7 +153,7 @@ func (h *PHPHandler) pharList(cmd *cobra.Command, args []string) error {
 			Name string `json:"name"`
 		}
 		type pharListResponse struct {
-			PHPVersion string           `json:"php_version"`
+			PHPVersion string          `json:"php_version"`
 			Tools      []pharListEntry `json:"tools"`
 		}
 		var tools []pharListEntry

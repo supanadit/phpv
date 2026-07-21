@@ -25,8 +25,8 @@ type Issue struct {
 }
 
 type Service struct {
-	repo     Repository
-	sysSvc   *system.Service
+	repo   Repository
+	sysSvc *system.Service
 }
 
 func NewService(repo Repository, sysSvc *system.Service) *Service {

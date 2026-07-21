@@ -4,6 +4,7 @@ package domain
 // Version uses the format "exactVersion|constraint" where:
 //   - exactVersion is the specific version to download
 //   - constraint is the compatibility range (e.g., ">=1.0.2,<4.0.0")
+//
 // If Version is empty, the dependency has no specific version requirement.
 type Dependency struct {
 	Name     string

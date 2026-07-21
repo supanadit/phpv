@@ -23,10 +23,10 @@ import (
 
 // AssemblerResult holds the outcome of assembling a package.
 type AssemblerResult struct {
-	DownloadResults []DownloadResult
-	Version         string
-	Prefix          string
-	Env             map[string]string
+	DownloadResults  []DownloadResult
+	Version          string
+	Prefix           string
+	Env              map[string]string
 	AlreadyInstalled bool
 }
 
@@ -118,6 +118,9 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		return nil, fmt.Errorf("resolve build plan for %s@%s: %w", name, exactVersion, err)
 	}
 	emit("deps", fmt.Sprintf("Found %d dependencies", len(plan.Deps)))
+	for _, w := range plan.Warnings {
+		emit("deps", w)
+	}
 
 	emit("download", fmt.Sprintf("Downloading and extracting %d packages...", len(plan.Deps)+1))
 	downloadResults, err := s.downloadAll(name, exactVersion, plan.Deps)

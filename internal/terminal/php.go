@@ -193,8 +193,8 @@ Version syntax:
   8.4.4    exact version
   8.4      latest 8.4.x patch
   8        latest 8.x.x minor`,
-		Args:  cobra.ExactArgs(1),
-		RunE:  h.install,
+		Args: cobra.ExactArgs(1),
+		RunE: h.install,
 	}
 	cmd.Flags().String("from", "", "Install from a bundle file instead of building from source")
 	cmd.Flags().Bool("static", false, "Build with static linking for cross-distro portability")

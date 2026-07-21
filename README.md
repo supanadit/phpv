@@ -111,7 +111,7 @@ phpv completion bash                          # Generate shell completion
 
 ---
 
-Each PHP version gets its own isolated dependency tree and phar directory — no conflicts between versions. State files track build progress for resume support.
+Each PHP version gets its own isolated install prefix and phar directory — no conflicts between versions. Dependency versions are resolved per-extension per-PHP-version from the extension graph, so PHP 8.2+ now get the same deterministic dep resolution as 7.x/8.0/8.1. Dependencies are keyed by `(name, version)` and shared across PHP versions that pin the same version — build once, reuse everywhere.
 
 ---
 

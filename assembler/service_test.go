@@ -1,6 +1,10 @@
 package assembler
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestResolveVersionConstraint_Exact(t *testing.T) {
 	versions := []string{"8.4.0", "8.4.1", "8.4.2", "8.3.0", "7.4.0"}
@@ -83,5 +87,27 @@ func TestCompareVersions(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("compareVersions(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
 		}
+	}
+}
+
+func TestFindDepPrefix_PicksHighestVersion(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("PHPV_ROOT", tmpDir)
+
+	// Create two openssl versions: 1.0.1u and 1.1.1w
+	oldDir := filepath.Join(tmpDir, "packages", "openssl", "1.0.1u", "include", "openssl")
+	newDir := filepath.Join(tmpDir, "packages", "openssl", "1.1.1w", "include", "openssl")
+	if err := os.MkdirAll(oldDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(newDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := &Service{}
+	got := svc.findDepPrefix(nil, "openssl", "include/openssl")
+	want := filepath.Join(tmpDir, "packages", "openssl", "1.1.1w")
+	if got != want {
+		t.Errorf("findDepPrefix = %q, want %q (highest version)", got, want)
 	}
 }

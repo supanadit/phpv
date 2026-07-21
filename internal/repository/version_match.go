@@ -34,10 +34,10 @@ func MatchVersionRange(rangeStr, version string) bool {
 
 type constraint struct {
 	operator string
-	major     int
-	minor     int
-	patch     int
-	suffix    string
+	major    int
+	minor    int
+	patch    int
+	suffix   string
 }
 
 var versionRe = regexp.MustCompile(`^(\d+)(?:\.(\d+))?(?:\.(\d+))?([a-z]*)$`)

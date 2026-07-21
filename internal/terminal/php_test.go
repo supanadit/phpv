@@ -21,8 +21,8 @@ import (
 
 type mockConfigRepo struct{}
 
-func (m *mockConfigRepo) Path() string { return "/tmp/.phpv/config.toml" }
-func (m *mockConfigRepo) Load() (config.Data, error) { return config.Data{}, nil }
+func (m *mockConfigRepo) Path() string                { return "/tmp/.phpv/config.toml" }
+func (m *mockConfigRepo) Load() (config.Data, error)  { return config.Data{}, nil }
 func (m *mockConfigRepo) Save(data config.Data) error { return nil }
 
 func TestFindProjectVersionFile_NoFile(t *testing.T) {

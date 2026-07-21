@@ -43,9 +43,9 @@ func TestService_Prepare_AppliesPatches(t *testing.T) {
 	mock := &mockPatcherRepo{
 		patches: []Patch{
 			{
-				Name:    "test-patch",
-				Apply:   func(dir string) error { applied = true; return nil },
-				ExtraCFlags: []string{"-Wno-deprecated"},
+				Name:           "test-patch",
+				Apply:          func(dir string) error { applied = true; return nil },
+				ExtraCFlags:    []string{"-Wno-deprecated"},
 				ConfigureFlags: []string{"--with-test={{prefix}}"},
 			},
 		},

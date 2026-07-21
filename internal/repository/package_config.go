@@ -63,16 +63,16 @@ type URLOverride struct {
 // Use a specific OS value such as "linux", "darwin", or "windows" for
 // pre-built binaries that target a single platform.
 type PackageConfig struct {
-	Name        string
-	Type        string
-	Ranges      []VersionRange
-	Versions    []string
-	Skip        []string
-	URLTemplate string
+	Name         string
+	Type         string
+	Ranges       []VersionRange
+	Versions     []string
+	Skip         []string
+	URLTemplate  string
 	URLOverrides []URLOverride
-	Extension   ExtensionConfig
-	OS          string
-	Checksums   []Checksum
+	Extension    ExtensionConfig
+	OS           string
+	Checksums    []Checksum
 }
 
 // BuildRegistries generates domain.Registry entries from a PackageConfig.

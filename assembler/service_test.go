@@ -151,6 +151,93 @@ func TestFindDepPrefix_PicksHighestVersion(t *testing.T) {
 	}
 }
 
+// TestFindDepPrefix_FallbackRespectsConstraint verifies that the fallback to
+// an installed version only picks versions that satisfy the build plan's
+// version constraint. This prevents curl/8.10.1 (built against OpenSSL 3.x)
+// from being used when PHP 7.4 needs curl/7.88.1 (>=7.80.0,<8.0.0).
+func TestFindDepPrefix_FallbackRespectsConstraint(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("PHPV_ROOT", tmpDir)
+
+	// Installed curl versions.
+	for _, ver := range []string{"7.88.1", "8.10.1"} {
+		if err := os.MkdirAll(filepath.Join(tmpDir, "packages", "curl", ver, "lib"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	mock := &mockSiloRepo{root: tmpDir}
+	siloSvc := silo.NewService(mock, nil)
+	svc := &Service{silo: siloSvc}
+	deps := []domain.Dependency{
+		{Name: "curl", Version: "7.88.1|>=7.80.0,<8.0.0"},
+	}
+
+	got := svc.findDepPrefix(deps, "curl", "lib")
+	want := filepath.Join(tmpDir, "packages", "curl", "7.88.1")
+	if got != want {
+		t.Errorf("findDepPrefix = %q, want %q", got, want)
+	}
+}
+
+// TestFindDepPrefix_FallbackWithoutExactMatch verifies that when the exact
+// pinned version is not installed, the fallback picks the highest installed
+// version that still satisfies the constraint.
+func TestFindDepPrefix_FallbackWithoutExactMatch(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("PHPV_ROOT", tmpDir)
+
+	// Only curl 7.85.0 and 7.88.1 installed; plan wants 7.80.0 (not installed).
+	for _, ver := range []string{"7.85.0", "7.88.1"} {
+		if err := os.MkdirAll(filepath.Join(tmpDir, "packages", "curl", ver, "lib"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	mock := &mockSiloRepo{root: tmpDir}
+	siloSvc := silo.NewService(mock, nil)
+	svc := &Service{silo: siloSvc}
+	deps := []domain.Dependency{
+		{Name: "curl", Version: "7.80.0|>=7.80.0,<8.0.0"},
+	}
+
+	got := svc.findDepPrefix(deps, "curl", "lib")
+	want := filepath.Join(tmpDir, "packages", "curl", "7.88.1")
+	if got != want {
+		t.Errorf("findDepPrefix = %q, want %q", got, want)
+	}
+}
+
+// TestResolveDependencyFlags_RespectsConstraintFallback verifies that
+// --with-curl is resolved to a version that satisfies the plan's constraint,
+// not merely the highest installed version.
+func TestResolveDependencyFlags_RespectsConstraintFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("PHPV_ROOT", tmpDir)
+
+	for _, ver := range []string{"7.88.1", "8.10.1"} {
+		if err := os.MkdirAll(filepath.Join(tmpDir, "packages", "curl", ver, "lib"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(tmpDir, "packages", "curl", ver, "lib", "libcurl.so"), []byte{}, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	mock := &mockSiloRepo{root: tmpDir}
+	siloSvc := silo.NewService(mock, nil)
+	svc := &Service{silo: siloSvc}
+	deps := []domain.Dependency{
+		{Name: "curl", Version: "7.88.1|>=7.80.0,<8.0.0"},
+	}
+
+	flags := svc.resolveDependencyFlags("php", "7.4.33", []string{"--with-curl"}, deps)
+	want := "--with-curl=" + filepath.Join(tmpDir, "packages", "curl", "7.88.1")
+	if len(flags) != 1 || flags[0] != want {
+		t.Errorf("resolveDependencyFlags = %q, want %q", flags, want)
+	}
+}
+
 // TestResolveDepPlaceholders_ResolvesWithoutInstalledPrefix verifies that
 // {{dep:NAME}} placeholders are resolved for dependencies in the build plan
 // even when their install prefix directory does not exist yet. The assembler

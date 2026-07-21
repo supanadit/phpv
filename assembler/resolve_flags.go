@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/repository"
 )
 
 // resolveDepPlaceholders replaces {{dep:NAME}} placeholders in configure flags
@@ -136,9 +137,17 @@ func (s *Service) resolveDependencyFlags(name, phpVersion string, flags []string
 
 // findDepPrefix locates the install prefix for a dependency by looking up
 // the exact version in the build plan's dep list, then falling back to
-// scanning the dep dir for any installed version. Returns "" if no local
-// build is available, signaling the caller to keep the original flag.
+// scanning the dep dir for installed versions that satisfy the dep's version
+// constraint. Returns "" if no local build is available, signaling the caller
+// to keep the original flag.
+//
+// The fallback is constrained because an installed version that is newer than
+// the one required by the current build may have been compiled against a
+// different ABI (e.g. curl linked against system OpenSSL 3.x while the
+// current PHP needs local OpenSSL 1.1.1w). Using only versions that match the
+// plan's constraint preserves ABI consistency.
 func (s *Service) findDepPrefix(deps []domain.Dependency, depName, sentinelPath string) string {
+	var constraint string
 	for _, dep := range deps {
 		if dep.Name != depName {
 			continue
@@ -146,6 +155,7 @@ func (s *Service) findDepPrefix(deps []domain.Dependency, depName, sentinelPath 
 		ver := dep.Version
 		if idx := strings.Index(ver, "|"); idx != -1 {
 			ver = ver[:idx]
+			constraint = dep.Version[idx+1:]
 		}
 		if ver == "" {
 			continue
@@ -165,6 +175,15 @@ func (s *Service) findDepPrefix(deps []domain.Dependency, depName, sentinelPath 
 			if _, err := os.Stat(filepath.Join(candidate, sentinelPath)); err == nil {
 				candidates = append(candidates, entry.Name())
 			}
+		}
+		if constraint != "" {
+			filtered := candidates[:0]
+			for _, c := range candidates {
+				if repository.MatchVersionRange(constraint, c) {
+					filtered = append(filtered, c)
+				}
+			}
+			candidates = filtered
 		}
 		if len(candidates) > 0 {
 			sort.Slice(candidates, func(i, j int) bool {

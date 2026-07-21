@@ -142,6 +142,34 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 	}
 	emit("download", fmt.Sprintf("Downloaded: %d, Skipped: %d, Extracted: %d", downloaded, skipped, extracted))
 
+	// First pass: determine which deps must be built from source because their
+	// system version does not satisfy the required constraint. If a dep is built
+	// from source, other deps that link against it must also be built from source
+	// to avoid ABI conflicts. The most common case is curl linking against openssl:
+	// if we build OpenSSL 1.1.1w locally, system curl (linked against OpenSSL 3.x)
+	// would cause linker/runtime conflicts, so curl must also be built locally.
+	mustBuild := make(map[string]bool)
+	if !static && systemPkgs != nil {
+		for _, dep := range plan.Deps {
+			if isBuildTool(dep.Name) || (dep.Optional && dep.Version == "") {
+				continue
+			}
+			constraint := extractConstraint(dep.Version)
+			if constraint == "" {
+				continue
+			}
+			if sysPkg, ok := systemPkgs[dep.Name]; ok && sysPkg.Installed && sysPkg.Version != "" {
+				if !repository.MatchVersionRange(constraint, sysPkg.Version) {
+					mustBuild[dep.Name] = true
+				}
+			}
+		}
+	}
+	// Propagate: if openssl is built locally, curl must be too.
+	if mustBuild["openssl"] {
+		mustBuild["curl"] = true
+	}
+
 	// Collect flags from locally-built and system-fallback deps separately so
 	// we can place local flags before system flags. This prevents system
 	// headers/libraries from shadowing an isolated version when a mixed
@@ -149,7 +177,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 	// come from the system).
 	var localCppFlags, localLdFlags, localPcPaths []string
 	var systemCppFlags, systemLdFlags, systemPcPaths []string
-	var localLibraryPaths []string
+	var localLibraryPaths, localBinPaths []string
 
 	for _, dep := range plan.Deps {
 		if isBuildTool(dep.Name) {
@@ -166,14 +194,27 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		sourceDir := s.silo.SourcePath(dep.Name, depVersion)
 
 		if isDepInstalled(depPrefix) {
-			emit("skip", fmt.Sprintf("Already built %s@%s", dep.Name, depVersion))
-			localCppFlags, localLdFlags, localPcPaths = s.collectDepFlags(depPrefix, localCppFlags, localLdFlags, localPcPaths)
-			localLibraryPaths = appendUnique(localLibraryPaths, filepath.Join(depPrefix, "lib"))
-			continue
+			// If this dep must be built from source (e.g. curl because openssl
+			// is local), an existing install may be ABI-incompatible with the
+			// current plan. Force a rebuild so it links against the correct
+			// local dependency versions.
+			if mustBuild[dep.Name] {
+				emit("rebuild", fmt.Sprintf("Rebuilding %s@%s to ensure ABI compatibility", dep.Name, depVersion))
+				if err := os.RemoveAll(depPrefix); err != nil {
+					emit("error", fmt.Sprintf("Failed to remove stale %s@%s: %v", dep.Name, depVersion, err))
+					return nil, err
+				}
+			} else {
+				emit("skip", fmt.Sprintf("Already built %s@%s", dep.Name, depVersion))
+				localCppFlags, localLdFlags, localPcPaths = s.collectDepFlags(depPrefix, localCppFlags, localLdFlags, localPcPaths)
+				localLibraryPaths = appendUnique(localLibraryPaths, filepath.Join(depPrefix, "lib"))
+				localBinPaths = appendUnique(localBinPaths, filepath.Join(depPrefix, "bin"))
+				continue
+			}
 		}
 
 		// Hybrid mode: check if system package is available and compatible
-		if !static && systemPkgs != nil {
+		if !static && systemPkgs != nil && !mustBuild[dep.Name] {
 			if sysPkg, ok := systemPkgs[dep.Name]; ok && sysPkg.Installed && sysPkg.Version != "" {
 				sysCompat := true
 				if constraint != "" {
@@ -217,6 +258,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 
 		localCppFlags, localLdFlags, localPcPaths = s.collectDepFlags(depPrefix, localCppFlags, localLdFlags, localPcPaths)
 		localLibraryPaths = appendUnique(localLibraryPaths, filepath.Join(depPrefix, "lib"))
+		localBinPaths = appendUnique(localBinPaths, filepath.Join(depPrefix, "bin"))
 	}
 
 	// Combine flags: local (isolated) flags first so they take precedence over
@@ -240,6 +282,21 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 	}
 	if len(depPkgConfigPaths) > 0 {
 		env = setEnvVar(env, "PKG_CONFIG_PATH", strings.Join(depPkgConfigPaths, ":"))
+	}
+	// Prepend local dep bin directories to PATH so PHP's configure finds
+	// local tools (icu-config, curl-config, xml2-config) before system ones.
+	if len(localBinPaths) > 0 {
+		existingPath := ""
+		for _, e := range env {
+			if strings.HasPrefix(e, "PATH=") {
+				existingPath = strings.TrimPrefix(e, "PATH=")
+				break
+			}
+		}
+		if existingPath == "" {
+			existingPath = os.Getenv("PATH")
+		}
+		env = setEnvVar(env, "PATH", strings.Join(append(localBinPaths, existingPath), ":"))
 	}
 	if len(plan.CFlags) > 0 || len(plan.CompilerFlags) > 0 {
 		allCFlags := plan.CFlags

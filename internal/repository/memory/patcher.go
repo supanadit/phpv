@@ -77,6 +77,16 @@ func (p *inMemoryPatcher) PatchesFor(name string, version string) []patcher.Patc
 			VersionRange: ">=5.0.0, <6.0.0",
 			Apply:        patchPhpBison3Compat,
 		})
+		// PHP 8.0's ext/intl/config.m4 hardcodes C++11 for the intl extension,
+		// but ICU 74+ (including Arch's system ICU 78.3) requires C++17 headers.
+		// The generated configure script sets PHP_INTL_STDCXX from a feature test;
+		// override it to -std=gnu++17 so the extension compiles against modern ICU.
+		patches = append(patches, patcher.Patch{
+			Name:         "php-intl-cxx17",
+			Package:      "php",
+			VersionRange: ">=8.0.0, <8.1.0",
+			Apply:        patchPhpIntlCxx17,
+		})
 		return patches
 	case "curl":
 		// Curl needs explicit TLS backend + disabled optional features.
@@ -133,15 +143,52 @@ func patchPhpScanfFn(sourceDir string) error {
 	return nil
 }
 
+// patchPhpIntlCxx17 forces PHP 8.0's intl extension to compile its C++ sources
+// with -std=gnu++17. PHP 8.0's ext/intl/config.m4 hardcodes a C++11 standard
+// check, but ICU 74+ headers require C++17 features. The generated configure
+// script assigns PHP_INTL_STDCXX from the feature test; we override the
+// assignment so the extension always uses C++17 on modern toolchains.
+func patchPhpIntlCxx17(sourceDir string) error {
+	configurePath, err := findFile(sourceDir, "configure")
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(configurePath)
+	if err != nil {
+		return err
+	}
+	content := string(data)
+	// The assignment is indented inside the expanded macro; match any leading
+	// whitespace so the patch is robust to changes in the generated script.
+	oldPattern := regexp.MustCompile(`(?m)^\s+eval PHP_INTL_STDCXX="\$switch"`)
+	newStr := "        eval PHP_INTL_STDCXX=\"-std=gnu++17\""
+	if !oldPattern.MatchString(content) {
+		// Already patched or the generated configure differs; skip silently.
+		return nil
+	}
+	content = oldPattern.ReplaceAllString(content, newStr)
+	return os.WriteFile(configurePath, []byte(content), 0o644)
+}
+
 func findFile(root, rel string) (string, error) {
 	// Walk source dir looking for the relative path. The extracted source is
 	// nested under e.g. sources/php/7.4.33/php-7.4.33/.
 	var found string
+	want := filepath.ToSlash(rel)
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if !d.IsDir() && (strings.HasSuffix(path, rel) || strings.Contains(path, "/"+rel)) {
+		if d.IsDir() {
+			return nil
+		}
+		p := filepath.ToSlash(path)
+		// Match either the exact file name (e.g. "configure") or a path that
+		// ends with the requested relative path (e.g. "ext/standard/scanf.c").
+		// The previous substring check false-matched directory names containing
+		// the target name, such as .github/actions/configure-macos/action.yml
+		// when looking for "configure".
+		if filepath.Base(p) == want || strings.HasSuffix(p, "/"+want) {
 			found = path
 			return filepath.SkipAll
 		}

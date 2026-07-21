@@ -62,3 +62,10 @@ type BundleToolchain struct {
 	URL     string `json:"url"`
 	SHA256  string `json:"sha256"`
 }
+
+// BundleMeta is stored in the PHP prefix after importing a portable bundle.
+// It records the libc type and PHP API version for use by InstallExtension.
+type BundleMeta struct {
+	Libc          string `json:"libc"`
+	PhpApiVersion string `json:"php_api_version"`
+}

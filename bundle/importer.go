@@ -177,6 +177,20 @@ func importBundle(svc *silo.Service, bundlePath, phpVersion string) error {
 		}
 	}
 
+	// Write bundle metadata for InstallExtension fast path.
+	meta := domain.BundleMeta{
+		Libc:          manifest.Libc,
+		PhpApiVersion: manifest.PhpApiVersion,
+	}
+	metaPath := filepath.Join(svc.PackagePrefix("php", phpVersion), ".bundle_meta.json")
+	metaData, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal bundle meta: %w", err)
+	}
+	if err := os.WriteFile(metaPath, metaData, 0644); err != nil {
+		return fmt.Errorf("write bundle meta: %w", err)
+	}
+
 	if err := svc.MarkComplete("php", phpVersion); err != nil {
 		return fmt.Errorf("mark installed: %w", err)
 	}

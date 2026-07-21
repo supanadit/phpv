@@ -2,10 +2,13 @@ package assembler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -453,6 +456,11 @@ func getPHPIniDir(phpPrefix string) string {
 // using phpize. The extension source must be at ext/<name>/ inside the
 // PHP source tree. After building, it adds extension=<name>.so to php.ini
 // and records the extension in the manifest.
+//
+// If the PHP prefix was installed from a portable bundle (has .bundle_meta.json),
+// it first checks for a pre-built .so in the ExtPool. If found and the PHP API
+// version matches, it copies the .so directly — no compile needed.
+// For musl-static bundles, the phpize fallback uses an on-demand musl toolchain.
 func (s *Service) InstallExtension(ctx context.Context, phpVersion, extName, phpSourceDir, phpPrefix string, jobs int) error {
 	// Safety check: skip if the extension is already built into PHP.
 	// This prevents "Module already loaded" warnings for extensions that
@@ -470,6 +478,11 @@ func (s *Service) InstallExtension(ctx context.Context, phpVersion, extName, php
 				}
 			}
 		}
+	}
+
+	// Fast path: check for pre-built .so from a portable bundle.
+	if s.tryPrebuiltExt(phpVersion, extName, phpPrefix) {
+		return nil
 	}
 
 	extDir := filepath.Join(phpSourceDir, "ext", extName)
@@ -497,6 +510,14 @@ func (s *Service) InstallExtension(ctx context.Context, phpVersion, extName, php
 		return fmt.Errorf("php-config not found at %s", phpConfig)
 	}
 
+	// Check if this is a musl-static bundle — if so, use the on-demand toolchain.
+	meta := readBundleMeta(phpPrefix)
+	if meta != nil && meta.Libc == "musl" {
+		if err := s.ensureMuslToolchain(ctx, phpPrefix); err != nil {
+			return fmt.Errorf("musl toolchain: %w", err)
+		}
+	}
+
 	cmd := exec.CommandContext(ctx, phpize)
 	cmd.Dir = extDir
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -509,18 +530,48 @@ func (s *Service) InstallExtension(ctx context.Context, phpVersion, extName, php
 
 	configure := exec.CommandContext(ctx, "./configure", args...)
 	configure.Dir = extDir
+	if meta != nil && meta.Libc == "musl" {
+		tcDir := s.silo.ToolchainPath(runtime.GOARCH)
+		muslGCC := filepath.Join(tcDir, "bin", "musl-gcc")
+		if fi, err := os.Stat(muslGCC); err == nil && !fi.IsDir() {
+			configure.Env = append(os.Environ(),
+				"CC="+muslGCC,
+				"CXX="+filepath.Join(tcDir, "bin", "musl-g++"),
+			)
+		}
+	}
 	if out, err := configure.CombinedOutput(); err != nil {
 		return fmt.Errorf("configure %s: %w\n%s", extName, err, out)
 	}
 
 	make := exec.CommandContext(ctx, "make", fmt.Sprintf("-j%d", jobs))
 	make.Dir = extDir
+	if meta != nil && meta.Libc == "musl" {
+		tcDir := s.silo.ToolchainPath(runtime.GOARCH)
+		muslGCC := filepath.Join(tcDir, "bin", "musl-gcc")
+		if fi, err := os.Stat(muslGCC); err == nil && !fi.IsDir() {
+			make.Env = append(os.Environ(),
+				"CC="+muslGCC,
+				"CXX="+filepath.Join(tcDir, "bin", "musl-g++"),
+			)
+		}
+	}
 	if out, err := make.CombinedOutput(); err != nil {
 		return fmt.Errorf("make %s: %w\n%s", extName, err, out)
 	}
 
 	install := exec.CommandContext(ctx, "make", "install")
 	install.Dir = extDir
+	if meta != nil && meta.Libc == "musl" {
+		tcDir := s.silo.ToolchainPath(runtime.GOARCH)
+		muslGCC := filepath.Join(tcDir, "bin", "musl-gcc")
+		if fi, err := os.Stat(muslGCC); err == nil && !fi.IsDir() {
+			install.Env = append(os.Environ(),
+				"CC="+muslGCC,
+				"CXX="+filepath.Join(tcDir, "bin", "musl-g++"),
+			)
+		}
+	}
 	if out, err := install.CombinedOutput(); err != nil {
 		return fmt.Errorf("make install %s: %w\n%s", extName, err, out)
 	}
@@ -531,7 +582,6 @@ func (s *Service) InstallExtension(ctx context.Context, phpVersion, extName, php
 	}
 	iniPath := filepath.Join(iniDir, "php.ini")
 	entry := "extension=" + extName + ".so"
-	// Check if the extension line already exists in php.ini to avoid duplicates.
 	if data, err := os.ReadFile(iniPath); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {
 			if strings.TrimSpace(line) == entry {
@@ -552,7 +602,6 @@ func (s *Service) InstallExtension(ctx context.Context, phpVersion, extName, php
 	if err != nil {
 		return fmt.Errorf("get extension manifest: %w", err)
 	}
-	// Deduplicate manifest: skip if this extension is already recorded.
 	for _, e := range manifest.Extensions {
 		if e.Name == extName {
 			return nil
@@ -568,6 +617,179 @@ func (s *Service) InstallExtension(ctx context.Context, phpVersion, extName, php
 	}
 
 	return nil
+}
+
+// tryPrebuiltExt checks if the extension has a pre-built .so in the bundle's
+// ExtPool. If found and the PHP API version matches, it copies the .so into
+// the extension directory and updates php.ini + manifest. Returns true on success.
+func (s *Service) tryPrebuiltExt(phpVersion, extName, phpPrefix string) bool {
+	meta := readBundleMeta(phpPrefix)
+	if meta == nil || meta.PhpApiVersion == "" {
+		return false
+	}
+
+	manifest, err := s.silo.GetExtensionManifest(phpVersion)
+	if err != nil {
+		return false
+	}
+
+	var prebuilt *domain.ExtensionState
+	for _, e := range manifest.Extensions {
+		if e.Name == extName && e.Prebuilt {
+			prebuilt = &e
+			break
+		}
+	}
+	if prebuilt == nil {
+		return false
+	}
+
+	// Verify PHP API version matches.
+	installedAPI := getPHPAPIVersion(phpPrefix)
+	if installedAPI == "" || prebuilt.PhpApiVersion != installedAPI {
+		return false
+	}
+
+	// Find the extension directory.
+	extDir := getExtensionDir(phpPrefix)
+	if extDir == "" {
+		return false
+	}
+
+	// Copy the pre-built .so.
+	soName := extName + ".so"
+	src := filepath.Join(phpPrefix, "exts", soName)
+	if _, err := os.Stat(src); os.IsNotExist(err) {
+		return false
+	}
+	if err := os.MkdirAll(extDir, 0755); err != nil {
+		return false
+	}
+	dst := filepath.Join(extDir, soName)
+	if err := copyFile(src, dst); err != nil {
+		return false
+	}
+
+	// Add extension=<name>.so to php.ini.
+	iniDir := getPHPIniDir(phpPrefix)
+	if err := os.MkdirAll(iniDir, 0755); err != nil {
+		return false
+	}
+	iniPath := filepath.Join(iniDir, "php.ini")
+	entry := "extension=" + soName
+	if data, err := os.ReadFile(iniPath); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.TrimSpace(line) == entry {
+				return true
+			}
+		}
+	}
+	f, err := os.OpenFile(iniPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	if _, err := f.WriteString(entry + "\n"); err != nil {
+		return false
+	}
+
+	return true
+}
+
+// readBundleMeta reads .bundle_meta.json from the PHP prefix, if it exists.
+func readBundleMeta(phpPrefix string) *domain.BundleMeta {
+	metaPath := filepath.Join(phpPrefix, ".bundle_meta.json")
+	data, err := os.ReadFile(metaPath)
+	if err != nil {
+		return nil
+	}
+	var meta domain.BundleMeta
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return nil
+	}
+	return &meta
+}
+
+// getPHPAPIVersion returns the PHP Module API version by querying php-config.
+func getPHPAPIVersion(phpPrefix string) string {
+	phpConfig := filepath.Join(phpPrefix, "bin", "php-config")
+	out, err := exec.Command(phpConfig, "--extension-dir").Output()
+	if err != nil {
+		return ""
+	}
+	// --extension-dir returns something like /prefix/lib/php/extensions/<api>/no-debug-non-zts-<arch>
+	// We extract the <api> segment (e.g. "20240924").
+	dir := strings.TrimSpace(string(out))
+	dir = strings.TrimSuffix(dir, "/")
+	parts := strings.Split(dir, "/")
+	if len(parts) >= 2 {
+		return parts[len(parts)-2]
+	}
+	return ""
+}
+
+// getExtensionDir returns the PHP extension directory from php-config.
+func getExtensionDir(phpPrefix string) string {
+	phpConfig := filepath.Join(phpPrefix, "bin", "php-config")
+	out, err := exec.Command(phpConfig, "--extension-dir").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// ensureMuslToolchain downloads the musl toolchain if not already cached.
+func (s *Service) ensureMuslToolchain(ctx context.Context, phpPrefix string) error {
+	tcDir := s.silo.ToolchainPath(runtime.GOARCH)
+	tcMeta := filepath.Join(tcDir, "toolchain.json")
+	if _, err := os.Stat(tcMeta); err == nil {
+		// Already cached.
+		return nil
+	}
+
+	data, err := os.ReadFile(tcMeta)
+	if err != nil {
+		return fmt.Errorf("no toolchain metadata found at %s", tcMeta)
+	}
+	var tc domain.BundleToolchain
+	if err := json.Unmarshal(data, &tc); err != nil {
+		return fmt.Errorf("parse toolchain metadata: %w", err)
+	}
+
+	fmt.Printf("Downloading musl toolchain (%s %s)...\n", tc.Name, tc.Version)
+	if _, err := s.silo.DownloadURL(tc.URL, "sha256", tc.SHA256); err != nil {
+		return fmt.Errorf("download toolchain: %w", err)
+	}
+
+	archiveName := filepath.Base(tc.URL)
+	cacheDir := filepath.Join(s.silo.GetSilo().Root, "caches")
+	archivePath := filepath.Join(cacheDir, archiveName)
+	if _, err := s.silo.Extract(archivePath, tcDir); err != nil {
+		return fmt.Errorf("extract toolchain: %w", err)
+	}
+
+	return nil
+}
+
+// copyFile copies a file from src to dst.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Close()
 }
 
 // RemoveExtension removes a PHP extension from an installed PHP version.

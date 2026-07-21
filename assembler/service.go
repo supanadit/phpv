@@ -243,6 +243,15 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		if len(prepared.ExtraCFlags) > 0 {
 			buildEnv = []string{"CFLAGS=" + strings.Join(prepared.ExtraCFlags, " "), "CXXFLAGS=" + strings.Join(prepared.ExtraCFlags, " ")}
 		}
+		if runtime.GOOS == "darwin" {
+			brewIconv := "/opt/homebrew/opt/libiconv"
+			if _, err := os.Stat(filepath.Join(brewIconv, "include", "iconv.h")); err == nil {
+				buildEnv = append(buildEnv,
+					"CPPFLAGS=-I"+filepath.Join(brewIconv, "include"),
+					"LDFLAGS=-L"+filepath.Join(brewIconv, "lib")+" -Wl,-rpath,"+filepath.Join(brewIconv, "lib"),
+				)
+			}
+		}
 		depFlags := s.graph.GetConfigureFlags(dep.Name, depVersion)
 		depFlags = append(depFlags, s.resolveDepPlaceholders(prepared.ConfigureFlags, plan.Deps)...)
 		buildDir, _, err := s.forge.Build(ctx, dep.Name, depVersion, sourceDir, buildEnv, depFlags, depPrefix, verbose, jobs)
@@ -365,6 +374,26 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		env = setEnvVar(env, "CFLAGS", "-Os -fdata-sections -ffunction-sections")
 		env = setEnvVar(env, "CXXFLAGS", "-Os -fdata-sections -ffunction-sections")
 		configureFlags = append([]string{"--enable-static", "--disable-shared"}, configureFlags...)
+	}
+
+	if runtime.GOOS == "darwin" && name == "php" {
+		existingLdFlags := ""
+		for _, e := range env {
+			if strings.HasPrefix(e, "LDFLAGS=") {
+				existingLdFlags = strings.TrimPrefix(e, "LDFLAGS=")
+				break
+			}
+		}
+		macosLdFlags := []string{"-lresolv"}
+		brewIconv := "/opt/homebrew/opt/libiconv"
+		if _, err := os.Stat(filepath.Join(brewIconv, "lib", "libiconv.dylib")); err == nil {
+			macosLdFlags = append([]string{
+				"-L" + filepath.Join(brewIconv, "lib"),
+				"-Wl,-rpath," + filepath.Join(brewIconv, "lib"),
+				"-liconv",
+			}, macosLdFlags...)
+		}
+		env = setEnvVar(env, "LDFLAGS", existingLdFlags+" "+strings.Join(macosLdFlags, " "))
 	}
 
 	emit("configure", fmt.Sprintf("Configuring %s...", name))

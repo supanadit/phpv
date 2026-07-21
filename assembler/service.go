@@ -481,7 +481,7 @@ func (s *Service) InstallExtension(ctx context.Context, phpVersion, extName, php
 	}
 
 	// Fast path: check for pre-built .so from a portable bundle.
-	if s.tryPrebuiltExt(phpVersion, extName, phpPrefix) {
+	if s.TryPrebuiltExt(phpVersion, extName, phpPrefix) {
 		return nil
 	}
 
@@ -619,10 +619,10 @@ func (s *Service) InstallExtension(ctx context.Context, phpVersion, extName, php
 	return nil
 }
 
-// tryPrebuiltExt checks if the extension has a pre-built .so in the bundle's
+// TryPrebuiltExt checks if the extension has a pre-built .so in the bundle's
 // ExtPool. If found and the PHP API version matches, it copies the .so into
 // the extension directory and updates php.ini + manifest. Returns true on success.
-func (s *Service) tryPrebuiltExt(phpVersion, extName, phpPrefix string) bool {
+func (s *Service) TryPrebuiltExt(phpVersion, extName, phpPrefix string) bool {
 	meta := readBundleMeta(phpPrefix)
 	if meta == nil || meta.PhpApiVersion == "" {
 		return false

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/supanadit/phpv/domain"
@@ -93,7 +94,11 @@ func importBundle(svc *silo.Service, bundlePath, phpVersion string) error {
 			continue
 		}
 
-		target := filepath.Join(svc.PackagePrefix("php", phpVersion), hdr.Name)
+		// Strip the leading "php/" prefix that the exporter adds.
+		name := hdr.Name
+		name = strings.TrimPrefix(name, "php/")
+
+		target := filepath.Join(svc.PackagePrefix("php", phpVersion), name)
 		if hdr.Typeflag == tar.TypeDir {
 			if err := os.MkdirAll(target, os.FileMode(hdr.Mode)); err != nil {
 				return fmt.Errorf("mkdir %s: %w", target, err)
@@ -135,8 +140,10 @@ func importBundle(svc *silo.Service, bundlePath, phpVersion string) error {
 		}
 		if manifest.Libc != "" {
 			hostLibc := detectLibc()
-			if manifest.Libc != hostLibc {
-				return fmt.Errorf("bundle built for %s libc, host is %s", manifest.Libc, hostLibc)
+			// musl-static bundles run on any Linux (glibc or musl).
+			// glibc bundles only run on glibc hosts.
+			if manifest.Libc == "glibc" && hostLibc == "musl" {
+				return fmt.Errorf("bundle built for glibc, cannot install on musl (Alpine)")
 			}
 		}
 	}

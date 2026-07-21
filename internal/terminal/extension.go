@@ -282,16 +282,6 @@ func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
 
 	sourceDir := h.siloSvc.SourcePath("php", version)
 	srcPath := assembler.FindSourceDir(sourceDir, "php", version)
-	if srcPath == "" {
-		fmt.Printf("PHP source not found, downloading PHP %s source...\n", version)
-		if err := h.downloadPHPSource(version); err != nil {
-			return fmt.Errorf("download PHP source: %w", err)
-		}
-		srcPath = assembler.FindSourceDir(sourceDir, "php", version)
-		if srcPath == "" {
-			return fmt.Errorf("PHP source not found at %s after download", sourceDir)
-		}
-	}
 
 	manifest, err := h.siloSvc.GetExtensionManifest(version)
 	if err != nil {
@@ -305,11 +295,22 @@ func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
 	// Self-healing: cross-check manifest against php -m. If manifest says
 	// installed but php -m doesn't show it, the entry is stale (e.g., wrong
 	// php.ini path or partial build). Remove stale entries from manifest.
+	// Skip prebuilt entries — they haven't been copied to the extension dir yet.
 	compiledIn, err := h.getCompiledModules(version)
 	if err == nil {
 		for name := range installed {
 			if !compiledIn[name] {
-				// Stale entry: remove from manifest
+				// Check if this is a prebuilt entry that hasn't been copied yet.
+				var isPrebuilt bool
+				for _, e := range manifest.Extensions {
+					if e.Name == name && e.Prebuilt {
+						isPrebuilt = true
+						break
+					}
+				}
+				if isPrebuilt {
+					continue
+				}
 				delete(installed, name)
 				var clean []domain.ExtensionState
 				for _, e := range manifest.Extensions {
@@ -327,9 +328,38 @@ func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
 
 	for _, ext := range extNames {
 		if installed[ext] {
-			fmt.Printf("↷ %s already installed, skipping\n", ext)
+			// Verify the .so actually exists — prebuilt entries in the manifest
+			// are seeded at import time but the .so hasn't been copied yet.
+			phpConfig := filepath.Join(prefix, "bin", "php-config")
+			out, err := exec.Command(phpConfig, "--extension-dir").Output()
+			if err == nil {
+				extDir := strings.TrimSpace(string(out))
+				soPath := filepath.Join(extDir, ext+".so")
+				if _, err := os.Stat(soPath); err == nil {
+					fmt.Printf("↷ %s already installed, skipping\n", ext)
+					continue
+				}
+			}
+		}
+
+		// Fast path: check for pre-built .so from a portable bundle.
+		if h.assemblerSvc.TryPrebuiltExt(version, ext, prefix) {
+			fmt.Printf("✓ %s installed (pre-built)\n", ext)
 			continue
 		}
+
+		// Ensure PHP source is available for phpize build.
+		if srcPath == "" {
+			fmt.Printf("PHP source not found, downloading PHP %s source...\n", version)
+			if err := h.downloadPHPSource(version); err != nil {
+				return fmt.Errorf("download PHP source: %w", err)
+			}
+			srcPath = assembler.FindSourceDir(sourceDir, "php", version)
+			if srcPath == "" {
+				return fmt.Errorf("PHP source not found at %s after download", sourceDir)
+			}
+		}
+
 		fmt.Printf("Building extension %s...\n", ext)
 		if err := h.assemblerSvc.InstallExtension(h.ctx, version, ext, srcPath, prefix, jobs); err != nil {
 			return fmt.Errorf("install extension %s: %w", ext, err)

@@ -19,12 +19,12 @@ func (m *mockSiloRepo) Download(url, checksumType, checksumValue string) (bool, 
 	return false, nil
 }
 func (m *mockSiloRepo) Extract(archivePath, destDir string) (bool, error) { return false, nil }
-func (m *mockSiloRepo) GetSilo() domain.Silo                             { return domain.Silo{} }
+func (m *mockSiloRepo) GetSilo() domain.Silo                              { return domain.Silo{} }
 func (m *mockSiloRepo) GetState(name, version string) (domain.InstallState, error) {
 	return domain.StateNone, nil
 }
 func (m *mockSiloRepo) MarkInProgress(name, version string) error  { return nil }
-func (m *mockSiloRepo) MarkComplete(name, version string) error   { return nil }
+func (m *mockSiloRepo) MarkComplete(name, version string) error    { return nil }
 func (m *mockSiloRepo) MarkFailed(name, version string) error      { return nil }
 func (m *mockSiloRepo) MarkInterrupted(name, version string) error { return nil }
 func (m *mockSiloRepo) GetDefault() (string, error)                { return "", nil }
@@ -34,8 +34,8 @@ func (m *mockSiloRepo) SourcePath(pkg, version string) string      { return "" }
 func (m *mockSiloRepo) PackagePrefix(name, version string) string {
 	return filepath.Join(m.root, "packages", name, version)
 }
-func (m *mockSiloRepo) PECLArchivePath(name, version string) string          { return "" }
-func (m *mockSiloRepo) BuildLogPath(pkg, version, logName string) string      { return "" }
+func (m *mockSiloRepo) PECLArchivePath(name, version string) string      { return "" }
+func (m *mockSiloRepo) BuildLogPath(pkg, version, logName string) string { return "" }
 func (m *mockSiloRepo) GetExtensionManifest(phpVersion string) (*domain.ExtensionManifest, error) {
 	return nil, nil
 }

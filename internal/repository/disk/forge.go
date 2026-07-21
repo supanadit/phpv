@@ -148,12 +148,12 @@ func (f *ForgeRepository) buildConfigure(ctx context.Context, name, version, src
 	if _, err := os.Stat(filepath.Join(srcPath, "configure")); err == nil {
 		configurePath = filepath.Join(srcPath, "configure")
 	} else if name == "openssl" || name == "ossl" {
-		if _, err := os.Stat(filepath.Join(srcPath, "config")); err == nil {
-			configurePath = filepath.Join(srcPath, "config")
-			useConfig = true
-		} else if _, err := os.Stat(filepath.Join(srcPath, "Configure")); err == nil {
+		if _, err := os.Stat(filepath.Join(srcPath, "Configure")); err == nil {
 			configurePath = filepath.Join(srcPath, "Configure")
 			usePerl = true
+		} else if _, err := os.Stat(filepath.Join(srcPath, "config")); err == nil {
+			configurePath = filepath.Join(srcPath, "config")
+			useConfig = true
 		} else {
 			return "", nil, fmt.Errorf("no configure script found for %s", name)
 		}

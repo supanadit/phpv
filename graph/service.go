@@ -2,6 +2,7 @@ package graph
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
@@ -107,6 +108,10 @@ func (s *Service) GetBuildPlan(name string, version string, extensions []string)
 // set of source packages (with versions) that must be built. Deduplicates by
 // package name; on conflicting versions, picks the higher and records a warning.
 // Direct extension deps take priority over transitive deps from other packages.
+//
+// The returned list is deterministic and topologically sorted: every dependency
+// appears before any package that depends on it. This is required so the
+// assembler builds dependencies before dependents from a fresh state.
 func (s *Service) resolveExtensionDeps(phpVersion string, extensions []string) ([]domain.Dependency, []string) {
 	direct := make(map[string]string) // pkgName -> versionWithConstraint
 	var warnings []string
@@ -142,27 +147,79 @@ func (s *Service) resolveExtensionDeps(phpVersion string, extensions []string) (
 		}
 	}
 
-	// Seed seen with all direct dep names so they always take priority
-	// over transitive deps with the same name, regardless of iteration order.
-	seen := make(map[string]bool)
+	// Sort direct dep names for deterministic processing. Load the full
+	// dependency graph (direct + transitive) and run a post-order DFS so
+	// every package is emitted after all of its dependencies.
+	directNames := make([]string, 0, len(direct))
 	for name := range direct {
-		seen[name] = true
+		directNames = append(directNames, name)
 	}
+	sort.Strings(directNames)
 
-	var result []domain.Dependency
-	for name, ver := range direct {
-		result = append(result, domain.Dependency{Name: name, Version: ver})
+	adj := make(map[string][]domain.Dependency) // name -> direct dependencies
+	versions := make(map[string]string)         // name -> version to use (direct wins)
+
+	var loadDeps func(name, ver string)
+	loadDeps = func(name, ver string) {
+		if _, ok := adj[name]; ok {
+			return
+		}
 		transitive, err := s.repo.GetOrderedDependencies(name, extractExactVersion(ver))
 		if err != nil {
-			continue
+			transitive = nil
+		}
+		adj[name] = transitive
+		if _, ok := versions[name]; !ok {
+			versions[name] = ver
 		}
 		for _, td := range transitive {
-			if !seen[td.Name] {
-				seen[td.Name] = true
-				result = append(result, td)
+			if _, ok := versions[td.Name]; !ok {
+				versions[td.Name] = td.Version
 			}
+			loadDeps(td.Name, td.Version)
 		}
 	}
+
+	// Seed direct versions first so they win over any transitive version.
+	for name, ver := range direct {
+		versions[name] = ver
+	}
+	for _, name := range directNames {
+		loadDeps(name, direct[name])
+	}
+
+	visiting := make(map[string]bool)
+	visited := make(map[string]bool)
+	var result []domain.Dependency
+
+	var resolve func(name string) error
+	resolve = func(name string) error {
+		if visited[name] {
+			return nil
+		}
+		if visiting[name] {
+			return fmt.Errorf("circular dependency detected involving %s", name)
+		}
+		visiting[name] = true
+		for _, dep := range adj[name] {
+			if err := resolve(dep.Name); err != nil {
+				visiting[name] = false
+				return err
+			}
+		}
+		visiting[name] = false
+		visited[name] = true
+		result = append(result, domain.Dependency{Name: name, Version: versions[name]})
+		return nil
+	}
+
+	for _, name := range directNames {
+		if err := resolve(name); err != nil {
+			warnings = append(warnings, err.Error())
+			continue
+		}
+	}
+
 	return result, warnings
 }
 

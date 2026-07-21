@@ -332,6 +332,54 @@ func TestGetBuildPlan_PHP8_4_HasDeps(t *testing.T) {
 	}
 }
 
+// TestGetBuildPlan_PHP8_4_DependencyOrdering verifies that the build plan is
+// topologically sorted: shared dependencies such as openssl and zlib appear
+// before any package that transitively depends on them (e.g. curl). This is a
+// regression test for the fresh-state failure where curl was configured with an
+// unresolved {{dep:openssl}} placeholder because curl was built before openssl.
+func TestGetBuildPlan_PHP8_4_DependencyOrdering(t *testing.T) {
+	repo := NewGraphRepository()
+	svc := graph.NewService(repo)
+
+	defaults := []string{
+		"bcmath", "curl", "dom", "fileinfo", "filter", "gd",
+		"iconv", "intl", "json", "mbstring", "openssl", "opcache",
+		"pdo", "pdo_mysql", "pdo_sqlite", "phar", "session",
+		"simplexml", "sqlite3", "tokenizer", "xml", "xmlreader",
+		"xmlwriter", "zip", "zlib",
+	}
+
+	plan, err := svc.GetBuildPlan("php", "8.4.0", defaults)
+	if err != nil {
+		t.Fatalf("GetBuildPlan(php, 8.4.0) returned error: %v", err)
+	}
+
+	positions := make(map[string]int)
+	for i, dep := range plan.Deps {
+		positions[dep.Name] = i
+	}
+
+	mustComeBefore := map[string]string{
+		"openssl": "curl", // curl --with-openssl={{dep:openssl}}
+		"zlib":    "curl", // curl --without-zlib and may link zlib
+		"m4":      "curl",
+		"autoconf": "curl",
+		"automake": "curl",
+		"libtool":  "curl",
+	}
+	for dep, dependent := range mustComeBefore {
+		depPos, depOK := positions[dep]
+		depPos2, dep2OK := positions[dependent]
+		if !depOK || !dep2OK {
+			// Only enforce ordering when both packages are in the plan.
+			continue
+		}
+		if depPos >= depPos2 {
+			t.Errorf("%s (pos %d) must come before %s (pos %d) in build plan", dep, depPos, dependent, depPos2)
+		}
+	}
+}
+
 func TestGetBuildPlan_PHP8_2_HasDeps(t *testing.T) {
 	repo := NewGraphRepository()
 	svc := graph.NewService(repo)

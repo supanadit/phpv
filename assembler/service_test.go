@@ -4,7 +4,46 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/silo"
 )
+
+// mockSiloRepo is a minimal SiloRepository implementation for tests that only
+// exercise path helpers.
+type mockSiloRepo struct {
+	root string
+}
+
+func (m *mockSiloRepo) Download(url, checksumType, checksumValue string) (bool, error) {
+	return false, nil
+}
+func (m *mockSiloRepo) Extract(archivePath, destDir string) (bool, error) { return false, nil }
+func (m *mockSiloRepo) GetSilo() domain.Silo                             { return domain.Silo{} }
+func (m *mockSiloRepo) GetState(name, version string) (domain.InstallState, error) {
+	return domain.StateNone, nil
+}
+func (m *mockSiloRepo) MarkInProgress(name, version string) error  { return nil }
+func (m *mockSiloRepo) MarkComplete(name, version string) error   { return nil }
+func (m *mockSiloRepo) MarkFailed(name, version string) error      { return nil }
+func (m *mockSiloRepo) MarkInterrupted(name, version string) error { return nil }
+func (m *mockSiloRepo) GetDefault() (string, error)                { return "", nil }
+func (m *mockSiloRepo) SetDefault(version string) error            { return nil }
+func (m *mockSiloRepo) PHPOutputPath(phpVersion string) string     { return "" }
+func (m *mockSiloRepo) SourcePath(pkg, version string) string      { return "" }
+func (m *mockSiloRepo) PackagePrefix(name, version string) string {
+	return filepath.Join(m.root, "packages", name, version)
+}
+func (m *mockSiloRepo) PECLArchivePath(name, version string) string          { return "" }
+func (m *mockSiloRepo) BuildLogPath(pkg, version, logName string) string      { return "" }
+func (m *mockSiloRepo) GetExtensionManifest(phpVersion string) (*domain.ExtensionManifest, error) {
+	return nil, nil
+}
+func (m *mockSiloRepo) SaveExtensionManifest(phpVersion string, manifest *domain.ExtensionManifest) error {
+	return nil
+}
+func (m *mockSiloRepo) IsSystemMode() bool       { return false }
+func (m *mockSiloRepo) SetSystemMode(bool) error { return nil }
 
 func TestResolveVersionConstraint_Exact(t *testing.T) {
 	versions := []string{"8.4.0", "8.4.1", "8.4.2", "8.3.0", "7.4.0"}
@@ -109,5 +148,29 @@ func TestFindDepPrefix_PicksHighestVersion(t *testing.T) {
 	want := filepath.Join(tmpDir, "packages", "openssl", "1.1.1w")
 	if got != want {
 		t.Errorf("findDepPrefix = %q, want %q (highest version)", got, want)
+	}
+}
+
+// TestResolveDepPlaceholders_ResolvesWithoutInstalledPrefix verifies that
+// {{dep:NAME}} placeholders are resolved for dependencies in the build plan
+// even when their install prefix directory does not exist yet. The assembler
+// builds dependencies in dependency order, so the directory will exist before
+// the dependent is configured. Without this behavior, fresh builds pass a
+// literal "{{dep:openssl}}" string to ./configure.
+func TestResolveDepPlaceholders_ResolvesWithoutInstalledPrefix(t *testing.T) {
+	tmpDir := t.TempDir()
+	mock := &mockSiloRepo{root: tmpDir}
+	siloSvc := silo.NewService(mock, nil)
+	svc := &Service{silo: siloSvc}
+
+	deps := []domain.Dependency{
+		{Name: "openssl", Version: "1.1.1w|>=1.1.1,<4.0.0"},
+	}
+	flags := []string{"--with-openssl={{dep:openssl}}"}
+	got := svc.resolveDepPlaceholders(flags, deps)
+
+	want := filepath.Join(tmpDir, "packages", "openssl", "1.1.1w")
+	if len(got) != 1 || got[0] != "--with-openssl="+want {
+		t.Errorf("resolveDepPlaceholders = %q, want %q", got, "--with-openssl="+want)
 	}
 }

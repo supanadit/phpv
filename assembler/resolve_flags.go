@@ -12,6 +12,12 @@ import (
 // resolveDepPlaceholders replaces {{dep:NAME}} placeholders in configure flags
 // with the install prefix of the named dependency. This is used by the patcher
 // to inject dependency paths (e.g., curl's --with-openssl={{dep:openssl}}).
+//
+// The placeholder is resolved for every dependency that appears in the build
+// plan, even if its install directory does not exist yet. The assembler builds
+// dependencies in dependency order, so the directory will be created before any
+// dependent package is configured. This keeps fresh-state builds from passing a
+// literal {{dep:NAME}} string to ./configure.
 func (s *Service) resolveDepPlaceholders(flags []string, deps []domain.Dependency) []string {
 	result := make([]string, len(flags))
 	for i, flag := range flags {
@@ -28,9 +34,7 @@ func (s *Service) resolveDepPlaceholders(flags []string, deps []domain.Dependenc
 				continue
 			}
 			prefix := s.silo.PackagePrefix(dep.Name, ver)
-			if fi, err := os.Stat(prefix); err == nil && fi.IsDir() {
-				flag = strings.ReplaceAll(flag, placeholder, prefix)
-			}
+			flag = strings.ReplaceAll(flag, placeholder, prefix)
 		}
 		result[i] = flag
 	}

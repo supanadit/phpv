@@ -215,11 +215,27 @@ Version syntax:
 func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	version := args[0]
 
+	// Detect if the argument is a local bundle file path.
+	if isBundlePath(version) {
+		fmt.Printf("Installing PHP from bundle %s...\n", version)
+		if err := h.bundleSvc.ImportFromPath(version); err != nil {
+			return fmt.Errorf("install from bundle failed: %w", err)
+		}
+		if err := h.shimSvc.RegenerateAll(); err != nil {
+			return fmt.Errorf("regenerate shims: %w", err)
+		}
+		fmt.Printf("✓ PHP installed from bundle\n")
+		return nil
+	}
+
 	fromBundle, _ := cmd.Flags().GetString("from")
 	if fromBundle != "" {
 		fmt.Printf("Installing PHP %s from bundle %s...\n", version, fromBundle)
 		if err := h.bundleSvc.Import(fromBundle, version); err != nil {
 			return fmt.Errorf("install from bundle failed: %w", err)
+		}
+		if err := h.shimSvc.RegenerateAll(); err != nil {
+			return fmt.Errorf("regenerate shims: %w", err)
 		}
 		fmt.Printf("✓ PHP %s installed from bundle\n", version)
 		return nil
@@ -980,6 +996,19 @@ func (h *PHPHandler) autoDetectResolveCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// isBundlePath returns true if the argument looks like a local bundle file path.
+func isBundlePath(arg string) bool {
+	exts := []string{".tar.gz", ".tgz", ".tar.zst", ".zip"}
+	for _, ext := range exts {
+		if strings.HasSuffix(arg, ext) {
+			if _, err := os.Stat(arg); err == nil {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // progressMsg is sent by the assembler through a progress callback.

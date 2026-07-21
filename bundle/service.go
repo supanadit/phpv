@@ -48,6 +48,15 @@ func (s *Service) Import(bundlePath, phpVersion string) error {
 	return importBundle(s.silo, bundlePath, phpVersion)
 }
 
+// ImportFromPath installs a bundle, reading the PHP version from the manifest.
+func (s *Service) ImportFromPath(bundlePath string) error {
+	manifest, err := readManifest(bundlePath)
+	if err != nil {
+		return err
+	}
+	return importBundle(s.silo, bundlePath, manifest.Version)
+}
+
 func (s *Service) ImportFromURL(url, phpVersion string) error {
 	return importFromURL(s.silo, url, phpVersion)
 }

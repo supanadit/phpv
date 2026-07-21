@@ -9,10 +9,50 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/silo"
 )
+
+// readManifest reads only the manifest.json from a bundle without extracting
+// the full archive. It returns the parsed manifest.
+func readManifest(bundlePath string) (*domain.BundleManifest, error) {
+	f, err := os.Open(bundlePath)
+	if err != nil {
+		return nil, fmt.Errorf("open bundle: %w", err)
+	}
+	defer f.Close()
+
+	gr, err := gzip.NewReader(f)
+	if err != nil {
+		return nil, fmt.Errorf("read gzip: %w", err)
+	}
+	defer gr.Close()
+
+	tr := tar.NewReader(gr)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read tar: %w", err)
+		}
+		if hdr.Name == "manifest.json" {
+			data, err := io.ReadAll(tr)
+			if err != nil {
+				return nil, fmt.Errorf("read manifest: %w", err)
+			}
+			var manifest domain.BundleManifest
+			if err := json.Unmarshal(data, &manifest); err != nil {
+				return nil, fmt.Errorf("parse manifest: %w", err)
+			}
+			return &manifest, nil
+		}
+	}
+	return nil, fmt.Errorf("bundle missing manifest.json")
+}
 
 func importBundle(svc *silo.Service, bundlePath, phpVersion string) error {
 	f, err := os.Open(bundlePath)
@@ -101,6 +141,42 @@ func importBundle(svc *silo.Service, bundlePath, phpVersion string) error {
 		}
 	}
 
+	// Seed extension manifest from ExtPool (v2+).
+	if len(manifest.ExtPool) > 0 {
+		extManifest := &domain.ExtensionManifest{
+			PHPVersion: phpVersion,
+		}
+		for _, ext := range manifest.ExtPool {
+			extManifest.Extensions = append(extManifest.Extensions, domain.ExtensionState{
+				Name:          ext.Name,
+				Type:          domain.ExtensionTypeBuiltin,
+				Version:       ext.Version,
+				InstalledAt:   time.Now(),
+				SoPath:        filepath.Join("exts", ext.SOFile),
+				Prebuilt:      true,
+				PhpApiVersion: ext.PhpApiVersion,
+			})
+		}
+		if err := svc.SaveExtensionManifest(phpVersion, extManifest); err != nil {
+			return fmt.Errorf("save extension manifest: %w", err)
+		}
+	}
+
+	// Write toolchain.json for on-demand toolchain download.
+	if manifest.Toolchain.URL != "" {
+		tcDir := svc.ToolchainPath(manifest.Toolchain.Arch)
+		if err := os.MkdirAll(tcDir, 0755); err != nil {
+			return fmt.Errorf("create toolchain dir: %w", err)
+		}
+		tcData, err := json.MarshalIndent(manifest.Toolchain, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal toolchain: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(tcDir, "toolchain.json"), tcData, 0644); err != nil {
+			return fmt.Errorf("write toolchain.json: %w", err)
+		}
+	}
+
 	if err := svc.MarkComplete("php", phpVersion); err != nil {
 		return fmt.Errorf("mark installed: %w", err)
 	}
@@ -110,7 +186,6 @@ func importBundle(svc *silo.Service, bundlePath, phpVersion string) error {
 
 // detectLibc returns the host libc type ("glibc" or "musl").
 func detectLibc() string {
-	// Check for /lib/ld-musl-*.so.1 — the musl dynamic linker.
 	_, err := os.Stat("/lib/ld-musl-x86_64.so.1")
 	if err == nil {
 		return "musl"
@@ -119,7 +194,6 @@ func detectLibc() string {
 	if err == nil {
 		return "musl"
 	}
-	// Also check /usr/lib/ on some distros.
 	_, err = os.Stat("/usr/lib/ld-musl-x86_64.so.1")
 	if err == nil {
 		return "musl"

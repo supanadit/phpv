@@ -142,7 +142,15 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 	}
 	emit("download", fmt.Sprintf("Downloaded: %d, Skipped: %d, Extracted: %d", downloaded, skipped, extracted))
 
-	var depCppFlags, depLdFlags, depPkgConfigPaths []string
+	// Collect flags from locally-built and system-fallback deps separately so
+	// we can place local flags before system flags. This prevents system
+	// headers/libraries from shadowing an isolated version when a mixed
+	// build plan is used (e.g. libxml2 built from source while curl/openssl
+	// come from the system).
+	var localCppFlags, localLdFlags, localPcPaths []string
+	var systemCppFlags, systemLdFlags, systemPcPaths []string
+	var localLibraryPaths []string
+
 	for _, dep := range plan.Deps {
 		if isBuildTool(dep.Name) {
 			emit("skip", fmt.Sprintf("Skipping build tool %s", dep.Name))
@@ -159,7 +167,8 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 
 		if isDepInstalled(depPrefix) {
 			emit("skip", fmt.Sprintf("Already built %s@%s", dep.Name, depVersion))
-			depCppFlags, depLdFlags, depPkgConfigPaths = s.collectDepFlags(depPrefix, depCppFlags, depLdFlags, depPkgConfigPaths)
+			localCppFlags, localLdFlags, localPcPaths = s.collectDepFlags(depPrefix, localCppFlags, localLdFlags, localPcPaths)
+			localLibraryPaths = appendUnique(localLibraryPaths, filepath.Join(depPrefix, "lib"))
 			continue
 		}
 
@@ -172,7 +181,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 				}
 				if sysCompat {
 					emit("system-use", fmt.Sprintf("Using system %s@%s (satisfies %s)", dep.Name, sysPkg.Version, constraint))
-					depCppFlags, depLdFlags, depPkgConfigPaths = collectSystemFlags(depCppFlags, depLdFlags, depPkgConfigPaths)
+					systemCppFlags, systemLdFlags, systemPcPaths = collectSystemFlags(systemCppFlags, systemLdFlags, systemPcPaths)
 					continue
 				}
 				emit("system-incompatible", fmt.Sprintf("System %s@%s doesn't satisfy %s, building from source", dep.Name, sysPkg.Version, constraint))
@@ -206,8 +215,15 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		}
 		emit("done", fmt.Sprintf("✓ %s@%s installed", dep.Name, depVersion))
 
-		depCppFlags, depLdFlags, depPkgConfigPaths = s.collectDepFlags(depPrefix, depCppFlags, depLdFlags, depPkgConfigPaths)
+		localCppFlags, localLdFlags, localPcPaths = s.collectDepFlags(depPrefix, localCppFlags, localLdFlags, localPcPaths)
+		localLibraryPaths = appendUnique(localLibraryPaths, filepath.Join(depPrefix, "lib"))
 	}
+
+	// Combine flags: local (isolated) flags first so they take precedence over
+	// system headers/libraries when both are present.
+	depCppFlags := append(localCppFlags, systemCppFlags...)
+	depLdFlags := append(localLdFlags, systemLdFlags...)
+	depPkgConfigPaths := append(localPcPaths, systemPcPaths...)
 
 	sourceDir := s.silo.SourcePath(name, exactVersion)
 	srcPath := FindSourceDir(sourceDir, name, exactVersion)
@@ -313,15 +329,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 
 	emit("done", fmt.Sprintf("%s %s installed at %s", name, exactVersion, prefix))
 
-	var depLibraryPaths []string
-	for _, dep := range plan.Deps {
-		if isBuildTool(dep.Name) {
-			continue
-		}
-		depVersion := extractVersion(dep.Version)
-		depLibraryPaths = appendUnique(depLibraryPaths, filepath.Join(s.silo.PackagePrefix(dep.Name, depVersion), "lib"))
-	}
-	depLibraryPaths = appendUnique(depLibraryPaths, filepath.Join(prefix, "lib"))
+	localLibraryPaths = appendUnique(localLibraryPaths, filepath.Join(prefix, "lib"))
 
 	completed = true
 	if err := s.silo.MarkComplete(name, exactVersion); err != nil {
@@ -333,7 +341,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		Version:         exactVersion,
 		Prefix:          prefix,
 		Env: map[string]string{
-			"LD_LIBRARY_PATH": strings.Join(depLibraryPaths, ":"),
+			"LD_LIBRARY_PATH": strings.Join(localLibraryPaths, ":"),
 		},
 	}, nil
 }

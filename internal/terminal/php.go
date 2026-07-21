@@ -959,12 +959,28 @@ func (h *PHPHandler) shareCmd() *cobra.Command {
 		RunE:  h.share,
 	}
 	cmd.Flags().StringP("output", "o", "", "Output path for the bundle file")
+	cmd.Flags().Bool("portable", false, "Build a portable musl-static bundle from source (requires Alpine build env)")
 	return cmd
 }
 
 func (h *PHPHandler) share(cmd *cobra.Command, args []string) error {
 	version := args[0]
 	output, _ := cmd.Flags().GetString("output")
+	portable, _ := cmd.Flags().GetBool("portable")
+
+	if portable {
+		fmt.Printf("Building portable PHP %s (musl-static)...\n", version)
+		opts := bundle.PublishOpts{
+			Version:    version,
+			OutputPath: output,
+			Jobs:       0,
+			Force:      false,
+		}
+		if err := h.bundleSvc.Publish(h.ctx, opts); err != nil {
+			return fmt.Errorf("portable build failed: %w", err)
+		}
+		return nil
+	}
 
 	fmt.Printf("Exporting PHP %s...\n", version)
 	if err := h.bundleSvc.Export(version, output); err != nil {

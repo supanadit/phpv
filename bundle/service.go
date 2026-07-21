@@ -6,16 +6,20 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/graph"
 	"github.com/supanadit/phpv/silo"
 )
 
 type Service struct {
-	silo *silo.Service
+	silo      *silo.Service
+	assembler *assembler.Service
+	graph     *graph.Service
 }
 
-func NewService(s *silo.Service) *Service {
-	return &Service{silo: s}
+func NewService(s *silo.Service, a *assembler.Service, g *graph.Service) *Service {
+	return &Service{silo: s, assembler: a, graph: g}
 }
 
 func (s *Service) Export(phpVersion, outputPath string) error {

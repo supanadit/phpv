@@ -270,7 +270,7 @@ func newTestPHPHandler(root string) *PHPHandler {
 	diskRepo := disk.NewSiloRepository()
 	regSvc := registry.NewService(&mockRegistryRepo{})
 	siloSvc := silo.NewService(diskRepo, regSvc)
-	bundleSvc := bundle.NewService(siloSvc)
+	bundleSvc := bundle.NewService(siloSvc, nil, nil)
 	systemSvc := system.NewService()
 	shimSvc := shim.NewService(siloSvc)
 	peclSvc := pecl.NewService(siloSvc)

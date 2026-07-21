@@ -2,6 +2,7 @@ package graph
 
 import (
 	"fmt"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -86,7 +87,7 @@ func (s *Service) GetBuildPlan(name string, version string, extensions []string)
 	} else {
 		configureFlags = s.repo.GetConfigureFlags(name, version)
 	}
-	cflags := s.repo.GetCompilerFlags("gcc", version)
+	cflags := s.repo.GetCompilerFlags(detectCompiler(), version)
 	compilerRule := s.repo.GetCompilerStdRule(version)
 	var compilerFlags []string
 	if compilerRule.CStd != "" {
@@ -361,4 +362,13 @@ func (s *Service) GetCompilerStdRule(phpVersion string) domain.CompilerRule {
 // GetCompilerFlags returns C compiler flags for a specific compiler and PHP version.
 func (s *Service) GetCompilerFlags(compiler string, phpVersion string) []string {
 	return s.repo.GetCompilerFlags(compiler, phpVersion)
+}
+
+// detectCompiler returns the compiler name to use for flag selection.
+// macOS uses clang by default; Linux uses gcc.
+func detectCompiler() string {
+	if runtime.GOOS == "darwin" {
+		return "clang"
+	}
+	return "gcc"
 }

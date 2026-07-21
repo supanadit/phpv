@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -331,7 +332,11 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 			env = setEnvVar(env, "LDFLAGS", strings.Join(append(rpathFlags, depLdFlags...), " "))
 		}
 		if len(libPaths) > 0 {
-			env = setEnvVar(env, "LD_LIBRARY_PATH", strings.Join(libPaths, ":"))
+			libPathEnv := "LD_LIBRARY_PATH"
+			if runtime.GOOS == "darwin" {
+				libPathEnv = "DYLD_LIBRARY_PATH"
+			}
+			env = setEnvVar(env, libPathEnv, strings.Join(libPaths, ":"))
 		}
 	}
 	if len(depCppFlags) > 0 {
@@ -398,9 +403,16 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		Version:         exactVersion,
 		Prefix:          prefix,
 		Env: map[string]string{
-			"LD_LIBRARY_PATH": strings.Join(localLibraryPaths, ":"),
+			libPathEnvName(): strings.Join(localLibraryPaths, ":"),
 		},
 	}, nil
+}
+
+func libPathEnvName() string {
+	if runtime.GOOS == "darwin" {
+		return "DYLD_LIBRARY_PATH"
+	}
+	return "LD_LIBRARY_PATH"
 }
 
 // DownloadFailed returns true if any result has an error.

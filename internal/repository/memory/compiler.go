@@ -23,6 +23,41 @@ type cstdRule struct {
 
 var compilerFlagRuleCandidates = []compilerFlagRule{
 	{
+		Compiler: "clang",
+		MinPHP:   "5.0",
+		MaxPHP:   "7.3",
+		CFLAGDefs: []domain.CompilerFlagDef{
+			{Flag: "-std=gnu11", Purpose: "C11 standard"},
+			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
+			{Flag: "-DTRUE=1", Purpose: "define TRUE for PHP 7.x intl compat"},
+			{Flag: "-DFALSE=0", Purpose: "define FALSE for PHP 7.x intl compat"},
+			{Flag: "-Wno-error", Purpose: "never treat warnings as errors"},
+			{Flag: "-Wno-incompatible-pointer-types", Purpose: "suppress incompatible-pointer warnings"},
+			{Flag: "-Wno-implicit-function-declaration", Purpose: "suppress C99 implicit-decl warnings"},
+		},
+	},
+	{
+		Compiler: "clang",
+		MinPHP:   "7.4",
+		MaxPHP:   "7.99",
+		CFLAGDefs: []domain.CompilerFlagDef{
+			{Flag: "-std=gnu11", Purpose: "C11 standard"},
+			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
+			{Flag: "-Wno-error", Purpose: "never treat warnings as errors"},
+			{Flag: "-Wno-incompatible-pointer-types", Purpose: "suppress incompatible-pointer warnings"},
+			{Flag: "-Wno-implicit-function-declaration", Purpose: "suppress C99 implicit-decl warnings"},
+		},
+	},
+	{
+		Compiler: "clang",
+		MinPHP:   "8.0",
+		MaxPHP:   "",
+		CFLAGDefs: []domain.CompilerFlagDef{
+			{Flag: "-Wno-error", Purpose: "never treat warnings as errors"},
+			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
+		},
+	},
+	{
 		Compiler: "gcc",
 		MinPHP:   "5.0",
 		MaxPHP:   "7.3",

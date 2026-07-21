@@ -238,13 +238,40 @@ func TestResolveDependencyFlags_RespectsConstraintFallback(t *testing.T) {
 	}
 }
 
-// TestResolveDepPlaceholders_ResolvesWithoutInstalledPrefix verifies that
+// TestResolveDepPlaceholders_ResolvesWithInstalledPrefix verifies that
 // {{dep:NAME}} placeholders are resolved for dependencies in the build plan
-// even when their install prefix directory does not exist yet. The assembler
-// builds dependencies in dependency order, so the directory will exist before
-// the dependent is configured. Without this behavior, fresh builds pass a
-// literal "{{dep:openssl}}" string to ./configure.
-func TestResolveDepPlaceholders_ResolvesWithoutInstalledPrefix(t *testing.T) {
+// when their install prefix directory exists (i.e., the dependency was built
+// locally). The assembler builds dependencies in dependency order, so the
+// directory will exist before the dependent is configured.
+func TestResolveDepPlaceholders_ResolvesWithInstalledPrefix(t *testing.T) {
+	tmpDir := t.TempDir()
+	mock := &mockSiloRepo{root: tmpDir}
+	siloSvc := silo.NewService(mock, nil)
+	svc := &Service{silo: siloSvc}
+
+	deps := []domain.Dependency{
+		{Name: "openssl", Version: "1.1.1w|>=1.1.1,<4.0.0"},
+	}
+	// Simulate the dependency being built locally by creating the directory.
+	prefix := filepath.Join(tmpDir, "packages", "openssl", "1.1.1w")
+	if err := os.MkdirAll(filepath.Join(prefix, "include", "openssl"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	flags := []string{"--with-openssl={{dep:openssl}}"}
+	got := svc.resolveDepPlaceholders(flags, deps)
+
+	want := prefix
+	if len(got) != 1 || got[0] != "--with-openssl="+want {
+		t.Errorf("resolveDepPlaceholders = %q, want %q", got, "--with-openssl="+want)
+	}
+}
+
+// TestResolveDepPlaceholders_SkipsWhenPrefixMissing verifies that
+// {{dep:NAME}} placeholders are skipped when the dependency's install
+// directory doesn't exist (i.e., the dependency was satisfied by a system
+// package). In this case, the flag is omitted entirely so the package's
+// configure script can find the system version via pkg-config.
+func TestResolveDepPlaceholders_SkipsWhenPrefixMissing(t *testing.T) {
 	tmpDir := t.TempDir()
 	mock := &mockSiloRepo{root: tmpDir}
 	siloSvc := silo.NewService(mock, nil)
@@ -256,8 +283,7 @@ func TestResolveDepPlaceholders_ResolvesWithoutInstalledPrefix(t *testing.T) {
 	flags := []string{"--with-openssl={{dep:openssl}}"}
 	got := svc.resolveDepPlaceholders(flags, deps)
 
-	want := filepath.Join(tmpDir, "packages", "openssl", "1.1.1w")
-	if len(got) != 1 || got[0] != "--with-openssl="+want {
-		t.Errorf("resolveDepPlaceholders = %q, want %q", got, "--with-openssl="+want)
+	if len(got) != 0 {
+		t.Errorf("resolveDepPlaceholders = %q, want empty (flag should be skipped)", got)
 	}
 }

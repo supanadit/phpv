@@ -48,6 +48,10 @@ jobs:
             libwebp-dev libxpm-dev libfreetype6-dev \
             libmariadb-dev gettext
 
+      - name: Set up PKG_CONFIG_PATH
+        run: |
+          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/lib/pkgconfig" >> $GITHUB_ENV
+
       - name: Build phpv binary
         run: |
           mkdir -p $PHPV_ROOT/bin

@@ -384,6 +384,11 @@ func (s *SiloRepository) BuildLogPath(pkg, version, logName string) string {
 	return BuildLogPath(pkg, version, logName)
 }
 
+// ToolchainPath returns the cached toolchain directory for a given architecture.
+func (s *SiloRepository) ToolchainPath(arch string) string {
+	return ToolchainPath(arch)
+}
+
 // GetExtensionManifest reads the extension manifest for a PHP version.
 func (s *SiloRepository) GetExtensionManifest(phpVersion string) (*domain.ExtensionManifest, error) {
 	path := ExtensionManifestPath(phpVersion)

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/silo"
@@ -87,11 +88,43 @@ func importBundle(svc *silo.Service, bundlePath, phpVersion string) error {
 		return fmt.Errorf("bundle built for %s, cannot install on linux", manifest.OS)
 	}
 
+	// v2+ bundles: enforce arch + libc match.
+	if manifest.FormatVersion >= 2 {
+		if manifest.Arch != "" && manifest.Arch != runtime.GOARCH {
+			return fmt.Errorf("bundle built for %s, cannot install on %s", manifest.Arch, runtime.GOARCH)
+		}
+		if manifest.Libc != "" {
+			hostLibc := detectLibc()
+			if manifest.Libc != hostLibc {
+				return fmt.Errorf("bundle built for %s libc, host is %s", manifest.Libc, hostLibc)
+			}
+		}
+	}
+
 	if err := svc.MarkComplete("php", phpVersion); err != nil {
 		return fmt.Errorf("mark installed: %w", err)
 	}
 
 	return nil
+}
+
+// detectLibc returns the host libc type ("glibc" or "musl").
+func detectLibc() string {
+	// Check for /lib/ld-musl-*.so.1 — the musl dynamic linker.
+	_, err := os.Stat("/lib/ld-musl-x86_64.so.1")
+	if err == nil {
+		return "musl"
+	}
+	_, err = os.Stat("/lib/ld-musl-aarch64.so.1")
+	if err == nil {
+		return "musl"
+	}
+	// Also check /usr/lib/ on some distros.
+	_, err = os.Stat("/usr/lib/ld-musl-x86_64.so.1")
+	if err == nil {
+		return "musl"
+	}
+	return "glibc"
 }
 
 func importFromURL(svc *silo.Service, url, phpVersion string) error {

@@ -88,6 +88,11 @@ func PECLArchivePath(name, version string) string {
 	return filepath.Join(resolveRoot(), "packages", "pecl", name+"-"+version+".tgz")
 }
 
+// ToolchainPath returns the cached toolchain directory for a given architecture.
+func ToolchainPath(arch string) string {
+	return filepath.Join(resolveRoot(), "toolchains", arch)
+}
+
 // LogsPath returns the build log directory.
 func LogsPath() string {
 	return filepath.Join(resolveRoot(), "logs")

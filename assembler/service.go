@@ -299,12 +299,13 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		}
 		env = setEnvVar(env, "PATH", strings.Join(append(localBinPaths, existingPath), ":"))
 	}
-	if len(plan.CFlags) > 0 || len(plan.CompilerFlags) > 0 {
+	if len(plan.CFlags) > 0 || len(plan.CompilerFlags) > 0 || len(plan.CXXCompilerFlags) > 0 {
 		allCFlags := plan.CFlags
 		allCFlags = append(allCFlags, plan.CompilerFlags...)
 		env = setEnvVar(env, "CFLAGS", strings.Join(allCFlags, " "))
 		compilerRule := s.graph.GetCompilerStdRule(version)
 		cxxflags := memory.CXXFlagsFromCFlagsWithStd(allCFlags, true, compilerRule)
+		cxxflags = append(cxxflags, plan.CXXCompilerFlags...)
 		env = setEnvVar(env, "CXXFLAGS", strings.Join(cxxflags, " "))
 	}
 

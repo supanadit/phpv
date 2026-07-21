@@ -45,11 +45,12 @@ type GraphRepository interface {
 
 // BuildPlan consolidates everything needed to build a package.
 type BuildPlan struct {
-	Deps           []domain.Dependency
-	ConfigureFlags []string
-	CFlags         []string
-	CompilerFlags  []string
-	Warnings       []string // non-fatal warnings (e.g. conflicting dep versions)
+	Deps             []domain.Dependency
+	ConfigureFlags   []string
+	CFlags           []string
+	CompilerFlags    []string
+	CXXCompilerFlags []string
+	Warnings         []string // non-fatal warnings (e.g. conflicting dep versions)
 }
 
 // Service wraps GraphRepository and adds value by consolidating
@@ -89,19 +90,21 @@ func (s *Service) GetBuildPlan(name string, version string, extensions []string)
 	}
 	cflags := s.repo.GetCompilerFlags(detectCompiler(), version)
 	compilerRule := s.repo.GetCompilerStdRule(version)
-	var compilerFlags []string
+	var cCompilerFlags []string
+	var cxxCompilerFlags []string
 	if compilerRule.CStd != "" {
-		compilerFlags = append(compilerFlags, compilerRule.CStd)
+		cCompilerFlags = append(cCompilerFlags, compilerRule.CStd)
 	}
 	if compilerRule.CXXStd != "" {
-		compilerFlags = append(compilerFlags, compilerRule.CXXStd)
+		cxxCompilerFlags = append(cxxCompilerFlags, compilerRule.CXXStd)
 	}
 	return &BuildPlan{
-		Deps:           deps,
-		ConfigureFlags: configureFlags,
-		CFlags:         cflags,
-		CompilerFlags:  compilerFlags,
-		Warnings:       warnings,
+		Deps:            deps,
+		ConfigureFlags:  configureFlags,
+		CFlags:          cflags,
+		CompilerFlags:   cCompilerFlags,
+		CXXCompilerFlags: cxxCompilerFlags,
+		Warnings:        warnings,
 	}, nil
 }
 

@@ -102,8 +102,11 @@ func TestService_GetBuildPlan(t *testing.T) {
 	if len(plan.Deps) != 1 {
 		t.Fatalf("expected 1 dep, got %d", len(plan.Deps))
 	}
-	if len(plan.CompilerFlags) != 2 {
-		t.Fatalf("expected 2 compiler flags, got %d", len(plan.CompilerFlags))
+	if len(plan.CompilerFlags) != 1 {
+		t.Fatalf("expected 1 compiler flag, got %d", len(plan.CompilerFlags))
+	}
+	if len(plan.CXXCompilerFlags) != 1 {
+		t.Fatalf("expected 1 CXX compiler flag, got %d", len(plan.CXXCompilerFlags))
 	}
 }
 

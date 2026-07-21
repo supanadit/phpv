@@ -3,6 +3,7 @@ package assembler
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -136,6 +137,18 @@ func (s *Service) resolveDependencyFlags(name, phpVersion string, flags []string
 			result = append(result, flag)
 			if path := s.resolveICUPath(deps); path != "" {
 				result = append(result, "--with-icu-dir="+path)
+			}
+
+		case flag == "--with-iconv":
+			if runtime.GOOS == "darwin" {
+				brewIconv := "/opt/homebrew/opt/libiconv"
+				if fi, err := os.Stat(filepath.Join(brewIconv, "include", "iconv.h")); err == nil && !fi.IsDir() {
+					result = append(result, "--with-iconv="+brewIconv)
+				} else {
+					result = append(result, flag)
+				}
+			} else {
+				result = append(result, flag)
 			}
 
 		default:

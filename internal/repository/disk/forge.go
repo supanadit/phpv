@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -169,7 +170,8 @@ func (f *ForgeRepository) buildConfigure(ctx context.Context, name, version, src
 
 	var configure *exec.Cmd
 	if usePerl {
-		perlArgs := []string{configurePath, "linux-x86_64"}
+		opensslTarget := opensslTarget()
+		perlArgs := []string{configurePath, opensslTarget}
 		for _, a := range args {
 			perlArgs = append(perlArgs, a)
 		}
@@ -328,6 +330,16 @@ func forgeEnv(prefix string) map[string]string {
 	env["CPPFLAGS"] = "-I" + filepath.Join(prefix, "include")
 	env["LDFLAGS"] = "-L" + filepath.Join(prefix, "lib") + " -Wl,-rpath," + filepath.Join(prefix, "lib")
 	return env
+}
+
+func opensslTarget() string {
+	if runtime.GOOS == "darwin" {
+		if runtime.GOARCH == "arm64" {
+			return "darwin64-arm64-cc"
+		}
+		return "darwin64-x86_64-cc"
+	}
+	return "linux-x86_64"
 }
 
 func findSourceDir(extractDir, name, version string) string {

@@ -882,13 +882,6 @@ func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool)
 		return systemAvail, nil
 	}
 
-	if len(result.Available) > 0 {
-		fmt.Println("System packages found:")
-		for _, p := range result.Available {
-			fmt.Printf("  ✓ %s (%s)\n", p.Name, p.SystemName)
-		}
-	}
-
 	if len(result.Missing) == 0 {
 		return systemAvail, nil
 	}

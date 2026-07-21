@@ -41,7 +41,7 @@ func (p *inMemoryPatcher) PatchesFor(name string, version string) []patcher.Patc
 			{
 				Name:         "oniguruma-gcc15-st_foreach",
 				Package:      "oniguruma",
-				VersionRange: ">=6.0.0, <6.9.10",
+				VersionRange: ">=6.0.0",
 				Apply:        patchOnigurumaStForeach,
 				ExtraCFlags:  []string{"-Wno-error=incompatible-pointer-types", "-Wno-incompatible-pointer-types"},
 			},
@@ -263,34 +263,50 @@ func patchOnigurumaStPrototypes(sourceDir string) error {
 	return nil
 }
 
-// patchOnigurumaStForeach fixes the st_foreach macro in st.h so the function
-// pointer type matches on GCC 15 (C23). Upstream fix is in 6.9.10+; we
-// backport the change to 6.9.x by removing the ANYARGS prototype that
-// erases the actual signature.
+// patchOnigurumaStForeach fixes K&R-style function pointer declarations in
+// oniguruma 6.x's st.h/st.c that modern GCC (14+/C23) rejects. Upstream
+// fixed these in 6.9.10+; we backport all the necessary changes to 6.0–6.9.x.
+//
+// This patch covers: st_hash_type members (compare/hash), ST_NUMCMP/ST_NUMHASH
+// macros, st_foreach ANYARGS prototype, st.c local func pointer, and
+// oniguruma.h PV_ macro. Each replacement is conditional so it's safe on
+// versions where some fixes already exist upstream (e.g. 6.9.9 has proper
+// st_hash_type but still uses _()/ANYARGS macros).
 func patchOnigurumaStForeach(sourceDir string) error {
-	// st.h may be in src/ or at the top level depending on the tarball.
-	// Walk up to 2 levels deep to find it.
-	candidates := []string{
-		filepath.Join(sourceDir, "src", "st.h"),
-		filepath.Join(sourceDir, "st.h"),
-	}
-	// Also look one level deeper (e.g., onig-6.9.9/src/st.h).
+	var stPath, stcPath, onigHPath string
 	entries, _ := os.ReadDir(sourceDir)
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
 		sub := filepath.Join(sourceDir, e.Name())
-		candidates = append(candidates,
-			filepath.Join(sub, "src", "st.h"),
-			filepath.Join(sub, "st.h"),
-		)
-	}
-	var stPath string
-	for _, c := range candidates {
-		if _, err := os.Stat(c); err == nil {
-			stPath = c
+		for _, c := range []string{filepath.Join(sub, "st.h"), filepath.Join(sub, "src", "st.h")} {
+			if _, err := os.Stat(c); err == nil {
+				stPath = c
+				break
+			}
+		}
+		for _, c := range []string{filepath.Join(sub, "st.c"), filepath.Join(sub, "src", "st.c")} {
+			if _, err := os.Stat(c); err == nil {
+				stcPath = c
+				break
+			}
+		}
+		for _, c := range []string{filepath.Join(sub, "oniguruma.h"), filepath.Join(sub, "src", "oniguruma.h")} {
+			if _, err := os.Stat(c); err == nil {
+				onigHPath = c
+				break
+			}
+		}
+		if stPath != "" {
 			break
+		}
+	}
+	for _, c := range []string{filepath.Join(sourceDir, "src", "st.h"), filepath.Join(sourceDir, "st.h")} {
+		if stPath == "" {
+			if _, err := os.Stat(c); err == nil {
+				stPath = c
+			}
 		}
 	}
 	if stPath == "" {
@@ -303,16 +319,24 @@ func patchOnigurumaStForeach(sourceDir string) error {
 	}
 	content := string(data)
 
-	// The broken line uses the ANYARGS macro which expands to an empty
-	// parameter list, hiding the actual signature. Replace it with the
-	// real signature so callers match.
+	// Fix struct st_hash_type: K&R () → proper prototypes.
+	// Oniguruma 6.9.8 still has these; 6.9.9 already fixed them upstream.
+	content = strings.Replace(content,
+		"    int (*compare)();\n    int (*hash)();",
+		"    int (*compare)(st_data_t, st_data_t);\n    int (*hash)(st_data_t);", 1)
+
+	// Fix ST_NUMCMP/ST_NUMHASH casts.
+	content = strings.Replace(content,
+		"#define ST_NUMCMP\t((int (*)()) 0)",
+		"#define ST_NUMCMP\t((int (*)(st_data_t, st_data_t)) 0)", 1)
+	content = strings.Replace(content,
+		"#define ST_NUMHASH\t((int (*)()) -2)",
+		"#define ST_NUMHASH\t((int (*)(st_data_t)) -2)", 1)
+
+	// Fix st_foreach: replace the _()/ANYARGS macro-based K&R declaration.
 	// Old: int st_foreach _((st_table *, int (*)(ANYARGS), st_data_t));
 	// New: int st_foreach(st_table *, int (*)(st_data_t, st_data_t, st_data_t), st_data_t);
 	oldPattern := regexp.MustCompile(`int\s+st_foreach\s+_\(\(st_table\s*\*\s*,\s*int\s*\(\*\)\(ANYARGS\)\s*,\s*st_data_t\)\)\s*;`)
-	if !oldPattern.MatchString(content) {
-		// Already patched or different version — silently no-op.
-		return nil
-	}
 	content = oldPattern.ReplaceAllString(content,
 		"int st_foreach(st_table *, int (*)(st_data_t, st_data_t, st_data_t), st_data_t);")
 
@@ -320,22 +344,34 @@ func patchOnigurumaStForeach(sourceDir string) error {
 		return err
 	}
 
-	// Also update regparse.c to drop the ARG_UNUSED attribute on st_foreach
-	// callbacks, and force -std=gnu17 via CFLAGS to avoid GCC 15 C23
-	// behavior. The simplest portable fix is to add a configure-time env.
-	regparseCandidates := []string{
-		filepath.Join(sourceDir, "src", "regparse.c"),
-		filepath.Join(sourceDir, "regparse.c"),
-	}
-	for _, rc := range regparseCandidates {
-		data, err := os.ReadFile(rc)
+	// Fix st.c: K&R local function pointer declarations.
+	if stcPath != "" {
+		data, err := os.ReadFile(stcPath)
 		if err != nil {
-			continue
+			return err
 		}
-		// No-op for now: the st.h fix is sufficient on oniguruma 6.9.9.
-		_ = data
-		_ = strings.TrimSpace
-		break
+		content := string(data)
+		content = strings.Replace(content,
+			"    int (*func)();",
+			"    int (*func)(st_data_t, st_data_t, st_data_t);", 1)
+		if err := os.WriteFile(stcPath, []byte(content), 0o644); err != nil {
+			return err
+		}
+	}
+
+	// Fix oniguruma.h: force PV_ macro to use proper prototypes instead of ().
+	if onigHPath != "" {
+		data, err := os.ReadFile(onigHPath)
+		if err != nil {
+			return err
+		}
+		content := string(data)
+		content = strings.Replace(content,
+			"#ifndef PV_\n#ifdef HAVE_STDARG_PROTOTYPES\n# define PV_(args) args\n#else\n# define PV_(args) ()\n#endif\n#endif",
+			"#ifndef PV_\n# define PV_(args) args\n#endif", 1)
+		if err := os.WriteFile(onigHPath, []byte(content), 0o644); err != nil {
+			return err
+		}
 	}
 
 	return nil

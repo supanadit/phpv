@@ -61,32 +61,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  generate-checksums:
-    name: Generate Combined Checksums
-    needs: [build]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all .sha256 files
-        run: |
-          gh release download ${{ github.event.release.tag_name }} \
-            --pattern '*.sha256' \
-            --dir /tmp/checksums
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Combine into checksums.txt
-        run: |
-          cat /tmp/checksums/*.sha256 | sort > checksums.txt
-          cat checksums.txt
-
-      - name: Upload checksums.txt
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event.release.tag_name }}
-          files: checksums.txt
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   generate-completions:
     name: Generate Shell Completions
     runs-on: ubuntu-latest

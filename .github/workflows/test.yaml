@@ -72,14 +72,14 @@ jobs:
             go.sum \
             .github/workflows/test.yaml \
             | sha256sum | cut -d' ' -f1)
-          echo "key=phpv-${{ matrix.php_version }}-$HASH" >> $GITHUB_OUTPUT
-          echo "restore-key=phpv-${{ matrix.php_version }}-" >> $GITHUB_OUTPUT
+          echo "key=phpv-caches-${{ matrix.php_version }}-$HASH" >> $GITHUB_OUTPUT
+          echo "restore-key=phpv-caches-${{ matrix.php_version }}-" >> $GITHUB_OUTPUT
 
-      - name: Cache phpv build artifacts
+      - name: Cache downloaded archives
         id: cache-phpv
         uses: actions/cache@v4
         with:
-          path: ${{ env.PHPV_ROOT }}
+          path: ${{ env.PHPV_ROOT }}/caches
           key: ${{ steps.cache-key.outputs.key }}
           restore-keys: |
             ${{ steps.cache-key.outputs.restore-key }}
@@ -90,28 +90,10 @@ jobs:
           go build -o $PHPV_ROOT/bin/phpv ./app/phpv.go
           echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
 
-      - name: Get installed PHP version
-        id: php-state
-        run: |
-          PATTERN="$PHPV_ROOT/packages/php"
-          INSTALLED=$(ls -d $PATTERN/*/bin/php 2>/dev/null || echo "")
-          if [ -n "$INSTALLED" ]; then
-            echo "cached=true" >> $GITHUB_OUTPUT
-          else
-            echo "cached=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Install PHP ${{ matrix.php_version }}
-        if: steps.php-state.outputs.cached == 'false'
         run: |
           eval "$($PHPV_ROOT/bin/phpv init bash)"
           phpv install ${{ matrix.php_version }}
-
-      - name: Rebuild PHP ${{ matrix.php_version }}
-        if: steps.php-state.outputs.cached == 'true'
-        run: |
-          eval "$($PHPV_ROOT/bin/phpv init bash)"
-          phpv install ${{ matrix.php_version }} --force
 
       - name: Verify PHP ${{ matrix.php_version }}
         run: |
@@ -225,40 +207,28 @@ jobs:
             go.sum \
             .github/workflows/test.yaml \
             | sha256sum | cut -d' ' -f1)
-          echo "key=phpv-macos-${{ matrix.php_version }}-$HASH" >> $GITHUB_OUTPUT
-          echo "restore-key=phpv-macos-${{ matrix.php_version }}-" >> $GITHUB_OUTPUT
+          echo "key=phpv-caches-macos-${{ matrix.php_version }}-$HASH" >> $GITHUB_OUTPUT
+          echo "restore-key=phpv-caches-macos-${{ matrix.php_version }}-" >> $GITHUB_OUTPUT
 
-      - name: Cache phpv build artifacts
+      - name: Cache downloaded archives
         id: cache-phpv
         uses: actions/cache@v4
         with:
-          path: ${{ env.PHPV_ROOT }}
+          path: ${{ env.PHPV_ROOT }}/caches
           key: ${{ steps.cache-key.outputs.key }}
           restore-keys: |
             ${{ steps.cache-key.outputs.restore-key }}
 
-      - name: Get installed PHP version
-        id: php-state
+      - name: Build phpv binary
         run: |
-          PATTERN="$PHPV_ROOT/packages/php"
-          INSTALLED=$(ls -d $PATTERN/*/bin/php 2>/dev/null || echo "")
-          if [ -n "$INSTALLED" ]; then
-            echo "cached=true" >> $GITHUB_OUTPUT
-          else
-            echo "cached=false" >> $GITHUB_OUTPUT
-          fi
+          mkdir -p $PHPV_ROOT/bin
+          go build -o $PHPV_ROOT/bin/phpv ./app/phpv.go
+          echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
 
       - name: Install PHP ${{ matrix.php_version }}
-        if: steps.php-state.outputs.cached == 'false'
         run: |
           eval "$($PHPV_ROOT/bin/phpv init bash)"
           phpv install ${{ matrix.php_version }}
-
-      - name: Rebuild PHP ${{ matrix.php_version }}
-        if: steps.php-state.outputs.cached == 'true'
-        run: |
-          eval "$($PHPV_ROOT/bin/phpv init bash)"
-          phpv install ${{ matrix.php_version }} --force
 
       - name: Verify PHP ${{ matrix.php_version }}
         run: |

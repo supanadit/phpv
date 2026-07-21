@@ -441,6 +441,9 @@ func (s *Service) collectDepFlags(prefix string, cppFlags, ldFlags, pcPaths []st
 }
 
 func collectSystemFlags(cppFlags, ldFlags, pcPaths []string) ([]string, []string, []string) {
+	if runtime.GOOS == "darwin" {
+		return cppFlags, ldFlags, pcPaths
+	}
 	cppFlags = appendUnique(cppFlags, "-I/usr/include")
 	ldFlags = appendUnique(ldFlags, "-L/usr/lib64")
 	ldFlags = appendUnique(ldFlags, "-Wl,-rpath,/usr/lib64")

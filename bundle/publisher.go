@@ -21,20 +21,28 @@ type PublishOpts struct {
 	OutputPath string
 	Jobs       int
 	Force      bool
+	Libc       string // "musl" (default) or "glibc"
 }
 
-// Publish builds a portable musl-static PHP bundle from source.
-// It builds PHP core with --static, builds the 25 default extensions as shared,
-// captures the PHP API version, and emits a v2 bundle with ExtPool + Toolchain.
+// Publish builds a portable PHP bundle from source.
+// It builds PHP core (static for musl, dynamic for glibc), builds the 25
+// default extensions as shared, captures the PHP API version, and emits a
+// v2 bundle with ExtPool + Toolchain.
 func (s *Service) Publish(ctx context.Context, opts PublishOpts) error {
 	version := opts.Version
-	fmt.Printf("Building portable PHP %s (musl-static)...\n", version)
+	libc := opts.Libc
+	if libc == "" {
+		libc = "musl"
+	}
+	static := libc == "musl"
 
-	// Step 1: Build PHP core with --static (no system deps, no extensions).
+	fmt.Printf("Building portable PHP %s (%s)...\n", version, libc)
+
+	// Step 1: Build PHP core.
 	defaultExts, _ := s.graph.DefaultExtensions(version)
 	fmt.Printf("Default extensions: %d\n", len(defaultExts))
 
-	result, err := s.assembler.Assemble(ctx, "php", version, true, nil, true, nil, nil, opts.Jobs, opts.Force)
+	result, err := s.assembler.Assemble(ctx, "php", version, static, nil, true, nil, nil, opts.Jobs, opts.Force)
 	if err != nil {
 		return fmt.Errorf("build PHP core: %w", err)
 	}
@@ -103,21 +111,28 @@ func (s *Service) Publish(ctx context.Context, opts PublishOpts) error {
 	// Step 5: Strip binaries.
 	stripBinaries(prefix)
 
-	// Step 6: Build the manifest.
+	// Step 6: Detect build host glibc version (for glibc bundles).
+	var glibcVer string
+	if libc == "glibc" {
+		glibcVer = detectGlibcVersion()
+	}
+
+	// Step 7: Build the manifest.
 	manifest := domain.BundleManifest{
 		FormatVersion: 2,
 		Package:       "php",
 		Version:       exactVersion,
 		OS:            runtime.GOOS,
 		Arch:          runtime.GOARCH,
-		Libc:          "musl",
+		Libc:          libc,
+		GlibcVersion:  glibcVer,
 		PhpApiVersion: phpAPI,
 		BuildDate:     time.Now(),
 		Builder: domain.BundleBuilder{
 			PHPVVersion: "1.0.0",
 			Compiler:    "gcc",
-			Static:      true,
-			Libc:        "musl",
+			Static:      static,
+			Libc:        libc,
 		},
 		ExtPool:   extPool,
 		Toolchain: domain.BundleToolchain{},

@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -140,10 +143,20 @@ func importBundle(svc *silo.Service, bundlePath, phpVersion string) error {
 		}
 		if manifest.Libc != "" {
 			hostLibc := detectLibc()
-			// musl-static bundles run on any Linux (glibc or musl).
-			// glibc bundles only run on glibc hosts.
-			if manifest.Libc == "glibc" && hostLibc == "musl" {
-				return fmt.Errorf("bundle built for glibc, cannot install on musl (Alpine)")
+			switch manifest.Libc {
+			case "musl":
+				// musl-static bundles run on any Linux (glibc or musl).
+			case "glibc":
+				if hostLibc == "musl" {
+					return fmt.Errorf("bundle built for glibc, cannot install on musl (Alpine)")
+				}
+				// Check glibc version compatibility.
+				if manifest.GlibcVersion != "" {
+					hostVer := detectGlibcVersion()
+					if !glibcCompatible(hostVer, manifest.GlibcVersion) {
+						return fmt.Errorf("bundle requires glibc >= %s, host has %s", manifest.GlibcVersion, hostVer)
+					}
+				}
 			}
 		}
 	}
@@ -220,6 +233,67 @@ func detectLibc() string {
 		return "musl"
 	}
 	return "glibc"
+}
+
+// detectGlibcVersion returns the host glibc version as "major.minor" or "".
+func detectGlibcVersion() string {
+	out, err := exec.Command("ldd", "--version").Output()
+	if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			out = ee.Stderr
+		} else {
+			return ""
+		}
+	}
+	return parseGlibcVersion(string(out))
+}
+
+// parseGlibcVersion extracts "major.minor" from ldd --version output.
+func parseGlibcVersion(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.Contains(line, "GLIBC") || strings.Contains(line, "GNU libc") {
+			parts := strings.Fields(line)
+			for _, p := range parts {
+				if matched, _ := regexp.MatchString(`^\d+\.\d+`, p); matched {
+					return p
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// glibcCompatible checks if host glibc >= bundle glibc.
+func glibcCompatible(hostVer, bundleVer string) bool {
+	if hostVer == "" || bundleVer == "" {
+		return true
+	}
+	hMajor, hMinor := splitGlibcVersion(hostVer)
+	bMajor, bMinor := splitGlibcVersion(bundleVer)
+	if hMajor == 0 && hMinor == 0 {
+		return true
+	}
+	if bMajor == 0 && bMinor == 0 {
+		return true
+	}
+	if hMajor > bMajor {
+		return true
+	}
+	if hMajor == bMajor && hMinor >= bMinor {
+		return true
+	}
+	return false
+}
+
+func splitGlibcVersion(v string) (int, int) {
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) < 2 {
+		return 0, 0
+	}
+	major, _ := strconv.Atoi(parts[0])
+	minor, _ := strconv.Atoi(parts[1])
+	return major, minor
 }
 
 func importFromURL(svc *silo.Service, url, phpVersion string) error {

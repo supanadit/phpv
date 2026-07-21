@@ -175,10 +175,7 @@ jobs:
 
       - name: Set up environment variables
         run: |
-          # Set up PKG_CONFIG_PATH and library paths for Homebrew
           echo "PKG_CONFIG_PATH=/opt/homebrew/opt/openssl@3/lib/pkgconfig:/opt/homebrew/opt/libxml2/lib/pkgconfig:/opt/homebrew/opt/sqlite3/lib/pkgconfig:/opt/homebrew/opt/oniguruma/lib/pkgconfig:/opt/homebrew/opt/icu4c/lib/pkgconfig:/opt/homebrew/opt/libpng/lib/pkgconfig:/opt/homebrew/opt/jpeg-turbo/lib/pkgconfig:/opt/homebrew/opt/freetype/lib/pkgconfig:/opt/homebrew/opt/libzip/lib/pkgconfig:/opt/homebrew/opt/mariadb-connector-c/lib/pkgconfig:/opt/homebrew/opt/webp/lib/pkgconfig:/opt/homebrew/opt/libxpm/lib/pkgconfig:/opt/homebrew/opt/zlib/lib/pkgconfig:/opt/homebrew/opt/bison/lib/pkgconfig" >> $GITHUB_ENV
-          echo "LDFLAGS=-L/opt/homebrew/opt/openssl@3/lib -L/opt/homebrew/opt/libxml2/lib -L/opt/homebrew/opt/sqlite3/lib -L/opt/homebrew/opt/oniguruma/lib -L/opt/homebrew/opt/icu4c/lib -L/opt/homebrew/opt/libpng/lib -L/opt/homebrew/opt/jpeg-turbo/lib -L/opt/homebrew/opt/freetype/lib -L/opt/homebrew/opt/libzip/lib -L/opt/homebrew/opt/mariadb-connector-c/lib -L/opt/homebrew/opt/webp/lib -L/opt/homebrew/opt/libxpm/lib -L/opt/homebrew/opt/zlib/lib -L/opt/homebrew/opt/bison/lib" >> $GITHUB_ENV
-          echo "CPPFLAGS=-I/opt/homebrew/opt/openssl@3/include -I/opt/homebrew/opt/libxml2/include -I/opt/homebrew/opt/sqlite3/include -I/opt/homebrew/opt/oniguruma/include -I/opt/homebrew/opt/icu4c/include -I/opt/homebrew/opt/libpng/include -I/opt/homebrew/opt/jpeg-turbo/include -I/opt/homebrew/opt/freetype/include -I/opt/homebrew/opt/libzip/include -I/opt/homebrew/opt/mariadb-connector-c/include -I/opt/homebrew/opt/webp/include -I/opt/homebrew/opt/libxpm/include -I/opt/homebrew/opt/zlib/include -I/opt/homebrew/opt/bison/include" >> $GITHUB_ENV
           echo "PATH=/opt/homebrew/opt/bison/bin:$PATH" >> $GITHUB_ENV
 
       - name: Build phpv binary

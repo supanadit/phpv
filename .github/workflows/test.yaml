@@ -152,7 +152,6 @@ jobs:
           - "8.5"
         runner:
           - macos-14
-          - macos-13
     continue-on-error: true
 
     env:

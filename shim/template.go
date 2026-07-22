@@ -34,16 +34,21 @@ if [ ! -d "$PHPV_PREFIX" ]; then
 fi
 export PHPV_CURRENT="$PHPV_VERSION"
 # Clean-room: start with only local phpv-managed lib paths.
-# The parent's LD_LIBRARY_PATH is NOT inherited — use
+# The parent's *_LIBRARY_PATH is NOT inherited — use
 # PHPV_EXTRA_LD_LIBRARY_PATH to explicitly add system libs.
-LD_LIBRARY_PATH="$PHPV_PREFIX/lib"
+if [ "$(uname)" = "Darwin" ]; then
+    LIB_PATH_VAR="DYLD_LIBRARY_PATH"
+else
+    LIB_PATH_VAR="LD_LIBRARY_PATH"
+fi
+eval "$LIB_PATH_VAR=\"\$PHPV_PREFIX/lib\""
 for dep_lib in "$PHPV_ROOT/packages"/*/*/lib; do
-    [ -d "$dep_lib" ] && LD_LIBRARY_PATH="$dep_lib:$LD_LIBRARY_PATH"
+    [ -d "$dep_lib" ] && eval "$LIB_PATH_VAR=\"\$dep_lib:\$$LIB_PATH_VAR\""
 done
 if [ -n "$PHPV_EXTRA_LD_LIBRARY_PATH" ]; then
-    LD_LIBRARY_PATH="$PHPV_EXTRA_LD_LIBRARY_PATH:$LD_LIBRARY_PATH"
+    eval "$LIB_PATH_VAR=\"\$PHPV_EXTRA_LD_LIBRARY_PATH:\$$LIB_PATH_VAR\""
 fi
-export LD_LIBRARY_PATH
+export $LIB_PATH_VAR
 {{EXEC}}
 `
 

@@ -5,7 +5,8 @@ on:
     branches: [main, development]
 
 jobs:
-  test-php-matrix:
+  test-php-matrix-linux:
+    name: Test PHP ${{ matrix.php_version }} on Linux
     timeout-minutes: 60
     runs-on: ubuntu-latest
     strategy:
@@ -26,7 +27,6 @@ jobs:
 
     env:
       PHPV_ROOT: ${{ github.workspace }}/phpv-root-${{ matrix.php_version }}
-      PHPV_EXTENSIONS: "opcache,mbstring,curl,pdo_mysql,openssl,intl,bcmath,zip,xml,gd,pdo,zlib,json,phar,filter,dom,fileinfo,session,tokenizer,xmlwriter,simplexml,xmlreader"
 
     steps:
       - uses: actions/checkout@v4
@@ -37,17 +37,20 @@ jobs:
           go-version: "1.25"
           cache: true
 
-      - name: Install system dependencies
-        uses: awalsh128/cache-apt-pkgs-action@v1
-        with:
-          packages: >-
-            build-essential autoconf automake libtool m4 re2c bison
-            pkg-config libssl-dev libxml2-dev libsqlite3-dev
-            libgd-dev libonig-dev libzip-dev libicu-dev
-            libcurl4-openssl-dev libpng-dev libjpeg-dev
-            libwebp-dev libxpm-dev libfreetype6-dev
+      - name: Install system dependencies (apt)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential autoconf automake libtool m4 re2c bison \
+            pkg-config libssl-dev libxml2-dev libsqlite3-dev \
+            libgd-dev libonig-dev libzip-dev libicu-dev \
+            libcurl4-openssl-dev libpng-dev libjpeg-dev \
+            libwebp-dev libxpm-dev libfreetype6-dev \
             libmariadb-dev gettext
-          version: 1.0
+
+      - name: Set up PKG_CONFIG_PATH
+        run: |
+          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Compute cache key
         id: cache-key
@@ -69,14 +72,14 @@ jobs:
             go.sum \
             .github/workflows/test.yaml \
             | sha256sum | cut -d' ' -f1)
-          echo "key=phpv-${{ matrix.php_version }}-$HASH" >> $GITHUB_OUTPUT
-          echo "restore-key=phpv-${{ matrix.php_version }}-" >> $GITHUB_OUTPUT
+          echo "key=phpv-caches-${{ matrix.php_version }}-$HASH" >> $GITHUB_OUTPUT
+          echo "restore-key=phpv-caches-${{ matrix.php_version }}-" >> $GITHUB_OUTPUT
 
-      - name: Cache phpv build artifacts
+      - name: Cache downloaded archives
         id: cache-phpv
         uses: actions/cache@v4
         with:
-          path: ${{ env.PHPV_ROOT }}
+          path: ${{ env.PHPV_ROOT }}/caches
           key: ${{ steps.cache-key.outputs.key }}
           restore-keys: |
             ${{ steps.cache-key.outputs.restore-key }}
@@ -87,28 +90,142 @@ jobs:
           go build -o $PHPV_ROOT/bin/phpv ./app/phpv.go
           echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
 
-      - name: Get installed PHP version
-        id: php-state
+      - name: Install PHP ${{ matrix.php_version }}
         run: |
-          PATTERN="$PHPV_ROOT/packages/php"
-          INSTALLED=$(ls -d $PATTERN/*/bin/php 2>/dev/null || echo "")
-          if [ -n "$INSTALLED" ]; then
-            echo "cached=true" >> $GITHUB_OUTPUT
-          else
-            echo "cached=false" >> $GITHUB_OUTPUT
+          eval "$($PHPV_ROOT/bin/phpv init bash)"
+          phpv install ${{ matrix.php_version }}
+
+      - name: Verify PHP ${{ matrix.php_version }}
+        run: |
+          eval "$($PHPV_ROOT/bin/phpv init bash)"
+          phpv use ${{ matrix.php_version }}
+
+          PHP_PATH=$(which php)
+          echo "PHP binary: $PHP_PATH"
+
+          if [[ "$PHP_PATH" != "$PHPV_ROOT"* ]]; then
+            echo "Error: PHP is not running from the isolated root!"
+            exit 1
           fi
 
-      - name: Install PHP ${{ matrix.php_version }}
-        if: steps.php-state.outputs.cached == 'false'
-        run: |
-          eval "$($PHPV_ROOT/bin/phpv init bash)"
-          phpv install ${{ matrix.php_version }} --ext $PHPV_EXTENSIONS -v
+          php -v
+          echo ""
+          echo "=== Installed extensions ==="
+          php -m | sort
+          echo ""
 
-      - name: Rebuild PHP ${{ matrix.php_version }}
-        if: steps.php-state.outputs.cached == 'true'
+          MISSING=""
+          for ext in dom gd intl mbstring pdo_mysql zip curl json phar opcache openssl simplexml xml xmlreader xmlwriter tokenizer session fileinfo filter bcmath pdo zlib; do
+            if php -m | grep -qi -w "$ext"; then
+              echo "✓ $ext"
+            elif [ "$ext" = "opcache" ] && \
+                 php -r '
+                   if (extension_loaded("Zend OPcache")) exit(0);
+                   $f = ini_get("extension_dir") . "/opcache.so";
+                   exit(file_exists($f) ? 0 : 1);
+                 ' 2>/dev/null; then
+              echo "✓ $ext (shared)"
+            else
+              echo "✗ $ext MISSING"
+              MISSING="$MISSING $ext"
+            fi
+          done
+
+          if [ -n "$MISSING" ]; then
+            echo ""
+            echo "FAILED: Missing extensions:$MISSING"
+            exit 1
+          fi
+
+          echo ""
+          echo "All critical extensions present ✓"
+
+  test-php-matrix-macos:
+    name: Test PHP ${{ matrix.php_version }} on macOS
+    timeout-minutes: 120
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        php_version:
+          - "7.4"
+          - "8.5"
+    continue-on-error: true
+
+    env:
+      PHPV_ROOT: ${{ github.workspace }}/phpv-root-${{ matrix.php_version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Install Homebrew dependencies
+        run: |
+          brew install \
+            autoconf automake libtool m4 re2c bison \
+            pkg-config openssl@3 libxml2 sqlite3 \
+            oniguruma icu4c libpng jpeg-turbo \
+            freetype libzip mariadb-connector-c \
+            gettext webp libxpm libiconv
+
+      - name: Set up environment variables
+        run: |
+          echo "PKG_CONFIG_PATH=/opt/homebrew/opt/openssl@3/lib/pkgconfig:/opt/homebrew/opt/libxml2/lib/pkgconfig:/opt/homebrew/opt/sqlite3/lib/pkgconfig:/opt/homebrew/opt/oniguruma/lib/pkgconfig:/opt/homebrew/opt/icu4c/lib/pkgconfig:/opt/homebrew/opt/libpng/lib/pkgconfig:/opt/homebrew/opt/jpeg-turbo/lib/pkgconfig:/opt/homebrew/opt/freetype/lib/pkgconfig:/opt/homebrew/opt/libzip/lib/pkgconfig:/opt/homebrew/opt/mariadb-connector-c/lib/pkgconfig:/opt/homebrew/opt/webp/lib/pkgconfig:/opt/homebrew/opt/libxpm/lib/pkgconfig:/opt/homebrew/opt/zlib/lib/pkgconfig:/opt/homebrew/opt/bison/lib/pkgconfig:/opt/homebrew/opt/libiconv/lib/pkgconfig" >> $GITHUB_ENV
+          echo "PATH=/opt/homebrew/opt/bison/bin:$PATH" >> $GITHUB_ENV
+
+      - name: Build phpv binary
+        run: |
+          mkdir -p $PHPV_ROOT/bin
+          go build -o $PHPV_ROOT/bin/phpv ./app/phpv.go
+          echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
+
+      - name: Compute cache key
+        id: cache-key
+        run: |
+          HASH=$(sha256sum \
+            internal/repository/memory/graph.go \
+            internal/repository/memory/compiler.go \
+            internal/repository/memory/registry.go \
+            internal/repository/memory/patcher.go \
+            internal/repository/disk/silo.go \
+            internal/repository/disk/forge.go \
+            internal/repository/disk/config.go \
+            internal/repository/disk/doctor.go \
+            internal/repository/disk/update.go \
+            assembler/service.go \
+            bundle/service.go \
+            app/phpv.go \
+            go.mod \
+            go.sum \
+            .github/workflows/test.yaml \
+            | sha256sum | cut -d' ' -f1)
+          echo "key=phpv-caches-macos-${{ matrix.php_version }}-$HASH" >> $GITHUB_OUTPUT
+          echo "restore-key=phpv-caches-macos-${{ matrix.php_version }}-" >> $GITHUB_OUTPUT
+
+      - name: Cache downloaded archives
+        id: cache-phpv
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PHPV_ROOT }}/caches
+          key: ${{ steps.cache-key.outputs.key }}
+          restore-keys: |
+            ${{ steps.cache-key.outputs.restore-key }}
+
+      - name: Build phpv binary
+        run: |
+          mkdir -p $PHPV_ROOT/bin
+          go build -o $PHPV_ROOT/bin/phpv ./app/phpv.go
+          echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
+
+      - name: Install PHP ${{ matrix.php_version }}
         run: |
           eval "$($PHPV_ROOT/bin/phpv init bash)"
-          phpv install ${{ matrix.php_version }} --ext $PHPV_EXTENSIONS --force -v
+          phpv install ${{ matrix.php_version }}
 
       - name: Verify PHP ${{ matrix.php_version }}
         run: |

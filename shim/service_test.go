@@ -47,7 +47,13 @@ func TestRenderShim_Binary(t *testing.T) {
 		t.Error("shim should reference PHPV_CURRENT")
 	}
 	if !strings.Contains(content, "LD_LIBRARY_PATH") {
-		t.Error("shim should set LD_LIBRARY_PATH")
+		t.Error("shim should reference LD_LIBRARY_PATH")
+	}
+	if !strings.Contains(content, "DYLD_LIBRARY_PATH") {
+		t.Error("shim should reference DYLD_LIBRARY_PATH for macOS")
+	}
+	if !strings.Contains(content, "LIB_PATH_VAR") {
+		t.Error("shim should use LIB_PATH_VAR for platform detection")
 	}
 	if !strings.Contains(content, `exec "$PHPV_PREFIX/bin/php" "$@"`) {
 		t.Error("binary shim should exec php from prefix")
@@ -66,6 +72,9 @@ func TestRenderShim_DropsParentLdLibraryPath(t *testing.T) {
 	if strings.Contains(content, `"$PHPV_PREFIX/lib:$LD_LIBRARY_PATH"`) {
 		t.Error("shim should NOT prepend to parent LD_LIBRARY_PATH")
 	}
+	if strings.Contains(content, `"$PHPV_PREFIX/lib:$DYLD_LIBRARY_PATH"`) {
+		t.Error("shim should NOT prepend to parent DYLD_LIBRARY_PATH")
+	}
 	if !strings.Contains(content, "PHPV_EXTRA_LD_LIBRARY_PATH") {
 		t.Error("shim should support PHPV_EXTRA_LD_LIBRARY_PATH allowlist")
 	}
@@ -77,11 +86,11 @@ func TestRenderShim_HasCleanRoomBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("renderShim: %v", err)
 	}
-	if !strings.Contains(content, "LD_LIBRARY_PATH=\"$PHPV_PREFIX/lib\"") {
-		t.Error("shim should start LD_LIBRARY_PATH with only PHP prefix")
+	if !strings.Contains(content, `eval "$LIB_PATH_VAR=\"\$PHPV_PREFIX/lib\""`) {
+		t.Error("shim should start LIB_PATH_VAR with only PHP prefix")
 	}
-	if !strings.Contains(content, "export LD_LIBRARY_PATH") {
-		t.Error("shim should export LD_LIBRARY_PATH")
+	if !strings.Contains(content, "export $LIB_PATH_VAR") {
+		t.Error("shim should export LIB_PATH_VAR")
 	}
 }
 

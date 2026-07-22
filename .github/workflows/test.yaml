@@ -141,15 +141,18 @@ jobs:
           echo "All critical extensions present ✓"
 
   test-php-matrix-macos:
-    name: Test PHP ${{ matrix.php_version }} on macOS
+    name: Test PHP ${{ matrix.php_version }} on macOS (${{ matrix.runner }})
     timeout-minutes: 120
-    runs-on: macos-14
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         php_version:
           - "7.4"
           - "8.5"
+        runner:
+          - macos-14
+          - macos-13
     continue-on-error: true
 
     env:

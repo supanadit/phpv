@@ -1,6 +1,9 @@
 package system
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestNormalizeVersion(t *testing.T) {
 	tests := []struct {
@@ -34,5 +37,40 @@ func TestNormalizeVersion_ExtractsArchEpoch(t *testing.T) {
 	want := "1.3.2"
 	if got != want {
 		t.Errorf("normalizeVersion(1:1.3.2-3) = %q, want %q", got, want)
+	}
+}
+
+func TestCheckBuildTools_SplitsAvailableAndMissing(t *testing.T) {
+	toolNames := []string{"gcc", "g++", "make", "cmake", "autoconf", "automake", "m4", "perl", "bison", "re2c", "flex", "pkg-config", "xz"}
+
+	result, err := (&Service{}).CheckBuildTools(toolNames)
+	if err != nil {
+		t.Fatalf("CheckBuildTools returned error: %v", err)
+	}
+
+	seen := make(map[string]bool)
+	for _, p := range result.Available {
+		if p.Installed {
+			seen[p.Name] = true
+		}
+	}
+	for _, p := range result.Missing {
+		if p.Installed {
+			t.Errorf("missing package %s has Installed=true", p.Name)
+		}
+		if seen[p.Name] {
+			t.Errorf("package %s appears in both Available and Missing", p.Name)
+		}
+		seen[p.Name] = true
+	}
+
+	var missing []string
+	for _, name := range toolNames {
+		if !seen[name] {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		t.Errorf("tools not classified as either available or missing: %s", strings.Join(missing, ", "))
 	}
 }

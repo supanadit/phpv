@@ -63,11 +63,16 @@ func (s *Service) CheckBuildTools(toolNames []string) (*CheckResult, error) {
 			sysName = name
 		}
 		installed := isInstalled(distro.PM, sysName)
-		result.Available = append(result.Available, Package{
+		p := Package{
 			Name:       name,
 			SystemName: sysName,
 			Installed:  installed,
-		})
+		}
+		if installed {
+			result.Available = append(result.Available, p)
+		} else {
+			result.Missing = append(result.Missing, p)
+		}
 	}
 	return result, nil
 }

@@ -308,6 +308,9 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
+		if err := h.checkBuildTools(autoDeps, dryRun); err != nil {
+			return err
+		}
 	}
 
 	if dryRun {
@@ -887,44 +890,13 @@ func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool)
 		return systemAvail, nil
 	}
 
-	fmt.Println("\nMissing system packages:")
-	for _, p := range result.Missing {
-		fmt.Printf("  ✗ %s (%s)\n", p.Name, p.SystemName)
+	installed, err := h.promptAndInstall(result.Missing, autoDeps, dryRun)
+	if err != nil {
+		return nil, err
 	}
-
-	installCmd := h.systemSvc.InstallCommand(result.Missing)
-	fmt.Printf("\nInstall via %s? ", installCmd)
-	os.Stdout.Sync()
-
-	if autoDeps {
-		fmt.Println("[Y] (--auto-deps)")
-	} else if dryRun {
-		fmt.Println("[skipped, --dry-run]")
+	if !installed {
 		return systemAvail, nil
-	} else {
-		stat, _ := os.Stdin.Stat()
-		if (stat.Mode() & os.ModeCharDevice) == 0 {
-			fmt.Println("[non-interactive, skipping]")
-			return systemAvail, nil
-		}
-		reader := bufio.NewReader(os.Stdin)
-		answer, err := reader.ReadString('\n')
-		if err != nil {
-			fmt.Printf("[read error: %v, skipping]\n", err)
-			return systemAvail, nil
-		}
-		answer = strings.TrimSpace(strings.ToLower(answer))
-		if answer != "y" && answer != "yes" && answer != "" {
-			fmt.Println("Building from source instead.")
-			return systemAvail, nil
-		}
 	}
-
-	fmt.Println("Installing system packages...")
-	if err := h.systemSvc.Install(result.Missing); err != nil {
-		return nil, fmt.Errorf("install system packages: %w", err)
-	}
-	fmt.Println("✓ System packages installed")
 
 	for _, p := range result.Missing {
 		p.Installed = true
@@ -932,6 +904,88 @@ func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool)
 	}
 
 	return systemAvail, nil
+}
+
+// promptAndInstall asks the user whether to install the given missing system
+// packages, then installs them when confirmed. autoDeps skips the prompt and
+// installs directly; dryRun only prints what would be done. It returns true
+// when the packages were installed and false when they were skipped or
+// declined.
+func (h *PHPHandler) promptAndInstall(missing []system.Package, autoDeps, dryRun bool) (bool, error) {
+	fmt.Println("\nMissing system packages:")
+	for _, p := range missing {
+		fmt.Printf("  ✗ %s (%s)\n", p.Name, p.SystemName)
+	}
+
+	installCmd := h.systemSvc.InstallCommand(missing)
+	fmt.Printf("\nInstall via %s? ", installCmd)
+	os.Stdout.Sync()
+
+	if autoDeps {
+		fmt.Println("[Y] (--auto-deps)")
+	} else if dryRun {
+		fmt.Println("[skipped, --dry-run]")
+		return false, nil
+	} else {
+		stat, _ := os.Stdin.Stat()
+		if (stat.Mode() & os.ModeCharDevice) == 0 {
+			fmt.Println("[non-interactive, skipping]")
+			return false, nil
+		}
+		reader := bufio.NewReader(os.Stdin)
+		answer, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Printf("[read error: %v, skipping]\n", err)
+			return false, nil
+		}
+		answer = strings.TrimSpace(strings.ToLower(answer))
+		if answer != "y" && answer != "yes" && answer != "" {
+			fmt.Println("Building from source instead.")
+			return false, nil
+		}
+	}
+
+	fmt.Println("Installing system packages...")
+	if err := h.systemSvc.Install(missing); err != nil {
+		return false, fmt.Errorf("install system packages: %w", err)
+	}
+	fmt.Println("✓ System packages installed")
+	return true, nil
+}
+
+// checkBuildTools checks for the compiler and build toolchain needed to build
+// PHP from source and, when any are missing, prompts to install them. Returns
+// an error when critical tools (gcc, g++, make) are missing and the user
+// declines to install them, since the build cannot proceed without them.
+func (h *PHPHandler) checkBuildTools(autoDeps, dryRun bool) error {
+	toolNames := []string{"gcc", "g++", "make", "cmake", "autoconf", "automake", "m4", "perl", "bison", "re2c", "flex", "pkg-config", "xz"}
+	result, err := h.systemSvc.CheckBuildTools(toolNames)
+	if err != nil {
+		return fmt.Errorf("build tools check: %w", err)
+	}
+	if result.Distro.PM == "unknown" || len(result.Missing) == 0 {
+		return nil
+	}
+
+	critical := map[string]bool{"gcc": true, "g++": true, "make": true}
+	var criticalMissing []string
+	for _, p := range result.Missing {
+		if critical[p.Name] {
+			criticalMissing = append(criticalMissing, p.Name)
+		}
+	}
+
+	installed, err := h.promptAndInstall(result.Missing, autoDeps, dryRun)
+	if err != nil {
+		return err
+	}
+	if installed {
+		return nil
+	}
+	if len(criticalMissing) > 0 {
+		return fmt.Errorf("cannot build PHP without required build tools (%s). Install them manually or run `phpv doctor` for guidance", strings.Join(criticalMissing, ", "))
+	}
+	return nil
 }
 
 // shareCmd exports an installed PHP version as a portable bundle.

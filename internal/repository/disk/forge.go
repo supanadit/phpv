@@ -332,6 +332,8 @@ func forgeEnv(prefix string) map[string]string {
 	return env
 }
 
+// TODO: Hardcoded OS/arch OpenSSL target
+// Description: We should instead make this dynamic like "List" in "internal/repository/memory/registry.go"
 func opensslTarget() string {
 	if runtime.GOOS == "darwin" {
 		if runtime.GOARCH == "arm64" {

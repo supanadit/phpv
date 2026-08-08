@@ -9,81 +9,6 @@ import (
 	"github.com/supanadit/phpv/system"
 )
 
-type memRepository struct {
-	files          map[string][]byte
-	dirs           map[string][]string
-	env            map[string]string
-	path           string
-	lookPathResult map[string]string
-}
-
-func newMemRepository() *memRepository {
-	return &memRepository{
-		files:          make(map[string][]byte),
-		dirs:           make(map[string][]string),
-		env:            make(map[string]string),
-		lookPathResult: make(map[string]string),
-	}
-}
-
-func (m *memRepository) Stat(path string) (os.FileInfo, error) {
-	if _, ok := m.files[path]; ok {
-		return os.Stat(path)
-	}
-	return os.Stat(path)
-}
-
-func (m *memRepository) ReadFile(path string) ([]byte, error) {
-	if data, ok := m.files[path]; ok {
-		return data, nil
-	}
-	return os.ReadFile(path)
-}
-
-func (m *memRepository) ReadDir(path string) ([]os.DirEntry, error) {
-	return os.ReadDir(path)
-}
-
-func (m *memRepository) MkdirAll(path string, perm os.FileMode) error {
-	return os.MkdirAll(path, perm)
-}
-
-func (m *memRepository) WriteFile(path string, data []byte, perm os.FileMode) error {
-	m.files[path] = data
-	return nil
-}
-
-func (m *memRepository) Remove(path string) error {
-	delete(m.files, path)
-	return nil
-}
-
-func (m *memRepository) IsNotExist(err error) bool {
-	return os.IsNotExist(err)
-}
-
-func (m *memRepository) Getenv(key string) string {
-	return m.env[key]
-}
-
-func (m *memRepository) PathList() []string {
-	if m.path != "" {
-		return []string{m.path}
-	}
-	return nil
-}
-
-func (m *memRepository) Statfs(path string) (bavail, bsize uint64, err error) {
-	return 1 << 30, 4096, nil
-}
-
-func (m *memRepository) LookPath(name string) (string, error) {
-	if p, ok := m.lookPathResult[name]; ok {
-		return p, nil
-	}
-	return "", os.ErrNotExist
-}
-
 func newTestService(repo Repository) *Service {
 	return NewService(repo, system.NewService())
 }
@@ -101,7 +26,7 @@ func TestCheck_NoIssues(t *testing.T) {
 	os.MkdirAll(filepath.Join(root, "bin"), 0755)
 	os.WriteFile(filepath.Join(root, "bin", "php"), []byte("#!/bin/bash\necho shim\n"), 0755)
 
-	svc := newTestService(newOSRepository())
+	svc := newTestService(newFakeRepository())
 	issues := svc.Check(root)
 	// Filter out distro info (always present) and build tool issues (system-dependent)
 	var nonInfoIssues []Issue
@@ -128,7 +53,7 @@ func TestCheck_DefaultNotInstalled(t *testing.T) {
 	os.MkdirAll(filepath.Join(root, "bin"), 0755)
 	os.WriteFile(filepath.Join(root, "bin", "php"), []byte("#!/bin/bash\necho shim\n"), 0755)
 
-	svc := newTestService(newOSRepository())
+	svc := newTestService(newFakeRepository())
 	issues := svc.Check(root)
 	found := false
 	for _, issue := range issues {
@@ -146,7 +71,7 @@ func TestCheck_ShimMissing(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("PHPV_ROOT", root)
 
-	svc := newTestService(newOSRepository())
+	svc := newTestService(newFakeRepository())
 	issues := svc.Check(root)
 	found := false
 	for _, issue := range issues {
@@ -167,7 +92,7 @@ func TestCheck_CacheWritable(t *testing.T) {
 	os.MkdirAll(filepath.Join(root, "bin"), 0755)
 	os.WriteFile(filepath.Join(root, "bin", "php"), []byte("#!/bin/bash\necho shim\n"), 0755)
 
-	svc := newTestService(newOSRepository())
+	svc := newTestService(newFakeRepository())
 	issues := svc.Check(root)
 	for _, issue := range issues {
 		if strings.Contains(issue.Title, "Cache") {
@@ -184,7 +109,7 @@ func TestCheck_SystemMode(t *testing.T) {
 	os.WriteFile(filepath.Join(root, "bin", "php"), []byte("#!/bin/bash\necho shim\n"), 0755)
 	os.WriteFile(filepath.Join(root, ".phpv_system"), []byte{}, 0644)
 
-	svc := newTestService(newOSRepository())
+	svc := newTestService(newFakeRepository())
 	issues := svc.Check(root)
 	found := false
 	for _, issue := range issues {
@@ -199,8 +124,8 @@ func TestCheck_SystemMode(t *testing.T) {
 }
 
 func TestCheck_BuildToolsMissing(t *testing.T) {
-	mem := newMemRepository()
-	svc := NewService(mem, system.NewService())
+	fake := newFakeRepository()
+	svc := NewService(fake, system.NewService())
 
 	issues := svc.checkBuildTools()
 	foundCritical := false
@@ -222,22 +147,22 @@ func TestCheck_BuildToolsMissing(t *testing.T) {
 }
 
 func TestCheck_BuildToolsPresent(t *testing.T) {
-	mem := newMemRepository()
-	mem.lookPathResult["gcc"] = "/usr/bin/gcc"
-	mem.lookPathResult["g++"] = "/usr/bin/g++"
-	mem.lookPathResult["make"] = "/usr/bin/make"
-	mem.lookPathResult["cmake"] = "/usr/bin/cmake"
-	mem.lookPathResult["autoconf"] = "/usr/bin/autoconf"
-	mem.lookPathResult["automake"] = "/usr/bin/automake"
-	mem.lookPathResult["m4"] = "/usr/bin/m4"
-	mem.lookPathResult["perl"] = "/usr/bin/perl"
-	mem.lookPathResult["bison"] = "/usr/bin/bison"
-	mem.lookPathResult["re2c"] = "/usr/bin/re2c"
-	mem.lookPathResult["flex"] = "/usr/bin/flex"
-	mem.lookPathResult["pkg-config"] = "/usr/bin/pkg-config"
-	mem.lookPathResult["xz"] = "/usr/bin/xz"
+	fake := newFakeRepository()
+	fake.lookPathResult["gcc"] = "/usr/bin/gcc"
+	fake.lookPathResult["g++"] = "/usr/bin/g++"
+	fake.lookPathResult["make"] = "/usr/bin/make"
+	fake.lookPathResult["cmake"] = "/usr/bin/cmake"
+	fake.lookPathResult["autoconf"] = "/usr/bin/autoconf"
+	fake.lookPathResult["automake"] = "/usr/bin/automake"
+	fake.lookPathResult["m4"] = "/usr/bin/m4"
+	fake.lookPathResult["perl"] = "/usr/bin/perl"
+	fake.lookPathResult["bison"] = "/usr/bin/bison"
+	fake.lookPathResult["re2c"] = "/usr/bin/re2c"
+	fake.lookPathResult["flex"] = "/usr/bin/flex"
+	fake.lookPathResult["pkg-config"] = "/usr/bin/pkg-config"
+	fake.lookPathResult["xz"] = "/usr/bin/xz"
 
-	svc := NewService(mem, system.NewService())
+	svc := NewService(fake, system.NewService())
 	issues := svc.checkBuildTools()
 	if len(issues) != 0 {
 		t.Fatalf("expected 0 build tool issues when all tools present, got %d: %+v", len(issues), issues)
@@ -245,12 +170,91 @@ func TestCheck_BuildToolsPresent(t *testing.T) {
 }
 
 func TestCheck_DistroInfo(t *testing.T) {
-	svc := newTestService(newOSRepository())
+	svc := newTestService(newFakeRepository())
 	issues := svc.checkDistroInfo()
 	if len(issues) != 1 {
 		t.Fatalf("expected 1 distro info issue, got %d", len(issues))
 	}
 	if !strings.Contains(issues[0].Title, "Detected OS") {
 		t.Fatalf("expected distro info, got: %s", issues[0].Title)
+	}
+}
+
+func TestCheck_StateFiles(t *testing.T) {
+	fake := newFakeRepository()
+	root := t.TempDir()
+
+	phpDir := filepath.Join(root, "packages", "php", "8.4.0")
+	os.MkdirAll(phpDir, 0755)
+	os.WriteFile(filepath.Join(phpDir, ".state"), []byte("failed"), 0644)
+
+	svc := NewService(fake, system.NewService())
+	issues := svc.checkStateFiles(root)
+	if len(issues) != 1 {
+		t.Fatalf("expected 1 state file issue, got %d", len(issues))
+	}
+	if !strings.Contains(issues[0].Title, "failed") {
+		t.Fatalf("expected failed state issue, got: %s", issues[0].Title)
+	}
+}
+
+func TestCheck_DiskSpace(t *testing.T) {
+	fake := newFakeRepository()
+	root := t.TempDir()
+	fake.diskFree = 100 * 1024 * 1024
+
+	svc := NewService(fake, system.NewService())
+	issues := svc.checkDiskSpace(root)
+	if len(issues) != 1 {
+		t.Fatalf("expected 1 disk space issue, got %d", len(issues))
+	}
+	if !strings.Contains(issues[0].Title, "Low disk space") {
+		t.Fatalf("expected low disk space issue, got: %s", issues[0].Title)
+	}
+}
+
+func TestCheck_ShimInPath(t *testing.T) {
+	fake := newFakeRepository()
+	root := t.TempDir()
+
+	svc := NewService(fake, system.NewService())
+	issues := svc.checkShimInPath(root)
+	if len(issues) != 1 {
+		t.Fatalf("expected 1 shim-in-path issue, got %d", len(issues))
+	}
+	if !strings.Contains(issues[0].Title, "not in PATH") {
+		t.Fatalf("expected shim not in PATH issue, got: %s", issues[0].Title)
+	}
+}
+
+func TestCheck_PHPVEnvMismatch(t *testing.T) {
+	fake := newFakeRepository()
+	root := t.TempDir()
+	fake.env["PHPV_ROOT"] = "/other/root"
+
+	svc := NewService(fake, system.NewService())
+	issues := svc.checkPHPVEnv(root)
+	if len(issues) != 1 {
+		t.Fatalf("expected 1 env mismatch issue, got %d", len(issues))
+	}
+	if !strings.Contains(issues[0].Title, "PHPV_ROOT mismatch") {
+		t.Fatalf("expected PHPV_ROOT mismatch issue, got: %s", issues[0].Title)
+	}
+}
+
+func TestCheck_MissingStateFile(t *testing.T) {
+	fake := newFakeRepository()
+	root := t.TempDir()
+
+	phpDir := filepath.Join(root, "packages", "php", "8.4.0")
+	os.MkdirAll(phpDir, 0755)
+
+	svc := NewService(fake, system.NewService())
+	issues := svc.checkStateFiles(root)
+	if len(issues) != 1 {
+		t.Fatalf("expected 1 missing-state issue, got %d", len(issues))
+	}
+	if !strings.Contains(issues[0].Title, "Missing state file") {
+		t.Fatalf("expected missing state file issue, got: %s", issues[0].Title)
 	}
 }

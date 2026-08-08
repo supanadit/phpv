@@ -2,7 +2,7 @@ package doctor
 
 import (
 	"fmt"
-	"path/filepath"
+	"os"
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
@@ -22,6 +22,51 @@ type Issue struct {
 	Title    string   `json:"title"`
 	Detail   string   `json:"detail"`
 	Fix      string   `json:"fix,omitempty"`
+}
+
+// Repository is the diagnostic data-access boundary for the doctor service.
+// It exposes only the probes needed to diagnose a phpv installation, hiding
+// the underlying filesystem and environment details behind domain-level
+// questions.
+type Repository interface {
+	// LookPath reports whether an executable is available on PATH.
+	LookPath(name string) (string, error)
+
+	// ShimExists reports whether the php shim exists under root/bin.
+	ShimExists(root string) bool
+
+	// GetDefaultVersion returns the configured default PHP version and
+	// whether a default has been set.
+	GetDefaultVersion(root string) (version string, exists bool)
+
+	// IsVersionInstalled reports whether a PHP version is installed.
+	IsVersionInstalled(root, version string) bool
+
+	// IsCacheWritable verifies that the cache directory can be written to.
+	IsCacheWritable(root string) error
+
+	// ListPHPVersions returns the PHP versions installed under the root.
+	ListPHPVersions(root string) ([]string, error)
+
+	// GetInstallState returns the install state for a PHP version and
+	// whether a state file exists.
+	GetInstallState(root, version string) (state domain.InstallState, exists bool)
+
+	// ExtensionManifestReadable reports whether the extension manifest for a
+	// PHP version can be read. A missing manifest is not an error.
+	ExtensionManifestReadable(root, version string) error
+
+	// GetPHPVRoot returns the PHPV_ROOT environment variable value.
+	GetPHPVRoot() string
+
+	// IsDirInPath reports whether dir is present in the PATH.
+	IsDirInPath(dir string) bool
+
+	// IsSystemMode reports whether system mode is active.
+	IsSystemMode(root string) bool
+
+	// FreeDiskBytes returns the free bytes on the filesystem containing path.
+	FreeDiskBytes(path string) (uint64, error)
 }
 
 type Service struct {
@@ -138,12 +183,11 @@ func (s *Service) installCommandFor(tools []string) string {
 }
 
 func (s *Service) checkShimPresent(root string) []Issue {
-	shimPath := filepath.Join(root, "bin", "php")
-	if _, err := s.repo.Stat(shimPath); s.repo.IsNotExist(err) {
+	if !s.repo.ShimExists(root) {
 		return []Issue{{
 			Severity: SeverityWarning,
 			Title:    "Shim not found",
-			Detail:   fmt.Sprintf("Expected shim at %s", shimPath),
+			Detail:   fmt.Sprintf("Expected shim at %s/bin/php", root),
 			Fix:      "Run `phpv init` to generate shims, or `phpv rehash` to regenerate",
 		}}
 	}
@@ -151,24 +195,15 @@ func (s *Service) checkShimPresent(root string) []Issue {
 }
 
 func (s *Service) checkDefaultVersion(root string) []Issue {
-	defaultPath := filepath.Join(root, "default")
-	data, err := s.repo.ReadFile(defaultPath)
-	if err != nil {
-		if s.repo.IsNotExist(err) {
-			return []Issue{{
-				Severity: SeverityInfo,
-				Title:    "No default version set",
-				Detail:   "No default PHP version has been configured",
-				Fix:      "Run `phpv default <version>` to set one",
-			}}
-		}
+	ver, exists := s.repo.GetDefaultVersion(root)
+	if !exists {
 		return []Issue{{
-			Severity: SeverityWarning,
-			Title:    "Cannot read default version",
-			Detail:   fmt.Sprintf("Error reading %s: %v", defaultPath, err),
+			Severity: SeverityInfo,
+			Title:    "No default version set",
+			Detail:   "No default PHP version has been configured",
+			Fix:      "Run `phpv default <version>` to set one",
 		}}
 	}
-	ver := strings.TrimSpace(string(data))
 	if ver == "" {
 		return []Issue{{
 			Severity: SeverityInfo,
@@ -177,12 +212,11 @@ func (s *Service) checkDefaultVersion(root string) []Issue {
 			Fix:      "Run `phpv default <version>` to set one",
 		}}
 	}
-	phpBin := filepath.Join(root, "packages", "php", ver, "bin", "php")
-	if _, err := s.repo.Stat(phpBin); s.repo.IsNotExist(err) {
+	if !s.repo.IsVersionInstalled(root, ver) {
 		return []Issue{{
 			Severity: SeverityCritical,
 			Title:    "Default version not installed",
-			Detail:   fmt.Sprintf("Default version %s is not installed at %s", ver, phpBin),
+			Detail:   fmt.Sprintf("Default version %s is not installed", ver),
 			Fix:      fmt.Sprintf("Run `phpv install %s` or `phpv default <version>` to set a different default", ver),
 		}}
 	}
@@ -190,80 +224,62 @@ func (s *Service) checkDefaultVersion(root string) []Issue {
 }
 
 func (s *Service) checkCacheWritable(root string) []Issue {
-	cacheDir := filepath.Join(root, "caches")
-	if err := s.repo.MkdirAll(cacheDir, 0o755); err != nil {
+	if err := s.repo.IsCacheWritable(root); err != nil {
 		return []Issue{{
 			Severity: SeverityCritical,
 			Title:    "Cache directory not writable",
-			Detail:   fmt.Sprintf("Cannot create cache directory at %s: %v", cacheDir, err),
+			Detail:   fmt.Sprintf("Cannot write to %s/caches: %v", root, err),
 			Fix:      "Check permissions on " + root,
 		}}
 	}
-	testFile := filepath.Join(cacheDir, ".phpv_write_test")
-	if err := s.repo.WriteFile(testFile, []byte{}, 0o644); err != nil {
-		return []Issue{{
-			Severity: SeverityCritical,
-			Title:    "Cache directory not writable",
-			Detail:   fmt.Sprintf("Cannot write to %s: %v", cacheDir, err),
-			Fix:      "Check permissions on " + cacheDir,
-		}}
-	}
-	s.repo.Remove(testFile)
 	return nil
 }
 
 func (s *Service) checkStateFiles(root string) []Issue {
-	phpDir := filepath.Join(root, "packages", "php")
-	entries, err := s.repo.ReadDir(phpDir)
+	versions, err := s.repo.ListPHPVersions(root)
 	if err != nil {
-		if s.repo.IsNotExist(err) {
+		if os.IsNotExist(err) {
 			return nil
 		}
 		return []Issue{{
 			Severity: SeverityWarning,
 			Title:    "Cannot read PHP packages directory",
-			Detail:   fmt.Sprintf("Error reading %s: %v", phpDir, err),
+			Detail:   fmt.Sprintf("Error reading %s/packages/php: %v", root, err),
 		}}
 	}
 	var issues []Issue
-	for _, e := range entries {
-		if !e.IsDir() {
+	for _, ver := range versions {
+		state, exists := s.repo.GetInstallState(root, ver)
+		if !exists {
+			issues = append(issues, Issue{
+				Severity: SeverityWarning,
+				Title:    fmt.Sprintf("Missing state file for PHP %s", ver),
+				Detail:   fmt.Sprintf("No .state file found for PHP %s", ver),
+				Fix:      fmt.Sprintf("Run `phpv install %s` to reinstall, or remove the directory manually", ver),
+			})
 			continue
 		}
-		statePath := filepath.Join(phpDir, e.Name(), ".state")
-		data, err := s.repo.ReadFile(statePath)
-		if err != nil {
-			if s.repo.IsNotExist(err) {
-				issues = append(issues, Issue{
-					Severity: SeverityWarning,
-					Title:    fmt.Sprintf("Missing state file for PHP %s", e.Name()),
-					Detail:   fmt.Sprintf("No .state file found at %s", statePath),
-					Fix:      fmt.Sprintf("Run `phpv install %s` to reinstall, or remove the directory manually", e.Name()),
-				})
-			}
-			continue
-		}
-		state := domain.InstallState(strings.TrimSpace(string(data)))
-		if state == domain.StateFailed {
+		switch state {
+		case domain.StateFailed:
 			issues = append(issues, Issue{
 				Severity: SeverityWarning,
-				Title:    fmt.Sprintf("PHP %s installation failed", e.Name()),
-				Detail:   fmt.Sprintf("State file at %s contains 'failed'", statePath),
-				Fix:      fmt.Sprintf("Run `phpv install %s --force` to retry (deps preserved), or `--clean` to start fresh", e.Name()),
+				Title:    fmt.Sprintf("PHP %s installation failed", ver),
+				Detail:   fmt.Sprintf("State file for PHP %s contains 'failed'", ver),
+				Fix:      fmt.Sprintf("Run `phpv install %s --force` to retry (deps preserved), or `--clean` to start fresh", ver),
 			})
-		} else if state == domain.StateInterrupted {
+		case domain.StateInterrupted:
 			issues = append(issues, Issue{
 				Severity: SeverityWarning,
-				Title:    fmt.Sprintf("PHP %s installation was interrupted", e.Name()),
-				Detail:   fmt.Sprintf("State file at %s contains 'interrupted'", statePath),
-				Fix:      fmt.Sprintf("Run `phpv install %s --force` to retry (deps preserved), or `--clean` to start fresh", e.Name()),
+				Title:    fmt.Sprintf("PHP %s installation was interrupted", ver),
+				Detail:   fmt.Sprintf("State file for PHP %s contains 'interrupted'", ver),
+				Fix:      fmt.Sprintf("Run `phpv install %s --force` to retry (deps preserved), or `--clean` to start fresh", ver),
 			})
-		} else if state == domain.StateInProgress {
+		case domain.StateInProgress:
 			issues = append(issues, Issue{
 				Severity: SeverityWarning,
-				Title:    fmt.Sprintf("PHP %s installation is in progress (likely crashed)", e.Name()),
-				Detail:   fmt.Sprintf("State file at %s contains 'in_progress'", statePath),
-				Fix:      fmt.Sprintf("Run `phpv install %s --force` to retry (deps preserved), or `--clean` to start fresh", e.Name()),
+				Title:    fmt.Sprintf("PHP %s installation is in progress (likely crashed)", ver),
+				Detail:   fmt.Sprintf("State file for PHP %s contains 'in_progress'", ver),
+				Fix:      fmt.Sprintf("Run `phpv install %s --force` to retry (deps preserved), or `--clean` to start fresh", ver),
 			})
 		}
 	}
@@ -271,36 +287,26 @@ func (s *Service) checkStateFiles(root string) []Issue {
 }
 
 func (s *Service) checkExtensionManifests(root string) []Issue {
-	phpDir := filepath.Join(root, "packages", "php")
-	entries, err := s.repo.ReadDir(phpDir)
+	versions, err := s.repo.ListPHPVersions(root)
 	if err != nil {
 		return nil
 	}
 	var issues []Issue
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		manifestPath := filepath.Join(phpDir, e.Name(), "extensions.json")
-		if _, err := s.repo.Stat(manifestPath); s.repo.IsNotExist(err) {
-			continue
-		}
-		data, err := s.repo.ReadFile(manifestPath)
-		if err != nil {
+	for _, ver := range versions {
+		if err := s.repo.ExtensionManifestReadable(root, ver); err != nil {
 			issues = append(issues, Issue{
 				Severity: SeverityWarning,
-				Title:    fmt.Sprintf("Cannot read extension manifest for PHP %s", e.Name()),
-				Detail:   fmt.Sprintf("Error reading %s: %v", manifestPath, err),
-				Fix:      fmt.Sprintf("Delete %s and reinstall extensions", manifestPath),
+				Title:    fmt.Sprintf("Cannot read extension manifest for PHP %s", ver),
+				Detail:   fmt.Sprintf("Error reading extension manifest for PHP %s: %v", ver, err),
+				Fix:      fmt.Sprintf("Delete the extension manifest for PHP %s and reinstall extensions", ver),
 			})
 		}
-		_ = data
 	}
 	return issues
 }
 
 func (s *Service) checkPHPVEnv(root string) []Issue {
-	envRoot := s.repo.Getenv("PHPV_ROOT")
+	envRoot := s.repo.GetPHPVRoot()
 	if envRoot != "" && envRoot != root {
 		return []Issue{{
 			Severity: SeverityWarning,
@@ -313,11 +319,9 @@ func (s *Service) checkPHPVEnv(root string) []Issue {
 }
 
 func (s *Service) checkShimInPath(root string) []Issue {
-	binDir := filepath.Join(root, "bin")
-	for _, dir := range s.repo.PathList() {
-		if dir == binDir {
-			return nil
-		}
+	binDir := root + string(os.PathSeparator) + "bin"
+	if s.repo.IsDirInPath(binDir) {
+		return nil
 	}
 	return []Issue{{
 		Severity: SeverityInfo,
@@ -328,8 +332,7 @@ func (s *Service) checkShimInPath(root string) []Issue {
 }
 
 func (s *Service) checkSystemMode(root string) []Issue {
-	systemMarker := filepath.Join(root, ".phpv_system")
-	if _, err := s.repo.Stat(systemMarker); err == nil {
+	if s.repo.IsSystemMode(root) {
 		return []Issue{{
 			Severity: SeverityInfo,
 			Title:    "System mode is active",
@@ -341,11 +344,10 @@ func (s *Service) checkSystemMode(root string) []Issue {
 }
 
 func (s *Service) checkDiskSpace(root string) []Issue {
-	bavail, bsize, err := s.repo.Statfs(root)
+	freeBytes, err := s.repo.FreeDiskBytes(root)
 	if err != nil {
 		return nil
 	}
-	freeBytes := bavail * bsize
 	if freeBytes < 500*1024*1024 {
 		return []Issue{{
 			Severity: SeverityWarning,

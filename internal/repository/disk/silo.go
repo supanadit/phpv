@@ -187,7 +187,8 @@ func (s *SiloRepository) Extract(archivePath string, destDir string) (extracted 
 
 	ext := strings.ToLower(filepath.Ext(archivePath))
 	// Handle double extensions like .tar.gz
-	if ext == ".gz" || ext == ".xz" || ext == ".bz2" {
+	switch ext {
+	case ".gz", ".xz", ".bz2":
 		// Check the full extension for .tar.*
 		if strings.HasSuffix(strings.ToLower(archivePath), ".tar.gz") ||
 			strings.HasSuffix(strings.ToLower(archivePath), ".tgz") {
@@ -211,7 +212,7 @@ func (s *SiloRepository) Extract(archivePath string, destDir string) (extracted 
 			os.RemoveAll(tmpDir)
 			return false, fmt.Errorf("unsupported archive format: %s", archivePath)
 		}
-	} else if ext == ".tgz" {
+	case ".tgz":
 		gz, err := gzip.NewReader(f)
 		if err != nil {
 			os.RemoveAll(tmpDir)
@@ -219,7 +220,7 @@ func (s *SiloRepository) Extract(archivePath string, destDir string) (extracted 
 		}
 		defer gz.Close()
 		tarReader = tar.NewReader(gz)
-	} else {
+	default:
 		os.RemoveAll(tmpDir)
 		return false, fmt.Errorf("unsupported archive format: %s", archivePath)
 	}

@@ -24,10 +24,10 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				repository.BuildMinorRanges(8, []repository.MinorRange{
 					{Minor: 0, PatchEnd: 30},
 					{Minor: 1, PatchEnd: 33},
-					{Minor: 2, PatchEnd: 29},
-					{Minor: 3, PatchEnd: 27},
-					{Minor: 4, PatchEnd: 19},
-					{Minor: 5, PatchEnd: 8},
+					{Minor: 2, PatchEnd: 33},
+					{Minor: 3, PatchEnd: 33},
+					{Minor: 4, PatchEnd: 24},
+					{Minor: 5, PatchEnd: 9},
 				}),
 				repository.BuildMinorRanges(7, []repository.MinorRange{
 					{Minor: 0, PatchEnd: 33},

@@ -243,6 +243,8 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		if len(prepared.ExtraCFlags) > 0 {
 			buildEnv = []string{"CFLAGS=" + strings.Join(prepared.ExtraCFlags, " "), "CXXFLAGS=" + strings.Join(prepared.ExtraCFlags, " ")}
 		}
+		// TODO: Hardcoded libiconv path
+		// Description: This shouldn't be hardcoded, it should instead look like configureFlagRules in internal/repository/memory/graph.go
 		if runtime.GOOS == "darwin" {
 			brewIconv := "/opt/homebrew/opt/libiconv"
 			if _, err := os.Stat(filepath.Join(brewIconv, "include", "iconv.h")); err == nil {
@@ -438,6 +440,8 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 	}, nil
 }
 
+// TODO: Hardcoded OS-specific library path
+// Description: The if wrapper is only tied to MacOS, it's not allowed to be hardcoded, we must figure out how to handle dynamically across different OS
 func libPathEnvName() string {
 	if runtime.GOOS == "darwin" {
 		return "DYLD_LIBRARY_PATH"
@@ -470,6 +474,8 @@ func (s *Service) collectDepFlags(prefix string, cppFlags, ldFlags, pcPaths []st
 	return cppFlags, ldFlags, pcPaths
 }
 
+// TODO: Hardcoded OS-specific system flags
+// Description: The if wrapper is only tied to MacOS, it's not allowed to be hardcoded, we must figure out how to handle dynamically across different OS
 func collectSystemFlags(cppFlags, ldFlags, pcPaths []string) ([]string, []string, []string) {
 	if runtime.GOOS == "darwin" {
 		return cppFlags, ldFlags, pcPaths

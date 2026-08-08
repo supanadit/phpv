@@ -63,9 +63,3 @@ func (h *PHPHandler) configCmd() *cobra.Command {
 
 	return cmd
 }
-
-// configCompletion provides shell completion for config keys.
-func configCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	keys := []string{"cache_dir", "concurrency", "compiler", "mirror", "static_libgcc"}
-	return keys, cobra.ShellCompDirectiveNoFileComp
-}

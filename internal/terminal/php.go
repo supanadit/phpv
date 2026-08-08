@@ -231,9 +231,10 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		clean, _ := cmd.Flags().GetBool("clean")
 		if !force && !clean {
 			stateMsg := string(state)
-			if state == domain.StateInterrupted {
+			switch state {
+			case domain.StateInterrupted:
 				stateMsg = "interrupted (you pressed Ctrl+C)"
-			} else if state == domain.StateInProgress {
+			case domain.StateInProgress:
 				stateMsg = "in_progress (likely crashed)"
 			}
 			fmt.Printf("Previous install of PHP %s was '%s'.\n", version, stateMsg)

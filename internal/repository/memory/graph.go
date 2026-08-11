@@ -1256,10 +1256,11 @@ func builtInExtensions() []domain.ExtensionDef {
 			MinPHPVersion: "7.0",
 		},
 		{
-			Name:          "zip",
-			Description:   "ZIP archive support",
-			Flag:          "--enable-zip",
-			MinPHPVersion: "5.0",
+			Name:            "zip",
+			Description:     "ZIP archive support",
+			Flag:            "--enable-zip",
+			MinPHPVersion:   "5.0",
+			RequiresPackage: "libzip",
 			FlagVersions: []domain.FlagVersionDef{
 				{VersionRange: ">=7.4", Flag: "--with-zip"},
 			},

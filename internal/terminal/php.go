@@ -869,6 +869,8 @@ func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool)
 			phpDeps = append(phpDeps, "icu")
 		case "libxml":
 			phpDeps = append(phpDeps, "libxml2")
+		case "zip":
+			phpDeps = append(phpDeps, "libzip")
 		}
 	}
 

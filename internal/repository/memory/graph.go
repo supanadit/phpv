@@ -252,6 +252,9 @@ var configureFlagRules = map[string][]configureFlagRule{
 	},
 	"libzip": {
 		{Flags: []string{
+			// libzip 1.7.x declares cmake_minimum_required(VERSION 3.1),
+			// which CMake 4.x refuses without this policy override.
+			"-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
 			"-DBUILD_SHARED_LIBS=ON",
 			"-DBUILD_TOOLS=OFF",
 			"-DBUILD_EXAMPLES=OFF",

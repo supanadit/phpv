@@ -17,6 +17,7 @@ var fedoraPackages = pkgMap{
 	"libpng":    "libpng-devel",
 	"libjpeg":   "libjpeg-turbo-devel",
 	"freetype":  "freetype-devel",
+	"libzip":    "libzip-devel",
 }
 
 var ubuntuPackages = pkgMap{
@@ -34,6 +35,7 @@ var ubuntuPackages = pkgMap{
 	"libpng":    "libpng-dev",
 	"libjpeg":   "libjpeg-dev",
 	"freetype":  "libfreetype-dev",
+	"libzip":    "libzip-dev",
 }
 
 var alpinePackages = pkgMap{
@@ -51,6 +53,7 @@ var alpinePackages = pkgMap{
 	"libpng":    "libpng-dev",
 	"libjpeg":   "libjpeg-dev",
 	"freetype":  "freetype-dev",
+	"libzip":    "libzip-dev",
 }
 
 var archPackages = pkgMap{
@@ -68,6 +71,7 @@ var archPackages = pkgMap{
 	"libpng":    "libpng",
 	"libjpeg":   "libjpeg-turbo",
 	"freetype":  "freetype2",
+	"libzip":    "libzip",
 }
 
 var fedoraBuildTools = pkgMap{

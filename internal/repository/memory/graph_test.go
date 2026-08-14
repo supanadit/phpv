@@ -3,6 +3,7 @@ package memory
 import (
 	"testing"
 
+	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/graph"
 )
 
@@ -277,6 +278,85 @@ func TestGetExtensionConfigureFlags_Zip_PHP7_3(t *testing.T) {
 	}
 }
 
+func TestGetBuildPlan_PHP7_4_HasLibzip(t *testing.T) {
+	repo := NewGraphRepository()
+	svc := graph.NewService(repo)
+
+	defaults := []string{
+		"bcmath", "curl", "dom", "fileinfo", "filter", "gd",
+		"iconv", "intl", "json", "mbstring", "openssl", "opcache",
+		"pdo", "pdo_mysql", "pdo_sqlite", "phar", "session",
+		"simplexml", "sqlite3", "tokenizer", "xml", "xmlreader",
+		"xmlwriter", "zip", "zlib",
+	}
+
+	plan, err := svc.GetBuildPlan("php", "7.4.33", defaults)
+	if err != nil {
+		t.Fatalf("GetBuildPlan(php, 7.4.33) returned error: %v", err)
+	}
+
+	depMap := make(map[string]string)
+	for i, dep := range plan.Deps {
+		depMap[dep.Name] = dep.Version
+		if dep.Name == "libzip" && i == 0 {
+			t.Error("libzip should not be the first dependency (zlib must come before it)")
+		}
+	}
+
+	// PHP >= 7.4 does not bundle libzip: the zip extension is built against
+	// the system libzip (pkg-config "libzip >= 0.11"), so the build plan must
+	// include libzip and pin a version compatible with PHP 7.4 (< 1.8.0).
+	if v, ok := depMap["libzip"]; !ok {
+		t.Error("libzip dep missing for PHP 7.4 — zip extension requires it")
+	} else if v != "1.7.3|>=0.11.0,<1.8.0" {
+		t.Errorf("libzip version = %q, want %q", v, "1.7.3|>=0.11.0,<1.8.0")
+	}
+
+	// libzip links against zlib; zlib must be in the plan and built first.
+	if v, ok := depMap["zlib"]; !ok {
+		t.Error("zlib dep missing for PHP 7.4")
+	} else if v != "1.2.13|>=1.2.0,<1.3.0" {
+		t.Errorf("zlib version = %q, want %q", v, "1.2.13|>=1.2.0,<1.3.0")
+	}
+
+	libzipPos, libzipOK := findDepPos(plan.Deps, "libzip")
+	zlibPos, zlibOK := findDepPos(plan.Deps, "zlib")
+	if libzipOK && zlibOK && zlibPos >= libzipPos {
+		t.Errorf("zlib (pos %d) must come before libzip (pos %d) in build plan", zlibPos, libzipPos)
+	}
+}
+
+func TestGetBuildPlan_PHP8_1_HasLibzip(t *testing.T) {
+	repo := NewGraphRepository()
+	svc := graph.NewService(repo)
+
+	plan, err := svc.GetBuildPlan("php", "8.1.0", []string{"zip"})
+	if err != nil {
+		t.Fatalf("GetBuildPlan(php, 8.1.0) returned error: %v", err)
+	}
+
+	depMap := make(map[string]string)
+	for _, dep := range plan.Deps {
+		depMap[dep.Name] = dep.Version
+	}
+
+	// PHP >= 8.1 can use modern libzip (>= 1.7.3).
+	if v, ok := depMap["libzip"]; !ok {
+		t.Error("libzip dep missing for PHP 8.1 — zip extension requires it")
+	} else if v != "1.11.3|>=1.7.3" {
+		t.Errorf("libzip version = %q, want %q", v, "1.11.3|>=1.7.3")
+	}
+}
+
+func findDepPos(deps []domain.Dependency, name string) (int, bool) {
+	for i, dep := range deps {
+		if dep.Name == name {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
 func TestGetBuildPlan_PHP8_4_HasDeps(t *testing.T) {
 	repo := NewGraphRepository()
 	svc := graph.NewService(repo)
@@ -360,9 +440,9 @@ func TestGetBuildPlan_PHP8_4_DependencyOrdering(t *testing.T) {
 	}
 
 	mustComeBefore := map[string]string{
-		"openssl": "curl", // curl --with-openssl={{dep:openssl}}
-		"zlib":    "curl", // curl --without-zlib and may link zlib
-		"m4":      "curl",
+		"openssl":  "curl", // curl --with-openssl={{dep:openssl}}
+		"zlib":     "curl", // curl --without-zlib and may link zlib
+		"m4":       "curl",
 		"autoconf": "curl",
 		"automake": "curl",
 		"libtool":  "curl",

@@ -268,7 +268,7 @@ func detectStrategy(name string) string {
 	switch name {
 	case "zlib", "openssl", "ossl", "libtool", "libxml2", "php", "m4", "automake", "autoconf":
 		return "configure"
-	case "cmake":
+	case "cmake", "libzip":
 		return "cmake"
 	case "bison", "flex", "perl":
 		return "makeonly"

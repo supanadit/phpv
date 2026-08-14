@@ -250,6 +250,20 @@ var configureFlagRules = map[string][]configureFlagRule{
 	"icu": {
 		{Flags: []string{"--disable-extras", "--disable-samples"}},
 	},
+	"libzip": {
+		{Flags: []string{
+			// libzip 1.7.x declares cmake_minimum_required(VERSION 3.1),
+			// which CMake 4.x refuses without this policy override.
+			"-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
+			"-DBUILD_SHARED_LIBS=ON",
+			"-DBUILD_TOOLS=OFF",
+			"-DBUILD_EXAMPLES=OFF",
+			"-DBUILD_DOC=OFF",
+			"-DENABLE_BZIP2=OFF",
+			"-DENABLE_LZMA=OFF",
+			"-DENABLE_ZSTD=OFF",
+		}},
+	},
 }
 
 func (r *GraphRepository) GetConfigureFlags(name, version string) []string {
@@ -598,6 +612,32 @@ func builtInPackages() []domain.Package {
 			Constraints: []domain.VersionConstraint{
 				{VersionRange: ">=1.3.0", Dependencies: []domain.Dependency{}},
 				{VersionRange: ">=1.2.0 <1.3.0", Dependencies: []domain.Dependency{}},
+			},
+		},
+		{
+			Package: "libzip",
+			Default: []domain.Dependency{
+				{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
+			},
+			Constraints: []domain.VersionConstraint{
+				{
+					VersionRange: ">=1.9.0",
+					Dependencies: []domain.Dependency{
+						{Name: "zlib", Version: "1.3.1|>=1.3.0"},
+					},
+				},
+				{
+					VersionRange: ">=1.7.0 <1.9.0",
+					Dependencies: []domain.Dependency{
+						{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
+					},
+				},
+				{
+					VersionRange: ">=0.11.0 <1.7.0",
+					Dependencies: []domain.Dependency{
+						{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
+					},
+				},
 			},
 		},
 		{
@@ -1262,6 +1302,18 @@ func builtInExtensions() []domain.ExtensionDef {
 			MinPHPVersion: "5.0",
 			FlagVersions: []domain.FlagVersionDef{
 				{VersionRange: ">=7.4", Flag: "--with-zip"},
+			},
+			// PHP >= 7.4 no longer bundles libzip: the zip extension is
+			// built against the system libzip (pkg-config "libzip >= 0.11").
+			// Without this dependency, `phpv install 7.4` fails at configure
+			// time with "Package libzip was not found in the pkg-config
+			// search path" on systems that do not ship libzip-devel.
+			RequiresPackage: "libzip",
+			Versions: []domain.VersionConstraintDef{
+				// libzip >= 1.8 removed APIs used by PHP < 8.1 (zip_source_file
+				// with start/len args), so PHP < 8.1 must use libzip 1.7.3.
+				{VersionRange: ">=8.1.0", Version: "1.11.3|>=1.7.3"},
+				{VersionRange: ">=7.4.0 <8.1.0", Version: "1.7.3|>=0.11.0,<1.8.0"},
 			},
 		},
 		{

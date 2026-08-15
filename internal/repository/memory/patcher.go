@@ -46,6 +46,23 @@ func (p *inMemoryPatcher) PatchesFor(name string, version string) []patcher.Patc
 				ExtraCFlags:  []string{"-Wno-error=incompatible-pointer-types", "-Wno-incompatible-pointer-types"},
 			},
 		}
+	case "libzip":
+		// libzip is built with CMake and needs zlib headers. phpv builds
+		// zlib from source when the system zlib does not satisfy PHP's
+		// constraint (e.g. PHP < 8.0 needs zlib < 1.3.0, but modern distros
+		// ship zlib 1.3.x), so point CMake at the locally-built zlib prefix.
+		// If zlib was satisfied by the system, the {{dep:zlib}} placeholder
+		// resolves to nothing and the flag is skipped.
+		return []patcher.Patch{
+			{
+				Name:    "libzip-zlib-root",
+				Package: "libzip",
+				ConfigureFlags: []string{
+					"-DZLIB_ROOT={{dep:zlib}}",
+					"-DCMAKE_PREFIX_PATH={{dep:zlib}}",
+				},
+			},
+		}
 	case "php":
 		// PHP 7.4's scanf.c uses K&R-style function pointer casts that GCC 15
 		// rejects outright. Patch the fn declaration to match the actual

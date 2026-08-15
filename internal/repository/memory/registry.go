@@ -86,6 +86,17 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 			URLTemplate: "https://github.com/Kitware/CMake/releases/download/v{version}/cmake-{version}-linux-x86_64.tar.gz",
 		})
 
+	case "libzip":
+		result = repository.BuildRegistries(repository.PackageConfig{
+			Name: "libzip",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"1.11.3", "1.10.1", "1.9.2", "1.7.3",
+			},
+			URLTemplate: "https://libzip.org/download/libzip-{version}.tar.gz",
+		})
+
 	case "perl":
 		result = repository.BuildRegistries(repository.PackageConfig{
 			Name: "perl",

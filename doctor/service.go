@@ -3,9 +3,11 @@ package doctor
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/graph"
 	"github.com/supanadit/phpv/system"
 )
 
@@ -56,6 +58,10 @@ type Repository interface {
 	// PHP version can be read. A missing manifest is not an error.
 	ExtensionManifestReadable(root, version string) error
 
+	// ListInstalledExtensions returns the names of the extensions recorded in
+	// a PHP version's extension manifest. An empty list is not an error.
+	ListInstalledExtensions(root, version string) ([]string, error)
+
 	// GetPHPVRoot returns the PHPV_ROOT environment variable value.
 	GetPHPVRoot() string
 
@@ -70,12 +76,13 @@ type Repository interface {
 }
 
 type Service struct {
-	repo   Repository
-	sysSvc *system.Service
+	repo      Repository
+	sysSvc    *system.Service
+	graphSvc  *graph.Service
 }
 
-func NewService(repo Repository, sysSvc *system.Service) *Service {
-	return &Service{repo: repo, sysSvc: sysSvc}
+func NewService(repo Repository, sysSvc *system.Service, graphSvc *graph.Service) *Service {
+	return &Service{repo: repo, sysSvc: sysSvc, graphSvc: graphSvc}
 }
 
 func (s *Service) Check(root string) []Issue {
@@ -147,6 +154,29 @@ func (s *Service) checkBuildTools() []Issue {
 
 func (s *Service) checkSystemPackages() []Issue {
 	phpDeps := []string{"openssl", "libxml2", "zlib", "oniguruma", "curl", "sqlite3", "readline", "icu", "pcre2", "argon2", "sodium"}
+	seen := make(map[string]bool)
+	for _, dep := range phpDeps {
+		seen[dep] = true
+	}
+	// Add system dev-libraries required by extensions that are actually
+	// installed. Deps are derived from the extension definitions served
+	// through the graph repository, so this stays correct without a binary
+	// update when extension knowledge changes.
+	installedExts := s.installedExtensions()
+	for _, ext := range installedExts {
+		def, ok := s.graphSvc.GetExtensionDef(ext)
+		if !ok {
+			continue
+		}
+		for _, dep := range def.RequiresPackages {
+			if seen[dep] {
+				continue
+			}
+			seen[dep] = true
+			phpDeps = append(phpDeps, dep)
+		}
+	}
+
 	result, err := s.sysSvc.Check(phpDeps)
 	if err != nil {
 		return []Issue{{
@@ -168,6 +198,36 @@ func (s *Service) checkSystemPackages() []Issue {
 		Detail:   fmt.Sprintf("Required dev libraries not installed: %s", strings.Join(names, ", ")),
 		Fix:      s.sysSvc.InstallCommand(result.Missing),
 	}}
+}
+
+// installedExtensions returns the names of every extension installed across
+// all managed PHP versions, deduplicated and sorted for deterministic output.
+func (s *Service) installedExtensions() []string {
+	root := s.repo.GetPHPVRoot()
+	if root == "" {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var names []string
+	versions, err := s.repo.ListPHPVersions(root)
+	if err != nil {
+		return nil
+	}
+	for _, ver := range versions {
+		exts, err := s.repo.ListInstalledExtensions(root, ver)
+		if err != nil {
+			continue
+		}
+		for _, e := range exts {
+			if seen[e] {
+				continue
+			}
+			seen[e] = true
+			names = append(names, e)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 func (s *Service) installCommandFor(tools []string) string {

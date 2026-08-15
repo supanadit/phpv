@@ -52,15 +52,70 @@ func (h *PHPHandler) initShell(cmd *cobra.Command, args []string) error {
 	switch shell {
 	case "bash", "zsh", "ksh":
 		fmt.Printf("export PATH=\"%s:$PATH\"\n", bin)
+		fmt.Printf(phpvShellFunction)
 	case "fish":
 		fmt.Printf("fish_add_path %s\n", bin)
+		fmt.Printf(phpvShellFunctionFish)
 	case "pwsh":
 		fmt.Printf("$env:PATH = \"%s;$env:PATH\"\n", bin)
+		fmt.Printf(phpvShellFunctionPwsh)
 	default:
 		return fmt.Errorf("unsupported shell: %s (supported: bash, zsh, fish, pwsh, ksh)", shell)
 	}
 	return nil
 }
+
+// phpvShellFunction wraps `phpv` so that `phpv use <version>` exports
+// PHPV_CURRENT into the current shell (ephemeral, per-shell). It only
+// intercepts the `use` subcommand; everything else delegates to the binary.
+const phpvShellFunction = `
+phpv() {
+  local sub="$1"
+  if [ "$sub" = "use" ]; then
+    shift
+    local arg
+    for arg in "$@"; do
+      if [ "$arg" = "--global" ] || [ "$arg" = "--local" ]; then
+        command phpv use "$@"
+        return $?
+      fi
+    done
+    eval "$(command phpv use --print "$@")"
+  else
+    command phpv "$@"
+  fi
+}
+`
+
+const phpvShellFunctionFish = `
+function phpv
+    if test (count $argv) -gt 0; and test $argv[1] = "use"
+        set -e argv[1]
+        if contains -- --global $argv; or contains -- --local $argv
+            command phpv use $argv
+        else
+            command phpv use --print $argv | source
+        end
+    else
+        command phpv $argv
+    end
+end
+`
+
+const phpvShellFunctionPwsh = `
+function global:phpv {
+    if ($args[0] -eq "use") {
+        $rest = $args[1..($args.Count - 1)]
+        if ($rest -contains "--global" -or $rest -contains "--local") {
+            & phpv use @rest
+        } else {
+            & phpv use --print @rest | ForEach-Object { Invoke-Expression $_ }
+        }
+    } else {
+        & phpv @args
+    }
+}
+`
 
 func detectShell() string {
 	shell := os.Getenv("SHELL")

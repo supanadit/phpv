@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/supanadit/phpv/domain"
@@ -123,8 +124,35 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		emit("deps", w)
 	}
 
-	emit("download", fmt.Sprintf("Downloading and extracting %d packages...", len(plan.Deps)+1))
-	downloadResults, err := s.downloadAll(name, exactVersion, plan.Deps)
+	// Determine which deps must be built from source because their system
+	// version does not satisfy the required constraint. This decision only
+	// needs the build plan and the system package map (already available
+	// before any download), so it runs first and lets us download only the
+	// packages that will actually be compiled. If a dep is built from source,
+	// other deps that link against it must also be built from source to avoid
+	// ABI conflicts. The most common case is curl linking against openssl:
+	// if we build OpenSSL 1.1.1w locally, system curl (linked against OpenSSL
+	// 3.x) would cause linker/runtime conflicts, so curl must also be local.
+	mustBuild := s.computeMustBuild(plan.Deps, systemPkgs, static)
+	// Propagate: if openssl is built locally, curl must be too.
+	if mustBuild["openssl"] {
+		mustBuild["curl"] = true
+	}
+
+	// Count how many archives will actually be fetched (skipping build tools
+	// and deps that will use the system package) so the progress message is
+	// honest about what is about to be downloaded.
+	toDownload := 0
+	for _, dep := range plan.Deps {
+		if dep.Optional && dep.Version == "" {
+			continue
+		}
+		if shouldDownloadDep(dep, mustBuild, systemPkgs, static) {
+			toDownload++
+		}
+	}
+	emit("download", fmt.Sprintf("Downloading and extracting %d packages...", toDownload+1))
+	downloadResults, err := s.downloadAll(name, exactVersion, plan.Deps, mustBuild, systemPkgs, static, emit)
 	if err != nil {
 		return nil, err
 	}
@@ -142,34 +170,6 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		}
 	}
 	emit("download", fmt.Sprintf("Downloaded: %d, Skipped: %d, Extracted: %d", downloaded, skipped, extracted))
-
-	// First pass: determine which deps must be built from source because their
-	// system version does not satisfy the required constraint. If a dep is built
-	// from source, other deps that link against it must also be built from source
-	// to avoid ABI conflicts. The most common case is curl linking against openssl:
-	// if we build OpenSSL 1.1.1w locally, system curl (linked against OpenSSL 3.x)
-	// would cause linker/runtime conflicts, so curl must also be built locally.
-	mustBuild := make(map[string]bool)
-	if !static && systemPkgs != nil {
-		for _, dep := range plan.Deps {
-			if isBuildTool(dep.Name) || (dep.Optional && dep.Version == "") {
-				continue
-			}
-			constraint := extractConstraint(dep.Version)
-			if constraint == "" {
-				continue
-			}
-			if sysPkg, ok := systemPkgs[dep.Name]; ok && sysPkg.Installed && sysPkg.Version != "" {
-				if !repository.MatchVersionRange(constraint, sysPkg.Version) {
-					mustBuild[dep.Name] = true
-				}
-			}
-		}
-	}
-	// Propagate: if openssl is built locally, curl must be too.
-	if mustBuild["openssl"] {
-		mustBuild["curl"] = true
-	}
 
 	// Collect flags from locally-built and system-fallback deps separately so
 	// we can place local flags before system flags. This prevents system
@@ -683,7 +683,7 @@ func (s *Service) RemoveExtension(phpVersion, extName, phpPrefix string) error {
 	return nil
 }
 
-func (s *Service) downloadAll(name, version string, deps []domain.Dependency) ([]DownloadResult, error) {
+func (s *Service) downloadAll(name, version string, deps []domain.Dependency, mustBuild map[string]bool, systemPkgs map[string]system.Package, static bool, emit ProgressFunc) ([]DownloadResult, error) {
 	type item struct {
 		name    string
 		version string
@@ -691,6 +691,9 @@ func (s *Service) downloadAll(name, version string, deps []domain.Dependency) ([
 	var items []item
 	for _, dep := range deps {
 		if dep.Optional && dep.Version == "" {
+			continue
+		}
+		if !shouldDownloadDep(dep, mustBuild, systemPkgs, static) {
 			continue
 		}
 		items = append(items, item{dep.Name, extractVersion(dep.Version)})
@@ -711,6 +714,8 @@ func (s *Service) downloadAll(name, version string, deps []domain.Dependency) ([
 
 	results := make([]DownloadResult, len(items))
 	var wg sync.WaitGroup
+	var doneCount atomic.Int32
+	total := len(items)
 
 	for i, it := range items {
 		wg.Add(1)
@@ -718,6 +723,7 @@ func (s *Service) downloadAll(name, version string, deps []domain.Dependency) ([
 			defer wg.Done()
 			results[idx] = DownloadResult{Name: n, Version: v}
 
+			emit("download", fmt.Sprintf("Downloading %s %s...", n, v))
 			regEntry, err := s.reg.Get(n, v)
 			if err != nil {
 				results[idx].Err = fmt.Errorf("registry resolve %s@%s: %w", n, v, err)
@@ -730,6 +736,7 @@ func (s *Service) downloadAll(name, version string, deps []domain.Dependency) ([
 			}
 			results[idx].Downloaded = downloaded
 
+			emit("download", fmt.Sprintf("Extracting %s %s...", n, v))
 			archivePath := filepath.Join(cacheDir(), filepath.Base(regEntry.URL))
 			sourceDir := s.silo.SourcePath(n, v)
 			extracted, err := s.silo.Extract(archivePath, sourceDir)
@@ -738,6 +745,8 @@ func (s *Service) downloadAll(name, version string, deps []domain.Dependency) ([
 				return
 			}
 			results[idx].Extracted = extracted
+			done := doneCount.Add(1)
+			emit("download", fmt.Sprintf("Downloaded %s %s (%d/%d)", n, v, done, total))
 		}(i, it.name, it.version)
 	}
 
@@ -772,6 +781,59 @@ func isBuildTool(name string) bool {
 		return true
 	}
 	return false
+}
+
+// computeMustBuild returns the set of dependency names that must be built
+// from source because their installed system package version does not satisfy
+// the constraint required by the build plan. Build tools and optional deps
+// without a pinned version are excluded (they come from the system).
+func (s *Service) computeMustBuild(deps []domain.Dependency, systemPkgs map[string]system.Package, static bool) map[string]bool {
+	mustBuild := make(map[string]bool)
+	if static || systemPkgs == nil {
+		return mustBuild
+	}
+	for _, dep := range deps {
+		if isBuildTool(dep.Name) || (dep.Optional && dep.Version == "") {
+			continue
+		}
+		constraint := extractConstraint(dep.Version)
+		if constraint == "" {
+			continue
+		}
+		if sysPkg, ok := systemPkgs[dep.Name]; ok && sysPkg.Installed && sysPkg.Version != "" {
+			if !repository.MatchVersionRange(constraint, sysPkg.Version) {
+				mustBuild[dep.Name] = true
+			}
+		}
+	}
+	return mustBuild
+}
+
+// shouldDownloadDep reports whether a dependency's archive needs to be
+// downloaded and extracted at all. Packages that will use the system version
+// (or that are never built, like build tools) are skipped, so a fresh install
+// only fetches the archives it will actually compile.
+func shouldDownloadDep(dep domain.Dependency, mustBuild map[string]bool, systemPkgs map[string]system.Package, static bool) bool {
+	if isBuildTool(dep.Name) || (dep.Optional && dep.Version == "") {
+		return false
+	}
+	// Static builds and --no-system builds compile every dep from source.
+	if static || systemPkgs == nil {
+		return true
+	}
+	if mustBuild[dep.Name] {
+		return true
+	}
+	constraint := extractConstraint(dep.Version)
+	if constraint == "" {
+		return true
+	}
+	if sysPkg, ok := systemPkgs[dep.Name]; ok && sysPkg.Installed && sysPkg.Version != "" {
+		if repository.MatchVersionRange(constraint, sysPkg.Version) {
+			return false
+		}
+	}
+	return true
 }
 
 func isDepInstalled(prefix string) bool {

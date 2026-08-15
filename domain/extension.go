@@ -45,7 +45,15 @@ type ExtensionDef struct {
 	Description     string
 	Flag            string
 	RequiresPackage string
-	MinPHPVersion   string
+	// RequiresPackages lists the system dev-libraries this extension needs at
+	// build time (e.g. pdo_pgsql -> ["libpq"], gd -> ["libpng","libjpeg",
+	// "freetype"]). These are checked against the distro package manager and
+	// recommended for install. Unlike RequiresPackage (which feeds the
+	// source-build dependency resolver), this field is the single source of
+	// truth for the system-package check and is served through the graph
+	// repository so it can be updated without a binary change.
+	RequiresPackages []string
+	MinPHPVersion    string
 	MaxPHPVersion   string
 	Implied         []string
 	Conflicts       []string

@@ -1,6 +1,7 @@
 package disk
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -97,6 +98,29 @@ func (r *DoctorRepository) ExtensionManifestReadable(root, version string) error
 	}
 	_, err := os.ReadFile(manifestPath)
 	return err
+}
+
+// ListInstalledExtensions returns the names of the extensions recorded in a
+// PHP version's extension manifest. A missing or empty manifest yields an
+// empty list.
+func (r *DoctorRepository) ListInstalledExtensions(root, version string) ([]string, error) {
+	manifestPath := filepath.Join(root, "packages", "php", version, "extensions.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var manifest domain.ExtensionManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(manifest.Extensions))
+	for _, e := range manifest.Extensions {
+		names = append(names, e.Name)
+	}
+	return names, nil
 }
 
 // GetPHPVRoot returns the PHPV_ROOT environment variable value.

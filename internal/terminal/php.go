@@ -635,22 +635,52 @@ func (h *PHPHandler) useCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "use <version>",
 		Short: "Switch to a PHP version",
-		Long: `Switch to a specific PHP version. Use 'system' to use the system PHP.
+		Long: `Switch the active PHP version.
 
---global (default) writes to ~/.phpv/default and regenerates shims.
+By default this sets the global default (writes to ~/.phpv/default and
+regenerates shims). With shell integration (via 'phpv init'), 'phpv use 8'
+exports the version into the current shell only, without touching the
+global default. Use 'system' to fall back to the system PHP.
+
+--global writes to ~/.phpv/default and regenerates shims.
 --local writes to .php-version in the current directory only.`,
 		Args: cobra.ExactArgs(1),
 		RunE: h.use,
 	}
 	cmd.Flags().Bool("global", true, "Set as global default (writes to ~/.phpv/default, regenerates shims)")
 	cmd.Flags().Bool("local", false, "Set as local project version (writes .php-version in CWD)")
+	cmd.Flags().Bool("print", false, "Print an export statement for the current shell (used by shell integration)")
+	cmd.Flags().MarkHidden("print")
 	cmd.MarkFlagsMutuallyExclusive("global", "local")
 	return cmd
 }
 
 func (h *PHPHandler) use(cmd *cobra.Command, args []string) error {
 	version := args[0]
+	printOnly, _ := cmd.Flags().GetBool("print")
+	local, _ := cmd.Flags().GetBool("local")
 
+	// --print emits an export statement for the calling shell; the shell
+	// function from `phpv init` evals it. It must never touch the global
+	// default or regenerate shims.
+	if printOnly {
+		if version == "system" {
+			fmt.Println("unset PHPV_CURRENT")
+			return nil
+		}
+		exactVersion, err := h.resolveVersion(version)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("export PHPV_CURRENT=%q\n", exactVersion)
+		return nil
+	}
+
+	// Bare `phpv use <version>` (no flags) defaults to --global, so it works
+	// out of the box when the shell function from `phpv init` is not loaded.
+	// When it IS loaded, the function intercepts `use` and calls --print,
+	// making the switch ephemeral per-shell instead of touching the global
+	// default. --global stays as an explicit override for that case.
 	if version == "system" {
 		systemPHP, err := exec.LookPath("php")
 		if err != nil {
@@ -677,7 +707,6 @@ func (h *PHPHandler) use(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	local, _ := cmd.Flags().GetBool("local")
 	if local {
 		if err := writeLocalVersionFile(exactVersion); err != nil {
 			return fmt.Errorf("write local version: %w", err)
@@ -859,18 +888,24 @@ func resolveJobs(flagVal int, cfgSvc *config.Service) int {
 // Returns a map of available system packages (name -> Package) for use in hybrid builds.
 func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool) (map[string]system.Package, error) {
 	phpDeps := []string{"openssl", "libxml2", "zlib", "oniguruma", "curl", "sqlite3", "readline", "icu", "pcre2", "argon2", "sodium"}
+	seen := make(map[string]bool)
+	for _, dep := range phpDeps {
+		seen[dep] = true
+	}
+	// System dev-libraries are derived from the extension definitions (the
+	// RequiresPackages field), served through the graph repository so the data
+	// lives in one place and can be updated without a binary change.
 	for _, ext := range extensions {
-		switch ext {
-		case "openssl":
-		case "curl":
-		case "gd":
-			phpDeps = append(phpDeps, "libpng", "libjpeg", "freetype")
-		case "intl":
-			phpDeps = append(phpDeps, "icu")
-		case "libxml":
-			phpDeps = append(phpDeps, "libxml2")
-		case "zip":
-			phpDeps = append(phpDeps, "libzip")
+		def, ok := h.assemblerSvc.Graph().GetExtensionDef(ext)
+		if !ok {
+			continue
+		}
+		for _, dep := range def.RequiresPackages {
+			if seen[dep] {
+				continue
+			}
+			seen[dep] = true
+			phpDeps = append(phpDeps, dep)
 		}
 	}
 

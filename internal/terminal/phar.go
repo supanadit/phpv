@@ -30,20 +30,40 @@ func (h *PHPHandler) pharCmd() *cobra.Command {
 		Short: "Manage PHAR tools",
 		Long:  "Install, list, and manage PHAR tools (composer, wp-cli, pie, phpunit).",
 	}
-	cmd.AddCommand(&cobra.Command{
+	installCmd := &cobra.Command{
 		Use:   "install <name> [version]",
 		Short: "Install a PHAR tool",
-		Long:  "Download and install a PHAR tool for the active PHP version.",
-		Args:  cobra.MinimumNArgs(1),
-		RunE:  h.pharInstall,
-	})
+		Long: `Download and install a PHAR tool.
+
+The PHP version defaults to the active version; use --version to target a
+specific one. The positional [version] argument is kept for backwards
+compatibility.
+
+Examples:
+  phpv phar install composer
+  phpv phar install composer --version 8.4`,
+		Args: cobra.RangeArgs(1, 2),
+		RunE: h.pharInstall,
+	}
+	installCmd.Flags().String("version", "", "PHP version to install into (defaults to the active version)")
+	cmd.AddCommand(installCmd)
 	listCmd := &cobra.Command{
 		Use:   "list [version]",
 		Short: "List installed PHAR tools",
-		Args:  cobra.MaximumNArgs(1),
-		RunE:  h.pharList,
+		Long: `List installed PHAR tools.
+
+The PHP version defaults to the active version; use --version to target a
+specific one. The positional [version] argument is kept for backwards
+compatibility.
+
+Examples:
+  phpv phar list
+  phpv phar list --version 8.4`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: h.pharList,
 	}
 	listCmd.Flags().Bool("json", false, "Output in JSON format")
+	listCmd.Flags().String("version", "", "PHP version to list (defaults to the active version)")
 	cmd.AddCommand(listCmd)
 	cmd.AddCommand(&cobra.Command{
 		Use:   "which <name>",
@@ -51,20 +71,34 @@ func (h *PHPHandler) pharCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE:  h.pharWhich,
 	})
-	cmd.AddCommand(&cobra.Command{
+	updateCmd := &cobra.Command{
 		Use:   "update <name> [version]",
 		Short: "Update a PHAR tool",
-		Long:  "Re-download and update a PHAR tool for the active PHP version.",
-		Args:  cobra.MinimumNArgs(1),
-		RunE:  h.pharUpdate,
-	})
+		Long: `Re-download and update a PHAR tool.
+
+The PHP version defaults to the active version; use --version to target a
+specific one. The positional [version] argument is kept for backwards
+compatibility.
+
+Examples:
+  phpv phar update composer
+  phpv phar update composer --version 8.4`,
+		Args: cobra.RangeArgs(1, 2),
+		RunE: h.pharUpdate,
+	}
+	updateCmd.Flags().String("version", "", "PHP version to update (defaults to the active version)")
+	cmd.AddCommand(updateCmd)
 	return cmd
 }
 
 func (h *PHPHandler) pharInstall(cmd *cobra.Command, args []string) error {
 	name := args[0]
+	positional := ""
+	if len(args) == 2 {
+		positional = args[1]
+	}
 
-	version, err := h.resolveVersion("")
+	version, err := h.resolveOptionalVersion(cmd, positional)
 	if err != nil {
 		return err
 	}
@@ -104,15 +138,13 @@ func (h *PHPHandler) pharInstall(cmd *cobra.Command, args []string) error {
 func (h *PHPHandler) pharList(cmd *cobra.Command, args []string) error {
 	jsonFlag, _ := cmd.Flags().GetBool("json")
 
-	version := ""
+	positional := ""
 	if len(args) == 1 {
-		version = args[0]
-	} else {
-		var err error
-		version, err = h.resolveVersion("")
-		if err != nil {
-			return err
-		}
+		positional = args[0]
+	}
+	version, err := h.resolveOptionalVersion(cmd, positional)
+	if err != nil {
+		return err
 	}
 
 	prefix := h.siloSvc.PackagePrefix("php", version)
@@ -192,8 +224,12 @@ func (h *PHPHandler) pharWhich(cmd *cobra.Command, args []string) error {
 
 func (h *PHPHandler) pharUpdate(cmd *cobra.Command, args []string) error {
 	name := args[0]
+	positional := ""
+	if len(args) == 2 {
+		positional = args[1]
+	}
 
-	version, err := h.resolveActiveVersion()
+	version, err := h.resolveOptionalVersion(cmd, positional)
 	if err != nil {
 		return err
 	}

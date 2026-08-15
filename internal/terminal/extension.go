@@ -39,20 +39,39 @@ func (h *PHPHandler) extensionCmd() *cobra.Command {
 	cmd.AddCommand(availCmd)
 
 	extCmd := &cobra.Command{
-		Use:   "add <version> <name>...",
+		Use:   "add <name>...",
 		Short: "Install one or more extensions",
-		Args:  cobra.MinimumNArgs(2),
-		RunE:  h.extensionAdd,
+		Long: `Install one or more extensions for a PHP version.
+
+Without --version, the extension is installed into the active PHP version.
+Examples:
+  phpv extension add pdo_pgsql                # active version
+  phpv extension add gd intl --version 8.4    # specific version`,
+		Args: cobra.MinimumNArgs(1),
+		RunE: h.extensionAdd,
 	}
 	extCmd.Flags().Int("jobs", 0, "Number of parallel build jobs (default: CPU count)")
 	extCmd.Flags().Bool("force", false, "Force rebuild even if already installed")
+	extCmd.Flags().Bool("auto-deps", false, "Install missing system packages without prompting")
+	extCmd.Flags().Bool("no-system", false, "Skip system package check, always build from source")
+	extCmd.Flags().Bool("dry-run", false, "Show what would be done without doing it")
+	extCmd.Flags().String("version", "", "PHP version to install into (defaults to the active version)")
 	cmd.AddCommand(extCmd)
-	cmd.AddCommand(&cobra.Command{
-		Use:   "remove <version> <name>...",
+
+	removeCmd := &cobra.Command{
+		Use:   "remove <name>...",
 		Short: "Remove one or more extensions",
-		Args:  cobra.MinimumNArgs(2),
-		RunE:  h.extensionRemove,
-	})
+		Long: `Remove one or more extensions from a PHP version.
+
+Without --version, the extension is removed from the active PHP version.
+Examples:
+  phpv extension remove pdo_pgsql                # active version
+  phpv extension remove gd intl --version 8.4    # specific version`,
+		Args: cobra.MinimumNArgs(1),
+		RunE: h.extensionRemove,
+	}
+	removeCmd.Flags().String("version", "", "PHP version to remove from (defaults to the active version)")
+	cmd.AddCommand(removeCmd)
 
 	peclCmd := &cobra.Command{
 		Use:   "pecl [version]",
@@ -265,11 +284,12 @@ func (h *PHPHandler) extensionAvailable(cmd *cobra.Command, args []string) error
 }
 
 func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
-	version, err := h.resolveVersion(args[0])
+	versionFlag, _ := cmd.Flags().GetString("version")
+	version, err := h.resolveVersion(versionFlag)
 	if err != nil {
 		return err
 	}
-	extNames := args[1:]
+	extNames := args
 
 	jobsFlag, _ := cmd.Flags().GetInt("jobs")
 	jobs := resolveJobs(jobsFlag, h.configSvc)
@@ -278,6 +298,24 @@ func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
 	phpBin := filepath.Join(prefix, "bin", "php")
 	if _, err := os.Stat(phpBin); os.IsNotExist(err) {
 		return fmt.Errorf("PHP %s is not installed. Run `phpv install %s` first", version, version)
+	}
+
+	autoDeps, _ := cmd.Flags().GetBool("auto-deps")
+	noSystem, _ := cmd.Flags().GetBool("no-system")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+	if !noSystem {
+		if _, err := h.checkSystemDeps(extNames, autoDeps, dryRun); err != nil {
+			return err
+		}
+		if err := h.checkBuildTools(autoDeps, dryRun); err != nil {
+			return err
+		}
+	}
+
+	if dryRun {
+		fmt.Println("Dry run complete. Run without --dry-run to install.")
+		return nil
 	}
 
 	sourceDir := h.siloSvc.SourcePath("php", version)
@@ -369,11 +407,12 @@ func resolvePHPVRoot(parts ...string) string {
 }
 
 func (h *PHPHandler) extensionRemove(cmd *cobra.Command, args []string) error {
-	version, err := h.resolveVersion(args[0])
+	versionFlag, _ := cmd.Flags().GetString("version")
+	version, err := h.resolveVersion(versionFlag)
 	if err != nil {
 		return err
 	}
-	extNames := args[1:]
+	extNames := args
 
 	prefix := h.siloSvc.PackagePrefix("php", version)
 	phpBin := filepath.Join(prefix, "bin", "php")

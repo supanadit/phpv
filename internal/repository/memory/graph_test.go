@@ -427,6 +427,38 @@ func TestGetBuildPlan_Minimal_NoDeps(t *testing.T) {
 	}
 }
 
+func TestGraphRepository_RequiresPackages_DataDriven(t *testing.T) {
+	repo := NewGraphRepository()
+
+	cases := []struct {
+		ext  string
+		want []string
+	}{
+		{"pdo_pgsql", []string{"libpq"}},
+		{"pgsql", []string{"libpq"}},
+		{"gd", []string{"libpng", "libjpeg", "freetype"}},
+		{"intl", []string{"icu"}},
+		{"libxml", []string{"libxml2"}},
+		{"zip", []string{"libzip"}},
+	}
+	for _, c := range cases {
+		def, ok := repo.GetExtensionDef(c.ext)
+		if !ok {
+			t.Errorf("GetExtensionDef(%q) not found", c.ext)
+			continue
+		}
+		if len(def.RequiresPackages) != len(c.want) {
+			t.Errorf("%s RequiresPackages = %v, want %v", c.ext, def.RequiresPackages, c.want)
+			continue
+		}
+		for i, w := range c.want {
+			if def.RequiresPackages[i] != w {
+				t.Errorf("%s RequiresPackages[%d] = %q, want %q", c.ext, i, def.RequiresPackages[i], w)
+			}
+		}
+	}
+}
+
 func TestGetBuildPlan_ImpliedChains(t *testing.T) {
 	repo := NewGraphRepository()
 	svc := graph.NewService(repo)

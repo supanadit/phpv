@@ -34,19 +34,22 @@ Uninstall a PECL extension:
 		Long: `Install a PECL extension. Source can be a package name (auto-downloads
 from pecl.php.net) or a local .tgz/.tar.gz/.tar.bz2 archive path.
 
+The PHP version defaults to the active version; use --version to target a
+specific one. The positional [version] argument is kept for backwards
+compatibility.
+
 Examples:
-  phpv pecl install redis 8.4.0
-  phpv pecl install /tmp/redis-6.0.2.tgz 8.4.0`,
+  phpv pecl install redis
+  phpv pecl install redis --version 8.4
+  phpv pecl install /tmp/redis-6.0.2.tgz 8.4`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			source := args[0]
-			var phpVersion string
-			var err error
+			positional := ""
 			if len(args) == 2 {
-				phpVersion, err = h.resolveVersion(args[1])
-			} else {
-				phpVersion, err = h.resolveVersion("")
+				positional = args[1]
 			}
+			phpVersion, err := h.resolveOptionalVersion(cmd, positional)
 			if err != nil {
 				return err
 			}
@@ -77,6 +80,7 @@ Examples:
 	}
 	installCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 	installCmd.Flags().Int("jobs", 0, "Number of parallel build jobs (default: CPU count)")
+	installCmd.Flags().String("version", "", "PHP version to install into (defaults to the active version)")
 
 	listCmd := &cobra.Command{
 		Use:   "list [version]",
@@ -137,13 +141,23 @@ Examples:
 	uninstallCmd := &cobra.Command{
 		Use:   "uninstall <name> [version]",
 		Short: "Uninstall a PECL extension",
-		Args:  cobra.RangeArgs(1, 2),
+		Long: `Uninstall a PECL extension.
+
+The PHP version defaults to the active version; use --version to target a
+specific one. The positional [version] argument is kept for backwards
+compatibility.
+
+Examples:
+  phpv pecl uninstall redis
+  phpv pecl uninstall redis --version 8.4`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-			phpVersion, err := h.resolveVersion("")
+			positional := ""
 			if len(args) == 2 {
-				phpVersion, err = h.resolveVersion(args[1])
+				positional = args[1]
 			}
+			phpVersion, err := h.resolveOptionalVersion(cmd, positional)
 			if err != nil {
 				return err
 			}
@@ -155,9 +169,33 @@ Examples:
 			return nil
 		},
 	}
+	uninstallCmd.Flags().String("version", "", "PHP version to uninstall from (defaults to the active version)")
 
 	cmd.AddCommand(installCmd)
 	cmd.AddCommand(listCmd)
 	cmd.AddCommand(uninstallCmd)
 	return cmd
+}
+
+// resolveOptionalVersion resolves the PHP version for a command that accepts
+// an optional --version flag and/or a legacy positional [version] argument.
+// Precedence: explicit --version flag, then the positional version, then the
+// active version. Providing both --version and a positional version is an
+// error to avoid ambiguity.
+func (h *PHPHandler) resolveOptionalVersion(cmd *cobra.Command, positional string) (string, error) {
+	flagChanged := cmd.Flags().Changed("version")
+	var versionFlag string
+	if flagChanged {
+		versionFlag, _ = cmd.Flags().GetString("version")
+	}
+	if flagChanged && positional != "" {
+		return "", fmt.Errorf("specify the PHP version either with --version or as a positional argument, not both")
+	}
+	constraint := ""
+	if flagChanged {
+		constraint = versionFlag
+	} else if positional != "" {
+		constraint = positional
+	}
+	return h.resolveVersion(constraint)
 }

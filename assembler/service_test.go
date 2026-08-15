@@ -7,6 +7,7 @@ import (
 
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/silo"
+	"github.com/supanadit/phpv/system"
 )
 
 // mockSiloRepo is a minimal SiloRepository implementation for tests that only
@@ -285,5 +286,113 @@ func TestResolveDepPlaceholders_SkipsWhenPrefixMissing(t *testing.T) {
 
 	if len(got) != 0 {
 		t.Errorf("resolveDepPlaceholders = %q, want empty (flag should be skipped)", got)
+	}
+}
+
+func TestShouldDownloadDep(t *testing.T) {
+	systemPkgs := map[string]system.Package{
+		"openssl": {Name: "openssl", SystemName: "openssl", Version: "3.2.0", Installed: true},
+		"zlib":    {Name: "zlib", SystemName: "zlib", Version: "1.3.1", Installed: true},
+	}
+
+	cases := []struct {
+		name       string
+		dep        domain.Dependency
+		mustBuild  map[string]bool
+		systemPkgs map[string]system.Package
+		static     bool
+		want       bool
+	}{
+		{
+			name: "build tool never downloaded",
+			dep:  domain.Dependency{Name: "autoconf", Version: "2.71"},
+			want: false,
+		},
+		{
+			name:       "system package compatible -> skip download",
+			dep:        domain.Dependency{Name: "openssl", Version: "1.1.1w|>=1.1.0,<4.0.0"},
+			systemPkgs: systemPkgs,
+			want:       false,
+		},
+		{
+			name:       "system package incompatible -> download",
+			dep:        domain.Dependency{Name: "openssl", Version: "1.1.1w|>=1.1.1,<3.0.0"},
+			systemPkgs: systemPkgs,
+			want:       true,
+		},
+		{
+			name:       "must build -> download",
+			dep:        domain.Dependency{Name: "openssl", Version: "1.1.1w|>=1.1.0,<4.0.0"},
+			mustBuild:  map[string]bool{"openssl": true},
+			systemPkgs: systemPkgs,
+			want:       true,
+		},
+		{
+			name:       "no system package -> download",
+			dep:        domain.Dependency{Name: "curl", Version: "8.5.0"},
+			systemPkgs: systemPkgs,
+			want:       true,
+		},
+		{
+			name:       "static build downloads everything",
+			dep:        domain.Dependency{Name: "openssl", Version: "1.1.1w|>=1.1.0,<4.0.0"},
+			systemPkgs: systemPkgs,
+			static:     true,
+			want:       true,
+		},
+		{
+			name:       "no-system (nil map) downloads everything",
+			dep:        domain.Dependency{Name: "openssl", Version: "1.1.1w|>=1.1.0,<4.0.0"},
+			systemPkgs: nil,
+			want:       true,
+		},
+		{
+			name:       "no constraint -> download",
+			dep:        domain.Dependency{Name: "readline", Version: "8.2"},
+			systemPkgs: systemPkgs,
+			want:       true,
+		},
+	}
+
+	for _, c := range cases {
+		got := shouldDownloadDep(c.dep, c.mustBuild, c.systemPkgs, c.static)
+		if got != c.want {
+			t.Errorf("%s: shouldDownloadDep(%v) = %v, want %v", c.name, c.dep.Name, got, c.want)
+		}
+	}
+}
+
+func TestComputeMustBuild(t *testing.T) {
+	systemPkgs := map[string]system.Package{
+		"openssl": {Name: "openssl", Version: "3.2.0", Installed: true},
+		"zlib":    {Name: "zlib", Version: "1.3.1", Installed: true},
+	}
+
+	deps := []domain.Dependency{
+		{Name: "openssl", Version: "1.1.1w|>=1.1.1,<3.0.0"}, // system 3.2.0 incompatible
+		{Name: "zlib", Version: "1.3.1|>=1.3.0"},            // system 1.3.1 compatible
+		{Name: "autoconf", Version: "2.71"},                 // build tool, excluded
+		{Name: "libxml2", Version: "2.12.7|>=2.12.0"},       // no system pkg
+	}
+
+	svc := &Service{}
+	mustBuild := svc.computeMustBuild(deps, systemPkgs, false)
+
+	if !mustBuild["openssl"] {
+		t.Errorf("openssl should be marked must-build (system 3.2.0 doesn't satisfy <3.0.0)")
+	}
+	if mustBuild["zlib"] {
+		t.Errorf("zlib should NOT be marked must-build (system satisfies)")
+	}
+	if mustBuild["autoconf"] {
+		t.Errorf("autoconf is a build tool and must not be in mustBuild")
+	}
+	if mustBuild["libxml2"] {
+		t.Errorf("libxml2 has no system package and no constraint match, should not be forced")
+	}
+
+	// openssl propagation happens in Assemble; verify static/nil behave.
+	if got := svc.computeMustBuild(deps, systemPkgs, true); len(got) != 0 {
+		t.Errorf("static build should not mark any must-build, got %v", got)
 	}
 }

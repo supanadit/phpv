@@ -218,7 +218,7 @@ func TestInitShell_EmitsShellFunction(t *testing.T) {
 	}
 }
 
-func TestPeclResolveVersion_Precedence(t *testing.T) {
+func TestResolveOptionalVersion_Precedence(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PHPV_ROOT", dir)
 	createFakePHPInstall(t, dir, "8.4.0")
@@ -231,38 +231,38 @@ func TestPeclResolveVersion_Precedence(t *testing.T) {
 
 	// --version flag wins.
 	cmd := newCmd("--version", "8.4")
-	got, err := h.resolvePeclVersion(cmd, []string{"redis"}, "8.4")
+	got, err := h.resolveOptionalVersion(cmd, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != "8.4.0" {
-		t.Fatalf("resolvePeclVersion with --version = %q, want 8.4.0", got)
+		t.Fatalf("resolveOptionalVersion with --version = %q, want 8.4.0", got)
 	}
 
 	// Legacy positional [version] wins over active.
 	cmd = newCmd()
-	got, err = h.resolvePeclVersion(cmd, []string{"redis", "8.4"}, "")
+	got, err = h.resolveOptionalVersion(cmd, "8.4")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != "8.4.0" {
-		t.Fatalf("resolvePeclVersion positional = %q, want 8.4.0", got)
+		t.Fatalf("resolveOptionalVersion positional = %q, want 8.4.0", got)
 	}
 
 	// Neither set -> active version.
 	cmd = newCmd()
-	got, err = h.resolvePeclVersion(cmd, []string{"redis"}, "")
+	got, err = h.resolveOptionalVersion(cmd, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != "7.4.0" {
-		t.Fatalf("resolvePeclVersion active = %q, want 7.4.0", got)
+		t.Fatalf("resolveOptionalVersion active = %q, want 7.4.0", got)
 	}
 
 	// Both --version and positional -> error.
 	cmd = newCmd("--version", "8.4")
-	_, err = h.resolvePeclVersion(cmd, []string{"redis", "7.4"}, "8.4")
+	_, err = h.resolveOptionalVersion(cmd, "7.4")
 	if err == nil {
-		t.Fatal("resolvePeclVersion with both --version and positional should error")
+		t.Fatal("resolveOptionalVersion with both --version and positional should error")
 	}
 }

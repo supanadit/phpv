@@ -45,11 +45,11 @@ Examples:
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			source := args[0]
-			var versionFlag string
-			if cmd.Flags().Changed("version") {
-				versionFlag, _ = cmd.Flags().GetString("version")
+			positional := ""
+			if len(args) == 2 {
+				positional = args[1]
 			}
-			phpVersion, err := h.resolvePeclVersion(cmd, args, versionFlag)
+			phpVersion, err := h.resolveOptionalVersion(cmd, positional)
 			if err != nil {
 				return err
 			}
@@ -153,11 +153,11 @@ Examples:
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-			var versionFlag string
-			if cmd.Flags().Changed("version") {
-				versionFlag, _ = cmd.Flags().GetString("version")
+			positional := ""
+			if len(args) == 2 {
+				positional = args[1]
 			}
-			phpVersion, err := h.resolvePeclVersion(cmd, args, versionFlag)
+			phpVersion, err := h.resolveOptionalVersion(cmd, positional)
 			if err != nil {
 				return err
 			}
@@ -177,19 +177,25 @@ Examples:
 	return cmd
 }
 
-// resolvePeclVersion resolves the PHP version for a PECL install/uninstall.
-// Precedence: explicit --version flag, then the legacy positional [version]
-// argument, then the active version. Providing both --version and a positional
-// version is an error to avoid ambiguity.
-func (h *PHPHandler) resolvePeclVersion(cmd *cobra.Command, args []string, versionFlag string) (string, error) {
-	if cmd.Flags().Changed("version") && len(args) == 2 {
+// resolveOptionalVersion resolves the PHP version for a command that accepts
+// an optional --version flag and/or a legacy positional [version] argument.
+// Precedence: explicit --version flag, then the positional version, then the
+// active version. Providing both --version and a positional version is an
+// error to avoid ambiguity.
+func (h *PHPHandler) resolveOptionalVersion(cmd *cobra.Command, positional string) (string, error) {
+	flagChanged := cmd.Flags().Changed("version")
+	var versionFlag string
+	if flagChanged {
+		versionFlag, _ = cmd.Flags().GetString("version")
+	}
+	if flagChanged && positional != "" {
 		return "", fmt.Errorf("specify the PHP version either with --version or as a positional argument, not both")
 	}
 	constraint := ""
-	if cmd.Flags().Changed("version") {
+	if flagChanged {
 		constraint = versionFlag
-	} else if len(args) == 2 {
-		constraint = args[1]
+	} else if positional != "" {
+		constraint = positional
 	}
 	return h.resolveVersion(constraint)
 }

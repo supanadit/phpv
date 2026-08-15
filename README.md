@@ -65,10 +65,11 @@ phpv install 8.4 --jobs 4                     # Parallel make with 4 jobs
 phpv install 8.4 --fresh                      # Clean rebuild (delete prefix, keep cached source)
 phpv install 8.4 --verbose                    # See full build output
 
-# Switch versions
-phpv use 8.3                                  # Current shell
-phpv use system                               # Use system PHP
+# Switch versions (per-shell, ephemeral — requires `phpv init`)
+phpv use 8.3                                  # Current shell only, never touches the global default
+phpv use system                               # Per-shell: stop pinning a version (falls back to default/system)
 phpv use 8.3 --global                         # Global default
+phpv use system --global                      # Use system PHP as the global default
 phpv default 8.3                              # Set global default
 phpv versions                                 # List installed
 phpv which                                    # Path to current PHP
@@ -77,14 +78,15 @@ phpv which                                    # Path to current PHP
 echo "7.2" > .php-version                     # Auto-switch on cd
 
 # List available extensions for any PHP version
-phpv extensions list
+phpv extension list
 
 # Manage PHAR tools (per-version — each PHP version has its own phars)
-phpv phar install composer                    # Auto-detects latest compatible
+phpv phar install composer                    # Install into the active PHP version
+phpv phar install composer --version 8.4      # Install into a specific PHP version
 phpv phar install pie                         # Install PIE
 phpv phar install wp-cli                      # Install WP-CLI
 phpv phar update composer                     # Update to latest
-phpv phar list                                # List for current PHP version
+phpv phar list                                # List for active PHP version
 phpv phar which composer                      # Show phar path
 
 # PECL extensions
@@ -113,6 +115,8 @@ phpv completion bash                          # Generate shell completion
 
 Each PHP version gets its own isolated install prefix and phar directory — no conflicts between versions. Dependency versions are resolved per-extension per-PHP-version from the extension graph, so PHP 8.2+ now get the same deterministic dep resolution as 7.x/8.0/8.1. Dependencies are keyed by `(name, version)` and shared across PHP versions that pin the same version — build once, reuse everywhere.
 
+phpv only downloads and extracts what it will actually compile. System packages that satisfy the required version constraints are used directly (no source download), build tools come from the system, and the download phase shows per-package progress. System dev-libraries for extensions are checked automatically and recommended before building — e.g. `phpv extension add pdo_pgsql` prompts to install `postgresql-libs` (Arch), `libpq-dev` (Debian/Alpine), or `postgresql-devel` (Fedora).
+
 ---
 
 ## Commands Reference
@@ -122,7 +126,7 @@ Each PHP version gets its own isolated install prefix and phar directory — no 
 | `phpv install <ver>` | Install a PHP version with default extensions |
 | `phpv rebuild <ver>` | Rebuild PHP with different extensions (keeps deps) |
 | `phpv uninstall <ver>` | Remove an installed PHP version |
-| `phpv use <ver>` | Switch PHP version for current shell |
+| `phpv use <ver>` | Switch PHP version for current shell (ephemeral; `--global` for global) |
 | `phpv default <ver>` | Set global default PHP version |
 | `phpv versions` | List installed PHP versions |
 | `phpv which` | Show path to current PHP binary |
@@ -133,16 +137,18 @@ Each PHP version gets its own isolated install prefix and phar directory — no 
 | `phpv config` | View and manage configuration |
 | `phpv completion <shell>` | Generate shell completion |
 | `phpv share <ver>` | Export PHP as portable bundle |
-| `phpv extensions [--php <ver>]` | List available/installed extensions |
-| `phpv extension add <ver> <name>` | Install an extension post-build |
-| `phpv extension remove <ver> <name>` | Remove an extension |
-| `phpv phar install <name>` | Install a PHAR tool (composer/pie/wp-cli/phpunit) |
-| `phpv phar list` | List installed PHAR tools |
-| `phpv phar update <name>` | Update a PHAR tool |
+| `phpv extension list [ver]` | List installed extensions |
+| `phpv extension available [ver]` | List extensions available for a PHP version |
+| `phpv extension add <name>...` | Install extensions into the active version (`--version` to target one) |
+| `phpv extension remove <name>...` | Remove extensions from the active version (`--version` to target one) |
+| `phpv extension pecl [ver]` | List installed PECL extensions for a PHP version |
+| `phpv phar install <name> [ver]` | Install a PHAR tool (composer/pie/wp-cli/phpunit) |
+| `phpv phar list [ver]` | List installed PHAR tools |
+| `phpv phar update <name> [ver]` | Update a PHAR tool |
 | `phpv phar which <name>` | Show path to a PHAR tool |
-| `phpv pecl install <archive>` | Install a PECL extension |
-| `phpv pecl list` | List installed PECL extensions |
-| `phpv pecl uninstall <name>` | Remove a PECL extension |
+| `phpv pecl install <name|archive> [ver]` | Install a PECL extension |
+| `phpv pecl list [ver]` | List installed PECL extensions |
+| `phpv pecl uninstall <name> [ver]` | Remove a PECL extension |
 
 ### Install Flags
 

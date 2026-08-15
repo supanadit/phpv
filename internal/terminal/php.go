@@ -635,21 +635,53 @@ func (h *PHPHandler) useCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "use <version>",
 		Short: "Switch to a PHP version",
-		Long: `Switch to a specific PHP version. Use 'system' to use the system PHP.
+		Long: `Switch to a PHP version for the current shell only.
 
---global (default) writes to ~/.phpv/default and regenerates shims.
+With shell integration (via 'phpv init'), 'phpv use 8' exports the version
+into the current shell without touching the global default. Use 'system' to
+fall back to the system PHP.
+
+--global writes to ~/.phpv/default and regenerates shims.
 --local writes to .php-version in the current directory only.`,
 		Args: cobra.ExactArgs(1),
 		RunE: h.use,
 	}
-	cmd.Flags().Bool("global", true, "Set as global default (writes to ~/.phpv/default, regenerates shims)")
+	cmd.Flags().Bool("global", false, "Set as global default (writes to ~/.phpv/default, regenerates shims)")
 	cmd.Flags().Bool("local", false, "Set as local project version (writes .php-version in CWD)")
+	cmd.Flags().Bool("print", false, "Print an export statement for the current shell (used by shell integration)")
+	cmd.Flags().MarkHidden("print")
 	cmd.MarkFlagsMutuallyExclusive("global", "local")
 	return cmd
 }
 
 func (h *PHPHandler) use(cmd *cobra.Command, args []string) error {
 	version := args[0]
+	printOnly, _ := cmd.Flags().GetBool("print")
+	global, _ := cmd.Flags().GetBool("global")
+	local, _ := cmd.Flags().GetBool("local")
+
+	// --print emits an export statement for the calling shell; the shell
+	// function from `phpv init` evals it. It must never touch the global
+	// default or regenerate shims.
+	if printOnly {
+		if version == "system" {
+			fmt.Println("unset PHPV_CURRENT")
+			return nil
+		}
+		exactVersion, err := h.resolveVersion(version)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("export PHPV_CURRENT=%q\n", exactVersion)
+		return nil
+	}
+
+	// No explicit scope and no shell integration: a bare `phpv use` cannot
+	// change the parent shell's environment, so never silently fall back to
+	// writing the global default. Tell the user how to switch per-shell.
+	if !global && !local {
+		return fmt.Errorf("per-shell version switching needs shell integration — run `phpv init %s` and restart your shell, or use `phpv use %s --global` to set the global default", detectShell(), version)
+	}
 
 	if version == "system" {
 		systemPHP, err := exec.LookPath("php")
@@ -677,7 +709,6 @@ func (h *PHPHandler) use(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	local, _ := cmd.Flags().GetBool("local")
 	if local {
 		if err := writeLocalVersionFile(exactVersion); err != nil {
 			return fmt.Errorf("write local version: %w", err)

@@ -273,7 +273,7 @@ main() {
 	echo "  3. List installed PHP versions: phpv versions"
 	echo "  4. List available PHP versions: phpv list"
 	echo "  5. Install PHP: phpv install 8.4"
-	echo "  6. Use PHP: phpv use 8.4"
+	echo "  6. Use PHP: phpv use 8.4 --global (or 'phpv init' for per-shell switching)"
 	echo
 	echo "For more information, visit: https://github.com/supanadit/phpv"
 }

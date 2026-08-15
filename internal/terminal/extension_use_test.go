@@ -13,7 +13,7 @@ import (
 func newCmd(args ...string) *cobra.Command {
 	cmd := &cobra.Command{Use: "test", RunE: func(*cobra.Command, []string) error { return nil }}
 	cmd.Flags().String("version", "", "")
-	cmd.Flags().Bool("global", true, "")
+	cmd.Flags().Bool("global", false, "")
 	cmd.Flags().Bool("local", false, "")
 	cmd.Flags().Bool("print", false, "")
 	cmd.Flags().Bool("auto-deps", false, "")
@@ -65,19 +65,51 @@ func TestExtensionAdd_DefaultsToActiveVersion(t *testing.T) {
 	}
 }
 
-func TestExtensionAdd_NoActiveVersionErrors(t *testing.T) {
+func TestExtensionAdd_NoActiveVersionFallsBackToLatestInstalled(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PHPV_ROOT", dir)
 	createFakePHPInstall(t, dir, "8.4.0")
+	createFakePHPInstall(t, dir, "7.4.0")
 
 	h := newTestPHPHandler(dir)
 	cmd := newCmd("--no-system", "--dry-run")
-	err := h.extensionAdd(cmd, []string{"ctype"})
-	if err == nil {
-		t.Fatal("extensionAdd with no active version and no --version should error")
+	out := captureStdout(t, func() {
+		if err := h.extensionAdd(cmd, []string{"ctype"}); err != nil {
+			t.Fatalf("extensionAdd with no active version should fall back to latest installed, got error: %v", err)
+		}
+	})
+	if !strings.Contains(out, "Dry run complete") {
+		t.Fatalf("expected dry-run output, got: %q", out)
 	}
-	if !strings.Contains(err.Error(), "no active PHP version") {
-		t.Fatalf("expected active-version error, got: %v", err)
+}
+
+func TestResolveActiveVersion_LatestInstalledFallback(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PHPV_ROOT", dir)
+	createFakePHPInstall(t, dir, "7.4.0")
+	createFakePHPInstall(t, dir, "8.4.0")
+
+	h := newTestPHPHandler(dir)
+	got, err := h.resolveActiveVersion()
+	if err != nil {
+		t.Fatalf("resolveActiveVersion should fall back to latest installed, got error: %v", err)
+	}
+	if got != "8.4.0" {
+		t.Fatalf("resolveActiveVersion = %q, want latest installed 8.4.0", got)
+	}
+}
+
+func TestResolveActiveVersion_NoPHPErrors(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PHPV_ROOT", dir)
+
+	h := newTestPHPHandler(dir)
+	_, err := h.resolveActiveVersion()
+	if err == nil {
+		t.Fatal("resolveActiveVersion should error when no PHP is installed")
+	}
+	if !strings.Contains(err.Error(), "no PHP installed") {
+		t.Fatalf("expected no-PHP error, got: %v", err)
 	}
 }
 
@@ -160,7 +192,7 @@ func TestUsePrint_DoesNotWriteDefault(t *testing.T) {
 	}
 }
 
-func TestBareUse_DefaultsToGlobal(t *testing.T) {
+func TestBareUse_RequiresGlobalOrIntegration(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PHPV_ROOT", dir)
 	createFakePHPInstall(t, dir, "8.4.0")
@@ -168,15 +200,15 @@ func TestBareUse_DefaultsToGlobal(t *testing.T) {
 	h := newTestPHPHandler(dir)
 	cmd := newCmd()
 	err := h.use(cmd, []string{"8.4"})
-	if err != nil {
-		t.Fatalf("bare use should default to global, got error: %v", err)
+	if err == nil {
+		t.Fatal("bare use without --global/--local should not write global default or a project file")
 	}
-	data, err := os.ReadFile(filepath.Join(dir, "default"))
-	if err != nil {
-		t.Fatalf("bare use should write the global default file: %v", err)
+	if !strings.Contains(err.Error(), "shell integration") {
+		t.Fatalf("expected shell-integration guidance, got: %v", err)
 	}
-	if strings.TrimSpace(string(data)) != "8.4.0" {
-		t.Fatalf("default file = %q, want 8.4.0", string(data))
+	// Global default must NOT be written.
+	if _, err := os.Stat(filepath.Join(dir, "default")); !os.IsNotExist(err) {
+		t.Fatalf("bare use must not write the global default file")
 	}
 }
 

@@ -637,17 +637,16 @@ func (h *PHPHandler) useCmd() *cobra.Command {
 		Short: "Switch to a PHP version",
 		Long: `Switch the active PHP version.
 
-By default this sets the global default (writes to ~/.phpv/default and
-regenerates shims). With shell integration (via 'phpv init'), 'phpv use 8'
-exports the version into the current shell only, without touching the
-global default. Use 'system' to fall back to the system PHP.
+'phpv use 8' switches per-shell only (exports PHPV_CURRENT) — it never
+touches the global default or writes project files. This requires shell
+integration via 'phpv init'. Use 'system' to fall back to the system PHP.
 
 --global writes to ~/.phpv/default and regenerates shims.
 --local writes to .php-version in the current directory only.`,
 		Args: cobra.ExactArgs(1),
 		RunE: h.use,
 	}
-	cmd.Flags().Bool("global", true, "Set as global default (writes to ~/.phpv/default, regenerates shims)")
+	cmd.Flags().Bool("global", false, "Set as global default (writes to ~/.phpv/default, regenerates shims)")
 	cmd.Flags().Bool("local", false, "Set as local project version (writes .php-version in CWD)")
 	cmd.Flags().Bool("print", false, "Print an export statement for the current shell (used by shell integration)")
 	cmd.Flags().MarkHidden("print")
@@ -658,6 +657,7 @@ global default. Use 'system' to fall back to the system PHP.
 func (h *PHPHandler) use(cmd *cobra.Command, args []string) error {
 	version := args[0]
 	printOnly, _ := cmd.Flags().GetBool("print")
+	global, _ := cmd.Flags().GetBool("global")
 	local, _ := cmd.Flags().GetBool("local")
 
 	// --print emits an export statement for the calling shell; the shell
@@ -676,11 +676,14 @@ func (h *PHPHandler) use(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Bare `phpv use <version>` (no flags) defaults to --global, so it works
-	// out of the box when the shell function from `phpv init` is not loaded.
-	// When it IS loaded, the function intercepts `use` and calls --print,
-	// making the switch ephemeral per-shell instead of touching the global
-	// default. --global stays as an explicit override for that case.
+	// A bare `phpv use` cannot change the parent shell's environment (the
+	// phpv() function from `phpv init` does that via --print), so without
+	// an explicit --global/--local it never silently writes the global
+	// default or a project file. Tell the user how to switch.
+	if !global && !local {
+		return fmt.Errorf("per-shell version switching needs shell integration — run `phpv init %s` and restart your shell, or use `phpv use %s --global` (or `--local`)", detectShell(), version)
+	}
+
 	if version == "system" {
 		systemPHP, err := exec.LookPath("php")
 		if err != nil {
@@ -785,7 +788,56 @@ func (h *PHPHandler) resolveActiveVersion() (string, error) {
 	if err == nil && defaultVer != "" {
 		return defaultVer, nil
 	}
-	return "", fmt.Errorf("no active PHP version (set one with `phpv use <version>` or `export PHPV_CURRENT=<version>`)")
+	// No explicit active version: fall back to the latest installed PHP so
+	// commands work right after a fresh install without requiring `phpv use`
+	// or `phpv default` first.
+	if latest, err := h.latestInstalledVersion(); err == nil {
+		return latest, nil
+	}
+	return "", fmt.Errorf("no active PHP version and no PHP installed (run `phpv install <version>` first)")
+}
+
+// latestInstalledVersion returns the highest version installed under the
+// packages/php directory, or an error if none are installed.
+func (h *PHPHandler) latestInstalledVersion() (string, error) {
+	installed, err := h.installedPHPVersions()
+	if err != nil {
+		return "", err
+	}
+	if len(installed) == 0 {
+		return "", fmt.Errorf("no PHP versions installed")
+	}
+	best := installed[0]
+	for _, v := range installed[1:] {
+		if repository.CompareVersions(v, best) > 0 {
+			best = v
+		}
+	}
+	return best, nil
+}
+
+// installedPHPVersions returns the names of installed PHP versions (directories
+// under packages/php that contain a php binary).
+func (h *PHPHandler) installedPHPVersions() ([]string, error) {
+	silo := h.siloSvc.GetSilo()
+	phpDir := filepath.Join(silo.Root, "packages", "php")
+
+	entries, err := os.ReadDir(phpDir)
+	if err != nil {
+		return nil, fmt.Errorf("no PHP versions installed")
+	}
+
+	var installed []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		phpBin := filepath.Join(phpDir, e.Name(), "bin", "php")
+		if _, err := os.Stat(phpBin); err == nil {
+			installed = append(installed, e.Name())
+		}
+	}
+	return installed, nil
 }
 
 // resolveVersion resolves a version constraint to an exact installed version.
@@ -799,23 +851,9 @@ func (h *PHPHandler) resolveVersion(constraint string) (string, error) {
 
 // resolveInstalledVersion resolves a version constraint to an exact installed version.
 func (h *PHPHandler) resolveInstalledVersion(constraint string) (string, error) {
-	silo := h.siloSvc.GetSilo()
-	phpDir := filepath.Join(silo.Root, "packages", "php")
-
-	entries, err := os.ReadDir(phpDir)
+	installed, err := h.installedPHPVersions()
 	if err != nil {
-		return "", fmt.Errorf("no PHP versions installed")
-	}
-
-	var installed []string
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		phpBin := filepath.Join(phpDir, e.Name(), "bin", "php")
-		if _, err := os.Stat(phpBin); err == nil {
-			installed = append(installed, e.Name())
-		}
+		return "", err
 	}
 
 	// Exact match first.

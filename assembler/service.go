@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/supanadit/phpv/domain"
@@ -711,6 +712,8 @@ func (s *Service) downloadAll(name, version string, deps []domain.Dependency, em
 
 	results := make([]DownloadResult, len(items))
 	var wg sync.WaitGroup
+	var doneCount atomic.Int32
+	total := len(items)
 
 	for i, it := range items {
 		wg.Add(1)
@@ -740,7 +743,8 @@ func (s *Service) downloadAll(name, version string, deps []domain.Dependency, em
 				return
 			}
 			results[idx].Extracted = extracted
-			emit("download", fmt.Sprintf("Downloaded %s %s", n, v))
+			done := doneCount.Add(1)
+			emit("download", fmt.Sprintf("Downloaded %s %s (%d/%d)", n, v, done, total))
 		}(i, it.name, it.version)
 	}
 

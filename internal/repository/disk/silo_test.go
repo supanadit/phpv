@@ -2,6 +2,7 @@ package disk
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -319,6 +321,56 @@ func TestSiloRepository_Extract_PreservesMtime(t *testing.T) {
 		}
 		if !fi.ModTime().Equal(mtime) {
 			t.Fatalf("%s mtime = %v, want %v (mtime not preserved from archive)", name, fi.ModTime(), mtime)
+		}
+	}
+}
+
+func TestSiloRepository_ExtractXz_TempFile(t *testing.T) {
+	if _, err := exec.LookPath("xz"); err != nil {
+		t.Skip("xz binary not available")
+	}
+
+	// Author a .tar.xz: a tar stream with two files, compressed via xz.
+	var tarBuf bytes.Buffer
+	tw := tar.NewWriter(&tarBuf)
+	mtime := time.Unix(1700000000, 0)
+	for _, name := range []string{"a.txt", "sub/b.txt"} {
+		hdr := &tar.Header{Name: name, Mode: 0o644, Size: 5, ModTime: mtime}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte("hello")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	archivePath := filepath.Join(t.TempDir(), "pkg.tar.xz")
+	cmd := exec.Command("xz", "-c")
+	cmd.Stdin = bytes.NewReader(tarBuf.Bytes())
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("xz compress: %v", err)
+	}
+	if err := os.WriteFile(archivePath, out, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	destDir := filepath.Join(t.TempDir(), "pkg")
+	repo := NewSiloRepository()
+	if _, err := repo.Extract(archivePath, destDir); err != nil {
+		t.Fatalf("Extract (.tar.xz) returned error: %v", err)
+	}
+
+	for _, name := range []string{"a.txt", "sub/b.txt"} {
+		fi, err := os.Stat(filepath.Join(destDir, name))
+		if err != nil {
+			t.Fatalf("stat %s: %v", name, err)
+		}
+		if !fi.ModTime().Equal(mtime) {
+			t.Fatalf("%s mtime = %v, want %v (mtime not preserved)", name, fi.ModTime(), mtime)
 		}
 	}
 }

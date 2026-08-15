@@ -13,7 +13,7 @@ import (
 func newCmd(args ...string) *cobra.Command {
 	cmd := &cobra.Command{Use: "test", RunE: func(*cobra.Command, []string) error { return nil }}
 	cmd.Flags().String("version", "", "")
-	cmd.Flags().Bool("global", false, "")
+	cmd.Flags().Bool("global", true, "")
 	cmd.Flags().Bool("local", false, "")
 	cmd.Flags().Bool("print", false, "")
 	cmd.Flags().Bool("auto-deps", false, "")
@@ -160,7 +160,7 @@ func TestUsePrint_DoesNotWriteDefault(t *testing.T) {
 	}
 }
 
-func TestBareUse_RequiresGlobalOrIntegration(t *testing.T) {
+func TestBareUse_DefaultsToGlobal(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PHPV_ROOT", dir)
 	createFakePHPInstall(t, dir, "8.4.0")
@@ -168,11 +168,15 @@ func TestBareUse_RequiresGlobalOrIntegration(t *testing.T) {
 	h := newTestPHPHandler(dir)
 	cmd := newCmd()
 	err := h.use(cmd, []string{"8.4"})
-	if err == nil {
-		t.Fatal("bare use without --global should not silently set global default")
+	if err != nil {
+		t.Fatalf("bare use should default to global, got error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "shell integration") {
-		t.Fatalf("expected shell-integration guidance, got: %v", err)
+	data, err := os.ReadFile(filepath.Join(dir, "default"))
+	if err != nil {
+		t.Fatalf("bare use should write the global default file: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != "8.4.0" {
+		t.Fatalf("default file = %q, want 8.4.0", string(data))
 	}
 }
 

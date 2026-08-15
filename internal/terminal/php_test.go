@@ -10,7 +10,9 @@ import (
 	"github.com/supanadit/phpv/config"
 	"github.com/supanadit/phpv/doctor"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/graph"
 	"github.com/supanadit/phpv/internal/repository/disk"
+	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/pecl"
 	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/shim"
@@ -275,7 +277,7 @@ func newTestPHPHandler(root string) *PHPHandler {
 	shimSvc := shim.NewService(siloSvc)
 	peclSvc := pecl.NewService(siloSvc)
 	configSvc := config.NewService(&mockConfigRepo{})
-	doctorSvc := doctor.NewService(disk.NewDoctorRepository(), system.NewService())
+	doctorSvc := doctor.NewService(disk.NewDoctorRepository(), system.NewService(), graph.NewService(memory.NewGraphRepository()))
 	updateSvc := update.NewService(disk.NewUpdateRepository(), "dev")
 	return &PHPHandler{
 		ctx:         context.Background(),

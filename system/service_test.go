@@ -74,3 +74,29 @@ func TestCheckBuildTools_SplitsAvailableAndMissing(t *testing.T) {
 		t.Errorf("tools not classified as either available or missing: %s", strings.Join(missing, ", "))
 	}
 }
+
+func TestPackagesForDistro_LibPQMapping(t *testing.T) {
+	cases := []struct {
+		distro string
+		want   string
+	}{
+		{"arch", "postgresql-libs"},
+		{"ubuntu", "libpq-dev"},
+		{"debian", "libpq-dev"},
+		{"alpine", "libpq-dev"},
+		{"fedora", "postgresql-devel"},
+		{"rhel", "postgresql-devel"},
+		{"centos", "postgresql-devel"},
+	}
+	for _, c := range cases {
+		pkgs := packagesForDistro(c.distro)
+		got, ok := pkgs["libpq"]
+		if !ok {
+			t.Errorf("packagesForDistro(%q) has no libpq mapping", c.distro)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("packagesForDistro(%q)[libpq] = %q, want %q", c.distro, got, c.want)
+		}
+	}
+}

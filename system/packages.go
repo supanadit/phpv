@@ -18,6 +18,7 @@ var fedoraPackages = pkgMap{
 	"libjpeg":   "libjpeg-turbo-devel",
 	"freetype":  "freetype-devel",
 	"libzip":    "libzip-devel",
+	"libpq":     "postgresql-devel",
 }
 
 var ubuntuPackages = pkgMap{
@@ -36,6 +37,7 @@ var ubuntuPackages = pkgMap{
 	"libjpeg":   "libjpeg-dev",
 	"freetype":  "libfreetype-dev",
 	"libzip":    "libzip-dev",
+	"libpq":     "libpq-dev",
 }
 
 var alpinePackages = pkgMap{
@@ -54,6 +56,7 @@ var alpinePackages = pkgMap{
 	"libjpeg":   "libjpeg-dev",
 	"freetype":  "freetype-dev",
 	"libzip":    "libzip-dev",
+	"libpq":     "libpq-dev",
 }
 
 var archPackages = pkgMap{
@@ -72,6 +75,7 @@ var archPackages = pkgMap{
 	"libjpeg":   "libjpeg-turbo",
 	"freetype":  "freetype2",
 	"libzip":    "libzip",
+	"libpq":     "postgresql-libs",
 }
 
 var fedoraBuildTools = pkgMap{

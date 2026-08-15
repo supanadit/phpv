@@ -859,18 +859,24 @@ func resolveJobs(flagVal int, cfgSvc *config.Service) int {
 // Returns a map of available system packages (name -> Package) for use in hybrid builds.
 func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool) (map[string]system.Package, error) {
 	phpDeps := []string{"openssl", "libxml2", "zlib", "oniguruma", "curl", "sqlite3", "readline", "icu", "pcre2", "argon2", "sodium"}
+	seen := make(map[string]bool)
+	for _, dep := range phpDeps {
+		seen[dep] = true
+	}
+	// System dev-libraries are derived from the extension definitions (the
+	// RequiresPackages field), served through the graph repository so the data
+	// lives in one place and can be updated without a binary change.
 	for _, ext := range extensions {
-		switch ext {
-		case "openssl":
-		case "curl":
-		case "gd":
-			phpDeps = append(phpDeps, "libpng", "libjpeg", "freetype")
-		case "intl":
-			phpDeps = append(phpDeps, "icu")
-		case "libxml":
-			phpDeps = append(phpDeps, "libxml2")
-		case "zip":
-			phpDeps = append(phpDeps, "libzip")
+		def, ok := h.assemblerSvc.Graph().GetExtensionDef(ext)
+		if !ok {
+			continue
+		}
+		for _, dep := range def.RequiresPackages {
+			if seen[dep] {
+				continue
+			}
+			seen[dep] = true
+			phpDeps = append(phpDeps, dep)
 		}
 	}
 

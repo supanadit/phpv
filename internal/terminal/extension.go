@@ -46,6 +46,9 @@ func (h *PHPHandler) extensionCmd() *cobra.Command {
 	}
 	extCmd.Flags().Int("jobs", 0, "Number of parallel build jobs (default: CPU count)")
 	extCmd.Flags().Bool("force", false, "Force rebuild even if already installed")
+	extCmd.Flags().Bool("auto-deps", false, "Install missing system packages without prompting")
+	extCmd.Flags().Bool("no-system", false, "Skip system package check, always build from source")
+	extCmd.Flags().Bool("dry-run", false, "Show what would be done without doing it")
 	cmd.AddCommand(extCmd)
 	cmd.AddCommand(&cobra.Command{
 		Use:   "remove <version> <name>...",
@@ -278,6 +281,24 @@ func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
 	phpBin := filepath.Join(prefix, "bin", "php")
 	if _, err := os.Stat(phpBin); os.IsNotExist(err) {
 		return fmt.Errorf("PHP %s is not installed. Run `phpv install %s` first", version, version)
+	}
+
+	autoDeps, _ := cmd.Flags().GetBool("auto-deps")
+	noSystem, _ := cmd.Flags().GetBool("no-system")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+	if !noSystem {
+		if _, err := h.checkSystemDeps(extNames, autoDeps, dryRun); err != nil {
+			return err
+		}
+		if err := h.checkBuildTools(autoDeps, dryRun); err != nil {
+			return err
+		}
+	}
+
+	if dryRun {
+		fmt.Println("Dry run complete. Run without --dry-run to install.")
+		return nil
 	}
 
 	sourceDir := h.siloSvc.SourcePath("php", version)

@@ -1,16 +1,24 @@
 package doctor
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/graph"
+	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/system"
 )
 
+func newTestGraphService() *graph.Service {
+	return graph.NewService(memory.NewGraphRepository())
+}
+
 func newTestService(repo Repository) *Service {
-	return NewService(repo, system.NewService())
+	return NewService(repo, system.NewService(), newTestGraphService())
 }
 
 func TestCheck_NoIssues(t *testing.T) {
@@ -125,7 +133,7 @@ func TestCheck_SystemMode(t *testing.T) {
 
 func TestCheck_BuildToolsMissing(t *testing.T) {
 	fake := newFakeRepository()
-	svc := NewService(fake, system.NewService())
+	svc := NewService(fake, system.NewService(), newTestGraphService())
 
 	issues := svc.checkBuildTools()
 	foundCritical := false
@@ -162,7 +170,7 @@ func TestCheck_BuildToolsPresent(t *testing.T) {
 	fake.lookPathResult["pkg-config"] = "/usr/bin/pkg-config"
 	fake.lookPathResult["xz"] = "/usr/bin/xz"
 
-	svc := NewService(fake, system.NewService())
+	svc := NewService(fake, system.NewService(), newTestGraphService())
 	issues := svc.checkBuildTools()
 	if len(issues) != 0 {
 		t.Fatalf("expected 0 build tool issues when all tools present, got %d: %+v", len(issues), issues)
@@ -188,7 +196,7 @@ func TestCheck_StateFiles(t *testing.T) {
 	os.MkdirAll(phpDir, 0755)
 	os.WriteFile(filepath.Join(phpDir, ".state"), []byte("failed"), 0644)
 
-	svc := NewService(fake, system.NewService())
+	svc := NewService(fake, system.NewService(), newTestGraphService())
 	issues := svc.checkStateFiles(root)
 	if len(issues) != 1 {
 		t.Fatalf("expected 1 state file issue, got %d", len(issues))
@@ -203,7 +211,7 @@ func TestCheck_DiskSpace(t *testing.T) {
 	root := t.TempDir()
 	fake.diskFree = 100 * 1024 * 1024
 
-	svc := NewService(fake, system.NewService())
+	svc := NewService(fake, system.NewService(), newTestGraphService())
 	issues := svc.checkDiskSpace(root)
 	if len(issues) != 1 {
 		t.Fatalf("expected 1 disk space issue, got %d", len(issues))
@@ -217,7 +225,7 @@ func TestCheck_ShimInPath(t *testing.T) {
 	fake := newFakeRepository()
 	root := t.TempDir()
 
-	svc := NewService(fake, system.NewService())
+	svc := NewService(fake, system.NewService(), newTestGraphService())
 	issues := svc.checkShimInPath(root)
 	if len(issues) != 1 {
 		t.Fatalf("expected 1 shim-in-path issue, got %d", len(issues))
@@ -232,7 +240,7 @@ func TestCheck_PHPVEnvMismatch(t *testing.T) {
 	root := t.TempDir()
 	fake.env["PHPV_ROOT"] = "/other/root"
 
-	svc := NewService(fake, system.NewService())
+	svc := NewService(fake, system.NewService(), newTestGraphService())
 	issues := svc.checkPHPVEnv(root)
 	if len(issues) != 1 {
 		t.Fatalf("expected 1 env mismatch issue, got %d", len(issues))
@@ -249,12 +257,56 @@ func TestCheck_MissingStateFile(t *testing.T) {
 	phpDir := filepath.Join(root, "packages", "php", "8.4.0")
 	os.MkdirAll(phpDir, 0755)
 
-	svc := NewService(fake, system.NewService())
+	svc := NewService(fake, system.NewService(), newTestGraphService())
 	issues := svc.checkStateFiles(root)
 	if len(issues) != 1 {
 		t.Fatalf("expected 1 missing-state issue, got %d", len(issues))
 	}
 	if !strings.Contains(issues[0].Title, "Missing state file") {
 		t.Fatalf("expected missing state file issue, got: %s", issues[0].Title)
+	}
+}
+
+func TestInstalledExtensions_AggregatesManifests(t *testing.T) {
+	root := t.TempDir()
+	fake := newFakeRepository()
+	fake.env["PHPV_ROOT"] = root
+
+	// Two PHP versions, each with an extension manifest.
+	writeManifest := func(version string, names ...string) {
+		dir := filepath.Join(root, "packages", "php", version)
+		os.MkdirAll(dir, 0755)
+		var exts []domain.ExtensionState
+		for _, n := range names {
+			exts = append(exts, domain.ExtensionState{Name: n, Type: domain.ExtensionTypeBuiltin})
+		}
+		data, err := json.Marshal(domain.ExtensionManifest{PHPVersion: version, Extensions: exts})
+		if err != nil {
+			t.Fatalf("marshal manifest: %v", err)
+		}
+		os.WriteFile(filepath.Join(dir, "extensions.json"), data, 0644)
+	}
+	writeManifest("8.4.0", "pdo_pgsql", "pdo")
+	writeManifest("8.3.0", "pdo_pgsql", "zip")
+
+	svc := NewService(fake, system.NewService(), newTestGraphService())
+	got := svc.installedExtensions()
+	want := []string{"pdo", "pdo_pgsql", "zip"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("installedExtensions() = %v, want %v", got, want)
+	}
+}
+
+func TestInstalledExtensions_NoManifest(t *testing.T) {
+	root := t.TempDir()
+	fake := newFakeRepository()
+	fake.env["PHPV_ROOT"] = root
+
+	os.MkdirAll(filepath.Join(root, "packages", "php", "8.4.0"), 0755)
+
+	svc := NewService(fake, system.NewService(), newTestGraphService())
+	got := svc.installedExtensions()
+	if len(got) != 0 {
+		t.Fatalf("expected no extensions, got %v", got)
 	}
 }

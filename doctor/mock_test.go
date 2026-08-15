@@ -1,6 +1,7 @@
 package doctor
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,6 +93,26 @@ func (m *fakeRepository) ExtensionManifestReadable(root, version string) error {
 	}
 	_, err := os.ReadFile(path)
 	return err
+}
+
+func (m *fakeRepository) ListInstalledExtensions(root, version string) ([]string, error) {
+	path := filepath.Join(root, "packages", "php", version, "extensions.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var manifest domain.ExtensionManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(manifest.Extensions))
+	for _, e := range manifest.Extensions {
+		names = append(names, e.Name)
+	}
+	return names, nil
 }
 
 func (m *fakeRepository) GetPHPVRoot() string {

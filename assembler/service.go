@@ -124,7 +124,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 	}
 
 	emit("download", fmt.Sprintf("Downloading and extracting %d packages...", len(plan.Deps)+1))
-	downloadResults, err := s.downloadAll(name, exactVersion, plan.Deps)
+	downloadResults, err := s.downloadAll(name, exactVersion, plan.Deps, emit)
 	if err != nil {
 		return nil, err
 	}
@@ -683,7 +683,7 @@ func (s *Service) RemoveExtension(phpVersion, extName, phpPrefix string) error {
 	return nil
 }
 
-func (s *Service) downloadAll(name, version string, deps []domain.Dependency) ([]DownloadResult, error) {
+func (s *Service) downloadAll(name, version string, deps []domain.Dependency, emit ProgressFunc) ([]DownloadResult, error) {
 	type item struct {
 		name    string
 		version string
@@ -718,6 +718,7 @@ func (s *Service) downloadAll(name, version string, deps []domain.Dependency) ([
 			defer wg.Done()
 			results[idx] = DownloadResult{Name: n, Version: v}
 
+			emit("download", fmt.Sprintf("Downloading %s %s...", n, v))
 			regEntry, err := s.reg.Get(n, v)
 			if err != nil {
 				results[idx].Err = fmt.Errorf("registry resolve %s@%s: %w", n, v, err)
@@ -730,6 +731,7 @@ func (s *Service) downloadAll(name, version string, deps []domain.Dependency) ([
 			}
 			results[idx].Downloaded = downloaded
 
+			emit("download", fmt.Sprintf("Extracting %s %s...", n, v))
 			archivePath := filepath.Join(cacheDir(), filepath.Base(regEntry.URL))
 			sourceDir := s.silo.SourcePath(n, v)
 			extracted, err := s.silo.Extract(archivePath, sourceDir)
@@ -738,6 +740,7 @@ func (s *Service) downloadAll(name, version string, deps []domain.Dependency) ([
 				return
 			}
 			results[idx].Extracted = extracted
+			emit("download", fmt.Sprintf("Downloaded %s %s", n, v))
 		}(i, it.name, it.version)
 	}
 

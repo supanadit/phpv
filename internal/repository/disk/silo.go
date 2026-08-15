@@ -14,10 +14,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/repository"
 )
+
+// downloadClient has a finite timeout so a stalled download fails instead of
+// hanging the whole install. Generous enough for large archives (PHP source,
+// ICU) but prevents an unreachable URL from blocking forever.
+var downloadClient = &http.Client{Timeout: 5 * time.Minute}
 
 // SiloRepository is a disk-backed implementation of silo.SiloRepository.
 // It downloads files via HTTP and stores them in baseDir. When a checksum
@@ -82,7 +88,7 @@ func (s *SiloRepository) Download(url string, checksumType string, checksumValue
 	_ = os.Remove(tmpPath)
 
 	// Start the HTTP request.
-	resp, err := http.Get(url)
+	resp, err := downloadClient.Get(url)
 	if err != nil {
 		return false, fmt.Errorf("download %s: %w", url, err)
 	}

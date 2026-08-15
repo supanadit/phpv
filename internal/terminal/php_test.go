@@ -246,14 +246,41 @@ func TestResolveActivePHP_PhpVersionPreferred(t *testing.T) {
 	}
 }
 
+func TestResolveActivePHP_SystemFallback(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PHPV_ROOT", dir)
+
+	// Simulate a system PHP on PATH. resolveActivePHP falls back to it when
+	// no managed version is active.
+	binDir := t.TempDir()
+	systemPHP := filepath.Join(binDir, "php")
+	if err := os.WriteFile(systemPHP, []byte("#!/bin/sh\necho php\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+
+	h := newTestPHPHandler(dir)
+	path, err := h.resolveActivePHP()
+	if err != nil {
+		t.Fatalf("resolveActivePHP should fall back to system PHP, got error: %v", err)
+	}
+	if path != systemPHP {
+		t.Fatalf("resolveActivePHP = %q, want %q", path, systemPHP)
+	}
+}
+
 func TestResolveActivePHP_NoPHP(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PHPV_ROOT", dir)
 
+	// No managed PHP and no system php on PATH.
+	emptyBin := t.TempDir()
+	t.Setenv("PATH", emptyBin)
+
 	h := newTestPHPHandler(dir)
 	_, err := h.resolveActivePHP()
 	if err == nil {
-		t.Fatal("resolveActivePHP expected error when no PHP installed")
+		t.Fatal("resolveActivePHP expected error when no PHP is available")
 	}
 }
 

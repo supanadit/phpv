@@ -265,6 +265,11 @@ func (s *SiloRepository) Extract(archivePath string, destDir string) (extracted 
 				return false, fmt.Errorf("write %s: %w", target, err)
 			}
 			out.Close()
+			// Restore the archive's mtime. Without this, every file gets the
+			// current wall-clock time in tar-stream order, which can make a
+			// shipped generated source (.c) appear older than its generator
+			// (.re) and cause make to spuriously regenerate it.
+			_ = os.Chtimes(target, header.ModTime, header.ModTime)
 		case tar.TypeSymlink:
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				os.RemoveAll(tmpDir)
@@ -476,6 +481,7 @@ func (s *SiloRepository) extractXz(archivePath string, tmpDir string, destDir st
 				return false, fmt.Errorf("write %s: %w", target, err)
 			}
 			out.Close()
+			_ = os.Chtimes(target, header.ModTime, header.ModTime)
 		case tar.TypeSymlink:
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				cmd.Wait()

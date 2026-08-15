@@ -1,6 +1,8 @@
 package disk
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -9,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func newTestServer(content string) *httptest.Server {
@@ -263,5 +266,59 @@ func TestSiloRepository_Download_NoPartFileOnSuccess(t *testing.T) {
 	partPath := filepath.Join(dir, "package.tar.gz.part")
 	if _, err := os.Stat(partPath); !os.IsNotExist(err) {
 		t.Fatalf(".part file should not exist after successful download")
+	}
+}
+
+func TestSiloRepository_Extract_PreservesMtime(t *testing.T) {
+	// Author a .tar.gz that mirrors a PHP release tarball: a shipped generated
+	// source (.c) listed before its generator (.re), both with an identical
+	// mtime. If extraction preserved mtimes, the files stay equal so make does
+	// not regenerate the .c from the .re.
+	archivePath := filepath.Join(t.TempDir(), "pkg.tar.gz")
+	f, err := os.Create(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz := gzip.NewWriter(f)
+	tw := tar.NewWriter(gz)
+	mtime := time.Unix(1700000000, 0)
+	for _, name := range []string{"src/something.c", "src/something.re"} {
+		hdr := &tar.Header{
+			Name:    name,
+			Mode:    0o644,
+			Size:    5,
+			ModTime: mtime,
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte("hello")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	destDir := filepath.Join(t.TempDir(), "pkg")
+	repo := NewSiloRepository()
+	if _, err := repo.Extract(archivePath, destDir); err != nil {
+		t.Fatalf("Extract returned error: %v", err)
+	}
+
+	for _, name := range []string{"src/something.c", "src/something.re"} {
+		fi, err := os.Stat(filepath.Join(destDir, name))
+		if err != nil {
+			t.Fatalf("stat %s: %v", name, err)
+		}
+		if !fi.ModTime().Equal(mtime) {
+			t.Fatalf("%s mtime = %v, want %v (mtime not preserved from archive)", name, fi.ModTime(), mtime)
+		}
 	}
 }

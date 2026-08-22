@@ -26,6 +26,7 @@ import (
 	"github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/system"
 	"github.com/supanadit/phpv/update"
+	"github.com/supanadit/phpv/webserver/apache"
 )
 
 var Version = "dev"
@@ -83,6 +84,7 @@ func main() {
 			forge.NewService,
 			patcher.NewService,
 			graph.NewService,
+			apache.NewService,
 		),
 		fx.Invoke(
 			terminal.NewPHPHandler,

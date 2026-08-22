@@ -225,3 +225,37 @@ func (s *Service) findDepPrefix(deps []domain.Dependency, depName, sentinelPath 
 func (s *Service) resolveICUPath(deps []domain.Dependency) string {
 	return s.findDepPrefix(deps, "icu", "include/unicode/urename.h")
 }
+
+// resolveApxsPlaceholder resolves the {{apxs}} placeholder in configure flags
+// to the apxs binary of the highest installed httpd build. This is used when
+// building PHP with the mod_php connector (--with-apxs2={{apxs}}). If no httpd
+// is installed, the placeholder is dropped so configure falls back gracefully.
+func (s *Service) resolveApxsPlaceholder(flags []string) []string {
+	apxs := ""
+	httpdDir := filepath.Join(resolvePHPVRoot(), "packages", "httpd")
+	if entries, err := os.ReadDir(httpdDir); err == nil {
+		var versions []string
+		for _, e := range entries {
+			if e.IsDir() {
+				versions = append(versions, e.Name())
+			}
+		}
+		if len(versions) > 0 {
+			sort.Slice(versions, func(i, j int) bool {
+				return compareVersions(versions[i], versions[j]) > 0
+			})
+			candidate := filepath.Join(httpdDir, versions[0], "bin", "apxs")
+			if _, err := os.Stat(candidate); err == nil {
+				apxs = candidate
+			}
+		}
+	}
+	result := make([]string, 0, len(flags))
+	for _, flag := range flags {
+		if strings.Contains(flag, "{{apxs}}") && apxs == "" {
+			continue
+		}
+		result = append(result, strings.ReplaceAll(flag, "{{apxs}}", apxs))
+	}
+	return result
+}

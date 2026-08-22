@@ -74,7 +74,7 @@ func (m *mockGraphRepo) SharedOnlyExtensions(phpVersion string, requested []stri
 func (m *mockGraphRepo) GetConfigureFlags(name, version string) []string {
 	return nil
 }
-func (m *mockGraphRepo) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
+func (m *mockGraphRepo) GetPHPConfigureFlags(phpVersion string, extensions []string, connector domain.ConnectorMode) []string {
 	return nil
 }
 func (m *mockGraphRepo) GetExtensionConfigureFlags(name string, phpVersion string) []string {
@@ -95,7 +95,7 @@ func TestService_GetBuildPlan(t *testing.T) {
 	}
 	svc := NewService(mock)
 
-	plan, err := svc.GetBuildPlan("php", "8.4.0", nil)
+	plan, err := svc.GetBuildPlan("php", "8.4.0", nil, domain.ConnectorNone)
 	if err != nil {
 		t.Fatalf("GetBuildPlan returned error: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestService_GetBuildPlan_WithExtensions(t *testing.T) {
 	}
 	svc := NewService(mock)
 
-	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"openssl", "curl"})
+	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"openssl", "curl"}, domain.ConnectorNone)
 	if err != nil {
 		t.Fatalf("GetBuildPlan returned error: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestService_GetBuildPlan_Minimal_NoDeps(t *testing.T) {
 	}
 	svc := NewService(mock)
 
-	plan, err := svc.GetBuildPlan("php", "8.4.0", nil)
+	plan, err := svc.GetBuildPlan("php", "8.4.0", nil, domain.ConnectorNone)
 	if err != nil {
 		t.Fatalf("GetBuildPlan returned error: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestService_GetBuildPlan_DedupConflictingVersions(t *testing.T) {
 	}
 	svc := NewService(mock)
 
-	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"ext1", "ext2"})
+	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"ext1", "ext2"}, domain.ConnectorNone)
 	if err != nil {
 		t.Fatalf("GetBuildPlan returned error: %v", err)
 	}

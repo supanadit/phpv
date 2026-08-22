@@ -28,6 +28,7 @@ import (
 	"github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/system"
 	"github.com/supanadit/phpv/update"
+	"github.com/supanadit/phpv/webserver/apache"
 )
 
 // PHPHandler registers cobra commands and delegates to services.
@@ -43,10 +44,11 @@ type PHPHandler struct {
 	configSvc    *config.Service
 	doctorSvc    *doctor.Service
 	updateSvc    *update.Service
+	apacheSvc    *apache.ApacheService
 	version      string
 }
 
-func NewPHPHandler(rootCmd *cobra.Command, ac appctx.AppContext, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service, systemSvc *system.Service, shimSvc *shim.Service, peclSvc *pecl.Service, configSvc *config.Service, doctorSvc *doctor.Service, updateSvc *update.Service, version string) {
+func NewPHPHandler(rootCmd *cobra.Command, ac appctx.AppContext, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service, systemSvc *system.Service, shimSvc *shim.Service, peclSvc *pecl.Service, configSvc *config.Service, doctorSvc *doctor.Service, updateSvc *update.Service, apacheSvc *apache.ApacheService, version string) {
 	h := &PHPHandler{
 		ctx:          ac.Ctx,
 		siloSvc:      siloSvc,
@@ -59,6 +61,7 @@ func NewPHPHandler(rootCmd *cobra.Command, ac appctx.AppContext, siloSvc *silo.S
 		configSvc:    configSvc,
 		doctorSvc:    doctorSvc,
 		updateSvc:    updateSvc,
+		apacheSvc:    apacheSvc,
 		version:      version,
 	}
 	rootCmd.AddCommand(h.downloadCmd())
@@ -80,6 +83,7 @@ func NewPHPHandler(rootCmd *cobra.Command, ac appctx.AppContext, siloSvc *silo.S
 	rootCmd.AddCommand(h.completionCmd())
 	rootCmd.AddCommand(h.doctorCmd())
 	rootCmd.AddCommand(h.updateCmd())
+	rootCmd.AddCommand(h.apacheCmd())
 }
 
 func (h *PHPHandler) uninstallCmd() *cobra.Command {
@@ -209,6 +213,9 @@ Version syntax:
 	cmd.Flags().Bool("yes", false, "Skip confirmation prompts")
 	cmd.Flags().Bool("force", false, "Skip state checks and reinstall")
 	cmd.Flags().Bool("minimal", false, "Build with --enable-cli only (no default extensions)")
+	cmd.Flags().Bool("fpm", false, "Build with --enable-fpm (FastCGI Process Manager for webservers)")
+	cmd.Flags().Bool("cgi", false, "Build with --enable-cgi (for mod_fcgid)")
+	cmd.Flags().Bool("mod-php", false, "Build with --with-apxs2 (Apache module, requires Apache installed)")
 	return cmd
 }
 
@@ -313,6 +320,11 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	connector, err := connectorFromFlags(cmd)
+	if err != nil {
+		return err
+	}
+
 	if dryRun {
 		fmt.Println("Dry run complete. Run without --dry-run to install.")
 		return nil
@@ -339,7 +351,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Installing PHP %s...\n\n", bannerVersion)
 
 	if verbose {
-		result, err := h.assemblerSvc.Assemble(h.ctx, "php", version, static, extensions, true, nil, systemPkgs, jobs, force)
+		result, err := h.assemblerSvc.Assemble(h.ctx, "php", version, static, extensions, true, nil, systemPkgs, jobs, force, connector)
 		if err != nil {
 			return fmt.Errorf("install failed: %w", err)
 		}
@@ -405,7 +417,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 
 	result, err := h.assemblerSvc.Assemble(h.ctx, "php", version, static, extensions, false, func(stage, message string) {
 		progressCh <- progressMsg{stage: stage, message: message}
-	}, systemPkgs, jobs, force)
+	}, systemPkgs, jobs, force, connector)
 	close(progressCh)
 	<-doneCh
 
@@ -901,6 +913,38 @@ func findProjectVersionFile() string {
 // current working directory.
 func writeLocalVersionFile(version string) error {
 	return os.WriteFile(".php-version", []byte(version+"\n"), 0644)
+}
+
+// connectorFromFlags resolves the webserver connector mode from the
+// --fpm / --cgi / --mod-php flags on an install command. At most one may be
+// set.
+func connectorFromFlags(cmd *cobra.Command) (domain.ConnectorMode, error) {
+	fpm, _ := cmd.Flags().GetBool("fpm")
+	cgi, _ := cmd.Flags().GetBool("cgi")
+	modPHP, _ := cmd.Flags().GetBool("mod-php")
+	set := 0
+	if fpm {
+		set++
+	}
+	if cgi {
+		set++
+	}
+	if modPHP {
+		set++
+	}
+	if set > 1 {
+		return "", fmt.Errorf("cannot combine --fpm, --cgi and --mod-php")
+	}
+	switch {
+	case fpm:
+		return domain.ConnectorFPM, nil
+	case cgi:
+		return domain.ConnectorCGI, nil
+	case modPHP:
+		return domain.ConnectorModPHP, nil
+	default:
+		return domain.ConnectorNone, nil
+	}
 }
 
 // resolveJobs resolves the effective parallelism value.

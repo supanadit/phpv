@@ -149,6 +149,14 @@ phpv only downloads and extracts what it will actually compile. System packages 
 | `phpv pecl install <name|archive> [ver]` | Install a PECL extension |
 | `phpv pecl list [ver]` | List installed PECL extensions |
 | `phpv pecl uninstall <name> [ver]` | Remove a PECL extension |
+| `phpv apache install <ver>` | Build and install Apache httpd from source |
+| `phpv apache uninstall` | Remove Apache httpd |
+| `phpv apache configure --php <ver> [--connector fpm\|cgi\|mod_php]` | Configure PHP integration |
+| `phpv apache vhost add <docroot> <domain>` | Add a virtual host |
+| `phpv apache vhost list` | List virtual hosts |
+| `phpv apache vhost remove <domain>` | Remove a virtual host |
+| `phpv apache vhost enable\|disable <domain>` | Enable/disable a virtual host |
+| `phpv apache start\|stop\|restart\|status` | Manage the Apache (and PHP-FPM) process |
 
 ### Install Flags
 
@@ -156,6 +164,9 @@ phpv only downloads and extracts what it will actually compile. System packages 
 | ------ | ------------- |
 | `--ext <list>` | Comma-separated extension list (replaces defaults) |
 | `--minimal` | Bare build (--disable-all --enable-cli only) |
+| `--fpm` | Build with `--enable-fpm` (FastCGI Process Manager for webservers) |
+| `--cgi` | Build with `--enable-cgi` (for mod_fcgid) |
+| `--mod-php` | Build with `--with-apxs2` (Apache module, requires Apache installed) |
 | `--fresh` | Delete prefix, keep cached source |
 | `--clean` | Delete prefix + source + state |
 | `--force` | Force reinstall even if already installed |
@@ -183,6 +194,49 @@ phpv only downloads and extracts what it will actually compile. System packages 
 Default extensions: `bcmath`, `curl`, `dom`, `fileinfo`, `filter`, `gd`, `iconv`, `intl`, `json`, `mbstring`, `openssl`, `opcache`, `pdo`, `pdo_mysql`, `pdo_sqlite`, `phar`, `session`, `simplexml`, `sqlite3`, `tokenizer`, `xml`, `xmlreader`, `xmlwriter`, `zip`, `zlib`
 
 Use `--minimal` for a bare build (`--disable-all --enable-cli` only), or `--ext` to specify your own list.
+
+---
+
+## Apache Webserver
+
+phpv can install and manage a fully user-space [Apache HTTP Server](https://httpd.apache.org/) — built from source (plus APR, APR-util, PCRE2, expat) under the phpv root, with no system directories touched and no root required.
+
+```bash
+# Build and install Apache httpd (with APR/APR-util/PCRE2/expat)
+phpv apache install 2.4.66
+
+# Configure PHP integration (FPM is the default connector)
+phpv apache configure --php 8.4 --connector fpm --mpm event
+
+# Or build PHP with FPM support at install time
+phpv install 8.4 --fpm
+
+# Serve the current directory at a virtual host
+phpv apache vhost add . test.local
+
+# Manage the process (Apache + PHP-FPM)
+phpv apache start          # background daemon (use --foreground to block)
+phpv apache status
+phpv apache restart
+phpv apache stop
+```
+
+### Connector modes
+
+| Mode | PHP build flag | Notes |
+|------|---------------|-------|
+| `fpm` (default) | `--enable-fpm` | proxy to a php-fpm pool via `mod_proxy_fcgi`; works with event/worker MPMs and supports per-vhost PHP versions |
+| `cgi` | `--enable-cgi` | spawn `php-cgi` via `mod_fcgid` |
+| `mod_php` | `--with-apxs2` | load PHP compiled as an Apache module; requires prefork MPM, single PHP for all vhosts |
+
+### Virtual host flags
+
+```
+phpv apache vhost add /srv/app app.local --ssl --alias www.app.local
+phpv apache vhost add . test.local --php-version 8.4   # per-vhost PHP (FPM only)
+```
+
+Vhosts are stored under `~/.phpv/apache/vhosts/` and auto-included by Apache's config, so adding/removing them never needs sudo. By default Apache listens on port `8080` (no root required); configure a different port with `phpv apache configure --port 80`.
 
 ---
 

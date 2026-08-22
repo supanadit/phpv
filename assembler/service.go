@@ -75,7 +75,9 @@ func (s *Service) Graph() *graph.Service {
 // Assemble runs the full pipeline for (name, version).
 // systemPkgs optionally provides a map of available system packages for hybrid builds.
 // jobs controls make parallelism (0 = auto).
-func (s *Service) Assemble(ctx context.Context, name string, version string, static bool, extensions []string, verbose bool, progress ProgressFunc, systemPkgs map[string]system.Package, jobs int, force bool) (*AssemblerResult, error) {
+// connector selects the webserver connector flags for PHP builds (ignored for
+// non-php packages; pass domain.ConnectorNone when building without a webserver).
+func (s *Service) Assemble(ctx context.Context, name string, version string, static bool, extensions []string, verbose bool, progress ProgressFunc, systemPkgs map[string]system.Package, jobs int, force bool, connector domain.ConnectorMode) (*AssemblerResult, error) {
 	emit := func(stage, msg string) {
 		if progress != nil {
 			progress(stage, msg)
@@ -115,7 +117,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 	}()
 
 	emit("deps", "Resolving dependency graph...")
-	plan, err := s.graph.GetBuildPlan(name, exactVersion, extensions)
+	plan, err := s.graph.GetBuildPlan(name, exactVersion, extensions, connector)
 	if err != nil {
 		return nil, fmt.Errorf("resolve build plan for %s@%s: %w", name, exactVersion, err)
 	}
@@ -371,6 +373,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 
 	configureFlags := plan.ConfigureFlags
 	configureFlags = s.resolveDependencyFlags(name, exactVersion, configureFlags, plan.Deps)
+	configureFlags = s.resolveApxsPlaceholder(configureFlags)
 	if static {
 		env = setEnvVar(env, "LDFLAGS", "-static-libgcc -static")
 		env = setEnvVar(env, "CFLAGS", "-Os -fdata-sections -ffunction-sections")

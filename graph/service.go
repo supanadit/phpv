@@ -35,7 +35,7 @@ type GraphRepository interface {
 
 	// Flag knowledge
 	GetConfigureFlags(name string, version string) []string
-	GetPHPConfigureFlags(phpVersion string, extensions []string) []string
+	GetPHPConfigureFlags(phpVersion string, extensions []string, connector domain.ConnectorMode) []string
 	GetExtensionConfigureFlags(name string, phpVersion string) []string
 
 	// Compiler knowledge
@@ -51,6 +51,7 @@ type BuildPlan struct {
 	CompilerFlags    []string
 	CXXCompilerFlags []string
 	Warnings         []string // non-fatal warnings (e.g. conflicting dep versions)
+	Connector        domain.ConnectorMode
 }
 
 // Service wraps GraphRepository and adds value by consolidating
@@ -70,7 +71,9 @@ func NewService(repo GraphRepository) *Service {
 // package-level deps from GetOrderedDependencies. This ensures PHP 8.2+ gets
 // a deterministic dep plan even though the php package has no hardcoded
 // Constraints for those versions.
-func (s *Service) GetBuildPlan(name string, version string, extensions []string) (*BuildPlan, error) {
+// connector selects the webserver connector flags for PHP builds (ignored for
+// non-php packages).
+func (s *Service) GetBuildPlan(name string, version string, extensions []string, connector domain.ConnectorMode) (*BuildPlan, error) {
 	deps, err := s.repo.GetOrderedDependencies(name, version)
 	if err != nil {
 		return nil, err
@@ -84,7 +87,7 @@ func (s *Service) GetBuildPlan(name string, version string, extensions []string)
 	}
 	var configureFlags []string
 	if name == "php" {
-		configureFlags = s.repo.GetPHPConfigureFlags(version, extensions)
+		configureFlags = s.repo.GetPHPConfigureFlags(version, extensions, connector)
 	} else {
 		configureFlags = s.repo.GetConfigureFlags(name, version)
 	}
@@ -99,12 +102,13 @@ func (s *Service) GetBuildPlan(name string, version string, extensions []string)
 		cxxCompilerFlags = append(cxxCompilerFlags, compilerRule.CXXStd)
 	}
 	return &BuildPlan{
-		Deps:            deps,
-		ConfigureFlags:  configureFlags,
-		CFlags:          cflags,
-		CompilerFlags:   cCompilerFlags,
+		Deps:             deps,
+		ConfigureFlags:   configureFlags,
+		CFlags:           cflags,
+		CompilerFlags:    cCompilerFlags,
 		CXXCompilerFlags: cxxCompilerFlags,
-		Warnings:        warnings,
+		Warnings:         warnings,
+		Connector:        connector,
 	}, nil
 }
 
@@ -345,9 +349,10 @@ func (s *Service) GetConfigureFlags(name string, version string) []string {
 	return s.repo.GetConfigureFlags(name, version)
 }
 
-// GetPHPConfigureFlags returns configure flags for PHP with given extensions.
-func (s *Service) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
-	return s.repo.GetPHPConfigureFlags(phpVersion, extensions)
+// GetPHPConfigureFlags returns configure flags for PHP with given extensions
+// and an optional webserver connector mode.
+func (s *Service) GetPHPConfigureFlags(phpVersion string, extensions []string, connector domain.ConnectorMode) []string {
+	return s.repo.GetPHPConfigureFlags(phpVersion, extensions, connector)
 }
 
 // GetExtensionConfigureFlags returns configure flags for a single extension

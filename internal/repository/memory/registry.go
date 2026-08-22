@@ -332,6 +332,74 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 			},
 		})
 
+	case "httpd":
+		// Apache HTTP Server — source distribution. Uses archive.apache.org
+		// because it retains every released version (dlcdn.apache.org only
+		// keeps the latest couple of releases).
+		result = repository.BuildRegistries(repository.PackageConfig{
+			Name: "httpd",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"2.4.66", "2.4.65", "2.4.62", "2.4.61", "2.4.60", "2.4.59",
+				"2.4.58", "2.4.57", "2.4.56", "2.4.55", "2.4.54", "2.4.53",
+				"2.4.52", "2.4.51", "2.4.50", "2.4.49", "2.4.48", "2.4.47",
+				"2.4.46", "2.4.43", "2.4.41", "2.4.39", "2.4.38", "2.4.37",
+			},
+			URLTemplate: "https://archive.apache.org/dist/httpd/httpd-{version}.tar.gz",
+		})
+
+	case "apr":
+		// Apache Portable Runtime — required by APR-util and httpd.
+		result = repository.BuildRegistries(repository.PackageConfig{
+			Name: "apr",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"1.7.6", "1.7.5", "1.7.4", "1.7.3", "1.7.2", "1.7.1", "1.7.0",
+			},
+			URLTemplate: "https://archive.apache.org/dist/apr/apr-{version}.tar.gz",
+		})
+
+	case "apr-util":
+		// Apache Portable Runtime Utilities — depends on APR and expat.
+		result = repository.BuildRegistries(repository.PackageConfig{
+			Name: "apr-util",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"1.6.3", "1.6.2", "1.6.1", "1.6.0",
+			},
+			URLTemplate: "https://archive.apache.org/dist/apr/apr-util-{version}.tar.gz",
+		})
+
+	case "expat":
+		// libexpat — XML parser required by APR-util (and bundled by phpv
+		// so Apache builds are fully self-contained).
+		result = repository.BuildRegistries(repository.PackageConfig{
+			Name: "expat",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"2.6.4", "2.6.3", "2.6.2", "2.6.1", "2.6.0",
+				"2.5.0", "2.4.0",
+			},
+			URLTemplate: "https://github.com/libexpat/libexpat/releases/download/R_{major}_{minor}/expat-{version}.tar.xz",
+		})
+
+	case "pcre2":
+		// PCRE2 — Perl Compatible Regular Expressions, required by httpd.
+		result = repository.BuildRegistries(repository.PackageConfig{
+			Name: "pcre2",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"10.44", "10.43", "10.42", "10.40", "10.39", "10.37", "10.36",
+				"10.35", "10.34", "10.33", "10.32",
+			},
+			URLTemplate: "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-{version}/pcre2-{version}.tar.gz",
+		})
+
 	default:
 		return nil, fmt.Errorf("unknown package: %s", name)
 	}

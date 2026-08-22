@@ -264,6 +264,36 @@ var configureFlagRules = map[string][]configureFlagRule{
 			"-DENABLE_ZSTD=OFF",
 		}},
 	},
+	"httpd": {
+		{Flags: []string{
+			// Link httpd against the locally-built APR, APR-util and PCRE2
+			// (resolved via {{dep:NAME}} placeholders). --sysconfdir keeps the
+			// Apache config inside the phpv install prefix so no system dirs
+			// are touched — fully user-space.
+			"--with-apr={{dep:apr}}",
+			"--with-apr-util={{dep:apr-util}}",
+			"--with-pcre={{dep:pcre2}}",
+			"--enable-so",
+			"--enable-ssl",
+			"--enable-rewrite",
+			"--enable-proxy",
+			"--enable-proxy-fcgi",
+			"--enable-mpms-shared=all",
+			"--sysconfdir={{prefix}}/conf",
+		}},
+	},
+	"apr-util": {
+		{Flags: []string{
+			"--with-apr={{dep:apr}}",
+			"--with-expat={{dep:expat}}",
+		}},
+	},
+	"pcre2": {
+		{Flags: []string{
+			"--enable-static",
+			"--disable-shared",
+		}},
+	},
 }
 
 func (r *GraphRepository) GetConfigureFlags(name, version string) []string {
@@ -396,7 +426,7 @@ func (r *GraphRepository) SharedOnlyExtensions(phpVersion string, requested []st
 	return result
 }
 
-func (r *GraphRepository) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
+func (r *GraphRepository) GetPHPConfigureFlags(phpVersion string, extensions []string, connector domain.ConnectorMode) []string {
 	flags := []string{
 		"--disable-all",
 		"--enable-cli",
@@ -408,6 +438,16 @@ func (r *GraphRepository) GetPHPConfigureFlags(phpVersion string, extensions []s
 		// not available when building PHP from source. The original files
 		// work correctly with the default VM dispatch (CALL).
 		"--disable-maintainer-mode",
+	}
+	// Add webserver connector flags. The {{apxs}} placeholder is resolved by
+	// the caller (assembler) because it needs the installed httpd prefix.
+	switch connector {
+	case domain.ConnectorFPM:
+		flags = append(flags, "--enable-fpm")
+	case domain.ConnectorCGI:
+		flags = append(flags, "--enable-cgi")
+	case domain.ConnectorModPHP:
+		flags = append(flags, "--with-apxs2={{apxs}}")
 	}
 	for _, ext := range extensions {
 		extFlags := r.GetExtensionConfigureFlags(ext, phpVersion)
@@ -808,6 +848,38 @@ func builtInPackages() []domain.Package {
 		},
 		{
 			Package:     "zig",
+			Default:     []domain.Dependency{},
+			Constraints: []domain.VersionConstraint{},
+		},
+		{
+			Package: "httpd",
+			Default: []domain.Dependency{
+				{Name: "apr", Version: "1.7.6"},
+				{Name: "apr-util", Version: "1.6.3"},
+				{Name: "pcre2", Version: "10.44"},
+			},
+			Constraints: []domain.VersionConstraint{},
+		},
+		{
+			Package: "apr-util",
+			Default: []domain.Dependency{
+				{Name: "apr", Version: "1.7.6"},
+				{Name: "expat", Version: "2.6.4"},
+			},
+			Constraints: []domain.VersionConstraint{},
+		},
+		{
+			Package:     "apr",
+			Default:     []domain.Dependency{},
+			Constraints: []domain.VersionConstraint{},
+		},
+		{
+			Package:     "expat",
+			Default:     []domain.Dependency{},
+			Constraints: []domain.VersionConstraint{},
+		},
+		{
+			Package:     "pcre2",
 			Default:     []domain.Dependency{},
 			Constraints: []domain.VersionConstraint{},
 		},

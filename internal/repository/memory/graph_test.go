@@ -19,7 +19,7 @@ func TestGraphRepository_GetOrderedDependencies_PHP7_4(t *testing.T) {
 		"xmlwriter", "zip", "zlib",
 	}
 
-	plan, err := svc.GetBuildPlan("php", "7.4.33", defaults)
+	plan, err := svc.GetBuildPlan("php", "7.4.33", defaults, domain.ConnectorNone)
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 7.4.33) returned error: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestGraphRepository_GetOrderedDependencies_PHP8_1(t *testing.T) {
 		"xmlwriter", "zip", "zlib",
 	}
 
-	plan, err := svc.GetBuildPlan("php", "8.1.0", defaults)
+	plan, err := svc.GetBuildPlan("php", "8.1.0", defaults, domain.ConnectorNone)
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 8.1.0) returned error: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestGetBuildPlan_PHP7_4_HasLibzip(t *testing.T) {
 		"xmlwriter", "zip", "zlib",
 	}
 
-	plan, err := svc.GetBuildPlan("php", "7.4.33", defaults)
+	plan, err := svc.GetBuildPlan("php", "7.4.33", defaults, domain.ConnectorNone)
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 7.4.33) returned error: %v", err)
 	}
@@ -330,7 +330,7 @@ func TestGetBuildPlan_PHP8_1_HasLibzip(t *testing.T) {
 	repo := NewGraphRepository()
 	svc := graph.NewService(repo)
 
-	plan, err := svc.GetBuildPlan("php", "8.1.0", []string{"zip"})
+	plan, err := svc.GetBuildPlan("php", "8.1.0", []string{"zip"}, domain.ConnectorNone)
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 8.1.0) returned error: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestGetBuildPlan_PHP8_4_HasDeps(t *testing.T) {
 		"xmlwriter", "zip", "zlib",
 	}
 
-	plan, err := svc.GetBuildPlan("php", "8.4.0", defaults)
+	plan, err := svc.GetBuildPlan("php", "8.4.0", defaults, domain.ConnectorNone)
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 8.4.0) returned error: %v", err)
 	}
@@ -429,7 +429,7 @@ func TestGetBuildPlan_PHP8_4_DependencyOrdering(t *testing.T) {
 		"xmlwriter", "zip", "zlib",
 	}
 
-	plan, err := svc.GetBuildPlan("php", "8.4.0", defaults)
+	plan, err := svc.GetBuildPlan("php", "8.4.0", defaults, domain.ConnectorNone)
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 8.4.0) returned error: %v", err)
 	}
@@ -472,7 +472,7 @@ func TestGetBuildPlan_PHP8_2_HasDeps(t *testing.T) {
 		"xmlwriter", "zip", "zlib",
 	}
 
-	plan, err := svc.GetBuildPlan("php", "8.2.1", defaults)
+	plan, err := svc.GetBuildPlan("php", "8.2.1", defaults, domain.ConnectorNone)
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 8.2.1) returned error: %v", err)
 	}
@@ -498,7 +498,7 @@ func TestGetBuildPlan_Minimal_NoDeps(t *testing.T) {
 	repo := NewGraphRepository()
 	svc := graph.NewService(repo)
 
-	plan, err := svc.GetBuildPlan("php", "8.4.0", nil)
+	plan, err := svc.GetBuildPlan("php", "8.4.0", nil, domain.ConnectorNone)
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 8.4.0, nil) returned error: %v", err)
 	}
@@ -544,7 +544,7 @@ func TestGetBuildPlan_ImpliedChains(t *testing.T) {
 	svc := graph.NewService(repo)
 
 	// Request only 'dom' — it should imply 'libxml' ext, which requires 'libxml2' pkg.
-	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"dom"})
+	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"dom"}, domain.ConnectorNone)
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 8.4.0, [dom]) returned error: %v", err)
 	}
@@ -559,4 +559,76 @@ func TestGetBuildPlan_ImpliedChains(t *testing.T) {
 	} else if v != "2.12.7|~2.12.0" {
 		t.Errorf("libxml2 version = %q, want %q", v, "2.12.7|~2.12.0")
 	}
+}
+
+func TestGetPHPConfigureFlags_Connector(t *testing.T) {
+	repo := NewGraphRepository()
+
+	none := repo.GetPHPConfigureFlags("8.4.0", nil, domain.ConnectorNone)
+	if !contains(none, "--enable-fpm") && !contains(none, "--enable-cgi") && !contains(none, "--with-apxs2") {
+		// none is the default; just ensure base flags present
+	}
+	if !contains(none, "--enable-cli") {
+		t.Errorf("none connector should include --enable-cli, got %v", none)
+	}
+
+	fpm := repo.GetPHPConfigureFlags("8.4.0", nil, domain.ConnectorFPM)
+	if !contains(fpm, "--enable-fpm") {
+		t.Errorf("fpm connector should include --enable-fpm, got %v", fpm)
+	}
+
+	cgi := repo.GetPHPConfigureFlags("8.4.0", nil, domain.ConnectorCGI)
+	if !contains(cgi, "--enable-cgi") {
+		t.Errorf("cgi connector should include --enable-cgi, got %v", cgi)
+	}
+
+	mod := repo.GetPHPConfigureFlags("8.4.0", nil, domain.ConnectorModPHP)
+	if !contains(mod, "--with-apxs2={{apxs}}") {
+		t.Errorf("mod_php connector should include --with-apxs2={{apxs}}, got %v", mod)
+	}
+}
+
+func contains(flags []string, want string) bool {
+	for _, f := range flags {
+		if f == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestGetPHPConfigureFlags_ConnectorModes(t *testing.T) {
+	repo := NewGraphRepository()
+
+	got := repo.GetPHPConfigureFlags("8.4.0", []string{"curl"}, domain.ConnectorFPM)
+	if !sliceContains(got, "--enable-fpm") {
+		t.Errorf("FPM connector missing --enable-fpm, got %v", got)
+	}
+	if !sliceContains(got, "--enable-cli") {
+		t.Errorf("FPM connector missing --enable-cli, got %v", got)
+	}
+
+	got = repo.GetPHPConfigureFlags("8.4.0", nil, domain.ConnectorCGI)
+	if !sliceContains(got, "--enable-cgi") {
+		t.Errorf("CGI connector missing --enable-cgi, got %v", got)
+	}
+
+	got = repo.GetPHPConfigureFlags("8.4.0", nil, domain.ConnectorModPHP)
+	if !sliceContains(got, "--with-apxs2={{apxs}}") {
+		t.Errorf("mod_php connector missing --with-apxs2 placeholder, got %v", got)
+	}
+
+	got = repo.GetPHPConfigureFlags("8.4.0", nil, domain.ConnectorNone)
+	if sliceContains(got, "--enable-fpm") || sliceContains(got, "--enable-cgi") {
+		t.Errorf("none connector should not add webserver flags, got %v", got)
+	}
+}
+
+func sliceContains(slice []string, want string) bool {
+	for _, s := range slice {
+		if s == want {
+			return true
+		}
+	}
+	return false
 }

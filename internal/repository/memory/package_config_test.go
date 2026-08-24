@@ -1,4 +1,4 @@
-package repository
+package memory
 
 import (
 	"reflect"
@@ -11,7 +11,7 @@ func TestBuildRegistries_FromRanges(t *testing.T) {
 	cfg := PackageConfig{
 		Name:        "php",
 		Type:        "source_code",
-		Ranges:      BuildMinorRanges(8, []MinorRange{{Minor: 0, PatchEnd: 2}}),
+		Ranges:      domain.BuildMinorRanges(8, []domain.MinorRange{{Minor: 0, PatchEnd: 2}}),
 		URLTemplate: "https://php.net/distributions/php-{version}.tar.gz",
 	}
 	got := BuildRegistries(cfg)
@@ -126,7 +126,7 @@ func TestBuildRegistries_Skip(t *testing.T) {
 	cfg := PackageConfig{
 		Name:        "php",
 		Type:        "source_code",
-		Ranges:      BuildMinorRanges(8, []MinorRange{{Minor: 0, PatchEnd: 2}}),
+		Ranges:      domain.BuildMinorRanges(8, []domain.MinorRange{{Minor: 0, PatchEnd: 2}}),
 		Skip:        []string{"8.0.1"},
 		URLTemplate: "https://php.net/distributions/php-{version}.tar.gz",
 	}

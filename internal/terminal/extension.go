@@ -113,7 +113,7 @@ func (h *PHPHandler) extensionList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("get extension manifest: %w", err)
 	}
 
-	allExts := h.assemblerSvc.Graph().ListExtensionsForPHP(version)
+	allExts := h.assemblerSvc.ListExtensionsForPHP(version)
 	extMap := make(map[string]domain.ExtensionInfo)
 	for _, e := range allExts {
 		extMap[e.Name] = e
@@ -259,7 +259,7 @@ func (h *PHPHandler) extensionAvailable(cmd *cobra.Command, args []string) error
 	if err != nil {
 		return err
 	}
-	exts := h.assemblerSvc.Graph().ListExtensionsForPHP(version)
+	exts := h.assemblerSvc.ListExtensionsForPHP(version)
 
 	if jsonFlag {
 		var entries []extAvailEntry

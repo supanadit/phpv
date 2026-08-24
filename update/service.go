@@ -27,8 +27,7 @@ func (s *Service) CheckForUpdate() (latest string, hasUpdate bool, err error) {
 	if s.version == "dev" || s.version == "" {
 		return latest, true, nil
 	}
-	if s.version == latest {
-		return latest, false, nil
+	if s.version == latest {		return latest, false, nil
 	}
 	return latest, true, nil
 }

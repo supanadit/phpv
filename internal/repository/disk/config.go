@@ -6,6 +6,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 	"github.com/supanadit/phpv/config"
+	"github.com/supanadit/phpv/internal/repository"
 )
 
 type ConfigRepository struct {
@@ -13,7 +14,7 @@ type ConfigRepository struct {
 }
 
 func NewConfigRepository() *ConfigRepository {
-	root := resolveRoot()
+	root := repository.ResolveRoot()
 	return &ConfigRepository{root: root}
 }
 

@@ -1,4 +1,4 @@
-package repository
+package memory
 
 import (
 	"strings"
@@ -65,7 +65,7 @@ type URLOverride struct {
 type PackageConfig struct {
 	Name         string
 	Type         string
-	Ranges       []VersionRange
+	Ranges       []domain.VersionRange
 	Versions     []string
 	Skip         []string
 	URLTemplate  string
@@ -76,7 +76,7 @@ type PackageConfig struct {
 }
 
 // BuildRegistries generates domain.Registry entries from a PackageConfig.
-// If Ranges is provided, versions are generated via GenerateVersions.
+// If Ranges is provided, versions are generated via domain.GenerateVersions.
 // Otherwise, Versions is used directly.
 // Each version's URL is built from URLTemplate with {version} and {ext}
 // placeholders resolved. The OS field is set from cfg.OS, defaulting to
@@ -84,7 +84,7 @@ type PackageConfig struct {
 func BuildRegistries(cfg PackageConfig) []domain.Registry {
 	var versions []string
 	if len(cfg.Ranges) > 0 {
-		versions = GenerateVersions(cfg.Ranges, cfg.Skip)
+		versions = domain.GenerateVersions(cfg.Ranges, cfg.Skip)
 	} else {
 		versions = cfg.Versions
 	}
@@ -103,12 +103,12 @@ func BuildRegistries(cfg PackageConfig) []domain.Registry {
 	for _, v := range versions {
 		tmpl := cfg.URLTemplate
 		for _, override := range cfg.URLOverrides {
-			if CompareVersions(v, override.Before) < 0 {
+			if domain.CompareVersions(v, override.Before) < 0 {
 				tmpl = override.URL
 				break
 			}
 		}
-		url := RenderTemplate(tmpl, v)
+		url := domain.RenderTemplate(tmpl, v)
 		if cfg.Extension.Default != "" {
 			ext := resolveExtension(cfg.Extension, v)
 			url = strings.ReplaceAll(url, "{ext}", ext)
@@ -134,7 +134,7 @@ func BuildRegistries(cfg PackageConfig) []domain.Registry {
 // matching Ext. If no override matches, Default is returned.
 func resolveExtension(cfg ExtensionConfig, version string) string {
 	for _, rule := range cfg.Override {
-		if CompareVersions(version, rule.Before) < 0 {
+		if domain.CompareVersions(version, rule.Before) < 0 {
 			return rule.Ext
 		}
 	}

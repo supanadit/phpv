@@ -1,4 +1,4 @@
-package repository
+package domain
 
 import (
 	"reflect"
@@ -140,6 +140,29 @@ func TestParseVersion(t *testing.T) {
 		got := ParseVersion(tt.input)
 		if !reflect.DeepEqual(got, tt.want) {
 			t.Fatalf("ParseVersion(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestMatchVersionRange(t *testing.T) {
+	tests := []struct {
+		rangeStr string
+		version  string
+		want     bool
+	}{
+		{">=8.1.0,<8.2.0", "8.1.5", true},
+		{">=8.1.0,<8.2.0", "8.2.0", false},
+		{"~6.9.0", "6.9.3", true},
+		{"~6.9.0", "6.10.0", false},
+		{"^8.0", "8.5.1", true},
+		{"^8.0", "9.0.0", false},
+		{"=7.4.0", "7.4.0", true},
+		{"=7.4.0", "7.4.1", false},
+	}
+	for _, tt := range tests {
+		got := MatchVersionRange(tt.rangeStr, tt.version)
+		if got != tt.want {
+			t.Fatalf("MatchVersionRange(%q, %q) = %v, want %v", tt.rangeStr, tt.version, got, tt.want)
 		}
 	}
 }

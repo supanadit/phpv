@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
@@ -14,10 +16,8 @@ import (
 	"github.com/supanadit/phpv/doctor"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/graph"
-	"github.com/supanadit/phpv/internal/appctx"
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/internal/repository/memory"
-	"github.com/supanadit/phpv/internal/shutdown"
 	"github.com/supanadit/phpv/internal/terminal"
 	"github.com/supanadit/phpv/patcher"
 	"github.com/supanadit/phpv/pecl"
@@ -28,7 +28,7 @@ import (
 	"github.com/supanadit/phpv/update"
 )
 
-var Version = "dev"
+var version = "dev"
 
 func NewRootCmd() *cobra.Command {
 	return &cobra.Command{
@@ -46,18 +46,13 @@ func RegisterRootCmd(rootCmd *cobra.Command, lc fx.Lifecycle) {
 }
 
 func main() {
-	mgr := shutdown.New(shutdown.DefaultSignals...)
-	shutdownCtx := mgr.Context()
-
-	go func() {
-		sig := mgr.Wait()
-		shutdown.PrintInterrupted(sig)
-	}()
+	ctx, stop := signal.NotifyContext(context.Background(),
+		syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	defer stop()
 
 	options := []fx.Option{
 		fx.NopLogger,
-		fx.Supply(Version),
-		fx.Supply(appctx.AppContext{Ctx: shutdownCtx}),
+		fx.Supply(version),
 		fx.Provide(
 			NewRootCmd,
 			fx.Annotate(memory.NewRegistryRepository, fx.As(new(registry.RegistryRepository))),
@@ -76,29 +71,26 @@ func main() {
 			fx.Annotate(disk.NewDoctorRepository, fx.As(new(doctor.Repository))),
 			doctor.NewService,
 			fx.Annotate(disk.NewUpdateRepository, fx.As(new(update.Repository))),
-			func(repo update.Repository) *update.Service {
-				return update.NewService(repo, Version)
-			},
+			update.NewService,
 			assembler.NewService,
 			forge.NewService,
 			patcher.NewService,
 			graph.NewService,
 		),
 		fx.Invoke(
-			terminal.NewPHPHandler,
+			func(rootCmd *cobra.Command, lc fx.Lifecycle, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service, systemSvc *system.Service, shimSvc *shim.Service, peclSvc *pecl.Service, configSvc *config.Service, doctorSvc *doctor.Service, updateSvc *update.Service) {
+				terminal.NewPHPHandler(rootCmd, lc, siloSvc, assemblerSvc, registrySvc, bundleSvc, systemSvc, shimSvc, peclSvc, configSvc, doctorSvc, updateSvc, version)
+			},
 			RegisterRootCmd,
 		),
 	}
 
 	app := fx.New(options...)
 
-	if err := app.Start(context.Background()); err != nil {
-		mgr.Stop()
+	if err := app.Start(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-
-	mgr.Stop()
 
 	if err := app.Stop(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, err)

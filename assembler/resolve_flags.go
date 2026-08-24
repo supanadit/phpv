@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/repository"
 )
 
 // resolveDepPlaceholders replaces {{dep:NAME}} placeholders in configure flags
@@ -202,7 +201,7 @@ func (s *Service) findDepPrefix(deps []domain.Dependency, depName, sentinelPath 
 		if constraint != "" {
 			filtered := candidates[:0]
 			for _, c := range candidates {
-				if repository.MatchVersionRange(constraint, c) {
+				if domain.MatchVersionRange(constraint, c) {
 					filtered = append(filtered, c)
 				}
 			}

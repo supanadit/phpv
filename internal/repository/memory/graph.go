@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/repository"
 )
 
 type configureFlagRule struct {
@@ -118,10 +117,10 @@ func (r *GraphRepository) IsExtensionValidForPHPVersion(name, phpVersion string)
 	if !ok {
 		return false
 	}
-	if def.MinPHPVersion != "" && repository.CompareVersions(phpVersion, def.MinPHPVersion) < 0 {
+	if def.MinPHPVersion != "" && domain.CompareVersions(phpVersion, def.MinPHPVersion) < 0 {
 		return false
 	}
-	if def.MaxPHPVersion != "" && repository.CompareVersions(phpVersion, def.MaxPHPVersion) > 0 {
+	if def.MaxPHPVersion != "" && domain.CompareVersions(phpVersion, def.MaxPHPVersion) > 0 {
 		return false
 	}
 	return true
@@ -148,7 +147,7 @@ func (r *GraphRepository) GetExtensionDependencyWithVersion(extName, phpVersion 
 		return "", "", false
 	}
 	for _, v := range def.Versions {
-		if repository.MatchVersionRange(v.VersionRange, phpVersion) {
+		if domain.MatchVersionRange(v.VersionRange, phpVersion) {
 			return def.RequiresPackage, v.Version, true
 		}
 	}
@@ -272,8 +271,8 @@ func (r *GraphRepository) GetConfigureFlags(name, version string) []string {
 		return nil
 	}
 	for _, rule := range rules {
-		minOK := rule.MinVer == "" || repository.CompareVersions(version, rule.MinVer) >= 0
-		maxOK := rule.MaxVer == "" || repository.CompareVersions(version, rule.MaxVer) <= 0
+		minOK := rule.MinVer == "" || domain.CompareVersions(version, rule.MinVer) >= 0
+		maxOK := rule.MaxVer == "" || domain.CompareVersions(version, rule.MaxVer) <= 0
 		if minOK && maxOK {
 			return rule.Flags
 		}
@@ -314,11 +313,11 @@ func (r *GraphRepository) DefaultExtensions(phpVersion string) ([]string, []stri
 			skipped = append(skipped, name+" (not found in registry)")
 			continue
 		}
-		if def.MinPHPVersion != "" && repository.CompareVersions(phpVersion, def.MinPHPVersion) < 0 {
+		if def.MinPHPVersion != "" && domain.CompareVersions(phpVersion, def.MinPHPVersion) < 0 {
 			skipped = append(skipped, name+" (requires PHP "+def.MinPHPVersion+"+)")
 			continue
 		}
-		if def.MaxPHPVersion != "" && repository.CompareVersions(phpVersion, def.MaxPHPVersion) > 0 {
+		if def.MaxPHPVersion != "" && domain.CompareVersions(phpVersion, def.MaxPHPVersion) > 0 {
 			skipped = append(skipped, name+" (not available in PHP "+def.MaxPHPVersion+"+)")
 			continue
 		}
@@ -349,7 +348,7 @@ func (r *GraphRepository) DefaultExtensions(phpVersion string) ([]string, []stri
 // (IsBuiltIn: false, needs phpize). Always check IsBuiltIn explicitly.
 func isBuiltInForVersion(def domain.ExtensionDef, phpVersion string) bool {
 	for _, fv := range def.FlagVersions {
-		if fv.IsBuiltIn && repository.MatchVersionRange(fv.VersionRange, phpVersion) {
+		if fv.IsBuiltIn && domain.MatchVersionRange(fv.VersionRange, phpVersion) {
 			return true
 		}
 	}
@@ -387,7 +386,7 @@ func (r *GraphRepository) SharedOnlyExtensions(phpVersion string, requested []st
 			continue
 		}
 		for _, fv := range def.FlagVersions {
-			if fv.Flag == "" && repository.MatchVersionRange(fv.VersionRange, phpVersion) {
+			if fv.Flag == "" && domain.MatchVersionRange(fv.VersionRange, phpVersion) {
 				result = append(result, name)
 				break
 			}
@@ -439,7 +438,7 @@ func (r *GraphRepository) GetExtensionConfigureFlags(name string, phpVersion str
 	// Start with the default flag, then check FlagVersions for an override.
 	flag := def.Flag
 	for _, fv := range def.FlagVersions {
-		if repository.MatchVersionRange(fv.VersionRange, phpVersion) {
+		if domain.MatchVersionRange(fv.VersionRange, phpVersion) {
 			flag = fv.Flag
 			break
 		}
@@ -466,7 +465,7 @@ func (r *GraphRepository) getDependencies(name string, version string) ([]domain
 	}
 
 	for _, c := range pkg.Constraints {
-		if repository.MatchVersionRange(c.VersionRange, version) {
+		if domain.MatchVersionRange(c.VersionRange, version) {
 			return c.Dependencies, nil
 		}
 	}

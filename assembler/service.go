@@ -15,8 +15,6 @@ import (
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/graph"
-	"github.com/supanadit/phpv/internal/repository"
-	"github.com/supanadit/phpv/internal/repository/memory"
 	"github.com/supanadit/phpv/patcher"
 	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/silo"
@@ -70,6 +68,31 @@ func NewService(g *graph.Service, s *silo.Service, f *forge.Service, p *patcher.
 // Graph returns the graph service used by the assembler.
 func (s *Service) Graph() *graph.Service {
 	return s.graph
+}
+
+// ListExtensionsForPHP delegates to the graph service.
+func (s *Service) ListExtensionsForPHP(phpVersion string) []domain.ExtensionInfo {
+	return s.graph.ListExtensionsForPHP(phpVersion)
+}
+
+// DefaultExtensions delegates to the graph service.
+func (s *Service) DefaultExtensions(phpVersion string) (included []string, skipped []string) {
+	return s.graph.DefaultExtensions(phpVersion)
+}
+
+// ExpandImplied delegates to the graph service.
+func (s *Service) ExpandImplied(extensions []string) (expanded []string, added []string) {
+	return s.graph.ExpandImplied(extensions)
+}
+
+// SharedOnlyExtensions delegates to the graph service.
+func (s *Service) SharedOnlyExtensions(phpVersion string, requested []string) []string {
+	return s.graph.SharedOnlyExtensions(phpVersion, requested)
+}
+
+// GetExtensionDef delegates to the graph service.
+func (s *Service) GetExtensionDef(name string) (domain.ExtensionDef, bool) {
+	return s.graph.GetExtensionDef(name)
 }
 
 // Assemble runs the full pipeline for (name, version).
@@ -219,7 +242,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 			if sysPkg, ok := systemPkgs[dep.Name]; ok && sysPkg.Installed && sysPkg.Version != "" {
 				sysCompat := true
 				if constraint != "" {
-					sysCompat = repository.MatchVersionRange(constraint, sysPkg.Version)
+					sysCompat = domain.MatchVersionRange(constraint, sysPkg.Version)
 				}
 				if sysCompat {
 					emit("system-use", fmt.Sprintf("Using system %s@%s (satisfies %s)", dep.Name, sysPkg.Version, constraint))
@@ -315,7 +338,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		allCFlags = append(allCFlags, plan.CompilerFlags...)
 		env = setEnvVar(env, "CFLAGS", strings.Join(allCFlags, " "))
 		compilerRule := s.graph.GetCompilerStdRule(version)
-		cxxflags := memory.CXXFlagsFromCFlagsWithStd(allCFlags, true, compilerRule)
+		cxxflags := graph.CXXFlagsFromCFlagsWithStd(allCFlags, true, compilerRule)
 		cxxflags = append(cxxflags, plan.CXXCompilerFlags...)
 		env = setEnvVar(env, "CXXFLAGS", strings.Join(cxxflags, " "))
 	}
@@ -801,7 +824,7 @@ func (s *Service) computeMustBuild(deps []domain.Dependency, systemPkgs map[stri
 			continue
 		}
 		if sysPkg, ok := systemPkgs[dep.Name]; ok && sysPkg.Installed && sysPkg.Version != "" {
-			if !repository.MatchVersionRange(constraint, sysPkg.Version) {
+			if !domain.MatchVersionRange(constraint, sysPkg.Version) {
 				mustBuild[dep.Name] = true
 			}
 		}
@@ -829,7 +852,7 @@ func shouldDownloadDep(dep domain.Dependency, mustBuild map[string]bool, systemP
 		return true
 	}
 	if sysPkg, ok := systemPkgs[dep.Name]; ok && sysPkg.Installed && sysPkg.Version != "" {
-		if repository.MatchVersionRange(constraint, sysPkg.Version) {
+		if domain.MatchVersionRange(constraint, sysPkg.Version) {
 			return false
 		}
 	}

@@ -1,6 +1,6 @@
 package patcher
 
-import "github.com/supanadit/phpv/internal/repository"
+import "github.com/supanadit/phpv/domain"
 
 // Patch describes a single source modification applied to extracted source code
 // before building. Patches are needed when upstream packages cannot build on
@@ -59,7 +59,7 @@ func (s *Service) PatchesFor(name string, version string) []Patch {
 	}
 	filtered := make([]Patch, 0, len(all))
 	for _, p := range all {
-		if p.VersionRange == "" || repository.MatchVersionRange(p.VersionRange, version) {
+		if p.VersionRange == "" || domain.MatchVersionRange(p.VersionRange, version) {
 			filtered = append(filtered, p)
 		}
 	}

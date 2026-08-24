@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/repository"
 )
 
 type RegistryRepository struct{}
@@ -16,12 +15,12 @@ func NewRegistryRepository() *RegistryRepository {
 func (reg *RegistryRepository) List(name string, checksum bool, os string) (result []domain.Registry, err error) {
 	switch name {
 	case "php":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "php",
 			Type: "source_code",
 			OS:   "all",
-			Ranges: repository.BuildRanges(
-				repository.BuildMinorRanges(8, []repository.MinorRange{
+			Ranges: domain.BuildRanges(
+				domain.BuildMinorRanges(8, []domain.MinorRange{
 					{Minor: 0, PatchEnd: 30},
 					{Minor: 1, PatchEnd: 33},
 					{Minor: 2, PatchEnd: 33},
@@ -29,14 +28,14 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 					{Minor: 4, PatchEnd: 24},
 					{Minor: 5, PatchEnd: 9},
 				}),
-				repository.BuildMinorRanges(7, []repository.MinorRange{
+				domain.BuildMinorRanges(7, []domain.MinorRange{
 					{Minor: 0, PatchEnd: 33},
 					{Minor: 1, PatchEnd: 33},
 					{Minor: 2, PatchEnd: 34},
 					{Minor: 3, PatchEnd: 33},
 					{Minor: 4, PatchEnd: 33},
 				}),
-				repository.BuildMinorRanges(5, []repository.MinorRange{
+				domain.BuildMinorRanges(5, []domain.MinorRange{
 					{Minor: 0, PatchEnd: 5},
 					{Minor: 1, PatchEnd: 6},
 					{Minor: 2, PatchEnd: 17},
@@ -45,7 +44,7 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 					{Minor: 5, PatchEnd: 38},
 					{Minor: 6, PatchEnd: 40},
 				}),
-				repository.BuildMinorRanges(4, []repository.MinorRange{
+				domain.BuildMinorRanges(4, []domain.MinorRange{
 					{Minor: 0, PatchEnd: 6},
 					{Minor: 1, PatchEnd: 2},
 					{Minor: 2, PatchEnd: 3},
@@ -54,11 +53,11 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				}),
 			),
 			URLTemplate: "https://www.php.net/distributions/php-{version}.tar.gz",
-			URLOverrides: []repository.URLOverride{
+			URLOverrides: []URLOverride{
 				{Before: "5.0.0", URL: "https://museum.php.net/php4/php-{version}.tar.gz"},
 				{Before: "5.3.0", URL: "https://museum.php.net/php5/php-{version}.tar.gz"},
 			},
-			Checksums: []repository.Checksum{
+			Checksums: []Checksum{
 				{
 					Version: "8.5.8",
 					Type:    "sha256",
@@ -68,12 +67,12 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 		})
 
 	case "cmake":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "cmake",
 			Type: "binary",
 			OS:   "linux",
-			Ranges: repository.BuildRanges(
-				repository.BuildMinorRanges(3, []repository.MinorRange{
+			Ranges: domain.BuildRanges(
+				domain.BuildMinorRanges(3, []domain.MinorRange{
 					{Minor: 21, PatchEnd: 4},
 					{Minor: 22, PatchEnd: 1},
 					{Minor: 23, PatchEnd: 3},
@@ -87,7 +86,7 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 		})
 
 	case "libzip":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "libzip",
 			Type: "source_code",
 			OS:   "all",
@@ -98,7 +97,7 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 		})
 
 	case "perl":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "perl",
 			Type: "source_code",
 			OS:   "all",
@@ -110,16 +109,16 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				"5.4.50",
 			},
 			URLTemplate: "https://www.cpan.org/src/5.0/perl-{version}.{ext}",
-			Extension: repository.ExtensionConfig{
+			Extension: ExtensionConfig{
 				Default: "tar.gz",
-				Override: []repository.ExtOverride{
+				Override: []ExtOverride{
 					{Before: "5.20.0", Ext: "tar.bz2"},
 				},
 			},
 		})
 
 	case "openssl":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "openssl",
 			Type: "source_code",
 			OS:   "all",
@@ -136,13 +135,13 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				"0.9.8zh", "0.9.8zc",
 			},
 			URLTemplate: "https://www.openssl.org/source/openssl-{version}.tar.gz",
-			Checksums: []repository.Checksum{
+			Checksums: []Checksum{
 				{Version: "1.1.1w", Type: "sha256", Value: "cf3098950cb4d853ad95c0841f1f9c6d3dc102dccfcacd521d93925208b76ac8"},
 			},
 		})
 
 	case "zlib":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "zlib",
 			Type: "source_code",
 			OS:   "all",
@@ -152,13 +151,13 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				"1.2.5", "1.2.4", "1.2.3", "1.2.2", "1.2.1",
 			},
 			URLTemplate: "https://github.com/madler/zlib/releases/download/v{version}/zlib-{version}.tar.gz",
-			Checksums: []repository.Checksum{
+			Checksums: []Checksum{
 				{Version: "1.3.1", Type: "sha256", Value: "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"},
 			},
 		})
 
 	case "libxml2":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "libxml2",
 			Type: "source_code",
 			OS:   "all",
@@ -168,13 +167,13 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				"2.6.30",
 			},
 			URLTemplate: "https://download.gnome.org/sources/libxml2/{major}.{minor}/libxml2-{version}.tar.xz",
-			Checksums: []repository.Checksum{
+			Checksums: []Checksum{
 				{Version: "2.12.7", Type: "sha256", Value: "24ae78ff1363a973e6d8beba941a7945da2ac056e19b53956aeb6927fd6cfb56"},
 			},
 		})
 
 	case "oniguruma":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "oniguruma",
 			Type: "source_code",
 			OS:   "all",
@@ -183,13 +182,13 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				"5.9.6",
 			},
 			URLTemplate: "https://github.com/kkos/oniguruma/releases/download/v{version}/onig-{version}.tar.gz",
-			Checksums: []repository.Checksum{
+			Checksums: []Checksum{
 				{Version: "6.9.9", Type: "sha256", Value: "60162bd3b9fc6f4886d4c7a07925ffd374167732f55dce8c491bfd9cd818a6cf"},
 			},
 		})
 
 	case "curl":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "curl",
 			Type: "source_code",
 			OS:   "all",
@@ -205,7 +204,7 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 		})
 
 	case "m4":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "m4",
 			Type: "source_code",
 			OS:   "all",
@@ -213,13 +212,13 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				"1.4.19", "1.4.18", "1.4.17", "1.4.16",
 			},
 			URLTemplate: "https://mirror.freedif.org/GNU/m4/m4-{version}.tar.xz",
-			Checksums: []repository.Checksum{
+			Checksums: []Checksum{
 				{Version: "1.4.19", Type: "sha256", Value: "63aede5c6d33b6d9b13511cd0be2cac046f2e70fd0a07aa9573a04a82783af96"},
 			},
 		})
 
 	case "autoconf":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "autoconf",
 			Type: "source_code",
 			OS:   "all",
@@ -228,13 +227,13 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				"2.63", "2.62", "2.61", "2.60", "2.59", "2.13",
 			},
 			URLTemplate: "https://mirror.freedif.org/GNU/autoconf/autoconf-{version}.tar.xz",
-			Checksums: []repository.Checksum{
+			Checksums: []Checksum{
 				{Version: "2.72", Type: "sha256", Value: "ba885c1319578d6c94d46e9b0dceb4014caafe2490e437a0dbca3f270a223f5a"},
 			},
 		})
 
 	case "automake":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "automake",
 			Type: "source_code",
 			OS:   "all",
@@ -249,7 +248,7 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 		})
 
 	case "libtool":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "libtool",
 			Type: "source_code",
 			OS:   "all",
@@ -264,7 +263,7 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 		})
 
 	case "flex":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "flex",
 			Type: "source_code",
 			OS:   "all",
@@ -276,7 +275,7 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 		})
 
 	case "bison":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "bison",
 			Type: "source_code",
 			OS:   "all",
@@ -291,7 +290,7 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 		})
 
 	case "re2c":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "re2c",
 			Type: "source_code",
 			OS:   "all",
@@ -304,7 +303,7 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 		})
 
 	case "icu":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "icu",
 			Type: "source_code",
 			OS:   "all",
@@ -319,7 +318,7 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 		})
 
 	case "zig":
-		result = repository.BuildRegistries(repository.PackageConfig{
+		result = BuildRegistries(PackageConfig{
 			Name: "zig",
 			Type: "binary",
 			OS:   "linux",
@@ -327,7 +326,7 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				"0.14.0", "0.13.0", "0.12.0", "0.11.0",
 			},
 			URLTemplate: "https://ziglang.org/download/{version}/zig-linux-x86_64-{version}.tar.xz",
-			Checksums: []repository.Checksum{
+			Checksums: []Checksum{
 				{Version: "0.14.0", Type: "sha256", Value: "bd4c07e9dfe142d13f1a37ec7c0537e3c6c8c05f4d80c8e5f2d20e0a9c53c1be"},
 			},
 		})

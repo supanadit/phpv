@@ -40,7 +40,7 @@ type SiloRepository struct {
 func NewSiloRepository() *SiloRepository {
 	return &SiloRepository{
 		baseDir: repository.ResolveCacheDir(),
-		root:    resolveRoot(),
+		root:    repository.ResolveRoot(),
 	}
 }
 
@@ -291,7 +291,7 @@ func (s *SiloRepository) GetSilo() domain.Silo {
 
 // GetState reads the install state for a package.
 func (s *SiloRepository) GetState(name, version string) (domain.InstallState, error) {
-	path := PackageStatePath(name, version)
+	path := repository.PackageStatePath(name, version)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -305,7 +305,7 @@ func (s *SiloRepository) GetState(name, version string) (domain.InstallState, er
 
 // MarkInProgress marks a package installation as in-progress.
 func (s *SiloRepository) MarkInProgress(name, version string) error {
-	path := PackageStatePath(name, version)
+	path := repository.PackageStatePath(name, version)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -314,21 +314,21 @@ func (s *SiloRepository) MarkInProgress(name, version string) error {
 
 // MarkComplete marks a package installation as complete.
 func (s *SiloRepository) MarkComplete(name, version string) error {
-	return os.WriteFile(PackageStatePath(name, version), []byte("installed"), 0o644)
+	return os.WriteFile(repository.PackageStatePath(name, version), []byte("installed"), 0o644)
 }
 
 // MarkFailed marks a package installation as failed.
 func (s *SiloRepository) MarkFailed(name, version string) error {
-	return os.WriteFile(PackageStatePath(name, version), []byte("failed"), 0o644)
+	return os.WriteFile(repository.PackageStatePath(name, version), []byte("failed"), 0o644)
 }
 
 func (s *SiloRepository) MarkInterrupted(name, version string) error {
-	return os.WriteFile(PackageStatePath(name, version), []byte("interrupted"), 0o644)
+	return os.WriteFile(repository.PackageStatePath(name, version), []byte("interrupted"), 0o644)
 }
 
 // GetDefault reads the default PHP version.
 func (s *SiloRepository) GetDefault() (string, error) {
-	data, err := os.ReadFile(DefaultPath())
+	data, err := os.ReadFile(repository.DefaultPath())
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", nil
@@ -340,18 +340,18 @@ func (s *SiloRepository) GetDefault() (string, error) {
 
 // SetDefault writes the default PHP version.
 func (s *SiloRepository) SetDefault(version string) error {
-	return os.WriteFile(DefaultPath(), []byte(version+"\n"), 0o644)
+	return os.WriteFile(repository.DefaultPath(), []byte(version+"\n"), 0o644)
 }
 
 // IsSystemMode returns true if the .phpv_system marker exists.
 func (s *SiloRepository) IsSystemMode() bool {
-	_, err := os.Stat(SystemMarkerPath())
+	_, err := os.Stat(repository.SystemMarkerPath())
 	return err == nil
 }
 
 // SetSystemMode creates or removes the .phpv_system marker.
 func (s *SiloRepository) SetSystemMode(enabled bool) error {
-	path := SystemMarkerPath()
+	path := repository.SystemMarkerPath()
 	if enabled {
 		return os.WriteFile(path, []byte{}, 0o644)
 	}
@@ -363,32 +363,32 @@ func (s *SiloRepository) SetSystemMode(enabled bool) error {
 
 // PHPOutputPath returns the install prefix for a PHP version.
 func (s *SiloRepository) PHPOutputPath(phpVersion string) string {
-	return PHPOutputPath(phpVersion)
+	return repository.PHPOutputPath(phpVersion)
 }
 
 // SourcePath returns the extracted source directory for a package.
 func (s *SiloRepository) SourcePath(pkg, version string) string {
-	return SourcePath(pkg, version)
+	return repository.SourcePath(pkg, version)
 }
 
 // PackagePrefix returns the install prefix for any package.
 func (s *SiloRepository) PackagePrefix(name, version string) string {
-	return PackagePrefix(name, version)
+	return repository.PackagePrefix(name, version)
 }
 
 // PECLArchivePath returns the download cache path for a PECL archive.
 func (s *SiloRepository) PECLArchivePath(name, version string) string {
-	return PECLArchivePath(name, version)
+	return repository.PECLArchivePath(name, version)
 }
 
 // BuildLogPath returns the path to a build log file.
 func (s *SiloRepository) BuildLogPath(pkg, version, logName string) string {
-	return BuildLogPath(pkg, version, logName)
+	return repository.BuildLogPath(pkg, version, logName)
 }
 
 // GetExtensionManifest reads the extension manifest for a PHP version.
 func (s *SiloRepository) GetExtensionManifest(phpVersion string) (*domain.ExtensionManifest, error) {
-	path := ExtensionManifestPath(phpVersion)
+	path := repository.ExtensionManifestPath(phpVersion)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -405,7 +405,7 @@ func (s *SiloRepository) GetExtensionManifest(phpVersion string) (*domain.Extens
 
 // SaveExtensionManifest writes the extension manifest for a PHP version.
 func (s *SiloRepository) SaveExtensionManifest(phpVersion string, m *domain.ExtensionManifest) error {
-	path := ExtensionManifestPath(phpVersion)
+	path := repository.ExtensionManifestPath(phpVersion)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}

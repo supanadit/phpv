@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/supanadit/phpv/internal/repository"
 )
 
 func TestSiloRepository_GetState_None(t *testing.T) {
@@ -196,34 +198,34 @@ func TestSiloPaths_WithPHPVRoot(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PHPV_ROOT", dir)
 
-	if got := RootPath(); got != dir {
+	if got := repository.RootPath(); got != dir {
 		t.Fatalf("RootPath = %q, want %q", got, dir)
 	}
-	if got := CachePath(); got != filepath.Join(dir, "caches") {
+	if got := repository.CachePath(); got != filepath.Join(dir, "caches") {
 		t.Fatalf("CachePath = %q, want %q", got, filepath.Join(dir, "caches"))
 	}
-	if got := SourcesPath(); got != filepath.Join(dir, "sources") {
+	if got := repository.SourcesPath(); got != filepath.Join(dir, "sources") {
 		t.Fatalf("SourcesPath = %q, want %q", got, filepath.Join(dir, "sources"))
 	}
-	if got := SourcePath("php", "8.4.0"); got != filepath.Join(dir, "sources", "php", "8.4.0") {
+	if got := repository.SourcePath("php", "8.4.0"); got != filepath.Join(dir, "sources", "php", "8.4.0") {
 		t.Fatalf("SourcePath = %q, want %q", got, filepath.Join(dir, "sources", "php", "8.4.0"))
 	}
-	if got := VersionPath("8.4.0"); got != filepath.Join(dir, "versions", "8.4.0") {
+	if got := repository.VersionPath("8.4.0"); got != filepath.Join(dir, "versions", "8.4.0") {
 		t.Fatalf("VersionPath = %q, want %q", got, filepath.Join(dir, "versions", "8.4.0"))
 	}
-	if got := PHPOutputPath("8.4.0"); got != filepath.Join(dir, "packages", "php", "8.4.0") {
+	if got := repository.PHPOutputPath("8.4.0"); got != filepath.Join(dir, "packages", "php", "8.4.0") {
 		t.Fatalf("PHPOutputPath = %q, want %q", got, filepath.Join(dir, "packages", "php", "8.4.0"))
 	}
-	if got := PackagePrefix("openssl", "1.1.1w"); got != filepath.Join(dir, "packages", "openssl", "1.1.1w") {
+	if got := repository.PackagePrefix("openssl", "1.1.1w"); got != filepath.Join(dir, "packages", "openssl", "1.1.1w") {
 		t.Fatalf("PackagePrefix = %q, want %q", got, filepath.Join(dir, "packages", "openssl", "1.1.1w"))
 	}
-	if got := BinPath(); got != filepath.Join(dir, "bin") {
+	if got := repository.BinPath(); got != filepath.Join(dir, "bin") {
 		t.Fatalf("BinPath = %q, want %q", got, filepath.Join(dir, "bin"))
 	}
-	if got := PackageStatePath("php", "8.4.0"); got != filepath.Join(dir, "packages", "php", "8.4.0", ".state") {
+	if got := repository.PackageStatePath("php", "8.4.0"); got != filepath.Join(dir, "packages", "php", "8.4.0", ".state") {
 		t.Fatalf("PackageStatePath = %q, want %q", got, filepath.Join(dir, "packages", "php", "8.4.0", ".state"))
 	}
-	if got := DefaultPath(); got != filepath.Join(dir, "default") {
+	if got := repository.DefaultPath(); got != filepath.Join(dir, "default") {
 		t.Fatalf("DefaultPath = %q, want %q", got, filepath.Join(dir, "default"))
 	}
 }
@@ -234,7 +236,7 @@ func TestSiloPaths_WithoutPHPVRoot(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	expected := filepath.Join(home, ".phpv")
-	if got := RootPath(); got != expected {
+	if got := repository.RootPath(); got != expected {
 		t.Fatalf("RootPath = %q, want %q", got, expected)
 	}
 }
@@ -248,7 +250,7 @@ func TestSiloPaths_StatePathCreatesDir(t *testing.T) {
 		t.Fatalf("MarkInProgress: %v", err)
 	}
 
-	stateFile := PackageStatePath("php", "8.4.0")
+	stateFile := repository.PackageStatePath("php", "8.4.0")
 	if _, err := os.Stat(stateFile); os.IsNotExist(err) {
 		t.Fatalf("state file %s should exist", stateFile)
 	}

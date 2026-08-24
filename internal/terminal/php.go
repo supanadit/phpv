@@ -15,40 +15,113 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"go.uber.org/fx"
 	"github.com/supanadit/phpv/assembler"
-	"github.com/supanadit/phpv/bundle"
-	"github.com/supanadit/phpv/config"
 	"github.com/supanadit/phpv/doctor"
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/appctx"
-	"github.com/supanadit/phpv/internal/repository"
 	"github.com/supanadit/phpv/pecl"
-	"github.com/supanadit/phpv/registry"
-	"github.com/supanadit/phpv/shim"
-	"github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/system"
-	"github.com/supanadit/phpv/update"
 )
+
+// SiloService is the set of silo operations the terminal handler needs.
+type SiloService interface {
+	Download(name, version string) (bool, error)
+	DownloadURL(url, checksumType, checksumValue string) (bool, error)
+	Extract(archivePath, destDir string) (bool, error)
+	GetSilo() domain.Silo
+	GetState(name, version string) (domain.InstallState, error)
+	GetDefault() (string, error)
+	SetDefault(version string) error
+	PackagePrefix(name, version string) string
+	SourcePath(pkg, version string) string
+	GetExtensionManifest(phpVersion string) (*domain.ExtensionManifest, error)
+	SaveExtensionManifest(phpVersion string, m *domain.ExtensionManifest) error
+}
+
+// AssemblerService is the set of assembly operations the terminal handler needs.
+type AssemblerService interface {
+	ResolveVersion(name, constraint string) (string, error)
+	Assemble(ctx context.Context, name, version string, static bool, extensions []string, verbose bool, progress assembler.ProgressFunc, systemPkgs map[string]system.Package, jobs int, force bool) (*assembler.AssemblerResult, error)
+	InstallExtension(ctx context.Context, phpVersion, extName, phpSourceDir, phpPrefix string, jobs int) error
+	RemoveExtension(phpVersion, extName, phpPrefix string) error
+	ListExtensionsForPHP(phpVersion string) []domain.ExtensionInfo
+	DefaultExtensions(phpVersion string) (included []string, skipped []string)
+	ExpandImplied(extensions []string) (expanded []string, added []string)
+	SharedOnlyExtensions(phpVersion string, requested []string) []string
+	GetExtensionDef(name string) (domain.ExtensionDef, bool)
+}
+
+// RegistryService is the set of registry operations the terminal handler needs.
+type RegistryService interface {
+	Get(name, version string) (domain.Registry, error)
+	List(name string) ([]domain.Registry, error)
+}
+
+// BundleService is the set of bundle operations the terminal handler needs.
+type BundleService interface {
+	Export(phpVersion, outputPath string) error
+	Import(bundlePath, phpVersion string) error
+}
+
+// SystemService is the set of system operations the terminal handler needs.
+type SystemService interface {
+	Check(phpDeps []string) (*system.CheckResult, error)
+	CheckBuildTools(toolNames []string) (*system.CheckResult, error)
+	Install(packages []system.Package) error
+	InstallCommand(packages []system.Package) string
+}
+
+// ShimService is the set of shim operations the terminal handler needs.
+type ShimService interface {
+	RegenerateAll() error
+	WritePhar(name, pharRelPath string) error
+	SetSystemMode(enabled bool) error
+}
+
+// PECLService is the set of PECL operations the terminal handler needs.
+type PECLService interface {
+	Install(ctx context.Context, source, phpVersion string, jobs int) (*pecl.InstallResult, error)
+	List(phpVersion string) ([]domain.ExtensionState, error)
+	Uninstall(name, phpVersion string) error
+}
+
+// ConfigService is the set of config operations the terminal handler needs.
+type ConfigService interface {
+	Get(key string) (string, error)
+	Set(key, value string) error
+	List() ([]string, error)
+}
+
+// DoctorService is the set of doctor operations the terminal handler needs.
+type DoctorService interface {
+	Check(root string) []doctor.Issue
+}
+
+// UpdateService is the set of update operations the terminal handler needs.
+type UpdateService interface {
+	CheckForUpdate() (latest string, hasUpdate bool, err error)
+	SelfUpdate(ctx context.Context) error
+}
 
 // PHPHandler registers cobra commands and delegates to services.
 type PHPHandler struct {
 	ctx          context.Context
-	siloSvc      *silo.Service
-	assemblerSvc *assembler.Service
-	registrySvc  *registry.Service
-	bundleSvc    *bundle.Service
-	systemSvc    *system.Service
-	shimSvc      *shim.Service
-	peclSvc      *pecl.Service
-	configSvc    *config.Service
-	doctorSvc    *doctor.Service
-	updateSvc    *update.Service
+	siloSvc      SiloService
+	assemblerSvc AssemblerService
+	registrySvc  RegistryService
+	bundleSvc    BundleService
+	systemSvc    SystemService
+	shimSvc      ShimService
+	peclSvc      PECLService
+	configSvc    ConfigService
+	doctorSvc    DoctorService
+	updateSvc    UpdateService
 	version      string
 }
 
-func NewPHPHandler(rootCmd *cobra.Command, ac appctx.AppContext, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service, systemSvc *system.Service, shimSvc *shim.Service, peclSvc *pecl.Service, configSvc *config.Service, doctorSvc *doctor.Service, updateSvc *update.Service, version string) {
+func NewPHPHandler(rootCmd *cobra.Command, lc fx.Lifecycle, siloSvc SiloService, assemblerSvc AssemblerService, registrySvc RegistryService, bundleSvc BundleService, systemSvc SystemService, shimSvc ShimService, peclSvc PECLService, configSvc ConfigService, doctorSvc DoctorService, updateSvc UpdateService, version string) {
 	h := &PHPHandler{
-		ctx:          ac.Ctx,
+		ctx:          context.Background(),
 		siloSvc:      siloSvc,
 		assemblerSvc: assemblerSvc,
 		registrySvc:  registrySvc,
@@ -61,6 +134,12 @@ func NewPHPHandler(rootCmd *cobra.Command, ac appctx.AppContext, siloSvc *silo.S
 		updateSvc:    updateSvc,
 		version:      version,
 	}
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			h.ctx = ctx
+			return nil
+		},
+	})
 	rootCmd.AddCommand(h.downloadCmd())
 	rootCmd.AddCommand(h.installCmd())
 	rootCmd.AddCommand(h.versionsCmd())
@@ -277,7 +356,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 			}
 		}
 	} else if !minimal {
-		defaults, skipped := h.assemblerSvc.Graph().DefaultExtensions(resolvedVersion)
+		defaults, skipped := h.assemblerSvc.DefaultExtensions(resolvedVersion)
 		if len(defaults) == 0 && len(skipped) > 0 {
 			fmt.Printf("Note: No extensions from the default set are compatible with PHP %s.\n", resolvedVersion)
 			fmt.Println("Use --ext <list> to build specific extensions, or --minimal for a bare PHP.")
@@ -297,7 +376,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		}
 		extensions = defaults
 	}
-	extensions, added := h.assemblerSvc.Graph().ExpandImplied(extensions)
+	extensions, added := h.assemblerSvc.ExpandImplied(extensions)
 	if len(added) > 0 {
 		fmt.Printf("Including implied extensions: %s\n", strings.Join(added, ", "))
 	}
@@ -348,7 +427,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 			fmt.Printf("✓ PHP %s is already installed\n", result.Version)
 			return nil
 		}
-		sharedOnly := h.assemblerSvc.Graph().SharedOnlyExtensions(resolvedVersion, extensions)
+		sharedOnly := h.assemblerSvc.SharedOnlyExtensions(resolvedVersion, extensions)
 		if len(sharedOnly) > 0 {
 			sourceDir := h.siloSvc.SourcePath("php", resolvedVersion)
 			srcPath := assembler.FindSourceDir(sourceDir, "php", resolvedVersion)
@@ -419,7 +498,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	sharedOnly := h.assemblerSvc.Graph().SharedOnlyExtensions(resolvedVersion, extensions)
+	sharedOnly := h.assemblerSvc.SharedOnlyExtensions(resolvedVersion, extensions)
 	if len(sharedOnly) > 0 {
 		sourceDir := h.siloSvc.SourcePath("php", resolvedVersion)
 		srcPath := assembler.FindSourceDir(sourceDir, "php", resolvedVersion)
@@ -809,7 +888,7 @@ func (h *PHPHandler) latestInstalledVersion() (string, error) {
 	}
 	best := installed[0]
 	for _, v := range installed[1:] {
-		if repository.CompareVersions(v, best) > 0 {
+		if domain.CompareVersions(v, best) > 0 {
 			best = v
 		}
 	}
@@ -866,7 +945,7 @@ func (h *PHPHandler) resolveInstalledVersion(constraint string) (string, error) 
 	// Major.minor or major-only match (e.g., "8.4" → latest 8.4.x, "8" → latest 8.x.x).
 	if strings.Count(constraint, ".") == 1 || strings.Count(constraint, ".") == 0 {
 		prefix := constraint + "."
-		if best := repository.LatestMatching(installed, prefix); best != "" {
+		if best := domain.LatestMatching(installed, prefix); best != "" {
 			return best, nil
 		}
 	}
@@ -905,7 +984,7 @@ func writeLocalVersionFile(version string) error {
 
 // resolveJobs resolves the effective parallelism value.
 // Priority: CLI flag > config concurrency > runtime.NumCPU().
-func resolveJobs(flagVal int, cfgSvc *config.Service) int {
+func resolveJobs(flagVal int, cfgSvc ConfigService) int {
 	if flagVal > 0 {
 		return flagVal
 	}
@@ -934,7 +1013,7 @@ func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool)
 	// RequiresPackages field), served through the graph repository so the data
 	// lives in one place and can be updated without a binary change.
 	for _, ext := range extensions {
-		def, ok := h.assemblerSvc.Graph().GetExtensionDef(ext)
+		def, ok := h.assemblerSvc.GetExtensionDef(ext)
 		if !ok {
 			continue
 		}

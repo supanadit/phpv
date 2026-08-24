@@ -16,7 +16,7 @@
 # --- Configuration -----------------------------------------------------------
 
 # Package that holds the Version var, injected via -ldflags.
-VERSION_PKG := github.com/supanadit/phpv/app
+VERSION_PKG := main
 
 # Default to the nearest git tag; fall back to a short SHA, then "dev".
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -31,7 +31,7 @@ INSTALL_BIN := $(PHPV_ROOT)/bin/phpv
 # Go command. Respects PATH; falls back to common install locations if missing.
 GO ?= $(shell command -v go 2>/dev/null || echo /usr/local/go/bin/go)
 
-LDFLAGS := -ldflags "-X $(VERSION_PKG).Version=$(VERSION)"
+LDFLAGS := -ldflags "-X $(VERSION_PKG).version=$(VERSION)"
 
 # --- Targets -----------------------------------------------------------------
 

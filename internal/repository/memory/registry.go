@@ -25,8 +25,8 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 					{Minor: 1, PatchEnd: 33},
 					{Minor: 2, PatchEnd: 33},
 					{Minor: 3, PatchEnd: 33},
-					{Minor: 4, PatchEnd: 24},
-					{Minor: 5, PatchEnd: 9},
+					{Minor: 4, PatchEnd: 25},
+					{Minor: 5, PatchEnd: 10},
 				}),
 				domain.BuildMinorRanges(7, []domain.MinorRange{
 					{Minor: 0, PatchEnd: 33},
@@ -58,6 +58,16 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				{Before: "5.3.0", URL: "https://museum.php.net/php5/php-{version}.tar.gz"},
 			},
 			Checksums: []Checksum{
+				{
+					Version: "8.5.10",
+					Type:    "sha256",
+					Value:   "f5c0ac99b85b3d677de475c2e4f509f9b4f54663f3ee5a84d6d9481a521d4100",
+				},
+				{
+					Version: "8.4.25",
+					Type:    "sha256",
+					Value:   "5cde1da976b728fa09e6b549a4c8afcd0c180337028dacf34f73b11be50253db",
+				},
 				{
 					Version: "8.5.8",
 					Type:    "sha256",

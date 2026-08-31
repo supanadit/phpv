@@ -75,13 +75,31 @@ func (s *SiloRepository) Download(url string, checksumType string, checksumValue
 	finalPath := filepath.Join(s.baseDir, filename)
 	tmpPath := finalPath + ".part"
 
-	// Skip: file already exists with content.
+	// Skip: file already exists with content. When a checksum is available the
+	// existing file is re-verified so a corrupt or truncated file left behind by
+	// an interrupted run is not silently trusted — it is removed and re-downloaded.
 	if info, err := os.Stat(finalPath); err == nil && info.Size() > 0 {
-		// Guard: clean up any stale .part file even when skipping, so it
-		// doesn't linger from a previous interrupted run of a different
-		// package that happened to use the same filename.
-		_ = os.Remove(tmpPath)
-		return false, nil
+		if checksumType != "" && checksumValue != "" {
+			ok, err := fileMatchesChecksum(finalPath, checksumType, checksumValue)
+			if err != nil {
+				return false, fmt.Errorf("verify existing %s: %w", filename, err)
+			}
+			if !ok {
+				_ = os.Remove(finalPath)
+			} else {
+				// Guard: clean up any stale .part file even when skipping, so it
+				// doesn't linger from a previous interrupted run of a different
+				// package that happened to use the same filename.
+				_ = os.Remove(tmpPath)
+				return false, nil
+			}
+		} else {
+			// Guard: clean up any stale .part file even when skipping, so it
+			// doesn't linger from a previous interrupted run of a different
+			// package that happened to use the same filename.
+			_ = os.Remove(tmpPath)
+			return false, nil
+		}
 	}
 
 	// Guard: remove stale .part file from a previous interrupted run.
@@ -126,10 +144,22 @@ func (s *SiloRepository) Download(url string, checksumType string, checksumValue
 		body = io.TeeReader(resp.Body, hasher)
 	}
 
-	if _, err := io.Copy(tmp, body); err != nil {
+	written, err := io.Copy(tmp, body)
+	if err != nil {
 		cleanup()
 		return false, fmt.Errorf("write %s: %w", tmpPath, err)
 	}
+
+	// Guard: a server that closes the connection early (truncated download)
+	// can make io.Copy return cleanly. When the server advertised a
+	// Content-Length, require the bytes written to match it so a partial
+	// file is never committed to the silo.
+	if resp.ContentLength >= 0 && written != resp.ContentLength {
+		cleanup()
+		return false, fmt.Errorf("download %s: truncated (expected %d bytes, got %d)",
+			filename, resp.ContentLength, written)
+	}
+
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpPath)
 		return false, fmt.Errorf("close %s: %w", tmpPath, err)
@@ -153,6 +183,25 @@ func (s *SiloRepository) Download(url string, checksumType string, checksumValue
 	}
 
 	return true, nil
+}
+
+// fileMatchesChecksum reports whether the file at path hashes to the expected
+// checksum. It is used to re-verify an already-cached file before trusting it.
+func fileMatchesChecksum(path, checksumType, checksumValue string) (bool, error) {
+	hasher, err := repository.NewHasher(checksumType)
+	if err != nil {
+		return false, err
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	if _, err := io.Copy(hasher, f); err != nil {
+		return false, err
+	}
+	got := hex.EncodeToString(hasher.Sum(nil))
+	return strings.EqualFold(got, checksumValue), nil
 }
 
 // Extract decompresses and untars an archive into destDir.
@@ -190,6 +239,7 @@ func (s *SiloRepository) Extract(archivePath string, destDir string) (extracted 
 	defer f.Close()
 
 	var tarSource io.Reader
+	var gz *gzip.Reader
 
 	ext := strings.ToLower(filepath.Ext(archivePath))
 	// Handle double extensions like .tar.gz
@@ -198,12 +248,12 @@ func (s *SiloRepository) Extract(archivePath string, destDir string) (extracted 
 		// Check the full extension for .tar.*
 		if strings.HasSuffix(strings.ToLower(archivePath), ".tar.gz") ||
 			strings.HasSuffix(strings.ToLower(archivePath), ".tgz") {
-			gz, err := gzip.NewReader(f)
+			var err error
+			gz, err = gzip.NewReader(f)
 			if err != nil {
 				os.RemoveAll(tmpDir)
 				return false, fmt.Errorf("gzip reader for %s: %w", archivePath, err)
 			}
-			defer gz.Close()
 			tarSource = gz
 		} else if strings.HasSuffix(strings.ToLower(archivePath), ".tar.xz") {
 			// stdlib has no xz reader in compress — decompress via the xz
@@ -225,6 +275,23 @@ func (s *SiloRepository) Extract(archivePath string, destDir string) (extracted 
 	if err := extractTarEntries(tar.NewReader(tarSource), tmpDir); err != nil {
 		os.RemoveAll(tmpDir)
 		return false, fmt.Errorf("extract %s: %w", archivePath, err)
+	}
+
+	// Guard: for gzip archives the CRC32 and size footer are only validated
+	// when the reader reaches the end of the stream. A truncated download can
+	// otherwise end exactly at a tar end-of-archive boundary, extract
+	// "cleanly", and be renamed into place with a partial last file. Force the
+	// gzip reader to consume the trailer so a corrupt archive never produces a
+	// destDir.
+	if gz != nil {
+		if _, err := io.Copy(io.Discard, gz); err != nil {
+			os.RemoveAll(tmpDir)
+			return false, fmt.Errorf("gzip checksum for %s: %w", archivePath, err)
+		}
+		if err := gz.Close(); err != nil {
+			os.RemoveAll(tmpDir)
+			return false, fmt.Errorf("gzip close for %s: %w", archivePath, err)
+		}
 	}
 
 	// Guard: atomic rename — destDir appears only when extraction is complete.

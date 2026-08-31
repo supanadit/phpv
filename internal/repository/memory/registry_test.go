@@ -49,18 +49,25 @@ func TestRegistryRepository_List_PHP_ChecksumFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List(php, true, \"\") returned error: %v", err)
 	}
-	if len(onlyWithChecksum) != 1 {
-		t.Fatalf("List(php, true, \"\") returned %d entries, want 1", len(onlyWithChecksum))
+	if len(onlyWithChecksum) != 3 {
+		t.Fatalf("List(php, true, \"\") returned %d entries, want 3", len(onlyWithChecksum))
 	}
-	if onlyWithChecksum[0].Version != "8.5.8" {
-		t.Fatalf("List(php, true, \"\") version = %q, want 8.5.8", onlyWithChecksum[0].Version)
+	wantChecksums := map[string]string{
+		"8.5.10": "f5c0ac99b85b3d677de475c2e4f509f9b4f54663f3ee5a84d6d9481a521d4100",
+		"8.4.25": "5cde1da976b728fa09e6b549a4c8afcd0c180337028dacf34f73b11be50253db",
+		"8.5.8":  "6ebc55e52af4396385e689f7af0f28944fbbf966843433b573e9dc1dc03df539",
 	}
-	if onlyWithChecksum[0].ChecksumType != "sha256" {
-		t.Fatalf("8.5.8 ChecksumType = %q, want sha256", onlyWithChecksum[0].ChecksumType)
-	}
-	want := "6ebc55e52af4396385e689f7af0f28944fbbf966843433b573e9dc1dc03df539"
-	if onlyWithChecksum[0].ChecksumValue != want {
-		t.Fatalf("8.5.8 ChecksumValue = %q, want %q", onlyWithChecksum[0].ChecksumValue, want)
+	for _, r := range onlyWithChecksum {
+		if r.ChecksumType != "sha256" {
+			t.Fatalf("%s ChecksumType = %q, want sha256", r.Version, r.ChecksumType)
+		}
+		want, ok := wantChecksums[r.Version]
+		if !ok {
+			t.Fatalf("unexpected checksum entry for version %q", r.Version)
+		}
+		if r.ChecksumValue != want {
+			t.Fatalf("%s ChecksumValue = %q, want %q", r.Version, r.ChecksumValue, want)
+		}
 	}
 
 	// checksum=true for a package with no checksums returns empty

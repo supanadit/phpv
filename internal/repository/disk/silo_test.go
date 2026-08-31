@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -268,6 +269,161 @@ func TestSiloRepository_Download_NoPartFileOnSuccess(t *testing.T) {
 	partPath := filepath.Join(dir, "package.tar.gz.part")
 	if _, err := os.Stat(partPath); !os.IsNotExist(err) {
 		t.Fatalf(".part file should not exist after successful download")
+	}
+}
+
+// writeTarGz authors a .tar.gz containing the given files and returns the
+// archive bytes.
+func writeTarGz(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	mtime := time.Unix(1700000000, 0)
+	for name, content := range files {
+		hdr := &tar.Header{Name: name, Mode: 0o644, Size: int64(len(content)), ModTime: mtime}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// TestSiloRepository_Extract_TruncatedGzipRejected verifies that a .tar.gz
+// whose gzip footer (CRC32/size) is missing is rejected instead of being
+// renamed into place with a partial last file. This is the crash-truncation
+// case: the tar stream ends cleanly (end-of-archive blocks present) but the
+// gzip trailer is gone, so only gz.Close() can detect the corruption.
+func TestSiloRepository_Extract_TruncatedGzipRejected(t *testing.T) {
+	archive := writeTarGz(t, map[string]string{"data_file.c": "full content"})
+
+	// Drop the 8-byte gzip trailer (CRC32 + ISIZE).
+	truncated := archive[:len(archive)-8]
+
+	archivePath := filepath.Join(t.TempDir(), "pkg.tar.gz")
+	if err := os.WriteFile(archivePath, truncated, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	destDir := filepath.Join(t.TempDir(), "pkg")
+	repo := NewSiloRepository()
+	if _, err := repo.Extract(archivePath, destDir); err == nil {
+		t.Fatal("Extract of truncated .tar.gz expected error, got nil")
+	}
+
+	// The destination must not exist — a partial tree must never be committed.
+	if _, err := os.Stat(destDir); !os.IsNotExist(err) {
+		t.Fatalf("destDir should not exist after truncated extraction, statErr = %v", err)
+	}
+}
+
+// TestSiloRepository_Download_TruncatedContentLength verifies that a download
+// whose body is shorter than the advertised Content-Length is rejected and no
+// final file is committed.
+func TestSiloRepository_Download_TruncatedContentLength(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		// Advertise 100 bytes but send only 5, then close.
+		io.WriteString(conn, "HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nhello")
+	}()
+
+	dir := t.TempDir()
+	repo := NewSiloRepository()
+	repo.baseDir = dir
+
+	url := "http://" + ln.Addr().String() + "/pkg.tar.gz"
+	if _, err := repo.Download(url, "", ""); err == nil {
+		t.Fatal("Download of truncated body expected error, got nil")
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "pkg.tar.gz")); !os.IsNotExist(err) {
+		t.Fatalf("final file should not exist after truncated download, statErr = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "pkg.tar.gz.part")); !os.IsNotExist(err) {
+		t.Fatalf(".part file should not exist after truncated download, statErr = %v", err)
+	}
+}
+
+// TestSiloRepository_Download_CorruptCachedFileRedownloads verifies that an
+// existing cached file that fails its checksum is removed and re-downloaded
+// rather than silently trusted.
+func TestSiloRepository_Download_CorruptCachedFileRedownloads(t *testing.T) {
+	content := "good content"
+	server := newTestServer(content)
+	defer server.Close()
+
+	dir := t.TempDir()
+	repo := NewSiloRepository()
+	repo.baseDir = dir
+
+	// Pre-create a corrupt cached file that does NOT match the checksum.
+	target := filepath.Join(dir, "pkg.tar.gz")
+	if err := os.WriteFile(target, []byte("corrupt bytes"), 0644); err != nil {
+		t.Fatalf("pre-create corrupt file: %v", err)
+	}
+
+	want := sha256Hex(content)
+	if _, err := repo.Download(server.URL+"/pkg.tar.gz", "sha256", want); err != nil {
+		t.Fatalf("Download returned error: %v", err)
+	}
+
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(got) != content {
+		t.Fatalf("corrupt cached file not re-downloaded, content = %q, want %q", got, content)
+	}
+}
+
+// TestSiloRepository_Download_ValidCachedFileSkipped verifies that an existing
+// cached file that matches its checksum is skipped (server not hit).
+func TestSiloRepository_Download_ValidCachedFileSkipped(t *testing.T) {
+	content := "already good"
+	dir := t.TempDir()
+	repo := NewSiloRepository()
+	repo.baseDir = dir
+
+	target := filepath.Join(dir, "pkg.tar.gz")
+	if err := os.WriteFile(target, []byte(content), 0644); err != nil {
+		t.Fatalf("pre-create file: %v", err)
+	}
+
+	// Server returns different content; if the cached file is trusted it is
+	// never fetched and the original content is preserved.
+	server := newTestServer("different content")
+	defer server.Close()
+
+	want := sha256Hex(content)
+	if _, err := repo.Download(server.URL+"/pkg.tar.gz", "sha256", want); err != nil {
+		t.Fatalf("Download returned error: %v", err)
+	}
+
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(got) != content {
+		t.Fatalf("valid cached file was overwritten, content = %q, want %q", got, content)
 	}
 }
 

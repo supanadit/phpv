@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 	"github.com/supanadit/phpv/assembler"
+	"github.com/supanadit/phpv/compiler"
 	"github.com/supanadit/phpv/doctor"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/pecl"
@@ -41,7 +42,7 @@ type SiloService interface {
 // AssemblerService is the set of assembly operations the terminal handler needs.
 type AssemblerService interface {
 	ResolveVersion(name, constraint string) (string, error)
-	Assemble(ctx context.Context, name, version string, static bool, extensions []string, verbose bool, progress assembler.ProgressFunc, systemPkgs map[string]system.Package, jobs int, force bool) (*assembler.AssemblerResult, error)
+	Assemble(ctx context.Context, name, version string, static bool, extensions []string, verbose bool, progress assembler.ProgressFunc, systemPkgs map[string]system.Package, jobs int, force bool, tc compiler.Toolchain) (*assembler.AssemblerResult, error)
 	InstallExtension(ctx context.Context, phpVersion, extName, phpSourceDir, phpPrefix string, jobs int) error
 	RemoveExtension(phpVersion, extName, phpPrefix string) error
 	ListExtensionsForPHP(phpVersion string) []domain.ExtensionInfo
@@ -288,6 +289,7 @@ Version syntax:
 	cmd.Flags().Bool("yes", false, "Skip confirmation prompts")
 	cmd.Flags().Bool("force", false, "Skip state checks and reinstall")
 	cmd.Flags().Bool("minimal", false, "Build with --enable-cli only (no default extensions)")
+	cmd.Flags().String("compiler", "", fmt.Sprintf("C compiler to use (%s); defaults to the phpv compiler config key, then the platform default", strings.Join(compiler.Names(), ", ")))
 	return cmd
 }
 
@@ -334,11 +336,17 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	fresh, _ := cmd.Flags().GetBool("fresh")
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	jobsFlag, _ := cmd.Flags().GetInt("jobs")
+	compilerFlag, _ := cmd.Flags().GetString("compiler")
 
 	jobs := resolveJobs(jobsFlag, h.configSvc)
 
 	if extStr != "" && minimal {
 		return fmt.Errorf("cannot use --ext with --minimal")
+	}
+
+	tc, err := h.selectToolchain(compilerFlag)
+	if err != nil {
+		return err
 	}
 
 	resolvedVersion, resolveErr := h.assemblerSvc.ResolveVersion("php", version)
@@ -347,7 +355,6 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	}
 
 	var extensions []string
-	var err error
 	if extStr != "" {
 		for _, e := range strings.Split(extStr, ",") {
 			e = strings.TrimSpace(e)
@@ -387,7 +394,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := h.checkBuildTools(autoDeps, dryRun); err != nil {
+		if err := h.checkBuildTools(tc, autoDeps, dryRun); err != nil {
 			return err
 		}
 	}
@@ -418,7 +425,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Installing PHP %s...\n\n", bannerVersion)
 
 	if verbose {
-		result, err := h.assemblerSvc.Assemble(h.ctx, "php", version, static, extensions, true, nil, systemPkgs, jobs, force)
+		result, err := h.assemblerSvc.Assemble(h.ctx, "php", version, static, extensions, true, nil, systemPkgs, jobs, force, tc)
 		if err != nil {
 			return fmt.Errorf("install failed: %w", err)
 		}
@@ -484,7 +491,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 
 	result, err := h.assemblerSvc.Assemble(h.ctx, "php", version, static, extensions, false, func(stage, message string) {
 		progressCh <- progressMsg{stage: stage, message: message}
-	}, systemPkgs, jobs, force)
+	}, systemPkgs, jobs, force, tc)
 	close(progressCh)
 	<-doneCh
 
@@ -999,6 +1006,26 @@ func resolveJobs(flagVal int, cfgSvc ConfigService) int {
 	return runtime.NumCPU()
 }
 
+// selectToolchain resolves the compiler a build should use: the explicit
+// choice (--compiler) wins, then the `compiler` config key, then the platform
+// default. It exports CC/CXX into this process so every child build process
+// (configure, make, phpize, pecl) uses the same toolchain the build plan was
+// generated for.
+func (h *PHPHandler) selectToolchain(flagVal string) (compiler.Toolchain, error) {
+	name := flagVal
+	if name == "" && h.configSvc != nil {
+		if v, err := h.configSvc.Get("compiler"); err == nil {
+			name = v
+		}
+	}
+	tc, err := compiler.Resolve(name)
+	if err != nil {
+		return compiler.Toolchain{}, err
+	}
+	tc.Setenv()
+	return tc, nil
+}
+
 // checkSystemDeps checks for system packages needed by PHP deps and extensions.
 // If autoDeps is true, installs missing packages without prompting.
 // If dryRun is true, only prints what would be done.
@@ -1109,10 +1136,22 @@ func (h *PHPHandler) promptAndInstall(missing []system.Package, autoDeps, dryRun
 
 // checkBuildTools checks for the compiler and build toolchain needed to build
 // PHP from source and, when any are missing, prompts to install them. Returns
-// an error when critical tools (gcc, g++, make) are missing and the user
-// declines to install them, since the build cannot proceed without them.
-func (h *PHPHandler) checkBuildTools(autoDeps, dryRun bool) error {
-	toolNames := []string{"gcc", "g++", "make", "cmake", "autoconf", "automake", "m4", "perl", "bison", "re2c", "flex", "pkg-config", "xz"}
+// an error when a critical tool is missing and the user declines to install it,
+// since the build cannot proceed without it.
+func (h *PHPHandler) checkBuildTools(tc compiler.Toolchain, autoDeps, dryRun bool) error {
+	toolNames := []string{"make", "cmake", "autoconf", "automake", "m4", "perl", "bison", "re2c", "flex", "pkg-config", "xz"}
+	critical := map[string]bool{"make": true}
+	if tc.Name == "gcc" {
+		// gcc/g++ ship in a distro toolchain package, so let the package manager
+		// prompt keep handling them the way it always has.
+		toolNames = append([]string{"gcc", "g++"}, toolNames...)
+		critical["gcc"] = true
+		critical["g++"] = true
+	} else if err := tc.Check(); err != nil {
+		// clang/zig have no package-name mapping here; they must already be
+		// installed and on PATH.
+		return err
+	}
 	result, err := h.systemSvc.CheckBuildTools(toolNames)
 	if err != nil {
 		return fmt.Errorf("build tools check: %w", err)
@@ -1121,7 +1160,6 @@ func (h *PHPHandler) checkBuildTools(autoDeps, dryRun bool) error {
 		return nil
 	}
 
-	critical := map[string]bool{"gcc": true, "g++": true, "make": true}
 	var criticalMissing []string
 	for _, p := range result.Missing {
 		if critical[p.Name] {

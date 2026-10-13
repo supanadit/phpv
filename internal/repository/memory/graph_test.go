@@ -1,8 +1,11 @@
 package memory
 
 import (
+	"reflect"
+	"strings"
 	"testing"
 
+	"github.com/supanadit/phpv/compiler"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/graph"
 )
@@ -19,7 +22,7 @@ func TestGraphRepository_GetOrderedDependencies_PHP7_4(t *testing.T) {
 		"xmlwriter", "zip", "zlib",
 	}
 
-	plan, err := svc.GetBuildPlan("php", "7.4.33", defaults)
+	plan, err := svc.GetBuildPlan("php", "7.4.33", defaults, "")
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 7.4.33) returned error: %v", err)
 	}
@@ -60,7 +63,7 @@ func TestGraphRepository_GetOrderedDependencies_PHP8_1(t *testing.T) {
 		"xmlwriter", "zip", "zlib",
 	}
 
-	plan, err := svc.GetBuildPlan("php", "8.1.0", defaults)
+	plan, err := svc.GetBuildPlan("php", "8.1.0", defaults, "")
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 8.1.0) returned error: %v", err)
 	}
@@ -290,7 +293,7 @@ func TestGetBuildPlan_PHP7_4_HasLibzip(t *testing.T) {
 		"xmlwriter", "zip", "zlib",
 	}
 
-	plan, err := svc.GetBuildPlan("php", "7.4.33", defaults)
+	plan, err := svc.GetBuildPlan("php", "7.4.33", defaults, "")
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 7.4.33) returned error: %v", err)
 	}
@@ -330,7 +333,7 @@ func TestGetBuildPlan_PHP8_1_HasLibzip(t *testing.T) {
 	repo := NewGraphRepository()
 	svc := graph.NewService(repo)
 
-	plan, err := svc.GetBuildPlan("php", "8.1.0", []string{"zip"})
+	plan, err := svc.GetBuildPlan("php", "8.1.0", []string{"zip"}, "")
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 8.1.0) returned error: %v", err)
 	}
@@ -369,7 +372,7 @@ func TestGetBuildPlan_PHP8_4_HasDeps(t *testing.T) {
 		"xmlwriter", "zip", "zlib",
 	}
 
-	plan, err := svc.GetBuildPlan("php", "8.4.0", defaults)
+	plan, err := svc.GetBuildPlan("php", "8.4.0", defaults, "")
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 8.4.0) returned error: %v", err)
 	}
@@ -429,7 +432,7 @@ func TestGetBuildPlan_PHP8_4_DependencyOrdering(t *testing.T) {
 		"xmlwriter", "zip", "zlib",
 	}
 
-	plan, err := svc.GetBuildPlan("php", "8.4.0", defaults)
+	plan, err := svc.GetBuildPlan("php", "8.4.0", defaults, "")
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 8.4.0) returned error: %v", err)
 	}
@@ -472,7 +475,7 @@ func TestGetBuildPlan_PHP8_2_HasDeps(t *testing.T) {
 		"xmlwriter", "zip", "zlib",
 	}
 
-	plan, err := svc.GetBuildPlan("php", "8.2.1", defaults)
+	plan, err := svc.GetBuildPlan("php", "8.2.1", defaults, "")
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 8.2.1) returned error: %v", err)
 	}
@@ -498,7 +501,7 @@ func TestGetBuildPlan_Minimal_NoDeps(t *testing.T) {
 	repo := NewGraphRepository()
 	svc := graph.NewService(repo)
 
-	plan, err := svc.GetBuildPlan("php", "8.4.0", nil)
+	plan, err := svc.GetBuildPlan("php", "8.4.0", nil, "")
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 8.4.0, nil) returned error: %v", err)
 	}
@@ -544,7 +547,7 @@ func TestGetBuildPlan_ImpliedChains(t *testing.T) {
 	svc := graph.NewService(repo)
 
 	// Request only 'dom' — it should imply 'libxml' ext, which requires 'libxml2' pkg.
-	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"dom"})
+	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"dom"}, "")
 	if err != nil {
 		t.Fatalf("GetBuildPlan(php, 8.4.0, [dom]) returned error: %v", err)
 	}
@@ -559,4 +562,117 @@ func TestGetBuildPlan_ImpliedChains(t *testing.T) {
 	} else if v != "2.12.7|~2.12.0" {
 		t.Errorf("libxml2 version = %q, want %q", v, "2.12.7|~2.12.0")
 	}
+}
+
+// TestGetBuildPlan_SelectsCompilerFlagRules verifies that the compiler name
+// chooses which flag rules the plan uses: zig gets its own flags (no gcc-only
+// ones mixed in) and an empty name behaves exactly like the platform default.
+func TestGetBuildPlan_SelectsCompilerFlagRules(t *testing.T) {
+	repo := NewGraphRepository()
+	svc := graph.NewService(repo)
+
+	zigPlan, err := svc.GetBuildPlan("php", "5.6.40", nil, "zig")
+	if err != nil {
+		t.Fatalf("GetBuildPlan(php, 5.6.40, zig) returned error: %v", err)
+	}
+	zigFlags := strings.Join(zigPlan.CFlags, " ")
+	if !strings.Contains(zigFlags, "-fno-sanitize=undefined") {
+		t.Errorf("expected the zig flag rules, got CFLAGS=%q", zigFlags)
+	}
+	if strings.Contains(zigFlags, "-fpermissive") {
+		t.Errorf("gcc-only flag leaked into a zig build: %q", zigFlags)
+	}
+
+	defaultPlan, err := svc.GetBuildPlan("php", "5.6.40", nil, "")
+	if err != nil {
+		t.Fatalf("GetBuildPlan(php, 5.6.40, default) returned error: %v", err)
+	}
+	explicitPlan, err := svc.GetBuildPlan("php", "5.6.40", nil, compiler.Default().Name)
+	if err != nil {
+		t.Fatalf("GetBuildPlan(php, 5.6.40, %s) returned error: %v", compiler.Default().Name, err)
+	}
+	if !reflect.DeepEqual(defaultPlan.CFlags, explicitPlan.CFlags) {
+		t.Errorf("empty compiler should match platform default %q:\n  default: %v\n  explicit: %v",
+			compiler.Default().Name, defaultPlan.CFlags, explicitPlan.CFlags)
+	}
+}
+
+// TestGetCompilerStdRule_CStandardByPHPVersion pins the C standard per PHP
+// generation: PHP 4 is K&R/C89 code configured by an autoconf 2.13 script,
+// which modern compilers (GCC 14+, clang 16+, zig) reject as implicit-int
+// errors under C99 or later.
+func TestGetCompilerStdRule_CStandardByPHPVersion(t *testing.T) {
+	repo := NewGraphRepository()
+
+	tests := []struct {
+		version string
+		wantC   string
+		wantCXX string
+	}{
+		{"4.4.9", "-std=gnu89", "-std=gnu++17"},
+		{"4.0.0", "-std=gnu89", "-std=gnu++17"},
+		{"5.6.40", "-std=gnu11", "-std=gnu++17"},
+		{"7.4.33", "-std=gnu11", "-std=gnu++17"},
+		{"8.4.25", "-std=gnu11", "-std=gnu++17"},
+	}
+	for _, tt := range tests {
+		got := repo.GetCompilerStdRule(tt.version)
+		if got.CStd != tt.wantC || got.CXXStd != tt.wantCXX {
+			t.Errorf("GetCompilerStdRule(%s) = {%q, %q}, want {%q, %q}",
+				tt.version, got.CStd, got.CXXStd, tt.wantC, tt.wantCXX)
+		}
+	}
+
+	// Era flags are only for PHP 4: -fcommon is needed by its two Zend scanners.
+	if got := repo.GetCompilerStdRule("4.4.9").CFlags; !hasFlag(got, "-fcommon") {
+		t.Errorf("PHP 4 CFlags = %v, want -fcommon", got)
+	}
+	if got := repo.GetCompilerStdRule("7.4.33").CFlags; len(got) != 0 {
+		t.Errorf("PHP 7.4 CFlags = %v, want none", got)
+	}
+}
+
+// TestGetBuildPlan_PHP4StdFlagIsWhatTheCompilerSees reproduces the failing
+// configure check from `phpv install 4 --compiler zig`: the compiler flag rules
+// also carry a -std, and only the last -std on the command line counts. The
+// assembler concatenates plan.CFlags then plan.CompilerFlags, so this asserts
+// that ordering contract for a PHP 4 build.
+func TestGetBuildPlan_PHP4StdFlagIsWhatTheCompilerSees(t *testing.T) {
+	repo := NewGraphRepository()
+	svc := graph.NewService(repo)
+
+	for _, compilerName := range []string{"zig", "gcc", "clang"} {
+		plan, err := svc.GetBuildPlan("php", "4.4.9", nil, compilerName)
+		if err != nil {
+			t.Fatalf("GetBuildPlan(php, 4.4.9, %s) returned error: %v", compilerName, err)
+		}
+		// Same order the assembler uses to build the CFLAGS env var.
+		all := append(append([]string{}, plan.CFlags...), plan.CompilerFlags...)
+		if last := lastStdFlag(all); last != "-std=gnu89" {
+			t.Errorf("%s: last -std flag in CFLAGS is %q, want -std=gnu89 (flags: %v)", compilerName, last, all)
+		}
+		if !hasFlag(all, "-fcommon") {
+			t.Errorf("%s: -fcommon missing from CFLAGS (flags: %v)", compilerName, all)
+		}
+	}
+}
+
+func hasFlag(flags []string, want string) bool {
+	for _, f := range flags {
+		if f == want {
+			return true
+		}
+	}
+	return false
+}
+
+// lastStdFlag returns the last -std=* value, which is the one a compiler honors.
+func lastStdFlag(flags []string) string {
+	last := ""
+	for _, f := range flags {
+		if strings.HasPrefix(f, "-std=") {
+			last = f
+		}
+	}
+	return last
 }

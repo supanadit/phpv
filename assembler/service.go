@@ -1,6 +1,7 @@
 package assembler
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/supanadit/phpv/compiler"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/graph"
@@ -98,7 +100,9 @@ func (s *Service) GetExtensionDef(name string) (domain.ExtensionDef, bool) {
 // Assemble runs the full pipeline for (name, version).
 // systemPkgs optionally provides a map of available system packages for hybrid builds.
 // jobs controls make parallelism (0 = auto).
-func (s *Service) Assemble(ctx context.Context, name string, version string, static bool, extensions []string, verbose bool, progress ProgressFunc, systemPkgs map[string]system.Package, jobs int, force bool) (*AssemblerResult, error) {
+// tc is the resolved compiler toolchain (see compiler.Resolve) used for both
+// compiler flag selection and the CC/CXX of every build it spawns.
+func (s *Service) Assemble(ctx context.Context, name string, version string, static bool, extensions []string, verbose bool, progress ProgressFunc, systemPkgs map[string]system.Package, jobs int, force bool, tc compiler.Toolchain) (*AssemblerResult, error) {
 	emit := func(stage, msg string) {
 		if progress != nil {
 			progress(stage, msg)
@@ -138,7 +142,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 	}()
 
 	emit("deps", "Resolving dependency graph...")
-	plan, err := s.graph.GetBuildPlan(name, exactVersion, extensions)
+	plan, err := s.graph.GetBuildPlan(name, exactVersion, extensions, tc.Name)
 	if err != nil {
 		return nil, fmt.Errorf("resolve build plan for %s@%s: %w", name, exactVersion, err)
 	}
@@ -262,9 +266,9 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		if len(prepared.Applied) > 0 {
 			emit("patch", fmt.Sprintf("Applied %d patch(es) to %s@%s", len(prepared.Applied), dep.Name, depVersion))
 		}
-		var buildEnv []string
+		buildEnv := tc.Env()
 		if len(prepared.ExtraCFlags) > 0 {
-			buildEnv = []string{"CFLAGS=" + strings.Join(prepared.ExtraCFlags, " "), "CXXFLAGS=" + strings.Join(prepared.ExtraCFlags, " ")}
+			buildEnv = append(buildEnv, "CFLAGS="+strings.Join(prepared.ExtraCFlags, " "), "CXXFLAGS="+strings.Join(prepared.ExtraCFlags, " "))
 		}
 		// TODO: Hardcoded libiconv path
 		// Description: This shouldn't be hardcoded, it should instead look like configureFlagRules in internal/repository/memory/graph.go
@@ -309,6 +313,10 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 	}
 
 	env := os.Environ()
+	// Pin the selected toolchain so the build never silently falls back to
+	// whatever CC/CXX happens to be set in the caller's shell.
+	env = setEnvVar(env, "CC", tc.CC)
+	env = setEnvVar(env, "CXX", tc.CXX)
 	if len(depCppFlags) > 0 {
 		env = setEnvVar(env, "CPPFLAGS", strings.Join(depCppFlags, " "))
 	}
@@ -443,6 +451,12 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 		emit("error", fmt.Sprintf("Install failed for %s", name))
 		return nil, fmt.Errorf("install %s@%s: %w", name, exactVersion, err)
 	}
+	if name == "php" {
+		if err := ensureCLIBinary(srcPath, prefix); err != nil {
+			emit("error", fmt.Sprintf("Install failed for %s", name))
+			return nil, fmt.Errorf("install %s@%s: %w", name, exactVersion, err)
+		}
+	}
 
 	emit("done", fmt.Sprintf("%s %s installed at %s", name, exactVersion, prefix))
 
@@ -461,6 +475,33 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 			libPathEnvName(): strings.Join(localLibraryPaths, ":"),
 		},
 	}, nil
+}
+
+// ensureCLIBinary makes sure <prefix>/bin/php is the CLI SAPI. PHP 4's
+// `make install` only runs install-sapi (plus build/headers/programs) and never
+// its install-cli target, so the CGI SAPI lands at bin/php and every command run
+// through a shim would print HTTP headers instead of behaving like a command-line
+// interpreter. Every other PHP release installs the CLI itself, in which case the
+// two binaries are identical and this is a no-op. A build without a CLI SAPI
+// (--disable-cli) has nothing to install and is left alone.
+func ensureCLIBinary(sourceDir, prefix string) error {
+	cli := filepath.Join(sourceDir, "sapi", "cli", "php")
+	installed := filepath.Join(prefix, "bin", "php")
+
+	cliData, err := os.ReadFile(cli)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read CLI binary: %w", err)
+	}
+	if installedData, err := os.ReadFile(installed); err == nil && bytes.Equal(cliData, installedData) {
+		return nil
+	}
+	if err := os.WriteFile(installed, cliData, 0o755); err != nil {
+		return fmt.Errorf("install CLI binary: %w", err)
+	}
+	return nil
 }
 
 // TODO: Hardcoded OS-specific library path

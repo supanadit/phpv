@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/silo"
@@ -394,5 +395,83 @@ func TestComputeMustBuild(t *testing.T) {
 	// openssl propagation happens in Assemble; verify static/nil behave.
 	if got := svc.computeMustBuild(deps, systemPkgs, true); len(got) != 0 {
 		t.Errorf("static build should not mark any must-build, got %v", got)
+	}
+}
+
+func writeExecutable(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+		t.Fatalf("WriteFile(%s): %v", path, err)
+	}
+}
+
+// TestEnsureCLIBinary_ReplacesNonCLI covers PHP 4, where `make install` leaves
+// the CGI SAPI at bin/php while a working CLI sits in the source tree.
+func TestEnsureCLIBinary_ReplacesNonCLI(t *testing.T) {
+	sourceDir, prefix := t.TempDir(), t.TempDir()
+	writeExecutable(t, filepath.Join(sourceDir, "sapi", "cli", "php"), "cli-binary")
+	writeExecutable(t, filepath.Join(prefix, "bin", "php"), "cgi-binary")
+
+	if err := ensureCLIBinary(sourceDir, prefix); err != nil {
+		t.Fatalf("ensureCLIBinary() returned error: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(prefix, "bin", "php"))
+	if err != nil {
+		t.Fatalf("ReadFile(bin/php): %v", err)
+	}
+	if string(got) != "cli-binary" {
+		t.Errorf("bin/php = %q, want the CLI binary (cli-binary)", got)
+	}
+	if info, err := os.Stat(filepath.Join(prefix, "bin", "php")); err != nil || info.Mode().Perm() != 0o755 {
+		t.Errorf("bin/php mode = %v (err %v), want 0755", info.Mode().Perm(), err)
+	}
+}
+
+// TestEnsureCLIBinary_LeavesMatchingInstallAlone guards the PHP 5+ path, where
+// `make install` already put the CLI in place: the file must not be rewritten.
+func TestEnsureCLIBinary_LeavesMatchingInstallAlone(t *testing.T) {
+	sourceDir, prefix := t.TempDir(), t.TempDir()
+	writeExecutable(t, filepath.Join(sourceDir, "sapi", "cli", "php"), "cli-binary")
+	installed := filepath.Join(prefix, "bin", "php")
+	writeExecutable(t, installed, "cli-binary")
+
+	past := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(installed, past, past); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	if err := ensureCLIBinary(sourceDir, prefix); err != nil {
+		t.Fatalf("ensureCLIBinary() returned error: %v", err)
+	}
+
+	info, err := os.Stat(installed)
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if !info.ModTime().Equal(past) {
+		t.Errorf("bin/php was rewritten (mtime %s), want untouched", info.ModTime())
+	}
+}
+
+// TestEnsureCLIBinary_NoCLIBuilt makes a --disable-cli build a no-op instead of
+// an error.
+func TestEnsureCLIBinary_NoCLIBuilt(t *testing.T) {
+	sourceDir, prefix := t.TempDir(), t.TempDir()
+	installed := filepath.Join(prefix, "bin", "php")
+	writeExecutable(t, installed, "cgi-binary")
+
+	if err := ensureCLIBinary(sourceDir, prefix); err != nil {
+		t.Fatalf("ensureCLIBinary() returned error: %v", err)
+	}
+	got, err := os.ReadFile(installed)
+	if err != nil {
+		t.Fatalf("ReadFile(bin/php): %v", err)
+	}
+	if string(got) != "cgi-binary" {
+		t.Errorf("bin/php = %q, want untouched (cgi-binary)", got)
 	}
 }

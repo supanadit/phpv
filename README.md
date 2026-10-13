@@ -62,6 +62,7 @@ phpv install 7.4                              # Same defaults, auto-bundles Open
 phpv install 8.4 --ext openssl,curl,apcu     # Build exactly this list (no defaults)
 phpv install 8.4 --minimal                    # Bare build (--disable-all --enable-cli only)
 phpv install 8.4 --jobs 4                     # Parallel make with 4 jobs
+phpv install 7.4 --compiler zig               # Build with zig's clang instead of the system compiler
 phpv install 8.4 --fresh                      # Clean rebuild (delete prefix, keep cached source)
 phpv install 8.4 --verbose                    # See full build output
 
@@ -160,12 +161,29 @@ phpv only downloads and extracts what it will actually compile. System packages 
 | `--clean` | Delete prefix + source + state |
 | `--force` | Force reinstall even if already installed |
 | `--static` | Fully static build |
+| `--compiler <name>` | C compiler: gcc, clang or zig (default: platform) |
 | `--jobs <n>` | Parallel make jobs |
 | `--verbose` | Show full build output |
 | `--auto-deps` | Auto-install system dependencies |
 | `--no-system` | Build all deps from source, skip system packages |
 | `--dry-run` | Show what would be done without doing it |
 | `--from <bundle>` | Install from a bundle file |
+
+### Compilers
+
+The whole build — dependencies, PHP itself and shared extensions — is compiled with one
+selected toolchain (`CC`/`CXX` are pinned for every subprocess phpv spawns).
+
+| Compiler | Notes |
+| -------- | ----- |
+| `gcc` | Default on Linux |
+| `clang` | Default on macOS |
+| `zig` | Drives `zig cc` / `zig c++`, which ship their own headers and libc shims, so old PHP (4.x, 5.x, 7.x) still compiles on modern distros where the system toolchain no longer does |
+
+```bash
+phpv install 7.4 --compiler zig              # One-off
+phpv config set compiler zig                 # Persistent default for every build
+```
 
 ---
 

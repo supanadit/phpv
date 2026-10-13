@@ -15,7 +15,9 @@ type CompilerFlagDef struct {
 	Purpose string
 }
 
-// CompilerRule defines C/C++ compiler standard flags for a PHP version range.
+// CompilerRule defines the compiler flags derived from a PHP version range:
+// the language standard plus any flags the code of that era needs from every
+// compiler (independent of which compiler is selected).
 type CompilerRule struct {
 	MinVersion string
 	MaxVersion string

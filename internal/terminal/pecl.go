@@ -69,6 +69,12 @@ Examples:
 			jobsFlag, _ := cmd.Flags().GetInt("jobs")
 			jobs := resolveJobs(jobsFlag, h.configSvc)
 
+			// phpize builds the extension against the PHP that is being extended,
+			// so it must use the same toolchain PHP was built with.
+			if _, err := h.selectToolchain(""); err != nil {
+				return err
+			}
+
 			result, err := h.peclSvc.Install(h.ctx, source, phpVersion, jobs)
 			if err != nil {
 				return fmt.Errorf("pecl install: %w", err)

@@ -2,10 +2,10 @@ package graph
 
 import (
 	"fmt"
-	"runtime"
 	"sort"
 	"strings"
 
+	"github.com/supanadit/phpv/compiler"
 	"github.com/supanadit/phpv/domain"
 )
 
@@ -65,12 +65,18 @@ func NewService(repo GraphRepository) *Service {
 }
 
 // GetBuildPlan returns everything needed to build (name, version) in one call.
+// compilerName selects the compiler flag rules; an empty name uses the platform
+// default, an unknown name is an error.
 // For PHP builds, the dependency list is derived from the requested extensions'
 // RequiresPackage + Versions (resolved per PHP version), merged with any
 // package-level deps from GetOrderedDependencies. This ensures PHP 8.2+ gets
 // a deterministic dep plan even though the php package has no hardcoded
 // Constraints for those versions.
-func (s *Service) GetBuildPlan(name string, version string, extensions []string) (*BuildPlan, error) {
+func (s *Service) GetBuildPlan(name string, version string, extensions []string, compilerName string) (*BuildPlan, error) {
+	tc, err := compiler.Resolve(compilerName)
+	if err != nil {
+		return nil, err
+	}
 	deps, err := s.repo.GetOrderedDependencies(name, version)
 	if err != nil {
 		return nil, err
@@ -88,10 +94,13 @@ func (s *Service) GetBuildPlan(name string, version string, extensions []string)
 	} else {
 		configureFlags = s.repo.GetConfigureFlags(name, version)
 	}
-	cflags := s.repo.GetCompilerFlags(detectCompiler(), version)
+	cflags := s.repo.GetCompilerFlags(tc.Name, version)
 	compilerRule := s.repo.GetCompilerStdRule(version)
 	var cCompilerFlags []string
 	var cxxCompilerFlags []string
+	// Era flags first, then the language standard last so the C standard is the
+	// final -std the compiler sees.
+	cCompilerFlags = append(cCompilerFlags, compilerRule.CFlags...)
 	if compilerRule.CStd != "" {
 		cCompilerFlags = append(cCompilerFlags, compilerRule.CStd)
 	}
@@ -365,13 +374,4 @@ func (s *Service) GetCompilerStdRule(phpVersion string) domain.CompilerRule {
 // GetCompilerFlags returns C compiler flags for a specific compiler and PHP version.
 func (s *Service) GetCompilerFlags(compiler string, phpVersion string) []string {
 	return s.repo.GetCompilerFlags(compiler, phpVersion)
-}
-
-// detectCompiler returns the compiler name to use for flag selection.
-// macOS uses clang by default; Linux uses gcc.
-func detectCompiler() string {
-	if runtime.GOOS == "darwin" {
-		return "clang"
-	}
-	return "gcc"
 }

@@ -95,7 +95,7 @@ func TestService_GetBuildPlan(t *testing.T) {
 	}
 	svc := NewService(mock)
 
-	plan, err := svc.GetBuildPlan("php", "8.4.0", nil)
+	plan, err := svc.GetBuildPlan("php", "8.4.0", nil, "")
 	if err != nil {
 		t.Fatalf("GetBuildPlan returned error: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestService_GetBuildPlan_WithExtensions(t *testing.T) {
 	}
 	svc := NewService(mock)
 
-	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"openssl", "curl"})
+	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"openssl", "curl"}, "")
 	if err != nil {
 		t.Fatalf("GetBuildPlan returned error: %v", err)
 	}
@@ -167,12 +167,20 @@ func TestService_GetBuildPlan_Minimal_NoDeps(t *testing.T) {
 	}
 	svc := NewService(mock)
 
-	plan, err := svc.GetBuildPlan("php", "8.4.0", nil)
+	plan, err := svc.GetBuildPlan("php", "8.4.0", nil, "")
 	if err != nil {
 		t.Fatalf("GetBuildPlan returned error: %v", err)
 	}
 	if len(plan.Deps) != 0 {
 		t.Errorf("expected 0 deps for --minimal, got %d: %v", len(plan.Deps), plan.Deps)
+	}
+}
+
+func TestService_GetBuildPlan_UnknownCompiler(t *testing.T) {
+	svc := NewService(&mockGraphRepo{})
+
+	if _, err := svc.GetBuildPlan("php", "8.4.0", nil, "tcc"); err == nil {
+		t.Fatal("expected an error for an unregistered compiler")
 	}
 }
 
@@ -190,7 +198,7 @@ func TestService_GetBuildPlan_DedupConflictingVersions(t *testing.T) {
 	}
 	svc := NewService(mock)
 
-	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"ext1", "ext2"})
+	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"ext1", "ext2"}, "")
 	if err != nil {
 		t.Fatalf("GetBuildPlan returned error: %v", err)
 	}

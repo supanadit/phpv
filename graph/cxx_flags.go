@@ -15,16 +15,22 @@ func CXXFlagsFromCFlagsWithStd(cflags []string, isPHPBuild bool, stdRule domain.
 	hasCXXStd := false
 
 	for _, f := range cflags {
-		if f == "-std=gnu11" || f == "-std=c11" {
-			if stdRule.CXXStd != "" {
-				cxxflags = append(cxxflags, stdRule.CXXStd)
-			} else {
-				cxxflags = append(cxxflags, "-std=gnu++17")
-			}
-			hasCXXStd = true
-		} else if strings.HasPrefix(f, "-std=c++") || strings.HasPrefix(f, "-std=gnu++") {
+		if strings.HasPrefix(f, "-std=c++") || strings.HasPrefix(f, "-std=gnu++") {
 			cxxflags = append(cxxflags, f)
 			hasCXXStd = true
+		} else if strings.HasPrefix(f, "-std=") {
+			// Any C standard (-std=gnu11, -std=gnu89, ...) becomes the C++
+			// standard instead of being copied through, where a C-only std
+			// would be rejected by g++/clang++. Several C stds all map to the
+			// same C++ std, so emit it only once.
+			if !hasCXXStd {
+				if stdRule.CXXStd != "" {
+					cxxflags = append(cxxflags, stdRule.CXXStd)
+				} else {
+					cxxflags = append(cxxflags, "-std=gnu++17")
+				}
+				hasCXXStd = true
+			}
 		} else if cOnlyWarnings[f] {
 			continue
 		} else {

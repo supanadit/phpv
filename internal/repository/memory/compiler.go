@@ -19,6 +19,8 @@ type cstdRule struct {
 	MaxPHP string
 	CStd   string
 	CXXStd string
+	// CFlags are additional flags every compiler needs for this PHP range.
+	CFlags []string
 }
 
 var compilerFlagRuleCandidates = []compilerFlagRule{
@@ -27,7 +29,6 @@ var compilerFlagRuleCandidates = []compilerFlagRule{
 		MinPHP:   "5.0",
 		MaxPHP:   "7.3",
 		CFLAGDefs: []domain.CompilerFlagDef{
-			{Flag: "-std=gnu11", Purpose: "C11 standard"},
 			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
 			{Flag: "-DTRUE=1", Purpose: "define TRUE for PHP 7.x intl compat"},
 			{Flag: "-DFALSE=0", Purpose: "define FALSE for PHP 7.x intl compat"},
@@ -41,7 +42,6 @@ var compilerFlagRuleCandidates = []compilerFlagRule{
 		MinPHP:   "7.4",
 		MaxPHP:   "7.99",
 		CFLAGDefs: []domain.CompilerFlagDef{
-			{Flag: "-std=gnu11", Purpose: "C11 standard"},
 			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
 			{Flag: "-Wno-error", Purpose: "never treat warnings as errors"},
 			{Flag: "-Wno-incompatible-pointer-types", Purpose: "suppress incompatible-pointer warnings"},
@@ -62,7 +62,6 @@ var compilerFlagRuleCandidates = []compilerFlagRule{
 		MinPHP:   "5.0",
 		MaxPHP:   "7.3",
 		CFLAGDefs: []domain.CompilerFlagDef{
-			{Flag: "-std=gnu11", Purpose: "C11 standard"},
 			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
 			{Flag: "-DTRUE=1", Purpose: "define TRUE for PHP 7.x intl compat on GCC 15+"},
 			{Flag: "-DFALSE=0", Purpose: "define FALSE for PHP 7.x intl compat on GCC 15+"},
@@ -80,7 +79,6 @@ var compilerFlagRuleCandidates = []compilerFlagRule{
 		MinPHP:   "7.4",
 		MaxPHP:   "7.99",
 		CFLAGDefs: []domain.CompilerFlagDef{
-			{Flag: "-std=gnu11", Purpose: "C11 standard"},
 			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
 			{Flag: "-fpermissive", Needs: ">=gcc15", Purpose: "downgrade pointer-cast errors to warnings"},
 			{Flag: "-Wno-cast-function-type", Needs: ">=gcc8", Purpose: "suppress function-type cast warnings"},
@@ -107,7 +105,6 @@ var compilerFlagRuleCandidates = []compilerFlagRule{
 		MinPHP:   "",
 		MaxPHP:   "",
 		CFLAGDefs: []domain.CompilerFlagDef{
-			{Flag: "-std=gnu11", Purpose: "C11 standard"},
 			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
 			{Flag: "-Wno-error", Purpose: "never treat warnings as errors"},
 			{Flag: "-fno-sanitize=undefined", Purpose: "disable UB sanitizer (zig-specific)"},
@@ -121,6 +118,21 @@ var compilerFlagRuleCandidates = []compilerFlagRule{
 }
 
 var cstdRules = []cstdRule{
+	{
+		// PHP 4 ships an autoconf 2.13 configure whose test programs are K&R
+		// style (main(){return(0);}) and whose own sources are C89. Under C99
+		// or later, both GCC 14+ and clang 16+ (and therefore zig) reject
+		// implicit int as an error, so configure dies with "C compiler cannot
+		// create executables".
+		MinPHP: "0",
+		MaxPHP: "4.99",
+		CStd:   "-std=gnu89",
+		CXXStd: "-std=gnu++17",
+		// zend_language_scanner.c and zend_ini_scanner.c both define yytext as
+		// a tentative definition. Modern compilers default to -fno-common and
+		// ld.lld then fails the link with "duplicate symbol: yytext".
+		CFlags: []string{"-fcommon"},
+	},
 	{MinPHP: "5.0", MaxPHP: "7.4", CStd: "-std=gnu11", CXXStd: "-std=gnu++17"},
 	{MinPHP: "8.0", MaxPHP: "8.2", CStd: "-std=gnu11", CXXStd: "-std=gnu++17"},
 	{MinPHP: "8.3", MaxPHP: "", CStd: "-std=gnu11", CXXStd: "-std=gnu++17"},
@@ -194,6 +206,7 @@ func getCompilerStdRule(phpVersion string) domain.CompilerRule {
 			return domain.CompilerRule{
 				CStd:   rule.CStd,
 				CXXStd: rule.CXXStd,
+				CFlags: append([]string(nil), rule.CFlags...),
 			}
 		}
 	}

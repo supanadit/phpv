@@ -304,11 +304,16 @@ func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
 	noSystem, _ := cmd.Flags().GetBool("no-system")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 
+	tc, err := h.selectToolchain("")
+	if err != nil {
+		return err
+	}
+
 	if !noSystem {
 		if _, err := h.checkSystemDeps(extNames, autoDeps, dryRun); err != nil {
 			return err
 		}
-		if err := h.checkBuildTools(autoDeps, dryRun); err != nil {
+		if err := h.checkBuildTools(tc, autoDeps, dryRun); err != nil {
 			return err
 		}
 	}

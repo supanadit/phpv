@@ -29,7 +29,7 @@ type keyDef struct {
 var knownKeys = []keyDef{
 	{key: "cache_dir", typ: "string", desc: "Download cache directory path"},
 	{key: "concurrency", typ: "int", desc: "Number of parallel build jobs (default: CPU count)"},
-	{key: "compiler", typ: "string", desc: "C compiler to use (e.g., gcc, clang)"},
+	{key: "compiler", typ: "string", desc: "C compiler used for builds (e.g., gcc, clang, zig)"},
 	{key: "mirror", typ: "string", desc: "PHP download mirror URL"},
 	{key: "static_libgcc", typ: "bool", desc: "Statically link libgcc in static builds"},
 }

@@ -209,7 +209,7 @@ func (s *Service) findDepPrefix(deps []domain.Dependency, depName, sentinelPath 
 		}
 		if len(candidates) > 0 {
 			sort.Slice(candidates, func(i, j int) bool {
-				return compareVersions(candidates[i], candidates[j]) > 0
+				return domain.CompareVersions(candidates[i], candidates[j]) > 0
 			})
 			return filepath.Join(depDir, candidates[0])
 		}

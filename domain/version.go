@@ -278,38 +278,44 @@ func GenerateVersions(ranges []VersionRange, skip []string) []string {
 	return versions
 }
 
-// ParseVersion parses a version string like "8.2.1", "58.2", or "8.x.x".
-// Wildcard "x"/"X" is represented as -1. Two-part versions (e.g. "58.2")
-// are treated as major.minor with patch=0.
+// ParseVersion parses a version string like "8.2.1", "58.2", "8", or "8.x.x".
+// Wildcard "x"/"X" is represented as -1. Missing trailing segments default to
+// 0, and segments after the third are ignored (e.g. "8.4.0.1" is 8.4.0).
+// A segment is parsed by its leading decimal digits, so prerelease suffixes
+// such as "1.1.1w" compare as 1.1.1 — matching how package versions are sorted.
 func ParseVersion(v string) Semver {
-	parts := strings.Split(v, ".")
-	if len(parts) < 2 || len(parts) > 3 {
-		return Semver{}
-	}
 	var s Semver
-	for i, p := range parts {
+	for i, p := range strings.Split(v, ".") {
+		if i > 2 {
+			break
+		}
+		n := leadingInt(p)
 		if p == "x" || p == "X" {
-			switch i {
-			case 0:
-				s.Major = -1
-			case 1:
-				s.Minor = -1
-			case 2:
-				s.Patch = -1
-			}
-		} else {
-			n, _ := strconv.Atoi(p)
-			switch i {
-			case 0:
-				s.Major = n
-			case 1:
-				s.Minor = n
-			case 2:
-				s.Patch = n
-			}
+			n = -1
+		}
+		switch i {
+		case 0:
+			s.Major = n
+		case 1:
+			s.Minor = n
+		case 2:
+			s.Patch = n
 		}
 	}
 	return s
+}
+
+// leadingInt returns the decimal value of the leading digits of s, or 0 when s
+// does not start with a digit.
+func leadingInt(s string) int {
+	n := 0
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			break
+		}
+		n = n*10 + int(r-'0')
+	}
+	return n
 }
 
 // expandRange generates all version strings from 'from' to 'to' (inclusive),

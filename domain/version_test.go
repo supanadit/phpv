@@ -166,3 +166,37 @@ func TestMatchVersionRange(t *testing.T) {
 		}
 	}
 }
+
+// TestCompareVersions_LenientParsing pins the behavior that the duplicated
+// compareVersions helpers in assembler and graph implemented: any segment count
+// is accepted, segments past the third are ignored, and a segment compares by
+// its leading digits. Every input below comes from this repo's own data
+// (internal/repository/memory/registry.go version lists and install dirs).
+func TestCompareVersions_LenientParsing(t *testing.T) {
+	tests := []struct {
+		a, b string
+		want int
+	}{
+		// Single-segment versions must not collapse to 0.0.0.
+		{"9", "8.3", 1},
+		{"8", "8.4.0", -1},
+		{"8", "8", 0},
+		// Four-segment versions ignore the fourth.
+		{"8.4.0.1", "8.4.0", 0},
+		{"8.4.0.1", "8.4.1", -1},
+		// Letter suffixes compare by leading digits.
+		{"1.1.1a", "1.1.1", 0},
+		{"1.1.1w", "1.1.1v", 0},
+		{"0.9.8zh", "0.9.8zc", 0},
+		{"1.0.2u", "1.0.1u", 1},
+		{"1.1.1w", "3.0.0", -1},
+	}
+	for _, tt := range tests {
+		if got := CompareVersions(tt.a, tt.b); got != tt.want {
+			t.Errorf("CompareVersions(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
+		}
+		if got := CompareVersions(tt.b, tt.a); got != -tt.want {
+			t.Errorf("CompareVersions(%q, %q) = %d, want %d (antisymmetry)", tt.b, tt.a, got, -tt.want)
+		}
+	}
+}

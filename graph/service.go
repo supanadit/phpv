@@ -3,7 +3,6 @@ package graph
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/supanadit/phpv/compiler"
 	"github.com/supanadit/phpv/domain"
@@ -108,12 +107,12 @@ func (s *Service) GetBuildPlan(name string, version string, extensions []string,
 		cxxCompilerFlags = append(cxxCompilerFlags, compilerRule.CXXStd)
 	}
 	return &BuildPlan{
-		Deps:            deps,
-		ConfigureFlags:  configureFlags,
-		CFlags:          cflags,
-		CompilerFlags:   cCompilerFlags,
+		Deps:             deps,
+		ConfigureFlags:   configureFlags,
+		CFlags:           cflags,
+		CompilerFlags:    cCompilerFlags,
 		CXXCompilerFlags: cxxCompilerFlags,
-		Warnings:        warnings,
+		Warnings:         warnings,
 	}, nil
 }
 
@@ -141,15 +140,15 @@ func (s *Service) resolveExtensionDeps(phpVersion string, extensions []string) (
 			continue
 		}
 		if existing, dup := direct[pkgName]; dup && existing != pkgVersion {
-			existingVer := extractExactVersion(existing)
-			newVer := extractExactVersion(pkgVersion)
-			if compareVersions(newVer, existingVer) > 0 {
+			existingVer, _ := domain.SplitVersionSpec(existing)
+			newVer, _ := domain.SplitVersionSpec(pkgVersion)
+			if domain.CompareVersions(newVer, existingVer) > 0 {
 				warnings = append(warnings, fmt.Sprintf(
 					"conflicting dep %s: extension %q wants %q, but another extension already pinned %q — using %q (higher)",
 					pkgName, ext, pkgVersion, existing, pkgVersion,
 				))
 				direct[pkgName] = pkgVersion
-			} else if compareVersions(newVer, existingVer) < 0 {
+			} else if domain.CompareVersions(newVer, existingVer) < 0 {
 				warnings = append(warnings, fmt.Sprintf(
 					"conflicting dep %s: extension %q wants %q, but another extension already pinned %q — keeping %q (higher)",
 					pkgName, ext, pkgVersion, existing, existing,
@@ -177,7 +176,8 @@ func (s *Service) resolveExtensionDeps(phpVersion string, extensions []string) (
 		if _, ok := adj[name]; ok {
 			return
 		}
-		transitive, err := s.repo.GetOrderedDependencies(name, extractExactVersion(ver))
+		exactVer, _ := domain.SplitVersionSpec(ver)
+		transitive, err := s.repo.GetOrderedDependencies(name, exactVer)
 		if err != nil {
 			transitive = nil
 		}
@@ -251,36 +251,6 @@ func mergeDeps(base, extDeps []domain.Dependency) []domain.Dependency {
 	}
 	merged = append(merged, extDeps...)
 	return merged
-}
-
-// extractExactVersion returns the exact version part from a "exact|constraint" string.
-func extractExactVersion(v string) string {
-	if idx := strings.Index(v, "|"); idx != -1 {
-		return v[:idx]
-	}
-	return v
-}
-
-// compareVersions compares two version strings numerically.
-func compareVersions(a, b string) int {
-	ap := strings.Split(a, ".")
-	bp := strings.Split(b, ".")
-	for i := 0; i < 3; i++ {
-		var an, bn int
-		if i < len(ap) {
-			fmt.Sscanf(ap[i], "%d", &an)
-		}
-		if i < len(bp) {
-			fmt.Sscanf(bp[i], "%d", &bn)
-		}
-		if an > bn {
-			return 1
-		}
-		if an < bn {
-			return -1
-		}
-	}
-	return 0
 }
 
 // GetOrderedDependencies returns all transitive dependencies for (name, version).

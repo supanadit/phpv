@@ -17,6 +17,7 @@ import (
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/graph"
+	"github.com/supanadit/phpv/internal/source"
 	"github.com/supanadit/phpv/patcher"
 	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/silo"
@@ -216,8 +217,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 			emit("skip", fmt.Sprintf("Skipping optional dep %s (no version specified)", dep.Name))
 			continue
 		}
-		depVersion := extractVersion(dep.Version)
-		constraint := extractConstraint(dep.Version)
+		depVersion, constraint := domain.SplitVersionSpec(dep.Version)
 		depPrefix := s.silo.PackagePrefix(dep.Name, depVersion)
 		sourceDir := s.silo.SourcePath(dep.Name, depVersion)
 
@@ -307,7 +307,7 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 	depPkgConfigPaths := append(localPcPaths, systemPcPaths...)
 
 	sourceDir := s.silo.SourcePath(name, exactVersion)
-	srcPath := FindSourceDir(sourceDir, name, exactVersion)
+	srcPath := source.Find(sourceDir, name)
 	if srcPath == "" {
 		return nil, fmt.Errorf("could not find source directory in %s", sourceDir)
 	}
@@ -760,7 +760,8 @@ func (s *Service) downloadAll(name, version string, deps []domain.Dependency, mu
 		if !shouldDownloadDep(dep, mustBuild, systemPkgs, static) {
 			continue
 		}
-		items = append(items, item{dep.Name, extractVersion(dep.Version)})
+		depVersion, _ := domain.SplitVersionSpec(dep.Version)
+		items = append(items, item{dep.Name, depVersion})
 	}
 	items = append(items, item{name, version})
 
@@ -860,7 +861,7 @@ func (s *Service) computeMustBuild(deps []domain.Dependency, systemPkgs map[stri
 		if isBuildTool(dep.Name) || (dep.Optional && dep.Version == "") {
 			continue
 		}
-		constraint := extractConstraint(dep.Version)
+		_, constraint := domain.SplitVersionSpec(dep.Version)
 		if constraint == "" {
 			continue
 		}
@@ -888,7 +889,7 @@ func shouldDownloadDep(dep domain.Dependency, mustBuild map[string]bool, systemP
 	if mustBuild[dep.Name] {
 		return true
 	}
-	constraint := extractConstraint(dep.Version)
+	_, constraint := domain.SplitVersionSpec(dep.Version)
 	if constraint == "" {
 		return true
 	}
@@ -930,26 +931,6 @@ func appendUnique(slice []string, item string) []string {
 	return append(slice, item)
 }
 
-func extractVersion(v string) string {
-	if v == "" {
-		return ""
-	}
-	if before, _, found := strings.Cut(v, "|"); found {
-		return before
-	}
-	return v
-}
-
-func extractConstraint(v string) string {
-	if v == "" {
-		return ""
-	}
-	if _, after, found := strings.Cut(v, "|"); found {
-		return after
-	}
-	return ""
-}
-
 func setEnvVar(env []string, key, value string) []string {
 	prefix := key + "="
 	for i, v := range env {
@@ -969,92 +950,9 @@ func resolveVersionConstraint(versions []string, constraint string) (string, err
 	}
 	if strings.Count(constraint, ".") == 1 || strings.Count(constraint, ".") == 0 {
 		prefix := constraint + "."
-		if best := latestMatching(versions, prefix); best != "" {
+		if best := domain.LatestMatching(versions, prefix); best != "" {
 			return best, nil
 		}
 	}
 	return "", fmt.Errorf("no version matching %q found", constraint)
-}
-
-func latestMatching(versions []string, prefix string) string {
-	var best string
-	for _, v := range versions {
-		if strings.HasPrefix(v, prefix) {
-			if best == "" || compareVersions(v, best) > 0 {
-				best = v
-			}
-		}
-	}
-	return best
-}
-
-func compareVersions(a, b string) int {
-	ap := strings.Split(a, ".")
-	bp := strings.Split(b, ".")
-	for i := 0; i < 3; i++ {
-		var an, bn int
-		if i < len(ap) {
-			fmt.Sscanf(ap[i], "%d", &an)
-		}
-		if i < len(bp) {
-			fmt.Sscanf(bp[i], "%d", &bn)
-		}
-		if an > bn {
-			return 1
-		}
-		if an < bn {
-			return -1
-		}
-	}
-	return 0
-}
-
-// FindSourceDir locates the actual source directory inside the extracted dir.
-func FindSourceDir(extractDir, name, version string) string {
-	if hasBuildFile(extractDir) {
-		return extractDir
-	}
-	// ICU tarballs extract to icu/source/ (nested one level deeper).
-	if name == "icu" {
-		icuSource := filepath.Join(extractDir, "icu", "source")
-		if hasBuildFile(icuSource) {
-			return icuSource
-		}
-	}
-	entries, err := os.ReadDir(extractDir)
-	if err != nil {
-		return ""
-	}
-	var dirs []string
-	for _, e := range entries {
-		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
-			dirs = append(dirs, e.Name())
-		}
-	}
-	if len(dirs) == 1 {
-		candidate := filepath.Join(extractDir, dirs[0])
-		if hasBuildFile(candidate) {
-			return candidate
-		}
-	}
-	for _, d := range dirs {
-		candidate := filepath.Join(extractDir, d)
-		if hasBuildFile(candidate) {
-			return candidate
-		}
-	}
-	return ""
-}
-
-func hasBuildFile(dir string) bool {
-	return fileExists(filepath.Join(dir, "configure")) ||
-		fileExists(filepath.Join(dir, "Configure")) ||
-		fileExists(filepath.Join(dir, "CMakeLists.txt")) ||
-		fileExists(filepath.Join(dir, "Makefile")) ||
-		fileExists(filepath.Join(dir, "makefile"))
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }

@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/source"
 )
 
 func (h *PHPHandler) extensionCmd() *cobra.Command {
@@ -324,13 +324,13 @@ func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	sourceDir := h.siloSvc.SourcePath("php", version)
-	srcPath := assembler.FindSourceDir(sourceDir, "php", version)
+	srcPath := source.Find(sourceDir, "php")
 	if srcPath == "" {
 		fmt.Printf("PHP source not found, downloading PHP %s source...\n", version)
 		if err := h.downloadPHPSource(version); err != nil {
 			return fmt.Errorf("download PHP source: %w", err)
 		}
-		srcPath = assembler.FindSourceDir(sourceDir, "php", version)
+		srcPath = source.Find(sourceDir, "php")
 		if srcPath == "" {
 			return fmt.Errorf("PHP source not found at %s after download", sourceDir)
 		}

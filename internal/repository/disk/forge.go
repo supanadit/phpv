@@ -10,6 +10,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/supanadit/phpv/internal/source"
 )
 
 type ForgeRepository struct{}
@@ -19,7 +21,7 @@ func NewForgeRepository() *ForgeRepository {
 }
 
 func (f *ForgeRepository) Build(ctx context.Context, name string, version string, sourceDir string, extraEnv []string, extraConfigureFlags []string, installPrefix string, verbose bool, jobs int) (buildDir string, env map[string]string, err error) {
-	srcPath := findSourceDir(sourceDir, name, version)
+	srcPath := source.Find(sourceDir, name)
 	if srcPath == "" {
 		return "", nil, fmt.Errorf("could not find source directory in %s", sourceDir)
 	}
@@ -342,53 +344,4 @@ func opensslTarget() string {
 		return "darwin64-x86_64-cc"
 	}
 	return "linux-x86_64"
-}
-
-func findSourceDir(extractDir, name, version string) string {
-	if hasBuildFile(extractDir) {
-		return extractDir
-	}
-	// ICU tarballs extract to icu/source/ (nested one level deeper).
-	if name == "icu" {
-		icuSource := filepath.Join(extractDir, "icu", "source")
-		if hasBuildFile(icuSource) {
-			return icuSource
-		}
-	}
-	entries, err := os.ReadDir(extractDir)
-	if err != nil {
-		return ""
-	}
-	var dirs []string
-	for _, e := range entries {
-		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
-			dirs = append(dirs, e.Name())
-		}
-	}
-	if len(dirs) == 1 {
-		candidate := filepath.Join(extractDir, dirs[0])
-		if hasBuildFile(candidate) {
-			return candidate
-		}
-	}
-	for _, d := range dirs {
-		candidate := filepath.Join(extractDir, d)
-		if hasBuildFile(candidate) {
-			return candidate
-		}
-	}
-	return ""
-}
-
-func hasBuildFile(dir string) bool {
-	return fileExists(filepath.Join(dir, "configure")) ||
-		fileExists(filepath.Join(dir, "Configure")) ||
-		fileExists(filepath.Join(dir, "CMakeLists.txt")) ||
-		fileExists(filepath.Join(dir, "Makefile")) ||
-		fileExists(filepath.Join(dir, "makefile"))
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }

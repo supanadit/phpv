@@ -97,7 +97,7 @@ func TestResolveVersionConstraint_EmptyVersions(t *testing.T) {
 
 func TestLatestMatching(t *testing.T) {
 	versions := []string{"8.4.0", "8.4.1", "8.4.2", "8.3.0", "7.4.0"}
-	got := latestMatching(versions, "8.4.")
+	got := domain.LatestMatching(versions, "8.4.")
 	if got != "8.4.2" {
 		t.Fatalf("got %q, want 8.4.2", got)
 	}
@@ -105,7 +105,7 @@ func TestLatestMatching(t *testing.T) {
 
 func TestLatestMatching_NoMatch(t *testing.T) {
 	versions := []string{"8.4.0", "8.3.0"}
-	got := latestMatching(versions, "7.")
+	got := domain.LatestMatching(versions, "7.")
 	if got != "" {
 		t.Fatalf("got %q, want empty", got)
 	}
@@ -124,9 +124,9 @@ func TestCompareVersions(t *testing.T) {
 		{"7.4.0", "8.4.0", -1},
 	}
 	for _, tt := range tests {
-		got := compareVersions(tt.a, tt.b)
+		got := domain.CompareVersions(tt.a, tt.b)
 		if got != tt.want {
-			t.Errorf("compareVersions(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
+			t.Errorf("CompareVersions(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
 		}
 	}
 }

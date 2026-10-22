@@ -2,7 +2,6 @@ package memory
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/supanadit/phpv/domain"
 )
@@ -69,7 +68,7 @@ func (r *GraphRepository) GetOrderedDependencies(name string, version string) ([
 		}
 
 		for _, dep := range deps {
-			depVersion := extractVersion(dep.Version)
+			depVersion, _ := domain.SplitVersionSpec(dep.Version)
 			if dep.Optional {
 				optional[dep.Name] = true
 			}
@@ -491,16 +490,6 @@ func (r *GraphRepository) registerExtensions() {
 			r.conflicts[ext.Name] = append(r.conflicts[ext.Name], conflict)
 		}
 	}
-}
-
-func extractVersion(v string) string {
-	if v == "" {
-		return ""
-	}
-	if before, _, found := strings.Cut(v, "|"); found {
-		return before
-	}
-	return v
 }
 
 // builtInPackages returns the hardcoded dependency definitions for all

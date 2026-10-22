@@ -15,13 +15,14 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"go.uber.org/fx"
 	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/compiler"
 	"github.com/supanadit/phpv/doctor"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/source"
 	"github.com/supanadit/phpv/pecl"
 	"github.com/supanadit/phpv/system"
+	"go.uber.org/fx"
 )
 
 // SiloService is the set of silo operations the terminal handler needs.
@@ -437,7 +438,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		sharedOnly := h.assemblerSvc.SharedOnlyExtensions(resolvedVersion, extensions)
 		if len(sharedOnly) > 0 {
 			sourceDir := h.siloSvc.SourcePath("php", resolvedVersion)
-			srcPath := assembler.FindSourceDir(sourceDir, "php", resolvedVersion)
+			srcPath := source.Find(sourceDir, "php")
 			if srcPath == "" {
 				fmt.Printf("Warning: PHP source not found at %s, skipping shared extension builds\n", sourceDir)
 			} else {
@@ -508,7 +509,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	sharedOnly := h.assemblerSvc.SharedOnlyExtensions(resolvedVersion, extensions)
 	if len(sharedOnly) > 0 {
 		sourceDir := h.siloSvc.SourcePath("php", resolvedVersion)
-		srcPath := assembler.FindSourceDir(sourceDir, "php", resolvedVersion)
+		srcPath := source.Find(sourceDir, "php")
 		if srcPath == "" {
 			fmt.Printf("Warning: PHP source not found at %s, skipping shared extension builds\n", sourceDir)
 		} else {

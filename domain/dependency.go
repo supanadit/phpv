@@ -1,5 +1,7 @@
 package domain
 
+import "strings"
+
 // Dependency describes a single dependency with an optional flag.
 // Version uses the format "exactVersion|constraint" where:
 //   - exactVersion is the specific version to download
@@ -10,6 +12,14 @@ type Dependency struct {
 	Name     string
 	Version  string
 	Optional bool
+}
+
+// SplitVersionSpec splits a Dependency.Version spec ("exactVersion|constraint")
+// into its exact version and compatibility constraint. When the spec has no
+// "|", the whole string is the version and the constraint is empty.
+func SplitVersionSpec(spec string) (version, constraint string) {
+	version, constraint, _ = strings.Cut(spec, "|")
+	return version, constraint
 }
 
 // VersionConstraint binds a version range to a set of dependencies.

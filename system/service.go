@@ -13,7 +13,11 @@ func NewService() *Service {
 	return &Service{}
 }
 
-func (s *Service) Check(phpDeps []string) (*CheckResult, error) {
+// Check reports which of the given system packages are installed. Dependencies
+// the distro maps to a different package name are resolved through the distro
+// table; those with no mapping are skipped. The Required flag and any other
+// caller-supplied field is preserved on the returned packages.
+func (s *Service) Check(deps []Package) (*CheckResult, error) {
 	distro, err := Detect()
 	if err != nil {
 		return nil, fmt.Errorf("detect distro: %w", err)
@@ -25,23 +29,20 @@ func (s *Service) Check(phpDeps []string) (*CheckResult, error) {
 	}
 
 	result := &CheckResult{Distro: distro}
-	for _, dep := range phpDeps {
-		sysName, ok := pkgs[dep]
+	for _, dep := range deps {
+		sysName, ok := pkgs[dep.Name]
 		if !ok {
 			continue
 		}
 		installed := isInstalled(distro.PM, sysName)
-		p := Package{
-			Name:       dep,
-			SystemName: sysName,
-			Installed:  installed,
-		}
+		p := dep
+		p.SystemName = sysName
+		p.Installed = installed
 		if installed {
 			p.Version = getVersion(distro.PM, sysName)
-		}
-		if installed {
 			result.Available = append(result.Available, p)
 		} else {
+			p.Version = ""
 			result.Missing = append(result.Missing, p)
 		}
 	}

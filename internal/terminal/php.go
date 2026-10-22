@@ -67,7 +67,7 @@ type BundleService interface {
 
 // SystemService is the set of system operations the terminal handler needs.
 type SystemService interface {
-	Check(phpDeps []string) (*system.CheckResult, error)
+	Check(phpDeps []system.Package) (*system.CheckResult, error)
 	CheckBuildTools(toolNames []string) (*system.CheckResult, error)
 	Install(packages []system.Package) error
 	InstallCommand(packages []system.Package) string
@@ -1032,37 +1032,17 @@ func (h *PHPHandler) selectToolchain(flagVal string) (compiler.Toolchain, error)
 // If dryRun is true, only prints what would be done.
 // Returns a map of available system packages (name -> Package) for use in hybrid builds.
 func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool) (map[string]system.Package, error) {
-	phpDeps := []string{"openssl", "libxml2", "zlib", "oniguruma", "curl", "sqlite3", "readline", "icu", "pcre2", "argon2", "sodium"}
-	seen := make(map[string]bool)
-	for _, dep := range phpDeps {
-		seen[dep] = true
-	}
-	// System dev-libraries are derived from the extension definitions (the
-	// RequiresPackages field), served through the graph repository so the data
-	// lives in one place and can be updated without a binary change.
-	for _, ext := range extensions {
-		def, ok := h.assemblerSvc.GetExtensionDef(ext)
-		if !ok {
-			continue
-		}
-		for _, dep := range def.RequiresPackages {
-			if seen[dep] {
-				continue
-			}
-			seen[dep] = true
-			phpDeps = append(phpDeps, dep)
-		}
-	}
+	// The dependency set is derived from the extension definitions served
+	// through the graph repository, so the data lives in one place and cannot
+	// drift from what the build plan actually consumes.
+	phpDeps := system.DependencySet(h.extensionDefs(extensions))
 
 	result, err := h.systemSvc.Check(phpDeps)
 	if err != nil {
 		return nil, fmt.Errorf("system check: %w", err)
 	}
 
-	systemAvail := make(map[string]system.Package)
-	for _, p := range result.Available {
-		systemAvail[p.Name] = p
-	}
+	systemAvail := usablePackages(result.Available)
 
 	if result.Distro.PM == "unknown" {
 		return systemAvail, nil
@@ -1072,7 +1052,7 @@ func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool)
 		return systemAvail, nil
 	}
 
-	installed, err := h.promptAndInstall(result.Missing, autoDeps, dryRun)
+	installed, err := h.promptAndInstall(result.Missing, autoDeps, dryRun, true)
 	if err != nil {
 		return nil, err
 	}
@@ -1080,12 +1060,41 @@ func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool)
 		return systemAvail, nil
 	}
 
-	for _, p := range result.Missing {
-		p.Installed = true
-		systemAvail[p.Name] = p
+	// Re-check instead of assuming the install made every package usable: the
+	// build only links a system package when it reports a version that satisfies
+	// the dependency constraint, so a package left without one must not be
+	// returned as available.
+	refreshed, err := h.systemSvc.Check(phpDeps)
+	if err != nil {
+		return nil, fmt.Errorf("system re-check after install: %w", err)
 	}
+	return usablePackages(refreshed.Available), nil
+}
 
-	return systemAvail, nil
+// extensionDefs resolves the definitions for the named extensions, skipping any
+// the graph repository does not know.
+func (h *PHPHandler) extensionDefs(extensions []string) []domain.ExtensionDef {
+	defs := make([]domain.ExtensionDef, 0, len(extensions))
+	for _, ext := range extensions {
+		if def, ok := h.assemblerSvc.GetExtensionDef(ext); ok {
+			defs = append(defs, def)
+		}
+	}
+	return defs
+}
+
+// usablePackages indexes system packages by dependency name, keeping only the
+// ones the build can actually link against. A package without a resolved
+// version cannot satisfy a dependency constraint, so it is treated as
+// unavailable rather than assumed usable.
+func usablePackages(pkgs []system.Package) map[string]system.Package {
+	m := make(map[string]system.Package, len(pkgs))
+	for _, p := range pkgs {
+		if p.Installed && p.Version != "" {
+			m[p.Name] = p
+		}
+	}
+	return m
 }
 
 // promptAndInstall asks the user whether to install the given missing system
@@ -1093,10 +1102,22 @@ func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool)
 // installs directly; dryRun only prints what would be done. It returns true
 // when the packages were installed and false when they were skipped or
 // declined.
-func (h *PHPHandler) promptAndInstall(missing []system.Package, autoDeps, dryRun bool) (bool, error) {
+//
+// buildDeps marks a dependency prompt, which explains that a system package is
+// only used when its version satisfies the build requirement. Build-tool
+// prompts pass false: no version gate applies to them.
+func (h *PHPHandler) promptAndInstall(missing []system.Package, autoDeps, dryRun, buildDeps bool) (bool, error) {
 	fmt.Println("\nMissing system packages:")
 	for _, p := range missing {
-		fmt.Printf("  ✗ %s (%s)\n", p.Name, p.SystemName)
+		label := ""
+		if buildDeps && !p.Required {
+			label = " [optional]"
+		}
+		fmt.Printf("  ✗ %s (%s)%s\n", p.Name, p.SystemName, label)
+	}
+	if buildDeps {
+		fmt.Println("\n  Used only when the installed version satisfies the build requirement;")
+		fmt.Println("  incompatible versions are built from source instead.")
 	}
 
 	installCmd := h.systemSvc.InstallCommand(missing)
@@ -1168,7 +1189,7 @@ func (h *PHPHandler) checkBuildTools(tc compiler.Toolchain, autoDeps, dryRun boo
 		}
 	}
 
-	installed, err := h.promptAndInstall(result.Missing, autoDeps, dryRun)
+	installed, err := h.promptAndInstall(result.Missing, autoDeps, dryRun, false)
 	if err != nil {
 		return err
 	}

@@ -76,9 +76,17 @@ type Repository interface {
 }
 
 type Service struct {
-	repo      Repository
-	sysSvc    *system.Service
-	graphSvc  *graph.Service
+	repo     Repository
+	sysSvc   SystemService
+	graphSvc *graph.Service
+}
+
+// SystemService is the subset of system operations doctor needs. It exists so
+// tests can supply package-manager state without touching the host.
+type SystemService interface {
+	DistroInfo() system.Distro
+	Check(deps []system.Package) (*system.CheckResult, error)
+	InstallCommand(packages []system.Package) string
 }
 
 func NewService(repo Repository, sysSvc *system.Service, graphSvc *graph.Service) *Service {
@@ -153,29 +161,15 @@ func (s *Service) checkBuildTools() []Issue {
 }
 
 func (s *Service) checkSystemPackages() []Issue {
-	phpDeps := []string{"openssl", "libxml2", "zlib", "oniguruma", "curl", "sqlite3", "readline", "icu", "pcre2", "argon2", "sodium"}
-	seen := make(map[string]bool)
-	for _, dep := range phpDeps {
-		seen[dep] = true
-	}
-	// Add system dev-libraries required by extensions that are actually
-	// installed. Deps are derived from the extension definitions served
-	// through the graph repository, so this stays correct without a binary
-	// update when extension knowledge changes.
-	installedExts := s.installedExtensions()
-	for _, ext := range installedExts {
-		def, ok := s.graphSvc.GetExtensionDef(ext)
-		if !ok {
-			continue
-		}
-		for _, dep := range def.RequiresPackages {
-			if seen[dep] {
-				continue
-			}
-			seen[dep] = true
-			phpDeps = append(phpDeps, dep)
+	// Same derivation `phpv install` uses, so doctor cannot report a package
+	// the build would never ask for.
+	var defs []domain.ExtensionDef
+	for _, ext := range s.installedExtensions() {
+		if def, ok := s.graphSvc.GetExtensionDef(ext); ok {
+			defs = append(defs, def)
 		}
 	}
+	phpDeps := system.DependencySet(defs)
 
 	result, err := s.sysSvc.Check(phpDeps)
 	if err != nil {
@@ -188,16 +182,47 @@ func (s *Service) checkSystemPackages() []Issue {
 	if len(result.Missing) == 0 {
 		return nil
 	}
-	var names []string
+
+	// A missing build dependency breaks the build; a missing advisory dev
+	// library only limits optional functionality, so they are reported apart.
+	var required, advisory []system.Package
 	for _, p := range result.Missing {
+		if p.Required {
+			required = append(required, p)
+		} else {
+			advisory = append(advisory, p)
+		}
+	}
+
+	var issues []Issue
+	if len(required) > 0 {
+		issues = append(issues, Issue{
+			Severity: SeverityWarning,
+			Title:    fmt.Sprintf("Missing build dependencies (%d of %d)", len(required), len(phpDeps)),
+			Detail: fmt.Sprintf("These libraries are part of the build plan and are not installed: %s",
+				packageNames(required)),
+			Fix: s.sysSvc.InstallCommand(required),
+		})
+	}
+	if len(advisory) > 0 {
+		issues = append(issues, Issue{
+			Severity: SeverityInfo,
+			Title:    fmt.Sprintf("Optional system libraries missing (%d)", len(advisory)),
+			Detail: fmt.Sprintf("Optional dev libraries not installed; extensions relying on them build from source: %s",
+				packageNames(advisory)),
+			Fix: s.sysSvc.InstallCommand(advisory),
+		})
+	}
+	return issues
+}
+
+// packageNames joins the names of pkgs for display.
+func packageNames(pkgs []system.Package) string {
+	names := make([]string, 0, len(pkgs))
+	for _, p := range pkgs {
 		names = append(names, p.Name)
 	}
-	return []Issue{{
-		Severity: SeverityWarning,
-		Title:    fmt.Sprintf("Missing system libraries (%d of %d)", len(result.Missing), len(phpDeps)),
-		Detail:   fmt.Sprintf("Required dev libraries not installed: %s", strings.Join(names, ", ")),
-		Fix:      s.sysSvc.InstallCommand(result.Missing),
-	}}
+	return strings.Join(names, ", ")
 }
 
 // installedExtensions returns the names of every extension installed across

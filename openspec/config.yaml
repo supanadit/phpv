@@ -1,32 +1,41 @@
 schema: spec-driven
 
-# Project context (optional)
-# Add only constraints that should guide OpenSpec artifacts and workflows.
-# Include constraints an agent cannot infer by reading the code.
-# Keep general project documentation and discoverable codebase facts out.
-# Example:
-#   context: |
-#     Designs and tasks must cover Windows, macOS, and Linux
-#     Write all artifacts in Spanish
+context: |
+  Architecture & Coding Standards (bxcodec/go-clean-arch Pattern):
+  1. Strict Hexagonal / Clean Architecture Layering:
+     - domain/: Pure business logic, entity structs, and interface contracts (Usecases, Repositories). Must have ZERO external framework/ORM dependencies.
+     - repository/: Data access layer implementing domain repository interfaces (PostgreSQL, MySQL, Redis, Mongo, etc.).
+     - usecase/: Business logic orchestration implementing domain usecase interfaces.
+     - delivery/: Drivers/Adapters layer (HTTP handlers via Echo/Gin, gRPC, CLI, background workers).
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always state what is out of scope
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  2. Multi-Tiered Class/Struct Abstraction:
+     - Tier 1 (Contracts): Define small, explicit interfaces in the `domain/` package (e.g., `ArticleRepository`, `ArticleUsecase`).
+     - Tier 2 (Entities): Core state structs inside `domain/` with standard validation and business rules.
+     - Tier 3 (Orchestrators/Usecases): Business orchestration inside `usecase/`. Structs holding dependencies injected as `domain.Repository` interfaces. Keep methods lean by delegating sub-routines.
+     - Tier 4 (Atomic Utilities): Side-effect-free helper functions in `internal/utils` or pure package-level functions (e.g., slice diffing, transformations). Avoid method receivers if no state is stored.
+     - Tier 5 (Concrete Adapters): Implementations inside `repository/` and `delivery/`.
 
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+  3. Go Idioms, Performance & Maintainability:
+     - Dependency Injection: Always use constructor functions (`NewArticleUsecase`, `NewPostgresRepository`) accepting interfaces and returning concrete structs.
+     - Accept Interfaces, Return Structs: Accept domain interfaces as parameters; return concrete struct pointers or values.
+     - Slice/Map Optimization: Pre-allocate capacity (`make([]T, 0, len(input))`) when mapping, filtering, or diffing data.
+     - Explicit Context & Errors: Always pass `ctx context.Context` as the first argument in I/O operations and wrap errors meaningfully (`fmt.Errorf("...: %w", err)`).
+
+rules:
+  proposal:
+    - Map changes strictly across `domain`, `usecase`, `repository`, and `delivery` packages.
+    - Identify duplicate or redundant orchestration logic to merge into reusable `usecase` or utility methods.
+  design:
+    - Ensure all `usecase` implementations depend strictly on `domain` interfaces, not concrete `repository` structs.
+    - Keep `delivery` (HTTP/gRPC) handlers slim, delegating all domain logic to `usecase` abstractions.
+  tasks:
+    - Break tasks down by bxcodec layer: (1) Domain Entities & Contracts -> (2) Utilities -> (3) Usecase Orchestrators -> (4) Repository/Delivery Adapters.
+
+operations:
+  apply:
+    guidance:
+      - Enforce standard `bxcodec` constructor patterns (`New[Entity][Layer]`).
+      - Maintain clean separation: HTTP request/response DTOs belong in `delivery`, not in `domain`.
+  archive:
+    guidance:
+      - Run `go fmt` and `golangci-lint` to ensure zero unused imports or dead code remain.

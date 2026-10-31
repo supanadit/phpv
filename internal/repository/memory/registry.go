@@ -23,8 +23,8 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				domain.BuildMinorRanges(8, []domain.MinorRange{
 					{Minor: 0, PatchEnd: 30},
 					{Minor: 1, PatchEnd: 33},
-					{Minor: 2, PatchEnd: 33},
-					{Minor: 3, PatchEnd: 33},
+					{Minor: 2, PatchEnd: 35},
+					{Minor: 3, PatchEnd: 36},
 					{Minor: 4, PatchEnd: 27},
 					{Minor: 5, PatchEnd: 12},
 				}),
@@ -67,6 +67,16 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 						Version: "8.4.27",
 						Type:    "sha256",
 						Value:   "5bafed9994c1a49796b25b5f61c22c9183bfe046b6acc7b363842d03c77f972f",
+					},
+					{
+						Version: "8.3.36",
+						Type:    "sha256",
+						Value:   "c93f3441f87f6ab156bef4432db215d7e61ca2c0183bb3a2aa28d9886ab59f53",
+					},
+					{
+						Version: "8.2.35",
+						Type:    "sha256",
+						Value:   "9db4204f0a2d1911277ae832185e07bb4c3b3559772753a70d2968ca346d6910",
 					},
 					{
 						Version: "8.5.10",

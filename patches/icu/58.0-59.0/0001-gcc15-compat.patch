@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: phpv patch conversion <patches@phpv.invalid>
+Subject: [0001-gcc15-compat] ICU 58.x on modern toolchains: xlocale.h was removed in glibc 2.26+ (merged into locale.h), and -Wimplicit-fallthrough is an error on GCC 15+.
+
+ICU 58.x on modern toolchains: xlocale.h was removed in glibc 2.26+
+(merged into locale.h), and -Wimplicit-fallthrough is an error on GCC
+15+.
+
+---
+diff --git a/a/icu/source/i18n/digitlst.cpp b/b/icu/source/i18n/digitlst.cpp
+index ab5b557..9bfacaf 100644
+--- a/source/i18n/digitlst.cpp
++++ b/source/i18n/digitlst.cpp
+@@ -64,7 +64,7 @@
+ # if U_PLATFORM_USES_ONLY_WIN32_API || U_PLATFORM == U_PF_CYGWIN
+ #   include <locale.h>
+ # else
+-#   include <xlocale.h>
++#   include <locale.h>
+ # endif
+ #endif
+ 

@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: phpv patch conversion <patches@phpv.invalid>
+Subject: [0001-st-foreach] Oniguruma 6.9.9 fixed the st_hash_type members upstream but still uses _()/ANYARGS macro declarations for st_foreach and the K&R local func pointer in st.c; fix the remaining ones.
+
+Oniguruma 6.9.9 fixed the st_hash_type members upstream but still uses
+_()/ANYARGS macro declarations for st_foreach and the K&R local func
+pointer in st.c; fix the remaining ones. Fixed fully in 6.9.10.
+
+---
+diff --git a/a/onig-6.9.9/src/st.h b/b/onig-6.9.9/src/st.h
+index 5efee8b..8d528c0 100644
+--- a/src/st.h
++++ b/src/st.h
+@@ -52,14 +52,14 @@ int st_delete _((st_table *, st_data_t *, st_data_t *));
+ int st_delete_safe _((st_table *, st_data_t *, st_data_t *, st_data_t));
+ int st_insert _((st_table *, st_data_t, st_data_t));
+ int st_lookup _((st_table *, st_data_t, st_data_t *));
+-int st_foreach _((st_table *, int (*)(ANYARGS), st_data_t));
++int st_foreach(st_table *, int (*)(st_data_t, st_data_t, st_data_t), st_data_t);
+ void st_add_direct _((st_table *, st_data_t, st_data_t));
+ void st_free_table _((st_table *));
+ void st_cleanup_safe _((st_table *, st_data_t));
+ st_table *st_copy _((st_table *));
+ 
+-#define ST_NUMCMP	((int (*)()) 0)
+-#define ST_NUMHASH	((int (*)()) -2)
++#define ST_NUMCMP	((int (*)(st_data_t, st_data_t)) 0)
++#define ST_NUMHASH	((int (*)(st_data_t)) -2)
+ 
+ #define st_numcmp	ST_NUMCMP
+ #define st_numhash	ST_NUMHASH

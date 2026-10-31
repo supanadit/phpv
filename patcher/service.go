@@ -82,11 +82,11 @@ func (s *Service) Prepare(name string, version string, sourceDir string) (*Prepa
 			}
 			result.Applied = append(result.Applied, p.Name)
 		}
-		if p.ExtraCFlags != nil {
-			result.ExtraCFlags = p.ExtraCFlags
+		if len(p.ExtraCFlags) > 0 {
+			result.ExtraCFlags = append(result.ExtraCFlags, p.ExtraCFlags...)
 		}
 		if len(p.ConfigureFlags) > 0 {
-			result.ConfigureFlags = p.ConfigureFlags
+			result.ConfigureFlags = append(result.ConfigureFlags, p.ConfigureFlags...)
 		}
 	}
 	return result, nil

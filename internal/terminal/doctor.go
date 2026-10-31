@@ -33,6 +33,8 @@ func (h *PHPHandler) doctor(cmd *cobra.Command, args []string) error {
 		return printJSON(jsonResponse{SchemaVersion: 1, Data: doctorResponse{Issues: issues}})
 	}
 
+	fmt.Printf("  %s\n", patchTreeSummary())
+
 	if len(issues) == 0 {
 		fmt.Println("✓ No issues found")
 		return nil

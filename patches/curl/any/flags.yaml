@@ -1,0 +1,12 @@
+# Curl needs explicit TLS backend + disabled optional features.
+# The {{dep:openssl}} placeholder is resolved by the assembler to the
+# openssl install prefix.
+configureFlags:
+  - "--with-openssl={{dep:openssl}}"
+  - "--without-brotli"
+  - "--disable-ldap"
+  - "--without-libpsl"
+  - "--without-libidn2"
+  - "--without-zstd"
+  - "--without-nghttp2"
+  - "--without-zlib"

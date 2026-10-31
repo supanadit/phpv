@@ -19,6 +19,7 @@ import (
 	"github.com/supanadit/phpv/graph"
 	"github.com/supanadit/phpv/internal/source"
 	"github.com/supanadit/phpv/patcher"
+	"github.com/supanadit/phpv/patchsync"
 	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/system"
@@ -55,16 +56,21 @@ type Service struct {
 	forge   *forge.Service
 	patcher *patcher.Service
 	reg     *registry.Service
+	// patches, when non-nil, is consulted before every build so freshly
+	// published patches reach installs regardless of binary age. A nil
+	// service disables the self-sync (e.g. in tests).
+	patches *patchsync.Service
 }
 
 // NewService creates a new assembler service.
-func NewService(g *graph.Service, s *silo.Service, f *forge.Service, p *patcher.Service, r *registry.Service) *Service {
+func NewService(g *graph.Service, s *silo.Service, f *forge.Service, p *patcher.Service, r *registry.Service, patches *patchsync.Service) *Service {
 	return &Service{
 		graph:   g,
 		silo:    s,
 		forge:   f,
 		patcher: p,
 		reg:     r,
+		patches: patches,
 	}
 }
 
@@ -98,6 +104,23 @@ func (s *Service) GetExtensionDef(name string) (domain.ExtensionDef, bool) {
 	return s.graph.GetExtensionDef(name)
 }
 
+// syncPatches runs the pre-build patch-tree freshness check. Failures
+// are emitted as warnings and never abort the build.
+func (s *Service) syncPatches(ctx context.Context, emit func(stage, msg string)) {
+	if s.patches == nil {
+		return
+	}
+	res, err := s.patches.EnsureFresh(ctx)
+	switch {
+	case err != nil:
+		emit("warn", fmt.Sprintf("Patch freshness could not be verified (%v); continuing with the locally available patch tree", err))
+	case res.SkippedCheck:
+		emit("patch-sync", "Patch tree checked recently; skipping freshness check")
+	case len(res.Downloaded) > 0:
+		emit("patch-sync", fmt.Sprintf("Synced %d patch file(s) from the publication source", len(res.Downloaded)))
+	}
+}
+
 // Assemble runs the full pipeline for (name, version).
 // systemPkgs optionally provides a map of available system packages for hybrid builds.
 // jobs controls make parallelism (0 = auto).
@@ -111,6 +134,14 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 	}
 
 	emit("resolve", fmt.Sprintf("Resolving %s version %q...", name, version))
+
+	// Self-sync the managed patch tree before building: installs ride
+	// the same network connection as the source downloads, so a stale
+	// binary still receives newly published patches. Failure is a
+	// warning, never a hard error (the build continues with the previous
+	// synced tree, or unpatched on a cold machine).
+	s.syncPatches(ctx, emit)
+
 	exactVersion, err := s.ResolveVersion(name, version)
 	if err != nil {
 		return nil, fmt.Errorf("resolve version: %w", err)

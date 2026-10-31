@@ -95,6 +95,12 @@ phpv pecl install /path/to/ext-1.0.0.tgz
 phpv pecl list
 phpv pecl uninstall ext
 
+# Manage the runtime patch tree
+phpv patch update                             # Sync patches from phpv's main branch (delta download)
+phpv patch fetch 7.4                          # Same, scoped to PHP 7.4 patches only
+phpv patch status                             # Revision, check time, update availability
+phpv patch list php 8.0.30                    # Patches that would apply for a version
+
 # Diagnose issues
 phpv doctor                                   # System readiness check
 phpv doctor 8.4                               # Extension analysis for PHP 8.4
@@ -117,6 +123,24 @@ phpv completion bash                          # Generate shell completion
 Each PHP version gets its own isolated install prefix and phar directory — no conflicts between versions. Dependency versions are resolved per-extension per-PHP-version from the extension graph, so PHP 8.2+ now get the same deterministic dep resolution as 7.x/8.0/8.1. Dependencies are keyed by `(name, version)` and shared across PHP versions that pin the same version — build once, reuse everywhere.
 
 phpv only downloads and extracts what it will actually compile. System packages that satisfy the required version constraints are used directly (no source download), build tools come from the system, and the download phase shows per-package progress. System dev-libraries for extensions are checked automatically and recommended before building — e.g. `phpv extension add pdo_pgsql` prompts to install `postgresql-libs` (Arch), `libpq-dev` (Debian/Alpine), or `postgresql-devel` (Fedora).
+
+---
+
+## How patching works
+
+Old PHP versions do not always compile on modern toolchains, so phpv applies source patches before building. Patches are **runtime data, never shipped inside the binary**:
+
+- The publication source is the [`patches/` directory](patches/) in the phpv repository, pushed to `main`. Each entry is a plain unified diff (`patches/<package>/<range>/<ordinal>-<slug>.patch`) plus an optional `flags.yaml` build-flag manifest. Range directories are filesystem-safe: `8.0.0-8.1.0` (8.0.0 inclusive to 8.1.0 exclusive), `6.0.0+` (open-ended), a bare version (exact), or `any`.
+- On every install (and `phpv patch update`), phpv delta-syncs that tree into `$PHPV_ROOT/patches/` — only new or changed files are downloaded, remote deletions are applied, and an interrupted sync resumes cheaply. Install-time checks are skipped while inside a stale-lease window (6h by default, override with `PHPV_PATCH_LEASE`), so back-to-back installs make no extra network calls.
+- Because patches sync at runtime, **an outdated phpv binary still receives newly published patches** — patch fixes ship without a phpv release.
+- Your own overrides go in `$PHPV_ROOT/patches-local/` (same layout). They shadow the synced tree per directory and are never touched by sync.
+- If a patch fails to apply, the build stops and names the failing patch file. If no synced tree exists (cold machine, first run offline), the build proceeds **unpatched with a warning** rather than failing.
+
+### Adding a patch
+
+1. Fork the repo, add a unified diff under `patches/<package>/<range>/NNN-slug.patch` (and/or a `flags.yaml`), and open a PR. CI dry-run-validates patches against representative versions of each range.
+2. Once merged to `main`, every running phpv picks it up on its next install or `phpv patch update`.
+3. For an instant local fix (or to test before the PR lands), drop the file into `$PHPV_ROOT/patches-local/` under the same layout.
 
 ---
 

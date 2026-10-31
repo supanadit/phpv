@@ -36,11 +36,11 @@ phpv SHALL record the revision of the last successfully applied sync (and the pe
 - **THEN** phpv downloads only the delta between the recorded and remote revision and records the new revision
 
 ### Requirement: Scoped update limits the delta to a version
-`phpv patch update` SHALL accept an optional scope positional in the same `[package] [version]` form as `phpv patch list`; a single bare argument SHALL be treated as a version name and scoped to the `php` package (e.g. `phpv patch update 7.4`). When a scope is given, the delta SHALL be computed for the full tree but only files under directories whose version range matches the scope SHALL be downloaded or deleted — files outside the scope remain governed by their previous syncs.
+`phpv patch update` SHALL accept an optional scope positional in the same `[package] [version]` form as `phpv patch list`; a single bare argument SHALL be treated as a version name and scoped to the `php` package (e.g. `phpv patch update 7.4`). When a scope is given, the delta SHALL be computed for the full tree but only files under directories whose encoded range matches the scope SHALL be downloaded or deleted — files outside the scope remain governed by their previous syncs.
 
 #### Scenario: Scoped sync touches only matching files
-- **WHEN** the remote tree contains changed files under `php/>=7.4.0,<8.0.0/` and `icu/>=58.0,<60.0/`, and the user runs `phpv patch update 7.4`
-- **THEN** only the files under `php/>=7.4.0,<8.0.0/` are synchronized; the `icu` files, unchanged or not, remain as previously synced
+- **WHEN** the remote tree contains changed files under `php/7.4.0-8.0.0/` and `icu/58.0-60.0/`, and the user runs `phpv patch update 7.4`
+- **THEN** only the files under `php/7.4.0-8.0.0/` are synchronized; the `icu` files, unchanged or not, remain as previously synced
 
 #### Scenario: Scoped sync of a version with no matching files reports emptiness
 - **WHEN** the user runs `phpv patch update 8.9` and no remote directory range matches PHP 8.9

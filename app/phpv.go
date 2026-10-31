@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -16,10 +17,13 @@ import (
 	"github.com/supanadit/phpv/doctor"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/graph"
+	"github.com/supanadit/phpv/internal/repository"
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/internal/repository/memory"
+	"github.com/supanadit/phpv/internal/repository/patches"
 	"github.com/supanadit/phpv/internal/terminal"
 	"github.com/supanadit/phpv/patcher"
+	"github.com/supanadit/phpv/patchsync"
 	"github.com/supanadit/phpv/pecl"
 	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/shim"
@@ -29,6 +33,24 @@ import (
 )
 
 var version = "dev"
+
+// NewPatchesRepository builds the file-based patch repository from the
+// two PHPV_ROOT patch trees: synced (managed by `phpv patch update`) and
+// user-local (never touched by sync), user-local taking precedence.
+func NewPatchesRepository() *patches.Repository {
+	root := repository.ResolveRoot()
+	return patches.NewRepository(
+		filepath.Join(root, "patches"),
+		filepath.Join(root, "patches-local"),
+	).(*patches.Repository)
+}
+
+// NewPatchSyncService targets the managed patch tree at PHPV_ROOT/patches/
+// with the publication remote (this repository's main branch).
+func NewPatchSyncService() *patchsync.Service {
+	root := repository.ResolveRoot()
+	return patchsync.NewService(disk.NewPatchRemote(), filepath.Join(root, "patches"), 0)
+}
 
 func NewRootCmd() *cobra.Command {
 	return &cobra.Command{
@@ -58,7 +80,8 @@ func main() {
 			fx.Annotate(memory.NewRegistryRepository, fx.As(new(registry.RegistryRepository))),
 			fx.Annotate(disk.NewSiloRepository, fx.As(new(silo.SiloRepository))),
 			fx.Annotate(disk.NewForgeRepository, fx.As(new(forge.ForgeRepository))),
-			fx.Annotate(memory.NewPatcherRepository, fx.As(new(patcher.PatcherRepository))),
+			fx.Annotate(NewPatchesRepository, fx.As(new(patcher.PatcherRepository))),
+			NewPatchSyncService,
 			fx.Annotate(memory.NewGraphRepository, fx.As(new(graph.GraphRepository))),
 			registry.NewService,
 			silo.NewService,
@@ -78,8 +101,8 @@ func main() {
 			graph.NewService,
 		),
 		fx.Invoke(
-			func(rootCmd *cobra.Command, lc fx.Lifecycle, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service, systemSvc *system.Service, shimSvc *shim.Service, peclSvc *pecl.Service, configSvc *config.Service, doctorSvc *doctor.Service, updateSvc *update.Service) {
-				terminal.NewPHPHandler(rootCmd, lc, siloSvc, assemblerSvc, registrySvc, bundleSvc, systemSvc, shimSvc, peclSvc, configSvc, doctorSvc, updateSvc, version)
+			func(rootCmd *cobra.Command, lc fx.Lifecycle, siloSvc *silo.Service, assemblerSvc *assembler.Service, registrySvc *registry.Service, bundleSvc *bundle.Service, systemSvc *system.Service, shimSvc *shim.Service, peclSvc *pecl.Service, configSvc *config.Service, doctorSvc *doctor.Service, updateSvc *update.Service, patchSyncSvc *patchsync.Service) {
+				terminal.NewPHPHandler(rootCmd, lc, siloSvc, assemblerSvc, registrySvc, bundleSvc, systemSvc, shimSvc, peclSvc, configSvc, doctorSvc, updateSvc, patchSyncSvc, version)
 			},
 			RegisterRootCmd,
 		),

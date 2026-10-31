@@ -20,6 +20,7 @@ import (
 	"github.com/supanadit/phpv/doctor"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/source"
+	"github.com/supanadit/phpv/patchsync"
 	"github.com/supanadit/phpv/pecl"
 	"github.com/supanadit/phpv/system"
 	"go.uber.org/fx"
@@ -118,10 +119,11 @@ type PHPHandler struct {
 	configSvc    ConfigService
 	doctorSvc    DoctorService
 	updateSvc    UpdateService
+	patchSync    *patchsync.Service
 	version      string
 }
 
-func NewPHPHandler(rootCmd *cobra.Command, lc fx.Lifecycle, siloSvc SiloService, assemblerSvc AssemblerService, registrySvc RegistryService, bundleSvc BundleService, systemSvc SystemService, shimSvc ShimService, peclSvc PECLService, configSvc ConfigService, doctorSvc DoctorService, updateSvc UpdateService, version string) {
+func NewPHPHandler(rootCmd *cobra.Command, lc fx.Lifecycle, siloSvc SiloService, assemblerSvc AssemblerService, registrySvc RegistryService, bundleSvc BundleService, systemSvc SystemService, shimSvc ShimService, peclSvc PECLService, configSvc ConfigService, doctorSvc DoctorService, updateSvc UpdateService, patchSync *patchsync.Service, version string) {
 	h := &PHPHandler{
 		ctx:          context.Background(),
 		siloSvc:      siloSvc,
@@ -134,6 +136,7 @@ func NewPHPHandler(rootCmd *cobra.Command, lc fx.Lifecycle, siloSvc SiloService,
 		configSvc:    configSvc,
 		doctorSvc:    doctorSvc,
 		updateSvc:    updateSvc,
+		patchSync:    patchSync,
 		version:      version,
 	}
 	lc.Append(fx.Hook{
@@ -161,6 +164,7 @@ func NewPHPHandler(rootCmd *cobra.Command, lc fx.Lifecycle, siloSvc SiloService,
 	rootCmd.AddCommand(h.completionCmd())
 	rootCmd.AddCommand(h.doctorCmd())
 	rootCmd.AddCommand(h.updateCmd())
+	rootCmd.AddCommand(h.patchCmd())
 }
 
 func (h *PHPHandler) uninstallCmd() *cobra.Command {

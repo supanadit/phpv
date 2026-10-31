@@ -21,8 +21,8 @@ Non-Goals:
 
 ## Decisions
 
-### D1: Directory-per-range layout, matched with `MatchVersionRange`
-`patches/<package>/<version-range>/NNN-<slug>.patch`; directory names reuse the existing constraint syntax verbatim (e.g. `>=8.0.0,<8.1.0`, `~6.9.0`). Exact-version directories like pyenv's would force ~30 duplicates per PHP minor series; wildcard dirs (`7.4.x`) would need new constraint syntax. Ranges reuse existing, tested logic and make one patch file cover a whole minor series. The `patches/` directory in this repository is the **publication source** — contributors author `.patch` files there and CI validates them — but the binary never embeds it (D4); the running CLI reads only from `$PHPV_ROOT` trees, fetched by the sync mechanism (D5).
+### D1: Directory-per-range layout, encoded for filesystem safety
+`patches/<package>/<range-directory>/NNN-<slug>.patch`; range directories use a filesystem-safe encoding of the constraint syntax (valid on Windows, no reserved characters): `8.0.0-8.1.0` means `>=8.0.0,<8.1.0`, `6.0.0+` means `>=6.0.0`, a bare `6.9.7` means an exact version, and `any` matches everything. One helper (`patches.DirRangeExpr`) translates a directory name into the existing `domain.MatchVersionRange` expression, so matching reuses the tested constraint logic. Exact-version directories like pyenv's would force ~30 duplicates per PHP minor series; wildcard dirs (`7.4.x`) would need new constraint syntax. Ranges make one patch file cover a whole minor series. The `patches/` directory in this repository is the **publication source** — contributors author `.patch` files there and CI validates them — but the binary never embeds it (D4); the running CLI reads only from `$PHPV_ROOT` trees, fetched by the sync mechanism (D5).
 
 ### D2: Flags in `flags.yaml` (one new dependency: gopkg.in/yaml.v3)
 Each range directory MAY contain a `flags.yaml` declaring `extraCFlags: []` and `configureFlags: []`. Strings pass through unchanged so assembler-side placeholder resolution (`{{prefix}}`, `{{source}}`, `{{dep:NAME}}`) is preserved. Config-only entries (curl, libzip) have no `.patch` files, only a manifest. Loader output is the existing `patcher.Patch` struct (`Apply` = patch-tool invocation), so `Prepare` needs no changes. Alternative considered: keeping flags in Go — rejected because it retains the code-to-add-a-patch loop this change exists to eliminate.
@@ -45,7 +45,7 @@ New `patchsync/` package (repository + service in the project's hexagonal style)
 - **Delivery:** cobra group `phpv patch` with `update` (alias `fetch`), `status`, `list [package] [version]` in `app/phpv.go`, delegating to the sync service; `list` calls the loader in dry-query mode and reports each result's source tree.
 
 ### D6: Conversion of existing patches
-Each Go patch function becomes `.patch` file(s) produced by: fetching pristine upstream source for representative versions, running the current Go function, and `git diff`ing against pristine. Ranges are split on real drift discovered via `patch --dry-run` across edge versions (e.g. 7.0.0 vs 8.0.x for the `>=7.0.0,<8.0.0` scanf patch). Header comments (root-cause notes now in Go source) move into the patch's `Subject:` header, pyenv-style.
+Each Go patch function becomes `.patch` file(s) produced by: fetching pristine upstream source for representative versions, running the current Go function, and `git diff`ing against pristine. Ranges are split on real drift discovered via `patch --dry-run` across edge versions. Header comments (root-cause notes now in Go source) move into the patch's `Subject:` header, pyenv-style.
 
 ## Risks / Trade-offs
 

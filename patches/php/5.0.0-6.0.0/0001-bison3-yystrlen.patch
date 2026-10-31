@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: phpv patch conversion <patches@phpv.invalid>
+Subject: [0001-bison3-yystrlen] PHP 5.x's pre-generated bison parser references yystrlen/yystpcpy, which bison 3.x removed from generated code.
+
+PHP 5.x's pre-generated bison parser references yystrlen/yystpcpy, which
+bison 3.x removed from generated code. Add fallback defines to the
+parser source.
+
+---
+diff --git a/a/php-5.6.40/Zend/zend_language_parser.c b/b/php-5.6.40/Zend/zend_language_parser.c
+index a438602..898cae9 100644
+--- a/Zend/zend_language_parser.c
++++ b/Zend/zend_language_parser.c
+@@ -107,6 +107,21 @@
+ 
+ #include "zend_compile.h"
+ #include "zend.h"
++
++#ifndef yystrlen
++#if defined __STDC_VERSION__ && __STDC_VERSION__ >= 201112L
++#define yystrlen strlen
++#else
++static size_t yystrlen(const char *s) { const char *p = s; while (*p) p++; return (size_t)(p - s); }
++#endif
++#endif
++#ifndef yystpcpy
++#if defined __STDC_VERSION__ && __STDC_VERSION__ >= 201112L
++#define yystpcpy stpcpy
++#else
++static char *yystpcpy(char *d, const char *s) { while ((*d++ = *s++)); return d - 1; }
++#endif
++#endif
+ #include "zend_list.h"
+ #include "zend_globals.h"
+ #include "zend_API.h"

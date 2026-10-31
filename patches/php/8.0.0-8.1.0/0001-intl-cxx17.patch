@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: phpv patch conversion <patches@phpv.invalid>
+Subject: [0001-intl-cxx17] PHP 8.0's ext/intl/config.m4 hardcodes a C++11 standard check, but ICU 74+ headers require C++17.
+
+PHP 8.0's ext/intl/config.m4 hardcodes a C++11 standard check, but ICU
+74+ headers require C++17. The generated configure assigns
+PHP_INTL_STDCXX from a feature test; override it to -std=gnu++17.
+
+---
+diff --git a/a/php-8.0.30/configure b/b/php-8.0.30/configure
+index 61ff57b..1659190 100755
+--- a/configure
++++ b/configure
+@@ -46366,7 +46366,7 @@ eval ac_res=\$$cachevar
+ 	       { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
+ printf "%s\n" "$ac_res" >&6; }
+       if eval test x\$$cachevar = xyes; then
+-        eval PHP_INTL_STDCXX="$switch"
++        eval PHP_INTL_STDCXX="-std=gnu++17"
+         ac_success=yes
+         break
+       fi

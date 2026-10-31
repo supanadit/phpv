@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: phpv patch conversion <patches@phpv.invalid>
+Subject: [0001-st-foreach] Oniguruma 6.0-6.9.8 has K&R-style function pointer declarations in st.h/st.c (st_hash_type members, ST_NUMCMP/ST_NUMHASH macros, st_foreach ANYARGS prototype, local func pointer) that modern GCC (14+/C23) rejects.
+
+Oniguruma 6.0-6.9.8 has K&R-style function pointer declarations in
+st.h/st.c (st_hash_type members, ST_NUMCMP/ST_NUMHASH macros, st_foreach
+ANYARGS prototype, local func pointer) that modern GCC (14+/C23)
+rejects. Upstream fixed these in 6.9.9+.
+
+---
+diff --git a/a/onig-6.9.7/src/st.c b/b/onig-6.9.7/src/st.c
+index 8ee610b..67c0c0a 100644
+--- a/src/st.c
++++ b/src/st.c
+@@ -487,7 +487,7 @@ st_cleanup_safe(table, never)
+ int
+ st_foreach(table, func, arg)
+      st_table *table;
+-     int (*func)();
++     int (*func)(st_data_t, st_data_t, st_data_t);
+      st_data_t arg;
+ {
+   st_table_entry *ptr, *last, *tmp;
+diff --git a/a/onig-6.9.7/src/st.h b/b/onig-6.9.7/src/st.h
+index 7961c06..8d528c0 100644
+--- a/src/st.h
++++ b/src/st.h
+@@ -16,8 +16,8 @@ typedef unsigned long long st_data_t;
+ typedef struct st_table st_table;
+ 
+ struct st_hash_type {
+-    int (*compare)();
+-    int (*hash)();
++    int (*compare)(st_data_t, st_data_t);
++    int (*hash)(st_data_t);
+ };
+ 
+ struct st_table {
+@@ -52,14 +52,14 @@ int st_delete _((st_table *, st_data_t *, st_data_t *));
+ int st_delete_safe _((st_table *, st_data_t *, st_data_t *, st_data_t));
+ int st_insert _((st_table *, st_data_t, st_data_t));
+ int st_lookup _((st_table *, st_data_t, st_data_t *));
+-int st_foreach _((st_table *, int (*)(ANYARGS), st_data_t));
++int st_foreach(st_table *, int (*)(st_data_t, st_data_t, st_data_t), st_data_t);
+ void st_add_direct _((st_table *, st_data_t, st_data_t));
+ void st_free_table _((st_table *));
+ void st_cleanup_safe _((st_table *, st_data_t));
+ st_table *st_copy _((st_table *));
+ 
+-#define ST_NUMCMP	((int (*)()) 0)
+-#define ST_NUMHASH	((int (*)()) -2)
++#define ST_NUMCMP	((int (*)(st_data_t, st_data_t)) 0)
++#define ST_NUMHASH	((int (*)(st_data_t)) -2)
+ 
+ #define st_numcmp	ST_NUMCMP
+ #define st_numhash	ST_NUMHASH

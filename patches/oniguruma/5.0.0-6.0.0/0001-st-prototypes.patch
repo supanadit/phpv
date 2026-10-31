@@ -1,0 +1,71 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: phpv patch conversion <patches@phpv.invalid>
+Subject: [0001-st-prototypes] Oniguruma 5.9.x has K&R-style function pointer declarations in st.h, st.c, and oniguruma.h that modern GCC rejects as errors.
+
+Oniguruma 5.9.x has K&R-style function pointer declarations in st.h,
+st.c, and oniguruma.h that modern GCC rejects as errors. Add proper
+prototypes matching the actual call sites.
+
+---
+diff --git a/a/onig-5.9.6/oniguruma.h b/b/onig-5.9.6/oniguruma.h
+index adf4efc..e3ad3fb 100644
+--- a/oniguruma.h
++++ b/oniguruma.h
+@@ -69,11 +69,7 @@ extern "C" {
+ #endif
+ 
+ #ifndef PV_
+-#ifdef HAVE_STDARG_PROTOTYPES
+ # define PV_(args) args
+-#else
+-# define PV_(args) ()
+-#endif
+ #endif
+ 
+ #ifndef ONIG_EXTERN
+diff --git a/a/onig-5.9.6/st.c b/b/onig-5.9.6/st.c
+index 022880a..e6e82ee 100644
+--- a/st.c
++++ b/st.c
+@@ -477,7 +477,7 @@ st_cleanup_safe(table, never)
+ int
+ st_foreach(table, func, arg)
+     st_table *table;
+-    int (*func)();
++    int (*func)(st_data_t, st_data_t, st_data_t);
+     st_data_t arg;
+ {
+     st_table_entry *ptr, *last, *tmp;
+diff --git a/a/onig-5.9.6/st.h b/b/onig-5.9.6/st.h
+index 6f93870..8f6eda2 100644
+--- a/st.h
++++ b/st.h
+@@ -17,8 +17,8 @@ typedef unsigned long st_data_t;
+ typedef struct st_table st_table;
+ 
+ struct st_hash_type {
+-    int (*compare)();
+-    int (*hash)();
++    int (*compare)(st_data_t, st_data_t);
++    int (*hash)(st_data_t);
+ };
+ 
+ struct st_table {
+@@ -53,14 +53,14 @@ int st_delete _((st_table *, st_data_t *, st_data_t *));
+ int st_delete_safe _((st_table *, st_data_t *, st_data_t *, st_data_t));
+ int st_insert _((st_table *, st_data_t, st_data_t));
+ int st_lookup _((st_table *, st_data_t, st_data_t *));
+-int st_foreach _((st_table *, int (*)(ANYARGS), st_data_t));
++int st_foreach(st_table *, int (*)(st_data_t, st_data_t, st_data_t), st_data_t);
+ void st_add_direct _((st_table *, st_data_t, st_data_t));
+ void st_free_table _((st_table *));
+ void st_cleanup_safe _((st_table *, st_data_t));
+ st_table *st_copy _((st_table *));
+ 
+-#define ST_NUMCMP	((int (*)()) 0)
+-#define ST_NUMHASH	((int (*)()) -2)
++#define ST_NUMCMP	((int (*)(st_data_t, st_data_t)) 0)
++#define ST_NUMHASH	((int (*)(st_data_t)) -2)
+ 
+ #define st_numcmp	ST_NUMCMP
+ #define st_numhash	ST_NUMHASH

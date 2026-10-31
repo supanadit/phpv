@@ -1,0 +1,5 @@
+# Oniguruma 6.9.x has a st_foreach function pointer issue fixed by
+# 0001-st-foreach.patch; suppress residual pointer-type errors meanwhile.
+extraCFlags:
+  - "-Wno-error=incompatible-pointer-types"
+  - "-Wno-incompatible-pointer-types"

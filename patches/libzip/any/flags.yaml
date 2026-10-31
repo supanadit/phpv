@@ -1,0 +1,8 @@
+# libzip is built with CMake and needs zlib headers. phpv builds zlib from
+# source when the system zlib does not satisfy PHP's constraint, so point
+# CMake at the locally-built zlib prefix. If zlib was satisfied by the
+# system, the {{dep:zlib}} placeholder resolves to nothing and the flag
+# is skipped.
+configureFlags:
+  - "-DZLIB_ROOT={{dep:zlib}}"
+  - "-DCMAKE_PREFIX_PATH={{dep:zlib}}"

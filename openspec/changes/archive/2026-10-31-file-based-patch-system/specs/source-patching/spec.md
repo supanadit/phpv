@@ -7,15 +7,15 @@ Defines how phpv discovers, selects, applies, and reports source-code patches ag
 ## ADDED Requirements
 
 ### Requirement: File-based patch selection by package and version range
-phpv SHALL discover patches as files in a versioned directory tree of the form `patches/<package>/<version-range>/<ordinal>-<slug>.patch`, using the same range-expression rules as version constraints elsewhere in phpv, and apply exactly those whose range directory matches the built package version, in ascending ordinal order. A directory containing only a flags manifest SHALL still be a valid selection.
+phpv SHALL discover patches as files in a versioned directory tree of the form `patches/<package>/<range-directory>/<ordinal>-<slug>.patch`, where the range directory encodes a version range in a filesystem-safe grammar: `<min>-<max>` (min inclusive, max exclusive), `<version>+` (open-ended), a bare version (exact match), or `any` (every version). Range matching SHALL use the same version-comparison rules as version constraints elsewhere in phpv, and phpv SHALL apply exactly those directories whose range matches the built package version, in ascending ordinal order. A directory containing only a flags manifest SHALL still be a valid selection.
 
 #### Scenario: Version inside a range directory matches
-- **WHEN** phpv builds `php@8.0.30` and the patch tree contains `patches/php/>=8.0.0,<8.1.0/0001-intl-cxx17.patch`
+- **WHEN** phpv builds `php@8.0.30` and the patch tree contains `patches/php/8.0.0-8.1.0/0001-intl-cxx17.patch`
 - **THEN** that patch is selected for package `php`, reported under its filename-derived name, and applied to the extracted source in ordinal order
 
 #### Scenario: Version outside the range does not match
-- **WHEN** phpv builds `php@7.4.33` and the only range directories for `php` are `>=8.0.0,<8.1.0` and `>=7.0.0,<8.0.0`
-- **THEN** only patches under `>=7.0.0,<8.0.0` are selected — the `>=8.0.0,<8.1.0` directory is ignored
+- **WHEN** phpv builds `php@7.4.33` and the only range directories for `php` are `8.0.0-8.1.0` and `7.0.0-8.0.0`
+- **THEN** only patches under `7.0.0-8.0.0` are selected — the `8.0.0-8.1.0` directory is ignored
 
 #### Scenario: Flags-only entry with no patch files
 - **WHEN** phpv builds `curl@8.x` and the selected range directory contains only a flags manifest with configure options
@@ -58,7 +58,7 @@ A range directory MAY include a flags manifest declaring additional C compiler f
 phpv SHALL merge two patch sources — user-local patches and synced patches under `PHPV_ROOT` — with user-local first, and SHALL NOT ship patches inside the binary. Precedence SHALL be decided per patch-tree directory: a directory present in a higher-precedence source shadows the same directory in the lower one, while directories present only in the lower source still apply.
 
 #### Scenario: User-local directory shadows the synced equivalent
-- **WHEN** both the synced tree and the user-local tree contain `patches/php/>=7.0.0,<8.0.0/` and the user restructures that directory's patch files
+- **WHEN** both the synced tree and the user-local tree contain `patches/php/7.0.0-8.0.0/` and the user restructures that directory's patch files
 - **THEN** only the user-local tree's selection for that directory is applied — no synced file from that directory is re-applied
 
 #### Scenario: New directory in a lower-priority source still applies

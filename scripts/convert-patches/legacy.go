@@ -1,4 +1,9 @@
-package memory
+package main
+
+// legacy.go: verbatim copies of phpv's historical in-memory patch
+// functions (internal/repository/memory/patcher.go, deleted in change
+// file-based-patch-system). The conversion tool applies them to pristine
+// upstream sources to produce the patches/ tree. Do not extend.
 
 import (
 	"errors"
@@ -10,6 +15,8 @@ import (
 
 	"github.com/supanadit/phpv/patcher"
 )
+
+func newPatcherRepo() patcher.PatcherRepository { return &inMemoryPatcher{} }
 
 // PatcherRepository returns patches to apply to extracted source trees
 // before building. Most patches exist to make old C code compile on modern

@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: phpv patch conversion <patches@phpv.invalid>
+Subject: [0001-configure-curl-cflags] PHP 5.x's generated configure clobbers CFLAGS during the 'checking for openssl support in libcurl' test with `curl-config --cflags` output (just an -I path).
+
+PHP 5.x's generated configure clobbers CFLAGS during the 'checking for
+openssl support in libcurl' test with `curl-config --cflags` output
+(just an -I path). The conftest uses strncasecmp() without <strings.h>,
+a hard error on GCC 14+; append warning-suppression flags to the
+substitution so the test compiles clean.
+
+---
+diff --git a/a/php-5.6.40/configure b/b/php-5.6.40/configure
+index 6951f63..ff0711c 100755
+--- a/configure
++++ b/configure
+@@ -29875,7 +29875,7 @@ $as_echo "#define HAVE_CURL_SSL 1" >>confdefs.h
+ 
+ 
+     save_CFLAGS="$CFLAGS"
+-    CFLAGS="`$CURL_CONFIG --cflags`"
++    CFLAGS="`$CURL_CONFIG --cflags` -Wno-implicit-function-declaration -Wno-error=implicit-function-declaration"
+ 
+     ac_ext=c
+ ac_cpp='$CPP $CPPFLAGS'

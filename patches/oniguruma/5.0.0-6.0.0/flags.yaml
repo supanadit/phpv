@@ -1,0 +1,5 @@
+# Oniguruma 5.9.x (used by PHP 5.x and 7.0) has K&R-style function pointer
+# declarations in st.h that modern GCC rejects as errors.
+extraCFlags:
+  - "-Wno-error=incompatible-pointer-types"
+  - "-Wno-incompatible-pointer-types"

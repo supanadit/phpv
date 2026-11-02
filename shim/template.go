@@ -49,7 +49,7 @@ if [ -n "$PHPV_EXTRA_LD_LIBRARY_PATH" ]; then
     eval "$LIB_PATH_VAR=\"\$PHPV_EXTRA_LD_LIBRARY_PATH:\$$LIB_PATH_VAR\""
 fi
 export $LIB_PATH_VAR
-{{EXEC}}
+{{PRE_EXEC}}{{EXEC}}
 `
 
 const systemBinaryBlock = `if [ -f "$PHPV_ROOT/.phpv_system" ]; then
@@ -79,3 +79,45 @@ fi
 
 const binaryExec = `exec "$PHPV_PREFIX/bin/{{NAME}}" "$@"`
 const pharExec = `exec "$PHPV_PREFIX/bin/php" "$PHPV_PREFIX/{{PHAR_REL}}" "$@"`
+
+// composerHomePreExec scopes Composer's global home to the active PHP
+// version so global packages, their platform checks, and config never
+// leak across PHP versions. A user-set COMPOSER_HOME always wins.
+const composerHomePreExec = `# Scope Composer's home to this PHP version (user-set COMPOSER_HOME wins).
+export COMPOSER_HOME="${COMPOSER_HOME:-$PHPV_PREFIX/composer}"
+`
+
+// composerExec runs composer, then refreshes shims after a successful
+// `global` command so newly installed/removed vendor bins are picked up
+// without a manual `phpv rehash`. It intentionally does not exec: the
+// rehash must run after composer exits.
+const composerExec = `"$PHPV_PREFIX/bin/php" "$PHPV_PREFIX/{{PHAR_REL}}" "$@"
+_composer_status=$?
+if [ "$_composer_status" -eq 0 ] && [ "${1:-}" = "global" ]; then
+    _phpv_bin="$(command -v phpv 2>/dev/null)"
+    if [ -z "$_phpv_bin" ] && [ -x "$PHPV_ROOT/bin/phpv" ]; then
+        _phpv_bin="$PHPV_ROOT/bin/phpv"
+    fi
+    if [ -n "$_phpv_bin" ]; then
+        "$_phpv_bin" rehash >/dev/null 2>&1 || true
+    fi
+fi
+exit "$_composer_status"
+`
+
+const systemVendorBinBlock = `if [ -f "$PHPV_ROOT/.phpv_system" ]; then
+    BIN_PATH="$(command -v {{NAME}} 2>/dev/null)"
+    if [ -z "$BIN_PATH" ]; then
+        echo "Error: System {{NAME}} not found" >&2
+        exit 1
+    fi
+    exec "$BIN_PATH" "$@"
+fi
+`
+
+const vendorBinExec = `VBIN="$PHPV_PREFIX/composer/vendor/bin/{{NAME}}"
+if [ ! -f "$VBIN" ]; then
+    echo "Error: {{NAME}} is not installed for the active PHP version ($PHPV_VERSION). Run 'composer global require <package>' or switch PHP version." >&2
+    exit 1
+fi
+exec "$PHPV_PREFIX/bin/php" "$VBIN" "$@"`

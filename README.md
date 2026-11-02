@@ -90,6 +90,10 @@ phpv phar update composer                     # Update to latest
 phpv phar list                                # List for active PHP version
 phpv phar which composer                      # Show phar path
 
+# Composer globals are scoped per PHP version (see "Composer isolation" below)
+composer global require laravel/installer     # Installs into the active version's composer home
+laravel new blog                              # Global bins are shimmed like php itself
+
 # PECL extensions
 phpv pecl install /path/to/ext-1.0.0.tgz
 phpv pecl list
@@ -121,6 +125,12 @@ phpv completion bash                          # Generate shell completion
 ---
 
 Each PHP version gets its own isolated install prefix and phar directory — no conflicts between versions. Dependency versions are resolved per-extension per-PHP-version from the extension graph, so PHP 8.2+ now get the same deterministic dep resolution as 7.x/8.0/8.1. Dependencies are keyed by `(name, version)` and shared across PHP versions that pin the same version — build once, reuse everywhere.
+
+### Composer isolation
+
+When composer runs through its shim, phpv scopes `COMPOSER_HOME` to the active PHP version (`$PHPV_ROOT/packages/php/<version>/composer/`), unless you set `COMPOSER_HOME` yourself. `composer global require` therefore installs into the active version — no cross-version platform checks or silent downgrades when you switch with `phpv use`. Global vendor binaries are shimmed into `$PHPV_ROOT/bin` and resolved per-execution like every other shim, and a successful `composer global ...` command rehashes automatically. Non-PHP bins and name collisions with built-in shims/phars are skipped, and shims for removed global packages are pruned on the next rehash.
+
+**Migration note:** packages previously installed into the shared `~/.config/composer` home are not migrated. Re-run `composer global require <package>` once per PHP version that needs it.
 
 phpv only downloads and extracts what it will actually compile. System packages that satisfy the required version constraints are used directly (no source download), build tools come from the system, and the download phase shows per-package progress. System dev-libraries for extensions are checked automatically and recommended before building — e.g. `phpv extension add pdo_pgsql` prompts to install `postgresql-libs` (Arch), `libpq-dev` (Debian/Alpine), or `postgresql-devel` (Fedora).
 

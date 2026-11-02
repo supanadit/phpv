@@ -103,6 +103,16 @@ func (f *ForgeRepository) buildCMake(ctx context.Context, name, version, srcPath
 		return "", nil, fmt.Errorf("create build dir: %w", err)
 	}
 
+	// CMake caches the resolved compiler in CMakeCache.txt and ignores $CC
+	// on re-runs. If that cached path no longer exists (e.g. the ccache
+	// package was removed), every reconfigure fails with "is not a full
+	// path to an existing compiler tool". A changed install prefix would
+	// likewise silently keep the old one. Wipe the cache dir when it is
+	// stale; cmake regenerates it in milliseconds.
+	if err := invalidateStaleCMakeCache(buildDir, prefix); err != nil {
+		return "", nil, fmt.Errorf("invalidate cmake cache %s: %w", name, err)
+	}
+
 	cmakeArgs := []string{
 		srcPath,
 		"-DCMAKE_INSTALL_PREFIX=" + prefix,
@@ -125,6 +135,86 @@ func (f *ForgeRepository) buildCMake(ctx context.Context, name, version, srcPath
 	}
 
 	return buildDir, forgeEnv(prefix), nil
+}
+
+// cmakeCacheCompiler reads a CMAKE_<VAR>:FILEPATH value from a
+// CMakeCache.txt (VAR: C_COMPILER or CXX_COMPILER). Returns "" when the
+// file or key is absent.
+func cmakeCacheCompiler(cachePath, varName string) string {
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		return ""
+	}
+	prefix := "CMAKE_" + varName + ":FILEPATH="
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(line, prefix))
+		}
+	}
+	return ""
+}
+
+// invalidateStaleCMakeCache removes a build dir whose CMake cache is stale:
+// cached compiler paths that no longer exist on disk (toolchain removed or
+// changed), or a cached install prefix that differs from the requested one.
+// A missing cache is fine (fresh configure).
+func invalidateStaleCMakeCache(buildDir, wantPrefix string) error {
+	cachePath := filepath.Join(buildDir, "CMakeCache.txt")
+	if _, err := os.Stat(cachePath); err != nil {
+		return nil // no cache yet: cmake will configure fresh
+	}
+
+	stale := false
+	reason := ""
+	for _, varName := range []string{"C_COMPILER", "CXX_COMPILER"} {
+		cached := cmakeCacheCompiler(cachePath, varName)
+		if cached == "" {
+			continue
+		}
+		if _, err := os.Stat(cached); err != nil {
+			stale = true
+			reason = fmt.Sprintf("cached %s %q no longer exists", varName, cached)
+			break
+		}
+	}
+	if !stale {
+		cachedPrefix := cmakeCacheString(cachePath, "INSTALL_PREFIX")
+		if cachedPrefix != "" && cachedPrefix != wantPrefix {
+			stale = true
+			reason = fmt.Sprintf("cached install prefix %q differs from requested %q", cachedPrefix, wantPrefix)
+		}
+	}
+	if !stale {
+		return nil
+	}
+
+	if err := os.RemoveAll(buildDir); err != nil {
+		return fmt.Errorf("remove stale build dir (%s): %w", reason, err)
+	}
+	if err := os.MkdirAll(buildDir, 0o755); err != nil {
+		return fmt.Errorf("recreate build dir: %w", err)
+	}
+	return nil
+}
+
+// cmakeCacheString reads a CMAKE_<VAR>:<TYPE>=value line of any type from
+// a CMakeCache.txt. Returns "" when absent.
+func cmakeCacheString(cachePath, varName string) string {
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		return ""
+	}
+	marker := "CMAKE_" + varName + ":"
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, marker) {
+			idx := strings.Index(line, "=")
+			if idx < 0 {
+				return ""
+			}
+			return strings.TrimSpace(line[idx+1:])
+		}
+	}
+	return ""
 }
 
 func (f *ForgeRepository) buildConfigure(ctx context.Context, name, version, srcPath string, extraEnv []string, extraFlags []string, prefix string, verbose bool, jobs int) (string, map[string]string, error) {

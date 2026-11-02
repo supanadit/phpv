@@ -228,9 +228,19 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				"7.88.1", "7.88.0", "7.87.0", "7.86.0", "7.85.0", "7.84.0",
 				"7.83.0", "7.82.0", "7.81.0", "7.80.0",
 				"7.20.0",
-				"7.12.1", "7.12.0",
+				"7.12.0",
 			},
 			URLTemplate: "https://curl.se/download/curl-{version}.tar.gz",
+			// curl.se keeps releases <= 7.29.0 only under /download/archeology/;
+			// the flat /download/ path returns 404 for them (verified 7.30.0 is
+			// the oldest version still served from /download/).
+			URLOverrides: []URLOverride{
+				{Before: "7.30.0", URL: "https://curl.se/download/archeology/curl-{version}.tar.gz"},
+			},
+			Checksums: []Checksum{
+				{Version: "7.20.0", Type: "sha256", Value: "e12d06b551c5c9d3420b0eda20eb2861a6daab032c4d6d8fab07b56f34c8a848"},
+				{Version: "7.12.0", Type: "sha256", Value: "43dcb0419453e48d6b4f3883e80a55de5da5811c0a519133f10bcc59d9412e07"},
+			},
 		})
 
 	case "m4":

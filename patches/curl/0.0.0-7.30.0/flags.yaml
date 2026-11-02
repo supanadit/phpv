@@ -1,0 +1,16 @@
+# Legacy curl (<= 7.29.0, the /download/archeology/ era) ships 2010-era
+# autotools tests whose conftest programs are K&R style — most notably the
+# "run-time libs availability" check, which defines main() without a return
+# type. GCC 14+ rejects implicit int as a hard error, so that check fails to
+# COMPILE and configure misreports it as "one or more libs available at
+# link-time are not available run-time".
+#
+# -std=gnu89 is curl 7.2x's native dialect (same approach the compiler rules
+# use for PHP 4.x) and makes implicit int a warning again; the -Wno-error=*
+# flags keep later-era sources compiling if anything else tightens defaults.
+extraCFlags:
+  - "-std=gnu89"
+  - "-Wno-error=implicit-int"
+  - "-Wno-error=implicit-function-declaration"
+  - "-Wno-error=incompatible-pointer-types"
+  - "-Wno-error=int-conversion"

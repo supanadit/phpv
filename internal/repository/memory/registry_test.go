@@ -345,4 +345,72 @@ func TestRegistryRepository_Get_Perl(t *testing.T) {
 	}
 }
 
+func TestRegistryRepository_Get_CURL_ArcheologyURL(t *testing.T) {
+	repo := NewRegistryRepository()
+
+	// curl <= 7.29.0 is only hosted under /download/archeology/ on curl.se;
+	// the flat /download/ path returns 404 for those releases.
+	for _, version := range []string{"7.12.0", "7.20.0"} {
+		got, err := repo.Get("curl", version, false, "")
+		if err != nil {
+			t.Fatalf("Get(curl, %s) returned error: %v", version, err)
+		}
+		want := "https://curl.se/download/archeology/curl-" + version + ".tar.gz"
+		if got.URL != want {
+			t.Errorf("Get(curl, %s).URL = %q, want %q", version, got.URL, want)
+		}
+	}
+
+	// Modern releases stay on the flat /download/ path. (7.30.0–7.54.x also
+	// resolve flat, but those versions are not currently listed in the registry;
+	// the oldest flat-path version listed is 7.80.0.)
+	for _, version := range []string{"7.80.0", "8.10.1"} {
+		got, err := repo.Get("curl", version, false, "")
+		if err != nil {
+			t.Fatalf("Get(curl, %s) returned error: %v", version, err)
+		}
+		want := "https://curl.se/download/curl-" + version + ".tar.gz"
+		if got.URL != want {
+			t.Errorf("Get(curl, %s).URL = %q, want %q", version, got.URL, want)
+		}
+	}
+}
+
+func TestRegistryRepository_Get_CURL_Checksums(t *testing.T) {
+	repo := NewRegistryRepository()
+
+	wantChecksums := map[string]string{
+		"7.20.0": "e12d06b551c5c9d3420b0eda20eb2861a6daab032c4d6d8fab07b56f34c8a848",
+		"7.12.0": "43dcb0419453e48d6b4f3883e80a55de5da5811c0a519133f10bcc59d9412e07",
+	}
+	for version, want := range wantChecksums {
+		got, err := repo.Get("curl", version, true, "")
+		if err != nil {
+			t.Fatalf("Get(curl, %s, checksum=true) returned error: %v", version, err)
+		}
+		if got.ChecksumType != "sha256" {
+			t.Errorf("curl %s ChecksumType = %q, want sha256", version, got.ChecksumType)
+		}
+		if got.ChecksumValue != want {
+			t.Errorf("curl %s ChecksumValue = %q, want %q", version, got.ChecksumValue, want)
+		}
+	}
+}
+
+func TestRegistryRepository_CURL_7_12_1_Removed(t *testing.T) {
+	repo := NewRegistryRepository()
+
+	// curl 7.12.1 was never published on curl.se (not even in the archeology
+	// archive), so the registry must not offer it as a downloadable version.
+	entries, err := repo.List("curl", false, "")
+	if err != nil {
+		t.Fatalf("List(curl) returned error: %v", err)
+	}
+	for _, e := range entries {
+		if e.Version == "7.12.1" {
+			t.Fatal("List(curl) contains 7.12.1, which is not downloadable from curl.se")
+		}
+	}
+}
+
 var _ domain.Registry = domain.Registry{}

@@ -7,10 +7,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/source"
 )
 
@@ -284,7 +286,7 @@ func (f *ForgeRepository) buildConfigure(ctx context.Context, name, version, src
 		return "", nil, fmt.Errorf("configure %s: %w\n%s", name, err, out)
 	}
 
-	if err := runMake(ctx, name, srcPath, extraEnv, verbose, jobs); err != nil {
+	if err := runMake(ctx, name, version, srcPath, extraEnv, verbose, jobs); err != nil {
 		return "", nil, err
 	}
 
@@ -309,7 +311,7 @@ func (f *ForgeRepository) buildAutogen(ctx context.Context, name, version, srcPa
 		return "", nil, fmt.Errorf("configure %s: %w\n%s", name, err, out)
 	}
 
-	if err := runMake(ctx, name, srcPath, extraEnv, verbose, jobs); err != nil {
+	if err := runMake(ctx, name, version, srcPath, extraEnv, verbose, jobs); err != nil {
 		return "", nil, err
 	}
 
@@ -319,22 +321,43 @@ func (f *ForgeRepository) buildAutogen(ctx context.Context, name, version, srcPa
 func (f *ForgeRepository) buildMakeOnly(ctx context.Context, name, version, srcPath string, extraEnv []string, verbose bool, jobs int) (string, map[string]string, error) {
 	prefix := filepath.Dir(srcPath)
 
-	if err := runMake(ctx, name, srcPath, extraEnv, verbose, jobs); err != nil {
+	if err := runMake(ctx, name, version, srcPath, extraEnv, verbose, jobs); err != nil {
 		return "", nil, err
 	}
 
 	return srcPath, forgeEnv(prefix), nil
 }
 
-func runMake(ctx context.Context, name, srcPath string, extraEnv []string, verbose bool, jobs int) error {
+// serialMakeOnly names packages whose build systems are not parallel-safe:
+// GNU autotools regenerating docs race under -j, and OpenSSL 1.0.x's
+// crypto/Makefile builds the parent "lib" and subdirectory "subdirs"
+// targets independently, so two concurrent `ar r libcrypto.a` invocations
+// corrupt the archive (observed as `ar` dying with SIGBUS under -j16).
+// OpenSSL 1.1.0+ rewrote its build system and is parallel-safe.
+var serialMakeOnly = map[string]string{
+	"automake": "",
+	"autoconf": "",
+	"libtool":  "",
+	"openssl":  "1.1.0", // serial only for versions < 1.1.0
+}
+
+// makeArgs returns the make arguments for (name, version). Versions before
+// the package's serialMakeOnly threshold build with -j1. jobs < 1 falls back
+// to the historical default of 4.
+func makeArgs(name, version string, jobs int) []string {
 	if jobs < 1 {
 		jobs = 4
 	}
-	args := []string{fmt.Sprintf("-j%d", jobs)}
-
-	if name == "automake" || name == "autoconf" || name == "libtool" {
-		args = []string{"-j1", "MAKEINFO=true", "HELP2MAN=true"}
+	if threshold, ok := serialMakeOnly[name]; ok {
+		if threshold == "" || domain.CompareVersions(version, threshold) < 0 {
+			return []string{"-j1", "MAKEINFO=true", "HELP2MAN=true"}
+		}
 	}
+	return []string{"-j" + strconv.Itoa(jobs)}
+}
+
+func runMake(ctx context.Context, name, version, srcPath string, extraEnv []string, verbose bool, jobs int) error {
+	args := makeArgs(name, version, jobs)
 
 	make := exec.CommandContext(ctx, "make", args...)
 	make.Dir = srcPath

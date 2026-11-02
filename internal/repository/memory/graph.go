@@ -839,7 +839,9 @@ func builtInExtensions() []domain.ExtensionDef {
 				{VersionRange: ">=8.0.0", Version: "8.10.1|>=8.0.0"},
 				{VersionRange: ">=7.0.0 <8.0.0", Version: "7.88.1|>=7.80.0"},
 				{VersionRange: ">=5.6.0 <7.0.0", Version: "7.20.0|>=7.20.0,<7.21.0"},
-				{VersionRange: ">=5.1.0 <5.6.0", Version: "7.12.1|>=7.12.0,<7.13.0"},
+				// curl 7.12.1 was never published on curl.se (not even in the
+				// archeology archive); 7.12.0 is the nearest available release.
+				{VersionRange: ">=5.1.0 <5.6.0", Version: "7.12.0|>=7.12.0,<7.13.0"},
 				{VersionRange: ">=5.0.0 <5.1.0", Version: "7.12.0|>=7.12.0,<7.13.0"},
 			},
 		},

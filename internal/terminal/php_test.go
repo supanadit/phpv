@@ -6,13 +6,18 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/bundle"
 	"github.com/supanadit/phpv/config"
 	"github.com/supanadit/phpv/doctor"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/graph"
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/internal/repository/memory"
+	"github.com/supanadit/phpv/internal/repository/patches"
+	"github.com/supanadit/phpv/patcher"
+	"github.com/supanadit/phpv/patchsync"
 	"github.com/supanadit/phpv/pecl"
 	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/shim"
@@ -306,17 +311,27 @@ func newTestPHPHandler(root string) *PHPHandler {
 	configSvc := config.NewService(&mockConfigRepo{})
 	doctorSvc := doctor.NewService(disk.NewDoctorRepository(), system.NewService(), graph.NewService(memory.NewGraphRepository()))
 	updateSvc := update.NewService(disk.NewUpdateRepository(), "dev")
+	// Assembler wired like app/phpv.go so graph-backed routing works.
+	graphSvc := graph.NewService(memory.NewGraphRepository())
+	forgeSvc := forge.NewService(disk.NewForgeRepository())
+	patcherSvc := patcher.NewService(patches.NewRepository(
+		filepath.Join(root, "patches"),
+		filepath.Join(root, "patches-local"),
+	))
+	patchSyncSvc := patchsync.NewService(disk.NewPatchRemote(), filepath.Join(root, "patches"), 0)
+	assemblerSvc := assembler.NewService(graphSvc, siloSvc, forgeSvc, patcherSvc, regSvc, patchSyncSvc)
 	return &PHPHandler{
-		ctx:         context.Background(),
-		siloSvc:     siloSvc,
-		registrySvc: regSvc,
-		bundleSvc:   bundleSvc,
-		systemSvc:   systemSvc,
-		shimSvc:     shimSvc,
-		peclSvc:     peclSvc,
-		configSvc:   configSvc,
-		doctorSvc:   doctorSvc,
-		updateSvc:   updateSvc,
+		ctx:          context.Background(),
+		siloSvc:      siloSvc,
+		registrySvc:  regSvc,
+		bundleSvc:    bundleSvc,
+		systemSvc:    systemSvc,
+		shimSvc:      shimSvc,
+		peclSvc:      peclSvc,
+		configSvc:    configSvc,
+		doctorSvc:    doctorSvc,
+		updateSvc:    updateSvc,
+		assemblerSvc: assemblerSvc,
 	}
 }
 

@@ -84,6 +84,8 @@ type ShimService interface {
 // PECLService is the set of PECL operations the terminal handler needs.
 type PECLService interface {
 	Install(ctx context.Context, source, phpVersion string, jobs int) (*pecl.InstallResult, error)
+	InstallCompatible(ctx context.Context, name, phpVersion string, jobs int, extraINI []string) (*pecl.InstallResult, error)
+	ResolveCompatibleRelease(name, phpVersion string) (string, error)
 	List(phpVersion string) ([]domain.ExtensionState, error)
 	Uninstall(name, phpVersion string) error
 }

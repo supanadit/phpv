@@ -120,6 +120,15 @@ func (NginxDriver) WriteConfig(inst domain.ServerInstance, rt Runtime) (string, 
 	b.WriteString("  fastcgi_temp_path " + inst.StateDir + "/tmp/fastcgi;\n")
 	b.WriteString("  uwsgi_temp_path " + inst.StateDir + "/tmp/uwsgi;\n")
 	b.WriteString("  scgi_temp_path " + inst.StateDir + "/tmp/scgi;\n\n")
+	// The silo install does not ship nginx's conf/mime.types, so declare
+	// the common web types inline; anything else falls back to
+	// application/octet-stream instead of text/plain.
+	b.WriteString("  default_type application/octet-stream;\n")
+	b.WriteString("  types {\n")
+	for _, m := range nginxMimeTypes {
+		fmt.Fprintf(&b, "    %s;\n", m)
+	}
+	b.WriteString("  }\n\n")
 	fmt.Fprintf(&b, "  server {\n")
 	fmt.Fprintf(&b, "    listen %d;\n", inst.Port)
 	if inst.Host != "" && inst.Host != "localhost" {
@@ -253,6 +262,36 @@ func apachePHPModuleName(phpVersion string) string {
 	default:
 		return "php5_module"
 	}
+}
+
+// nginxMimeTypes maps extensions to MIME types for the inline `types`
+// block written into every generated nginx.conf (format: "type ext ext").
+var nginxMimeTypes = []string{
+	"text/html html htm",
+	"text/css css",
+	"text/javascript js mjs",
+	"text/plain txt",
+	"text/markdown md",
+	"application/json json map",
+	"application/manifest+json webmanifest",
+	"application/wasm wasm",
+	"application/xml xml",
+	"application/pdf pdf",
+	"image/png png",
+	"image/jpeg jpg jpeg",
+	"image/gif gif",
+	"image/svg+xml svg svgz",
+	"image/webp webp",
+	"image/avif avif",
+	"image/x-icon ico",
+	"font/woff woff",
+	"font/woff2 woff2",
+	"font/otf otf",
+	"font/ttf ttf",
+	"video/mp4 mp4",
+	"video/webm webm",
+	"audio/mpeg mp3",
+	"audio/ogg ogg",
 }
 
 // fastcgiParams is the standard nginx FastCGI parameter set (from the

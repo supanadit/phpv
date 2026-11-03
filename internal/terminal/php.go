@@ -766,6 +766,7 @@ func (h *PHPHandler) use(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
+		h.noteMissingServer(exactVersion)
 		fmt.Printf("export PHPV_CURRENT=%q\n", exactVersion)
 		return nil
 	}
@@ -808,6 +809,7 @@ func (h *PHPHandler) use(cmd *cobra.Command, args []string) error {
 		if err := writeLocalVersionFile(exactVersion); err != nil {
 			return fmt.Errorf("write local version: %w", err)
 		}
+		h.noteMissingServer(exactVersion)
 		fmt.Printf("✓ Switched to PHP %s (local, .php-version)\n", exactVersion)
 		return nil
 	}
@@ -818,6 +820,7 @@ func (h *PHPHandler) use(cmd *cobra.Command, args []string) error {
 	if err := h.siloSvc.SetDefault(exactVersion); err != nil {
 		return fmt.Errorf("set default: %w", err)
 	}
+	h.noteMissingServer(exactVersion)
 	if err := h.shimSvc.RegenerateAll(); err != nil {
 		return fmt.Errorf("regenerate shims: %w", err)
 	}

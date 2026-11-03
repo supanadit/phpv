@@ -2,6 +2,7 @@ package memory
 
 import (
 	"fmt"
+	"runtime"
 
 	"github.com/supanadit/phpv/domain"
 )
@@ -342,6 +343,28 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 			URLTemplate: "https://github.com/skvadrik/re2c/releases/download/{version}/re2c-{version}.tar.xz",
 		})
 
+	case "pcre2":
+		result = BuildRegistries(PackageConfig{
+			Name: "pcre2",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"10.44", "10.43", "10.42",
+			},
+			URLTemplate: "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-{version}/pcre2-{version}.tar.gz",
+		})
+
+	case "expat":
+		result = BuildRegistries(PackageConfig{
+			Name: "expat",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"2.6.3", "2.6.2",
+			},
+			URLTemplate: "https://github.com/libexpat/libexpat/releases/download/R_{major}_{minor}_{patch}/expat-{version}.tar.gz",
+		})
+
 	case "icu":
 		result = BuildRegistries(PackageConfig{
 			Name: "icu",
@@ -369,6 +392,70 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 			Checksums: []Checksum{
 				{Version: "0.14.0", Type: "sha256", Value: "bd4c07e9dfe142d13f1a37ec7c0537e3c6c8c05f4d80c8e5f2d20e0a9c53c1be"},
 			},
+		})
+
+	case "caddy":
+		// Caddy publishes a prebuilt static binary per OS/arch. The
+		// {os}/{arch} placeholders render to runtime.GOOS/GOARCH at
+		// registry build time (OS is set to runtime.GOOS so non-matching
+		// platforms simply see no entries).
+		result = BuildRegistries(PackageConfig{
+			Name: "caddy",
+			Type: "binary",
+			OS:   runtime.GOOS,
+			Versions: []string{
+				"2.10.2", "2.10.1", "2.10.0",
+				"2.8.4", "2.8.3",
+			},
+			URLTemplate: "https://github.com/caddyserver/caddy/releases/download/v{version}/caddy_{version}_{os}_{arch}.tar.gz",
+			Checksums: []Checksum{
+				{Version: "2.10.2", Type: "sha256", Value: "5c218bc34c9197369263da7e9317a83acdbd80ef45d94dca5eff76e727c67cdd"},
+			},
+		})
+
+	case "nginx":
+		result = BuildRegistries(PackageConfig{
+			Name: "nginx",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"1.28.0", "1.27.4",
+				"1.26.3", "1.26.2",
+			},
+			URLTemplate: "https://nginx.org/download/nginx-{version}.tar.gz",
+		})
+
+	case "httpd":
+		result = BuildRegistries(PackageConfig{
+			Name: "httpd",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"2.4.62", "2.4.61",
+			},
+			URLTemplate: "https://archive.apache.org/dist/httpd/httpd-{version}.tar.gz",
+		})
+
+	case "apr":
+		result = BuildRegistries(PackageConfig{
+			Name: "apr",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"1.7.4", "1.7.2",
+			},
+			URLTemplate: "https://archive.apache.org/dist/apr/apr-{version}.tar.gz",
+		})
+
+	case "apr-util":
+		result = BuildRegistries(PackageConfig{
+			Name: "apr-util",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"1.6.3",
+			},
+			URLTemplate: "https://archive.apache.org/dist/apr/apr-util-{version}.tar.gz",
 		})
 
 	default:

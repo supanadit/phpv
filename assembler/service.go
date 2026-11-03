@@ -230,106 +230,15 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 	}
 	emit("download", fmt.Sprintf("Downloaded: %d, Skipped: %d, Extracted: %d", downloaded, skipped, extracted))
 
-	// Collect flags from locally-built and system-fallback deps separately so
-	// we can place local flags before system flags. This prevents system
-	// headers/libraries from shadowing an isolated version when a mixed
-	// build plan is used (e.g. libxml2 built from source while curl/openssl
-	// come from the system).
-	var localCppFlags, localLdFlags, localPcPaths []string
-	var systemCppFlags, systemLdFlags, systemPcPaths []string
-	var localLibraryPaths, localBinPaths []string
-
-	for _, dep := range plan.Deps {
-		if isBuildTool(dep.Name) {
-			emit("skip", fmt.Sprintf("Skipping build tool %s", dep.Name))
-			continue
-		}
-		if dep.Optional && dep.Version == "" {
-			emit("skip", fmt.Sprintf("Skipping optional dep %s (no version specified)", dep.Name))
-			continue
-		}
-		depVersion, constraint := domain.SplitVersionSpec(dep.Version)
-		depPrefix := s.silo.PackagePrefix(dep.Name, depVersion)
-		sourceDir := s.silo.SourcePath(dep.Name, depVersion)
-
-		if isDepInstalled(depPrefix) {
-			// If this dep must be built from source (e.g. curl because openssl
-			// is local), an existing install may be ABI-incompatible with the
-			// current plan. Force a rebuild so it links against the correct
-			// local dependency versions.
-			if mustBuild[dep.Name] {
-				emit("rebuild", fmt.Sprintf("Rebuilding %s@%s to ensure ABI compatibility", dep.Name, depVersion))
-				if err := os.RemoveAll(depPrefix); err != nil {
-					emit("error", fmt.Sprintf("Failed to remove stale %s@%s: %v", dep.Name, depVersion, err))
-					return nil, err
-				}
-			} else {
-				emit("skip", fmt.Sprintf("Already built %s@%s", dep.Name, depVersion))
-				localCppFlags, localLdFlags, localPcPaths = s.collectDepFlags(depPrefix, localCppFlags, localLdFlags, localPcPaths)
-				localLibraryPaths = appendUnique(localLibraryPaths, filepath.Join(depPrefix, "lib"))
-				localBinPaths = appendUnique(localBinPaths, filepath.Join(depPrefix, "bin"))
-				continue
-			}
-		}
-
-		// Hybrid mode: check if system package is available and compatible
-		if !static && systemPkgs != nil && !mustBuild[dep.Name] {
-			if sysPkg, ok := systemPkgs[dep.Name]; ok && sysPkg.Installed && sysPkg.Version != "" {
-				sysCompat := true
-				if constraint != "" {
-					sysCompat = domain.MatchVersionRange(constraint, sysPkg.Version)
-				}
-				if sysCompat {
-					emit("system-use", fmt.Sprintf("Using system %s@%s (satisfies %s)", dep.Name, sysPkg.Version, constraint))
-					systemCppFlags, systemLdFlags, systemPcPaths = collectSystemFlags(systemCppFlags, systemLdFlags, systemPcPaths)
-					continue
-				}
-				emit("system-incompatible", fmt.Sprintf("System %s@%s doesn't satisfy %s, building from source", dep.Name, sysPkg.Version, constraint))
-			}
-		}
-
-		emit("build", fmt.Sprintf("Building %s@%s...", dep.Name, depVersion))
-		prepared, err := s.patcher.Prepare(dep.Name, depVersion, sourceDir)
-		if err != nil {
-			emit("error", fmt.Sprintf("Patch failed for %s@%s: %v", dep.Name, depVersion, err))
-			return nil, err
-		}
-		if len(prepared.Applied) > 0 {
-			emit("patch", fmt.Sprintf("Applied %d patch(es) to %s@%s", len(prepared.Applied), dep.Name, depVersion))
-		}
-		buildEnv := tc.Env()
-		if len(prepared.ExtraCFlags) > 0 {
-			buildEnv = append(buildEnv, "CFLAGS="+strings.Join(prepared.ExtraCFlags, " "), "CXXFLAGS="+strings.Join(prepared.ExtraCFlags, " "))
-		}
-		// TODO: Hardcoded libiconv path
-		// Description: This shouldn't be hardcoded, it should instead look like configureFlagRules in internal/repository/memory/graph.go
-		if runtime.GOOS == "darwin" {
-			brewIconv := "/opt/homebrew/opt/libiconv"
-			if _, err := os.Stat(filepath.Join(brewIconv, "include", "iconv.h")); err == nil {
-				buildEnv = append(buildEnv,
-					"CPPFLAGS=-I"+filepath.Join(brewIconv, "include"),
-					"LDFLAGS=-L"+filepath.Join(brewIconv, "lib")+" -Wl,-rpath,"+filepath.Join(brewIconv, "lib"),
-				)
-			}
-		}
-		depFlags := s.graph.GetConfigureFlags(dep.Name, depVersion)
-		depFlags = append(depFlags, s.resolveDepPlaceholders(prepared.ConfigureFlags, plan.Deps)...)
-		buildDir, _, err := s.forge.Build(ctx, dep.Name, depVersion, sourceDir, buildEnv, depFlags, depPrefix, verbose, jobs)
-		if err != nil {
-			emit("error", fmt.Sprintf("Build failed for %s@%s", dep.Name, depVersion))
-			return nil, fmt.Errorf("forge build %s@%s: %w", dep.Name, depVersion, err)
-		}
-		emit("install", fmt.Sprintf("Installing %s@%s → %s", dep.Name, depVersion, depPrefix))
-		if err := s.forge.Install(ctx, dep.Name, depVersion, buildDir, depPrefix, verbose, jobs); err != nil {
-			emit("error", fmt.Sprintf("Install failed for %s@%s", dep.Name, depVersion))
-			return nil, fmt.Errorf("forge install %s@%s: %w", dep.Name, depVersion, err)
-		}
-		emit("done", fmt.Sprintf("✓ %s@%s installed", dep.Name, depVersion))
-
-		localCppFlags, localLdFlags, localPcPaths = s.collectDepFlags(depPrefix, localCppFlags, localLdFlags, localPcPaths)
-		localLibraryPaths = appendUnique(localLibraryPaths, filepath.Join(depPrefix, "lib"))
-		localBinPaths = appendUnique(localBinPaths, filepath.Join(depPrefix, "bin"))
+	// Build all source dependencies (or resolve them against system
+	// packages). Extracted so the PHP-FPM variant build can reuse it.
+	depRes, err := s.buildDependencies(ctx, plan.Deps, mustBuild, systemPkgs, static, verbose, jobs, tc, emit)
+	if err != nil {
+		return nil, err
 	}
+	localCppFlags, localLdFlags, localPcPaths := depRes.LocalCppFlags, depRes.LocalLdFlags, depRes.LocalPcPaths
+	systemCppFlags, systemLdFlags, systemPcPaths := depRes.SystemCppFlags, depRes.SystemLdFlags, depRes.SystemPcPaths
+	localLibraryPaths, localBinPaths := depRes.LibraryPaths, depRes.BinPaths
 
 	// Combine flags: local (isolated) flags first so they take precedence over
 	// system headers/libraries when both are present.
@@ -506,6 +415,121 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 			libPathEnvName(): strings.Join(localLibraryPaths, ":"),
 		},
 	}, nil
+}
+
+// DepBuildResult carries the compiler/linker flags and paths produced by
+// building (or resolving) a build plan's dependency list.
+type DepBuildResult struct {
+	LocalCppFlags   []string
+	LocalLdFlags    []string
+	LocalPcPaths    []string
+	SystemCppFlags  []string
+	SystemLdFlags   []string
+	SystemPcPaths   []string
+	LibraryPaths    []string
+	BinPaths        []string
+}
+
+// buildDependencies builds every source dependency in the plan (or resolves
+// it against a compatible system package) and returns the accumulated flags.
+//
+// It is the dependency half of Assemble, extracted so alternative PHP SAPIs
+// (the FPM variant built for `phpv server`) share one implementation instead
+// of duplicating the build loop.
+func (s *Service) buildDependencies(ctx context.Context, deps []domain.Dependency, mustBuild map[string]bool, systemPkgs map[string]system.Package, static, verbose bool, jobs int, tc compiler.Toolchain, emit ProgressFunc) (*DepBuildResult, error) {
+	res := &DepBuildResult{}
+	for _, dep := range deps {
+		if isBuildTool(dep.Name) {
+			emit("skip", fmt.Sprintf("Skipping build tool %s", dep.Name))
+			continue
+		}
+		if dep.Optional && dep.Version == "" {
+			emit("skip", fmt.Sprintf("Skipping optional dep %s (no version specified)", dep.Name))
+			continue
+		}
+		depVersion, constraint := domain.SplitVersionSpec(dep.Version)
+		depPrefix := s.silo.PackagePrefix(dep.Name, depVersion)
+		sourceDir := s.silo.SourcePath(dep.Name, depVersion)
+
+		if isDepInstalled(depPrefix) {
+			// If this dep must be built from source (e.g. curl because openssl
+			// is local), an existing install may be ABI-incompatible with the
+			// current plan. Force a rebuild so it links against the correct
+			// local dependency versions.
+			if mustBuild[dep.Name] {
+				emit("rebuild", fmt.Sprintf("Rebuilding %s@%s to ensure ABI compatibility", dep.Name, depVersion))
+				if err := os.RemoveAll(depPrefix); err != nil {
+					emit("error", fmt.Sprintf("Failed to remove stale %s@%s: %v", dep.Name, depVersion, err))
+					return nil, err
+				}
+			} else {
+				emit("skip", fmt.Sprintf("Already built %s@%s", dep.Name, depVersion))
+				res.LocalCppFlags, res.LocalLdFlags, res.LocalPcPaths = s.collectDepFlags(depPrefix, res.LocalCppFlags, res.LocalLdFlags, res.LocalPcPaths)
+				res.LibraryPaths = appendUnique(res.LibraryPaths, filepath.Join(depPrefix, "lib"))
+				res.BinPaths = appendUnique(res.BinPaths, filepath.Join(depPrefix, "bin"))
+				continue
+			}
+		}
+
+		// Hybrid mode: check if a system package is available and compatible.
+		if !static && systemPkgs != nil && !mustBuild[dep.Name] {
+			if sysPkg, ok := systemPkgs[dep.Name]; ok && sysPkg.Installed && sysPkg.Version != "" {
+				sysCompat := true
+				if constraint != "" {
+					sysCompat = domain.MatchVersionRange(constraint, sysPkg.Version)
+				}
+				if sysCompat {
+					emit("system-use", fmt.Sprintf("Using system %s@%s (satisfies %s)", dep.Name, sysPkg.Version, constraint))
+					res.SystemCppFlags, res.SystemLdFlags, res.SystemPcPaths = collectSystemFlags(res.SystemCppFlags, res.SystemLdFlags, res.SystemPcPaths)
+					continue
+				}
+				emit("system-incompatible", fmt.Sprintf("System %s@%s doesn't satisfy %s, building from source", dep.Name, sysPkg.Version, constraint))
+			}
+		}
+
+		emit("build", fmt.Sprintf("Building %s@%s...", dep.Name, depVersion))
+		prepared, err := s.patcher.Prepare(dep.Name, depVersion, sourceDir)
+		if err != nil {
+			emit("error", fmt.Sprintf("Patch failed for %s@%s: %v", dep.Name, depVersion, err))
+			return nil, err
+		}
+		if len(prepared.Applied) > 0 {
+			emit("patch", fmt.Sprintf("Applied %d patch(es) to %s@%s", len(prepared.Applied), dep.Name, depVersion))
+		}
+		buildEnv := tc.Env()
+		if len(prepared.ExtraCFlags) > 0 {
+			buildEnv = append(buildEnv, "CFLAGS="+strings.Join(prepared.ExtraCFlags, " "), "CXXFLAGS="+strings.Join(prepared.ExtraCFlags, " "))
+		}
+		// TODO: Hardcoded libiconv path
+		// Description: This shouldn't be hardcoded, it should instead look like configureFlagRules in internal/repository/memory/graph.go
+		if runtime.GOOS == "darwin" {
+			brewIconv := "/opt/homebrew/opt/libiconv"
+			if _, err := os.Stat(filepath.Join(brewIconv, "include", "iconv.h")); err == nil {
+				buildEnv = append(buildEnv,
+					"CPPFLAGS=-I"+filepath.Join(brewIconv, "include"),
+					"LDFLAGS=-L"+filepath.Join(brewIconv, "lib")+" -Wl,-rpath,"+filepath.Join(brewIconv, "lib"),
+				)
+			}
+		}
+		depFlags := s.graph.GetConfigureFlags(dep.Name, depVersion)
+		depFlags = append(depFlags, s.resolveDepPlaceholders(prepared.ConfigureFlags, deps)...)
+		buildDir, _, err := s.forge.Build(ctx, dep.Name, depVersion, sourceDir, buildEnv, depFlags, depPrefix, verbose, jobs)
+		if err != nil {
+			emit("error", fmt.Sprintf("Build failed for %s@%s", dep.Name, depVersion))
+			return nil, fmt.Errorf("forge build %s@%s: %w", dep.Name, depVersion, err)
+		}
+		emit("install", fmt.Sprintf("Installing %s@%s → %s", dep.Name, depVersion, depPrefix))
+		if err := s.forge.Install(ctx, dep.Name, depVersion, buildDir, depPrefix, verbose, jobs); err != nil {
+			emit("error", fmt.Sprintf("Install failed for %s@%s", dep.Name, depVersion))
+			return nil, fmt.Errorf("forge install %s@%s: %w", dep.Name, depVersion, err)
+		}
+		emit("done", fmt.Sprintf("✓ %s@%s installed", dep.Name, depVersion))
+
+		res.LocalCppFlags, res.LocalLdFlags, res.LocalPcPaths = s.collectDepFlags(depPrefix, res.LocalCppFlags, res.LocalLdFlags, res.LocalPcPaths)
+		res.LibraryPaths = appendUnique(res.LibraryPaths, filepath.Join(depPrefix, "lib"))
+		res.BinPaths = appendUnique(res.BinPaths, filepath.Join(depPrefix, "bin"))
+	}
+	return res, nil
 }
 
 // ensureCLIBinary makes sure <prefix>/bin/php is the CLI SAPI. PHP 4's
@@ -978,6 +1002,18 @@ func resolveVersionConstraint(versions []string, constraint string) (string, err
 		if v == constraint {
 			return v, nil
 		}
+	}
+	// Empty constraint: newest available version wins (registry lists are
+	// ordered newest-first, and this keeps `phpv server install caddy`
+	// working without a version argument).
+	if constraint == "" && len(versions) > 0 {
+		best := versions[0]
+		for _, v := range versions[1:] {
+			if domain.CompareVersions(v, best) > 0 {
+				best = v
+			}
+		}
+		return best, nil
 	}
 	if strings.Count(constraint, ".") == 1 || strings.Count(constraint, ".") == 0 {
 		prefix := constraint + "."

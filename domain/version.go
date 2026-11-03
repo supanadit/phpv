@@ -3,6 +3,7 @@ package domain
 import (
 	"fmt"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -229,6 +230,8 @@ func RenderTemplate(tmpl, version string) string {
 		"{major}", strconv.Itoa(s.Major),
 		"{minor}", strconv.Itoa(s.Minor),
 		"{patch}", strconv.Itoa(s.Patch),
+		"{os}", runtime.GOOS,
+		"{arch}", runtime.GOARCH,
 	)
 	return r.Replace(tmpl)
 }

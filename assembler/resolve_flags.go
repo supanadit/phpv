@@ -8,11 +8,15 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/source"
 )
 
 // resolveDepPlaceholders replaces {{dep:NAME}} placeholders in configure flags
-// with the install prefix of the named dependency. This is used by the patcher
-// to inject dependency paths (e.g., curl's --with-openssl={{dep:openssl}}).
+// with the install prefix of the named dependency, and {{source:NAME}} with
+// the extracted source directory of the named dependency. This is used by the
+// patcher to inject dependency paths (e.g., curl's --with-openssl={{dep:openssl}})
+// and by packages that compile a library from its source tree rather than an
+// install prefix (e.g., nginx's --with-pcre=<pcre2 source dir>).
 //
 // The placeholder is resolved for every dependency that appears in the build
 // plan, but only if the dependency was actually built locally (not when
@@ -25,31 +29,46 @@ func (s *Service) resolveDepPlaceholders(flags []string, deps []domain.Dependenc
 		resolved := flag
 		skip := false
 		for _, dep := range deps {
-			placeholder := "{{dep:" + dep.Name + "}}"
-			if !strings.Contains(resolved, placeholder) {
+			depVersion := dep.Version
+			if idx := strings.Index(depVersion, "|"); idx != -1 {
+				depVersion = depVersion[:idx]
+			}
+			if depVersion == "" {
 				continue
 			}
-			ver := dep.Version
-			if idx := strings.Index(ver, "|"); idx != -1 {
-				ver = ver[:idx]
-			}
-			if ver == "" {
-				continue
-			}
-			prefix := s.silo.PackagePrefix(dep.Name, ver)
+			prefix := s.silo.PackagePrefix(dep.Name, depVersion)
 			// Check if the dependency was actually built locally
 			if fi, err := os.Stat(prefix); err != nil || !fi.IsDir() {
-				// Dependency was satisfied by system package, skip this flag
-				skip = true
-				break
+				continue
 			}
-			resolved = strings.ReplaceAll(resolved, placeholder, prefix)
+			resolved = strings.ReplaceAll(resolved, "{{dep:"+dep.Name+"}}", prefix)
+			// {{source:NAME}} must point at the actual buildable source dir
+			// (packages that compile a library from its source tree, like
+			// nginx's --with-pcre=<pcre2 source>, need a directory containing
+			// configure — the extract root only holds the nested archive dir).
+			srcDir := s.silo.SourcePath(dep.Name, depVersion)
+			if located := source.Find(srcDir, dep.Name); located != "" {
+				srcDir = located
+			}
+			resolved = strings.ReplaceAll(resolved, "{{source:"+dep.Name+"}}", srcDir)
+		}
+		if strings.Contains(resolved, "{{dep:") || strings.Contains(resolved, "{{source:") {
+			// A placeholder survived without a matching locally-built dep:
+			// drop the flag and let configure find the system version.
+			skip = true
 		}
 		if !skip {
 			result = append(result, resolved)
 		}
 	}
 	return result
+}
+
+// ResolveDepPlaceholders exposes {{dep:NAME}}/{{source:NAME}} resolution
+// (see resolveDepPlaceholders) for FPM variant builds, which reuse the
+// placeholder syntax in their configure flags.
+func (s *Service) ResolveDepPlaceholders(flags []string, deps []domain.Dependency) []string {
+	return s.resolveDepPlaceholders(flags, deps)
 }
 
 // resolveDependencyFlags resolves package-relative configure flags

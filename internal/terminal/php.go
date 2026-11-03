@@ -159,6 +159,7 @@ func NewPHPHandler(rootCmd *cobra.Command, lc fx.Lifecycle, siloSvc SiloService,
 	rootCmd.AddCommand(h.initCmd())
 	rootCmd.AddCommand(h.rehashCmd())
 	rootCmd.AddCommand(h.pharCmd())
+	rootCmd.AddCommand(h.serverCmd())
 	rootCmd.AddCommand(h.autoDetectResolveCmd())
 	rootCmd.AddCommand(h.peclCmd())
 	rootCmd.AddCommand(h.uninstallCmd())

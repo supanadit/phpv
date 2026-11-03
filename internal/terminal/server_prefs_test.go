@@ -77,7 +77,7 @@ func TestResolveServerForPHP_PreferenceWinsOverGlobalConfig(t *testing.T) {
 	}
 }
 
-func TestResolveServerForPHP_NonDefaultWithoutPreferenceErrors(t *testing.T) {
+func TestResolveServerForPHP_FallsBackToFirstInstalled(t *testing.T) {
 	root := t.TempDir()
 	createFakePHPInstall(t, root, "8.5.12")
 	if err := os.WriteFile(filepath.Join(root, "default"), []byte("8.5.12\n"), 0644); err != nil {
@@ -86,44 +86,72 @@ func TestResolveServerForPHP_NonDefaultWithoutPreferenceErrors(t *testing.T) {
 	createFakeServerInstall(t, root, "caddy", "2.10.2", time.Now().Add(-2*time.Hour))
 	createFakeServerInstall(t, root, "nginx", "1.28.0", time.Now().Add(-time.Hour))
 
-	h := newServerTestHandler(t, root, map[string]string{"server": "caddy"})
+	h := newServerTestHandler(t, root, nil)
 
-	_, _, err := h.resolveServerForPHP("", "7.4.33")
-	if err == nil {
-		t.Fatal("expected an error for a PHP version with no server configured")
+	// No association, no env and no global default: the deterministic
+	// fallback is the first installed server in ServerNames order, never
+	// "newest installed".
+	got, source, err := h.resolveServerForPHP("", "7.4.33")
+	if err != nil {
+		t.Fatalf("resolveServerForPHP: %v", err)
 	}
-	if !strings.Contains(err.Error(), "no webserver associated with PHP 7.4.33") {
-		t.Fatalf("error = %q, want an association-required hint", err)
-	}
-	if !strings.Contains(err.Error(), "installed: caddy, nginx") {
-		t.Fatalf("error = %q, want the installed servers listed", err)
-	}
-	if !strings.Contains(err.Error(), "phpv server use <name> --php 7.4.33") {
-		t.Fatalf("error = %q, want an association command", err)
-	}
-	if !strings.Contains(err.Error(), "PHPV_DEFAULT_SERVER") {
-		t.Fatalf("error = %q, want the default-server hint", err)
+	if got != "caddy" || source != serverFromFallback {
+		t.Fatalf("resolveServerForPHP = (%q, %q), want (caddy, %q)", got, source, serverFromFallback)
 	}
 }
 
-func TestResolveServerForPHP_SingleInstalledServerStillRequiresAssociation(t *testing.T) {
+func TestResolveServerForPHP_GlobalDefaultAppliesToAllVersions(t *testing.T) {
 	root := t.TempDir()
 	createFakePHPInstall(t, root, "8.5.12")
 	if err := os.WriteFile(filepath.Join(root, "default"), []byte("8.5.12\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	// Only nginx exists globally, but nothing associates it with 7.4.33.
-	// Isolation wins: the version must not borrow another version's server.
+	createFakeServerInstall(t, root, "caddy", "2.10.2", time.Now())
+	createFakeServerInstall(t, root, "nginx", "1.28.0", time.Now())
+
+	// `phpv server default nginx` persists config server=nginx.
+	h := newServerTestHandler(t, root, map[string]string{"server": "nginx"})
+
+	got, source, err := h.resolveServerForPHP("", "7.4.33")
+	if err != nil {
+		t.Fatalf("resolveServerForPHP: %v", err)
+	}
+	if got != "nginx" || source != serverFromConfig {
+		t.Fatalf("resolveServerForPHP = (%q, %q), want (nginx, %q)", got, source, serverFromConfig)
+	}
+}
+
+func TestResolveServerForPHP_FallbackUsesOnlyInstalledServer(t *testing.T) {
+	root := t.TempDir()
+	createFakePHPInstall(t, root, "8.5.12")
+	if err := os.WriteFile(filepath.Join(root, "default"), []byte("8.5.12\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	createFakeServerInstall(t, root, "nginx", "1.28.0", time.Now())
 
 	h := newServerTestHandler(t, root, nil)
 
-	_, _, err := h.resolveServerForPHP("", "7.4.33")
-	if err == nil {
-		t.Fatal("a single globally installed server must not be reused across PHP versions")
+	got, source, err := h.resolveServerForPHP("", "7.4.33")
+	if err != nil {
+		t.Fatalf("resolveServerForPHP: %v", err)
 	}
-	if !strings.Contains(err.Error(), "no webserver associated with PHP 7.4.33") {
-		t.Fatalf("error = %q, want an association-required hint", err)
+	if got != "nginx" || source != serverFromFallback {
+		t.Fatalf("resolveServerForPHP = (%q, %q), want (nginx, %q)", got, source, serverFromFallback)
+	}
+}
+
+func TestResolveServerForPHP_NoServersInstalled(t *testing.T) {
+	root := t.TempDir()
+	createFakePHPInstall(t, root, "8.5.12")
+
+	h := newServerTestHandler(t, root, nil)
+
+	_, _, err := h.resolveServerForPHP("", "8.5.12")
+	if err == nil {
+		t.Fatal("expected an error when no webserver is installed")
+	}
+	if !strings.Contains(err.Error(), "no webserver installed — run: phpv server install <caddy|nginx|apache>") {
+		t.Fatalf("error = %q, want the install command", err)
 	}
 }
 
@@ -133,17 +161,19 @@ func TestResolveServerForPHP_EnvDefaultForUnassociatedVersion(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "default"), []byte("8.5.12\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	createFakeServerInstall(t, root, "caddy", "2.10.2", time.Now())
 	createFakeServerInstall(t, root, "nginx", "1.28.0", time.Now())
 
-	h := newServerTestHandler(t, root, nil)
-	t.Setenv(defaultServerEnv, "nginx")
+	// Env wins over the persisted global default.
+	h := newServerTestHandler(t, root, map[string]string{"server": "nginx"})
+	t.Setenv(defaultServerEnv, "caddy")
 
 	got, source, err := h.resolveServerForPHP("", "7.4.33")
 	if err != nil {
 		t.Fatalf("resolveServerForPHP: %v", err)
 	}
-	if got != "nginx" || source != serverFromEnv {
-		t.Fatalf("resolveServerForPHP = (%q, %q), want (nginx, %q)", got, source, serverFromEnv)
+	if got != "caddy" || source != serverFromEnv {
+		t.Fatalf("resolveServerForPHP = (%q, %q), want (caddy, %q)", got, source, serverFromEnv)
 	}
 }
 
@@ -185,7 +215,7 @@ func TestResolveServerForPHP_AssociationOverridesEnvDefault(t *testing.T) {
 	}
 }
 
-func TestResolveServerForPHP_DefaultWithoutConfigOrPreferenceErrors(t *testing.T) {
+func TestResolveServerForPHP_DefaultWithoutConfigFallsBack(t *testing.T) {
 	root := t.TempDir()
 	createFakePHPInstall(t, root, "8.5.12")
 	if err := os.WriteFile(filepath.Join(root, "default"), []byte("8.5.12\n"), 0644); err != nil {
@@ -195,9 +225,12 @@ func TestResolveServerForPHP_DefaultWithoutConfigOrPreferenceErrors(t *testing.T
 
 	h := newServerTestHandler(t, root, nil)
 
-	_, _, err := h.resolveServerForPHP("", "8.5.12")
-	if err == nil || !strings.Contains(err.Error(), "no webserver associated with PHP 8.5.12") {
-		t.Fatalf("error = %v, want an association-required hint", err)
+	got, source, err := h.resolveServerForPHP("", "8.5.12")
+	if err != nil {
+		t.Fatalf("resolveServerForPHP: %v", err)
+	}
+	if got != "nginx" || source != serverFromFallback {
+		t.Fatalf("resolveServerForPHP = (%q, %q), want (nginx, %q)", got, source, serverFromFallback)
 	}
 }
 
@@ -273,5 +306,17 @@ func TestServerPreferenceRoundTrip(t *testing.T) {
 	}
 	if _, ok := h.serverPreference("8.5.12"); ok {
 		t.Fatal("preference leaked to another PHP version")
+	}
+}
+
+func TestResolveServerForPHP_InvalidServerNameHintsPHPVersionMixup(t *testing.T) {
+	h := &PHPHandler{}
+
+	_, _, err := h.resolveServerForPHP("7", "8.5.12")
+	if err == nil {
+		t.Fatal("expected an error for a PHP version passed as a server name")
+	}
+	if !strings.Contains(err.Error(), "PHP versions are switched with `phpv use <version>`") {
+		t.Fatalf("error = %q, want the version mix-up hint", err)
 	}
 }

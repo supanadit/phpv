@@ -107,30 +107,47 @@ const (
 	serverFromPHPPreference serverSelectionSource = "php-preference"
 	serverFromEnv           serverSelectionSource = "env"
 	serverFromConfig        serverSelectionSource = "config"
+	serverFromFallback      serverSelectionSource = "fallback"
 )
+
+// serverSourceLabel humanizes why a server was selected.
+func serverSourceLabel(source serverSelectionSource) string {
+	switch source {
+	case serverFromFlag:
+		return "--server"
+	case serverFromPHPPreference:
+		return "per-PHP association"
+	case serverFromEnv:
+		return defaultServerEnv
+	case serverFromConfig:
+		return "global default"
+	case serverFromFallback:
+		return "fallback"
+	default:
+		return string(source)
+	}
+}
 
 // defaultServerEnv names the fallback webserver for PHP versions that have no
 // explicit association. It is never written implicitly by `server install`.
 const defaultServerEnv = "PHPV_DEFAULT_SERVER"
 
-// resolveServerForPHP picks the webserver for a run. Each PHP version keeps
-// its own association; switching versions never reuses a server chosen for
-// another version. Resolution order:
-//
-//	--server flag → preference recorded for this PHP version →
-//	PHPV_DEFAULT_SERVER → global config (default PHP only) →
-//	association-required error.
+// resolveServerForPHP picks the webserver for a run. Resolution is aware of
+// the active PHP version: a per-version association wins, then an explicit
+// PHPV_DEFAULT_SERVER, then the global default set with `phpv server default`,
+// then a deterministic fallback in ServerNames order. `server use` is never
+// required.
 func (h *PHPHandler) resolveServerForPHP(flagServer, phpVersion string) (string, serverSelectionSource, error) {
 	if flagServer != "" {
 		if !domain.IsValidServerName(flagServer) {
-			return "", "", fmt.Errorf("unknown server %q (available: %s)", flagServer, strings.Join(domain.ServerNames(), ", "))
+			return "", "", invalidServerName(flagServer)
 		}
 		return flagServer, serverFromFlag, nil
 	}
 
 	installed := h.installedServers()
 	if len(installed) == 0 {
-		return "", "", fmt.Errorf("no webserver installed — run: phpv server install caddy")
+		return "", "", fmt.Errorf("no webserver installed — run: phpv server install <caddy|nginx|apache>")
 	}
 
 	if pref, ok := h.serverPreference(phpVersion); ok && containsString(installed, pref) {
@@ -147,19 +164,16 @@ func (h *PHPHandler) resolveServerForPHP(flagServer, phpVersion string) (string,
 		return def, serverFromEnv, nil
 	}
 
-	defaultVersion, _ := h.siloSvc.GetDefault()
-	isDefaultPHP := defaultVersion == "" || domain.CompareVersions(defaultVersion, phpVersion) == 0
-	if cfg, _ := h.configSvc.Get("server"); isDefaultPHP && cfg != "" && containsString(installed, cfg) {
+	// `phpv server default <name>` writes this global default. It applies to
+	// every PHP version that has no per-version association.
+	if cfg, _ := h.configSvc.Get("server"); cfg != "" && containsString(installed, cfg) {
 		return cfg, serverFromConfig, nil
 	}
 
-	return "", "", fmt.Errorf(
-		"no webserver associated with PHP %s (installed: %s)\n"+
-			"  associate one: phpv server use <name> --php %s\n"+
-			"  or set a default: %s=<name>\n"+
-			"  or override for this run: --server <name>",
-		phpVersion, strings.Join(installed, ", "), phpVersion, defaultServerEnv,
-	)
+	// Deterministic last resort: first installed in ServerNames preference
+	// order (caddy, nginx, apache). Never "newest wins", so installing another
+	// server cannot change what an unassociated version uses.
+	return installed[0], serverFromFallback, nil
 }
 
 func containsString(values []string, want string) bool {
@@ -169,4 +183,13 @@ func containsString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// invalidServerName explains that the server commands take a webserver name,
+// not a PHP version (a common mix-up with `phpv server install 7`).
+func invalidServerName(name string) error {
+	return fmt.Errorf(
+		"unknown server %q — expected a webserver name (%s); PHP versions are switched with `phpv use <version>`",
+		name, strings.Join(domain.ServerNames(), ", "),
+	)
 }

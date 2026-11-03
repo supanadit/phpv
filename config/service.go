@@ -36,7 +36,7 @@ var knownKeys = []keyDef{
 	{key: "compiler", typ: "string", desc: "C compiler used for builds (e.g., gcc, clang, zig)"},
 	{key: "mirror", typ: "string", desc: "PHP download mirror URL"},
 	{key: "static_libgcc", typ: "bool", desc: "Statically link libgcc in static builds"},
-	{key: "server", typ: "string", desc: "Default webserver for `phpv server run` on the default PHP version (caddy, nginx, apache)"},
+	{key: "server", typ: "string", desc: "Global default webserver for `phpv server run` (caddy, nginx, apache)"},
 	{key: "server_version", typ: "string", desc: "Default webserver version for `phpv server run`"},
 }
 

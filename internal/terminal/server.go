@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -129,13 +130,13 @@ func (h *PHPHandler) serverCmd() *cobra.Command {
 
 	install := &cobra.Command{
 		Use:               "install <caddy|nginx|apache> [version]",
-		Short:             "Install a webserver into the phpv silo (multi-version)",
+		Short:             "Install a webserver binary (does not change the PHP-version association)",
 		Args:              cobra.RangeArgs(1, 2),
 		ValidArgsFunction: serverNameCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			server := strings.ToLower(args[0])
 			if !domain.IsValidServerName(server) {
-				return fmt.Errorf("unknown server %q (available: %s)", server, strings.Join(domain.ServerNames(), ", "))
+				return invalidServerName(server)
 			}
 			version := ""
 			if len(args) == 2 {
@@ -168,9 +169,6 @@ func (h *PHPHandler) serverCmd() *cobra.Command {
 			if !verbose {
 				fmt.Println()
 			}
-			if os.Getenv(defaultServerEnv) == "" {
-				fmt.Printf("  associate it with a PHP version: phpv server use %s --php <version>\n", server)
-			}
 			return nil
 		},
 	}
@@ -185,7 +183,7 @@ func (h *PHPHandler) serverCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			server := strings.ToLower(args[0])
 			if !domain.IsValidServerName(server) {
-				return fmt.Errorf("unknown server %q (available: %s)", server, strings.Join(domain.ServerNames(), ", "))
+				return invalidServerName(server)
 			}
 			if !containsString(h.installedServers(), server) {
 				return fmt.Errorf("%s is not installed — run: phpv server install %s", server, server)
@@ -207,21 +205,42 @@ func (h *PHPHandler) serverCmd() *cobra.Command {
 		return h.versionNameCompletion(toComplete)
 	})
 
+	serverDefault := &cobra.Command{
+		Use:               "default <caddy|nginx|apache>",
+		Short:             "Set the global default webserver for PHP versions without an association",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: serverNameCompletion,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			server := strings.ToLower(args[0])
+			if !domain.IsValidServerName(server) {
+				return invalidServerName(server)
+			}
+			if !containsString(h.installedServers(), server) {
+				return fmt.Errorf("%s is not installed — run: phpv server install %s", server, server)
+			}
+			if err := h.configSvc.Set("server", server); err != nil {
+				return fmt.Errorf("set global default webserver: %w", err)
+			}
+			fmt.Printf("✓ global default webserver: %s\n", server)
+			return nil
+		},
+	}
+
 	run := &cobra.Command{
 		Use:   "run <dir>",
 		Short: "Serve a directory through the webserver and PHP-FPM for the active PHP version",
 		Long: `Serve a directory (replaces ` + "`php -S localhost:... -t public`" + `).
 
 The PHP version follows the active version (` + "`phpv use`" + `, ` + "`.php-version`" + `,
-default), exactly like ` + "`php`" + ` itself. The webserver is resolved per PHP
-version: ` + "`phpv server use <name>`" + ` associates one with the active version.
-Failing that, ` + "`PHPV_DEFAULT_SERVER`" + ` is used as the fallback. A global
-config only covers the default PHP version.
+default), exactly like ` + "`php`" + ` itself. The webserver is picked per PHP version:
+` + "`--server`" + `, the server associated with that version (` + "`phpv server use`" + `),
+` + "`PHPV_DEFAULT_SERVER`" + `, the global default (` + "`phpv server default`" + `), then the
+first installed server. No association is required to run.
 
 Examples:
   phpv server run .                          # serve cwd on localhost:8080
   phpv server run . --host myapp.local       # vhost + /etc/hosts entry
-  phpv server run . --server nginx --version 1.26.3
+  phpv server run . --server nginx --version 1.26.3   # this run only
   phpv server run . --php 7.4                # pin a PHP version explicitly
   phpv server run . -d                       # detach; manage with phpv server stop/list`,
 		Args: cobra.ExactArgs(1),
@@ -245,7 +264,7 @@ Examples:
 			if err != nil {
 				return err
 			}
-			server, _, err = h.resolveServerForPHP(server, resolvedPHP)
+			server, serverSource, err := h.resolveServerForPHP(server, resolvedPHP)
 			if err != nil {
 				return err
 			}
@@ -277,6 +296,14 @@ Examples:
 			fmt.Printf("  url:     %s\n", inst.URL())
 			if inst.Host != "" && inst.Host != "localhost" {
 				fmt.Printf("  vhost:   %s (via /etc/hosts)\n", inst.Host)
+			}
+			if serverSource == serverFromFlag {
+				if pref, ok := h.serverPreference(inst.PHPVersion); !ok || pref != inst.Server {
+					fmt.Printf("  note:    --server applies to this run only (make it this version's default: phpv server use %s --php %s)\n", inst.Server, inst.PHPVersion)
+				}
+			}
+			if serverSource == serverFromFallback && len(h.installedServers()) > 1 {
+				fmt.Printf("  note:    using %s by default (override with %s=<name> or phpv server use <name>)\n", inst.Server, defaultServerEnv)
 			}
 			if detach {
 				fmt.Printf("  detached: instance %s — stop it with: phpv server stop %s\n", inst.ID, inst.ID)
@@ -351,7 +378,7 @@ Examples:
 
 	list := &cobra.Command{
 		Use:   "list",
-		Short: "List installed webservers and running instances",
+		Short: "List installed webservers, defaults, associations and running instances",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root := resolvePHPVRootForServer()
@@ -377,6 +404,43 @@ Examples:
 			}
 			if !any {
 				fmt.Println("  (none — try: phpv server install caddy)")
+			}
+
+			activePHP, _ := h.resolveVersion("")
+			fmt.Println("\nGlobal default:")
+			switch def := strings.TrimSpace(os.Getenv(defaultServerEnv)); {
+			case def != "":
+				fmt.Printf("  %s (from %s)\n", def, defaultServerEnv)
+			default:
+				if cfg, _ := h.configSvc.Get("server"); cfg != "" {
+					fmt.Printf("  %s (from phpv server default)\n", cfg)
+				} else {
+					fmt.Println("  (none — falls back to the first installed server)")
+				}
+			}
+
+			fmt.Println("\nPer-PHP associations:")
+			prefs := loadServerPreferences(root)
+			if len(prefs.Servers) == 0 {
+				fmt.Println("  (none — run: phpv server use <name>)")
+			} else {
+				versions := make([]string, 0, len(prefs.Servers))
+				for version := range prefs.Servers {
+					versions = append(versions, version)
+				}
+				sort.Strings(versions)
+				for _, version := range versions {
+					marker := ""
+					if version == activePHP {
+						marker = "  (active)"
+					}
+					fmt.Printf("  PHP %-10s -> %s%s\n", version, prefs.Servers[version], marker)
+				}
+			}
+			if activePHP != "" {
+				if server, source, err := h.resolveServerForPHP("", activePHP); err == nil {
+					fmt.Printf("\nActive PHP %s -> %s (%s)\n", activePHP, server, serverSourceLabel(source))
+				}
 			}
 
 			m, err := h.serverManager()
@@ -406,7 +470,7 @@ Examples:
 		},
 	}
 
-	cmd.AddCommand(install, serverUse, run, stop, list)
+	cmd.AddCommand(install, serverUse, serverDefault, run, stop, list)
 	return cmd
 }
 

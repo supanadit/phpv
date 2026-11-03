@@ -197,6 +197,10 @@ func (ApacheDriver) WriteConfig(inst domain.ServerInstance, rt Runtime) (string,
 	b.WriteString("LoadModule mime_module modules/mod_mime.so\n")
 	b.WriteString("LoadModule dir_module modules/mod_dir.so\n")
 	b.WriteString("LoadModule setenvif_module modules/mod_setenvif.so\n")
+	// mod_rewrite: AllowOverride All is set below, so apps shipping a
+	// .htaccess with rewrite rules (WordPress, Laravel, most PHP apps)
+	// 500 with "Invalid command 'RewriteEngine'" without it.
+	b.WriteString("LoadModule rewrite_module modules/mod_rewrite.so\n")
 
 	switch sapi {
 	case "modphp":

@@ -61,8 +61,9 @@ func (f *FPMService) FPMBinary(phpVersion string) string {
 
 // EnsureFPM installs the FPM variant when missing and returns the php-fpm
 // binary path. stagedFrom resumes from a previously completed phase
-// ("" starts from the beginning); stages before it are skipped.
-func (f *FPMService) EnsureFPM(ctx context.Context, phpVersion string, verbose bool, jobs int, tc compiler.Toolchain, stagedFrom string) (string, error) {
+// ("" starts from the beginning); stages before it are skipped. progress
+// receives stage updates for the caller's spinner; verbose prints raw lines.
+func (f *FPMService) EnsureFPM(ctx context.Context, phpVersion string, verbose bool, jobs int, tc compiler.Toolchain, stagedFrom string, progress ProgressFunc) (string, error) {
 	if bin := f.FPMBinary(phpVersion); bin != "" {
 		return bin, nil
 	}
@@ -78,35 +79,41 @@ func (f *FPMService) EnsureFPM(ctx context.Context, phpVersion string, verbose b
 		}
 	}
 
-	logf := func(format string, args ...any) {
-		fmt.Printf("  "+format+"\n", args...)
+	emit := func(stage, msg string) {
+		if verbose {
+			fmt.Printf("  %s\n", msg)
+		}
+		if progress != nil {
+			progress(stage, msg)
+		}
 	}
 
-	// Every stage prints unconditionally: a cold FPM build takes minutes,
+	// Every stage reports unconditionally: a cold FPM build takes minutes,
 	// and silence reads as a hang.
 	if start <= 0 {
-		logf("php-fpm %s not built yet — one-time setup", phpVersion)
+		emit("prepare", fmt.Sprintf("php-fpm %s not built yet — one-time setup", phpVersion))
 		if err := f.phasePrepare(phpVersion); err != nil {
 			return "", err
 		}
+		emit("configure", fmt.Sprintf("configuring php-fpm %s…", phpVersion))
 		if err := f.phaseConfigure(ctx, phpVersion, verbose, tc); err != nil {
 			return "", err
 		}
 		start = 2
 	}
 	if start <= 2 {
-		logf("compiling php-fpm %s (a few minutes on first run)…", phpVersion)
+		emit("make", fmt.Sprintf("compiling php-fpm %s (a few minutes on first run)…", phpVersion))
 		if err := f.phaseMake(ctx, phpVersion, verbose, jobs); err != nil {
 			return "", err
 		}
 	}
 	if start <= 3 {
-		logf("installing php-fpm %s…", phpVersion)
+		emit("install", fmt.Sprintf("installing php-fpm %s…", phpVersion))
 		if err := f.phaseInstall(ctx, phpVersion, jobs); err != nil {
 			return "", err
 		}
 	}
-	logf("php-fpm %s ready", phpVersion)
+	emit("done", fmt.Sprintf("php-fpm %s ready", phpVersion))
 	return f.FPMBinary(phpVersion), nil
 }
 
@@ -210,11 +217,9 @@ func (f *FPMService) phaseConfigure(ctx context.Context, phpVersion string, verb
 	// (the flag set is deterministic per version+prefix), so an interrupted
 	// make can resume without reconfiguring.
 	if _, err := os.Stat(filepath.Join(work, "Makefile")); err == nil {
-		fmt.Printf("  php-fpm %s already configured, resuming\n", phpVersion)
 		return nil
 	}
 
-	fmt.Printf("  configuring php-fpm %s…\n", phpVersion)
 	args := f.fpmConfigureFlags(prefix)
 	args = f.resolveFPMFlags(args, phpVersion)
 	cmd := exec.CommandContext(ctx, "./configure", args...)

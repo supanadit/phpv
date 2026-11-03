@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/supanadit/phpv/domain"
 )
@@ -100,116 +99,27 @@ func (h *PHPHandler) installedServers() []string {
 	return installed
 }
 
-// newestInstalledServer returns the webserver whose install finished most
-// recently. It is the fallback for PHP versions without a recorded
-// preference, e.g. servers installed before preferences existed.
-func (h *PHPHandler) newestInstalledServer() (string, error) {
-	root := resolvePHPVRootForServer()
-	var (
-		bestName string
-		bestTime time.Time
-	)
-	for _, name := range domain.ServerNames() {
-		pkgDir := filepath.Join(root, "packages", name)
-		entries, err := os.ReadDir(pkgDir)
-		if err != nil {
-			continue
-		}
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
-			}
-			installedAt := serverInstallTime(filepath.Join(pkgDir, entry.Name()))
-			if installedAt.IsZero() {
-				continue
-			}
-			if bestName == "" || installedAt.After(bestTime) {
-				bestName, bestTime = name, installedAt
-			}
-		}
-	}
-	if bestName == "" {
-		return "", fmt.Errorf("no webserver installed — run: phpv server install caddy")
-	}
-	return bestName, nil
-}
-
-// serverInstallTime approximates when a server version finished installing.
-// MarkComplete writes the .state marker last, so prefer it over the
-// directory's own mtime.
-func serverInstallTime(versionDir string) time.Time {
-	var best time.Time
-	if info, err := os.Stat(versionDir); err == nil {
-		best = info.ModTime()
-	}
-	if info, err := os.Stat(filepath.Join(versionDir, ".state")); err == nil && info.ModTime().After(best) {
-		best = info.ModTime()
-	}
-	return best
-}
-
-// serverSelectionSource explains why a webserver was picked, so the command
-// can tell the user when it is falling back.
+// serverSelectionSource explains why a webserver was picked.
 type serverSelectionSource string
 
 const (
 	serverFromFlag          serverSelectionSource = "flag"
 	serverFromPHPPreference serverSelectionSource = "php-preference"
+	serverFromEnv           serverSelectionSource = "env"
 	serverFromConfig        serverSelectionSource = "config"
 )
 
-// serverConfiguredFor reports whether a webserver is configured for a PHP
-// version. A version is configured when `phpv server install` recorded a
-// server for it, or when it is the default version and the global `server`
-// config names an installed server.
-func (h *PHPHandler) serverConfiguredFor(phpVersion string) bool {
-	installed := h.installedServers()
-	if len(installed) == 0 {
-		return false
-	}
-	if pref, ok := h.serverPreference(phpVersion); ok && containsString(installed, pref) {
-		return true
-	}
-	defaultVersion, _ := h.siloSvc.GetDefault()
-	isDefaultPHP := defaultVersion == "" || domain.CompareVersions(defaultVersion, phpVersion) == 0
-	if cfg, _ := h.configSvc.Get("server"); isDefaultPHP && cfg != "" && containsString(installed, cfg) {
-		return true
-	}
-	return false
-}
+// defaultServerEnv names the fallback webserver for PHP versions that have no
+// explicit association. It is never written implicitly by `server install`.
+const defaultServerEnv = "PHPV_DEFAULT_SERVER"
 
-// suggestServer returns the webserver to recommend in "install first" hints.
-// The most recently installed server best reflects the user's latest intent.
-func (h *PHPHandler) suggestServer() string {
-	installed := h.installedServers()
-	if len(installed) == 0 {
-		return domain.ServerCaddy
-	}
-	if newest, err := h.newestInstalledServer(); err == nil {
-		return newest
-	}
-	if cfg, _ := h.configSvc.Get("server"); containsString(installed, cfg) {
-		return cfg
-	}
-	return installed[0]
-}
-
-// noteMissingServer prints a one-line hint when a PHP version has no
-// webserver configured for it. It goes to stderr because `phpv use --print`
-// output is eval'd by the shell.
-func (h *PHPHandler) noteMissingServer(phpVersion string) {
-	if h.serverConfiguredFor(phpVersion) {
-		return
-	}
-	fmt.Fprintf(os.Stderr, "note: no webserver configured for PHP %s — run: phpv server install %s\n", phpVersion, h.suggestServer())
-}
-
-// resolveServerForPHP picks the webserver for a run. Servers are only used
-// for a PHP version that has one configured, so switching versions never
-// silently reuses a server chosen for another version. Resolution order:
+// resolveServerForPHP picks the webserver for a run. Each PHP version keeps
+// its own association; switching versions never reuses a server chosen for
+// another version. Resolution order:
 //
 //	--server flag → preference recorded for this PHP version →
-//	global config (default PHP only) → error telling the user to install one.
+//	PHPV_DEFAULT_SERVER → global config (default PHP only) →
+//	association-required error.
 func (h *PHPHandler) resolveServerForPHP(flagServer, phpVersion string) (string, serverSelectionSource, error) {
 	if flagServer != "" {
 		if !domain.IsValidServerName(flagServer) {
@@ -227,6 +137,16 @@ func (h *PHPHandler) resolveServerForPHP(flagServer, phpVersion string) (string,
 		return pref, serverFromPHPPreference, nil
 	}
 
+	if def := strings.TrimSpace(os.Getenv(defaultServerEnv)); def != "" {
+		if !domain.IsValidServerName(def) {
+			return "", "", fmt.Errorf("%s=%q is not a valid server (available: %s)", defaultServerEnv, def, strings.Join(domain.ServerNames(), ", "))
+		}
+		if !containsString(installed, def) {
+			return "", "", fmt.Errorf("%s=%s is set but not installed — run: phpv server install %s", defaultServerEnv, def, def)
+		}
+		return def, serverFromEnv, nil
+	}
+
 	defaultVersion, _ := h.siloSvc.GetDefault()
 	isDefaultPHP := defaultVersion == "" || domain.CompareVersions(defaultVersion, phpVersion) == 0
 	if cfg, _ := h.configSvc.Get("server"); isDefaultPHP && cfg != "" && containsString(installed, cfg) {
@@ -234,8 +154,11 @@ func (h *PHPHandler) resolveServerForPHP(flagServer, phpVersion string) (string,
 	}
 
 	return "", "", fmt.Errorf(
-		"no webserver configured for PHP %s — run: phpv server install %s --php %s (or pass --server)",
-		phpVersion, h.suggestServer(), phpVersion,
+		"no webserver associated with PHP %s (installed: %s)\n"+
+			"  associate one: phpv server use <name> --php %s\n"+
+			"  or set a default: %s=<name>\n"+
+			"  or override for this run: --server <name>",
+		phpVersion, strings.Join(installed, ", "), phpVersion, defaultServerEnv,
 	)
 }
 

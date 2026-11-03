@@ -36,20 +36,24 @@ func ServerPackageName(server string) string {
 //     built standalone.
 //
 // Returns the install prefix. Already-installed servers short-circuit.
-func (s *Service) AssembleServer(ctx context.Context, name, version string, verbose bool, jobs int, tc compiler.Toolchain) (string, error) {
+func (s *Service) AssembleServer(ctx context.Context, name, version string, verbose bool, jobs int, tc compiler.Toolchain, progress ProgressFunc) (string, error) {
 	emit := func(stage, msg string) {
 		if verbose {
 			fmt.Printf("[%s] %s\n", stage, msg)
 		}
+		if progress != nil {
+			progress(stage, msg)
+		}
 	}
 
 	pkgName := ServerPackageName(name)
+	emit("resolve", fmt.Sprintf("Resolving %s version...", name))
 	exact, err := s.ResolveVersion(pkgName, version)
 	if err != nil {
 		return "", fmt.Errorf("resolve %s version: %w", name, err)
 	}
 	prefix := s.silo.PackagePrefix(name, exact)
-	if isDepInstalled(prefix) {
+	if s.serverInstalled(name, pkgName, exact, prefix) {
 		emit("skip", fmt.Sprintf("Already installed %s@%s", name, exact))
 		return prefix, nil
 	}
@@ -90,6 +94,7 @@ func (s *Service) AssembleServer(ctx context.Context, name, version string, verb
 
 	switch pkgName {
 	case "caddy":
+		emit("install", fmt.Sprintf("Installing %s %s...", name, exact))
 		if err := s.installCaddyBinary(pkgName, exact, prefix); err != nil {
 			return "", err
 		}
@@ -97,7 +102,7 @@ func (s *Service) AssembleServer(ctx context.Context, name, version string, verb
 		// nginx compiles pcre2 and zlib from their source trees itself
 		// (--with-pcre=<src>, --with-zlib=<src>), so no standalone dep
 		// builds — only download/extract, then configure nginx.
-		if err := s.buildServerPackage(ctx, pkgName, exact, plan.Deps, prefix, verbose, jobs, tc); err != nil {
+		if err := s.buildServerPackage(ctx, pkgName, exact, plan.Deps, prefix, verbose, jobs, tc, emit); err != nil {
 			return "", err
 		}
 	case "httpd":
@@ -119,7 +124,7 @@ func (s *Service) AssembleServer(ctx context.Context, name, version string, verb
 		if err := s.vendorAPR(exact, aprVers[0], aprVers[1], emit); err != nil {
 			return "", err
 		}
-		if err := s.buildServerPackage(ctx, pkgName, exact, httpdDeps, prefix, verbose, jobs, tc); err != nil {
+		if err := s.buildServerPackage(ctx, pkgName, exact, httpdDeps, prefix, verbose, jobs, tc, emit); err != nil {
 			return "", err
 		}
 	default:
@@ -134,13 +139,19 @@ func (s *Service) AssembleServer(ctx context.Context, name, version string, verb
 	return prefix, nil
 }
 
-// buildServerPackage runs configure/make/install for a source-built server.
-func (s *Service) buildServerPackage(ctx context.Context, name, version string, deps []domain.Dependency, prefix string, verbose bool, jobs int, tc compiler.Toolchain) error {
-	emit := func(stage, msg string) {
-		if verbose {
-			fmt.Printf("[%s] %s\n", stage, msg)
-		}
+// serverInstalled reports whether a webserver is already installed. Servers
+// do not ship an include/ tree, so the shared dependency check does not apply;
+// prefer the recorded install state and fall back to the binary for legacy
+// installs that predate state markers.
+func (s *Service) serverInstalled(name, pkgName, version, prefix string) bool {
+	if state, err := s.silo.GetState(name, version); err == nil && state == domain.StateInstalled {
+		return true
 	}
+	return FindServerBinary(prefix, pkgName) != ""
+}
+
+// buildServerPackage runs configure/make/install for a source-built server.
+func (s *Service) buildServerPackage(ctx context.Context, name, version string, deps []domain.Dependency, prefix string, verbose bool, jobs int, tc compiler.Toolchain, emit ProgressFunc) error {
 	sourceDir := s.silo.SourcePath(name, version)
 	srcPath := source.Find(sourceDir, name)
 	if srcPath == "" {
@@ -150,6 +161,7 @@ func (s *Service) buildServerPackage(ctx context.Context, name, version string, 
 	flags := s.graph.GetConfigureFlags(name, version)
 	flags = s.resolveDepPlaceholders(flags, deps)
 
+	emit("build", fmt.Sprintf("Building %s %s (configure + make)...", name, version))
 	buildDir, _, err := s.forge.Build(ctx, name, version, srcPath, tc.Env(), flags, prefix, verbose, jobs)
 	if err != nil {
 		return fmt.Errorf("build %s@%s: %w", name, version, err)

@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/supanadit/phpv/assembler"
@@ -466,42 +465,9 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	progressCh := make(chan progressMsg, 64)
-	doneCh := make(chan struct{})
-
-	go func() {
-		defer close(doneCh)
-		var current string
-		ticker := time.NewTicker(80 * time.Millisecond)
-		defer ticker.Stop()
-		frame := 0
-		for {
-			select {
-			case msg, ok := <-progressCh:
-				if !ok {
-					return
-				}
-				glyph := stageGlyph(msg.stage)
-				if msg.stage == "done" {
-					fmt.Fprintf(os.Stdout, "\r\033[2K%s %s\n", glyph, msg.message)
-				} else {
-					current = fmt.Sprintf("%s %s", glyph, msg.message)
-					fmt.Fprintf(os.Stdout, "\r\033[2K%s %s", spinnerFrames[frame%len(spinnerFrames)], current)
-				}
-			case <-ticker.C:
-				if current != "" {
-					fmt.Fprintf(os.Stdout, "\r\033[2K%s %s", spinnerFrames[frame%len(spinnerFrames)], current)
-				}
-				frame++
-			}
-		}
-	}()
-
-	result, err := h.assemblerSvc.Assemble(h.ctx, "php", version, static, extensions, false, func(stage, message string) {
-		progressCh <- progressMsg{stage: stage, message: message}
-	}, systemPkgs, jobs, force, tc)
-	close(progressCh)
-	<-doneCh
+	progress, stopProgress := newProgressReporter()
+	result, err := h.assemblerSvc.Assemble(h.ctx, "php", version, static, extensions, false, progress, systemPkgs, jobs, force, tc)
+	stopProgress()
 
 	if err != nil {
 		fmt.Println()
@@ -766,7 +732,6 @@ func (h *PHPHandler) use(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		h.noteMissingServer(exactVersion)
 		fmt.Printf("export PHPV_CURRENT=%q\n", exactVersion)
 		return nil
 	}
@@ -809,7 +774,6 @@ func (h *PHPHandler) use(cmd *cobra.Command, args []string) error {
 		if err := writeLocalVersionFile(exactVersion); err != nil {
 			return fmt.Errorf("write local version: %w", err)
 		}
-		h.noteMissingServer(exactVersion)
 		fmt.Printf("✓ Switched to PHP %s (local, .php-version)\n", exactVersion)
 		return nil
 	}
@@ -820,7 +784,6 @@ func (h *PHPHandler) use(cmd *cobra.Command, args []string) error {
 	if err := h.siloSvc.SetDefault(exactVersion); err != nil {
 		return fmt.Errorf("set default: %w", err)
 	}
-	h.noteMissingServer(exactVersion)
 	if err := h.shimSvc.RegenerateAll(); err != nil {
 		return fmt.Errorf("regenerate shims: %w", err)
 	}
@@ -1258,45 +1221,6 @@ func (h *PHPHandler) autoDetectResolveCmd() *cobra.Command {
 			fmt.Println(exact)
 			return nil
 		},
-	}
-}
-
-// progressMsg is sent by the assembler through a progress callback.
-type progressMsg struct {
-	stage   string
-	message string
-}
-
-// spinnerFrames are the animation frames for the spinner.
-var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-
-// stageGlyph returns a short glyph for the given stage.
-func stageGlyph(stage string) string {
-	switch stage {
-	case "resolve":
-		return "→"
-	case "deps":
-		return "→"
-	case "download":
-		return "↓"
-	case "build":
-		return "⚙"
-	case "configure":
-		return "⚙"
-	case "make":
-		return "⚙"
-	case "install":
-		return "↑"
-	case "skip":
-		return "↷"
-	case "patch":
-		return "✎"
-	case "error":
-		return "✗"
-	case "done":
-		return "✓"
-	default:
-		return "·"
 	}
 }
 

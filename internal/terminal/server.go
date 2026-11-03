@@ -22,12 +22,25 @@ func (h *PHPHandler) serverManager() (*webserver.Manager, error) {
 		Root:           root,
 		ResolveVersion: h.resolveServerPHPVersion,
 		EnsureFPM: func(ctx context.Context, phpVersion string, verbose bool, jobs int) (string, error) {
-			fpm := assembler.NewFPMService(h.assemblerConcrete(), root)
+			fpm := h.fpmConcrete()
 			tc, err := compiler.Resolve(h.compilerName())
 			if err != nil {
 				return "", err
 			}
-			return fpm.EnsureFPM(ctx, phpVersion, verbose, jobs, tc, "")
+			// The cold FPM build takes minutes; show the same spinner used by
+			// package installs unless raw build output was requested.
+			needsBuild := fpm.FPMBinary(phpVersion) == ""
+			var progress assembler.ProgressFunc
+			stopProgress := func() {}
+			if needsBuild && !verbose {
+				progress, stopProgress = newProgressReporter()
+			}
+			bin, err := fpm.EnsureFPM(ctx, phpVersion, verbose, jobs, tc, "", progress)
+			stopProgress()
+			if needsBuild && !verbose {
+				fmt.Println()
+			}
+			return bin, err
 		},
 		CLIPrefix: func(phpVersion string) string {
 			return h.siloConcrete().PHPOutputPath(phpVersion)
@@ -130,40 +143,67 @@ func (h *PHPHandler) serverCmd() *cobra.Command {
 			}
 			verbose, _ := cmd.Flags().GetBool("verbose")
 			jobs, _ := cmd.Flags().GetInt("jobs")
-			phpFlag, _ := cmd.Flags().GetString("php")
-			// Resolve the version this server is recorded for. An explicit
-			// --php must exist; otherwise fall back to the active version
-			// and skip recording when none is available (servers themselves
-			// are PHP-version independent).
-			assocPHP, phpErr := h.resolveVersion(phpFlag)
-			if phpFlag != "" && phpErr != nil {
-				return fmt.Errorf("resolve PHP version: %w", phpErr)
-			}
 			tc, err := compiler.Resolve(h.compilerName())
 			if err != nil {
 				return err
 			}
-			_, err = h.assemblerConcrete().AssembleServer(h.ctx, server, version, verbose, jobs, tc)
+
+			banner := server
+			if exact, err := h.assemblerSvc.ResolveVersion(assembler.ServerPackageName(server), version); err == nil {
+				banner = fmt.Sprintf("%s %s", server, exact)
+			}
+			fmt.Printf("Installing %s...\n\n", banner)
+
+			var progress assembler.ProgressFunc
+			stopProgress := func() {}
+			if !verbose {
+				progress, stopProgress = newProgressReporter()
+			}
+			_, err = h.assemblerConcrete().AssembleServer(h.ctx, server, version, verbose, jobs, tc, progress)
+			stopProgress()
 			if err != nil {
+				fmt.Println()
 				return err
 			}
-			// Remember the server for the PHP version it was installed for,
-			// so `phpv server run` follows `phpv use` instead of the global
-			// config written for another version.
-			if phpErr == nil && assocPHP != "" {
-				if err := h.recordServerPreference(assocPHP, server); err != nil {
-					fmt.Printf("  note: could not record %s for PHP %s: %v\n", server, assocPHP, err)
-				} else {
-					fmt.Printf("✓ %s is now the default webserver for PHP %s\n", server, assocPHP)
-				}
+			if !verbose {
+				fmt.Println()
+			}
+			if os.Getenv(defaultServerEnv) == "" {
+				fmt.Printf("  associate it with a PHP version: phpv server use %s --php <version>\n", server)
 			}
 			return nil
 		},
 	}
 	install.Flags().Bool("verbose", false, "Show full build output")
 	install.Flags().Int("jobs", 0, "Number of parallel build jobs (default: CPU count)")
-	install.Flags().String("php", "", "PHP version to associate the webserver with (default: active version)")
-	_ = install.RegisterFlagCompletionFunc("php", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+
+	serverUse := &cobra.Command{
+		Use:               "use <caddy|nginx|apache>",
+		Short:             "Associate an installed webserver with a PHP version",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: serverNameCompletion,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			server := strings.ToLower(args[0])
+			if !domain.IsValidServerName(server) {
+				return fmt.Errorf("unknown server %q (available: %s)", server, strings.Join(domain.ServerNames(), ", "))
+			}
+			if !containsString(h.installedServers(), server) {
+				return fmt.Errorf("%s is not installed — run: phpv server install %s", server, server)
+			}
+			phpFlag, _ := cmd.Flags().GetString("php")
+			phpVersion, err := h.resolveVersion(phpFlag)
+			if err != nil {
+				return err
+			}
+			if err := h.recordServerPreference(phpVersion, server); err != nil {
+				return fmt.Errorf("associate %s with PHP %s: %w", server, phpVersion, err)
+			}
+			fmt.Printf("✓ %s is now associated with PHP %s\n", server, phpVersion)
+			return nil
+		},
+	}
+	serverUse.Flags().String("php", "", "PHP version to associate with (default: active version)")
+	_ = serverUse.RegisterFlagCompletionFunc("php", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return h.versionNameCompletion(toComplete)
 	})
 
@@ -173,9 +213,10 @@ func (h *PHPHandler) serverCmd() *cobra.Command {
 		Long: `Serve a directory (replaces ` + "`php -S localhost:... -t public`" + `).
 
 The PHP version follows the active version (` + "`phpv use`" + `, ` + "`.php-version`" + `,
-default), exactly like ` + "`php`" + ` itself. The webserver must be installed for
-that PHP version: ` + "`phpv server install <name>`" + ` records it for the active
-version. The global config only covers the default version.
+default), exactly like ` + "`php`" + ` itself. The webserver is resolved per PHP
+version: ` + "`phpv server use <name>`" + ` associates one with the active version.
+Failing that, ` + "`PHPV_DEFAULT_SERVER`" + ` is used as the fallback. A global
+config only covers the default PHP version.
 
 Examples:
   phpv server run .                          # serve cwd on localhost:8080
@@ -214,12 +255,8 @@ Examples:
 				return err
 			}
 
-			// First `run` for a PHP version builds its php-fpm variant — a
-			// one-time, multi-minute compile. Say so up front so the wait is
-			// not mistaken for a hang.
-			if h.fpmConcrete().FPMBinary(resolvedPHP) == "" {
-				fmt.Printf("First run for PHP %s: building the php-fpm variant (one-time, a few minutes)…\n", resolvedPHP)
-			}
+			// A cold run builds the php-fpm variant first; EnsureFPM reports
+			// each stage through the spinner.
 
 			inst, err := m.Start(h.ctx, webserver.RunOptions{
 				Server:        server,
@@ -369,7 +406,7 @@ Examples:
 		},
 	}
 
-	cmd.AddCommand(install, run, stop, list)
+	cmd.AddCommand(install, serverUse, run, stop, list)
 	return cmd
 }
 

@@ -49,22 +49,14 @@ func TestStoreSaveLoadListRemove(t *testing.T) {
 	}
 }
 
-func TestRenderFPMConfLoadsCLIExtensions(t *testing.T) {
+func TestRenderFPMConf(t *testing.T) {
 	dir := t.TempDir()
-	ini := filepath.Join(dir, "php.ini")
-	content := "; comment\nmemory_limit = 256M\ndisplay_errors = On\nextension_dir = /opt/php/lib/php/extensions/no-debug-non-zts-x\nextension = curl.so\nextension = xdebug.so\nzend_extension = opcache.so\n"
-	if err := os.WriteFile(ini, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	conf, err := RenderFPMConf(FPMConfig{
-		Socket:       "/tmp/sock",
-		PIDFile:      filepath.Join(dir, "fpm.pid"),
-		ErrorLog:     filepath.Join(dir, "err.log"),
-		SlowLog:      filepath.Join(dir, "slow.log"),
-		StateDir:     dir,
-		PHPIniPath:   ini,
-		ExtensionDir: "/opt/php/lib/php/extensions/no-debug-non-zts-x",
-		Extensions:   []string{"curl.so", "xdebug.so"},
+		Socket:   "/tmp/sock",
+		PIDFile:  filepath.Join(dir, "fpm.pid"),
+		ErrorLog: filepath.Join(dir, "err.log"),
+		SlowLog:  filepath.Join(dir, "slow.log"),
+		StateDir: dir,
 	})
 	if err != nil {
 		t.Fatalf("RenderFPMConf: %v", err)
@@ -76,16 +68,60 @@ func TestRenderFPMConfLoadsCLIExtensions(t *testing.T) {
 	s := string(data)
 	for _, want := range []string{
 		"listen = /tmp/sock",
-		"php_admin_value[extension_dir] = /opt/php/lib/php/extensions/no-debug-non-zts-x",
-		"php_admin_value[extension] = curl.so",
-		"php_admin_value[extension] = xdebug.so",
-		"php_admin_value[memory_limit] = 256M",
-		"php_admin_flag[display_errors] = on",
+		"php_admin_value[error_log] = " + filepath.Join(dir, "php-error.log"),
+		"php_admin_flag[log_errors] = on",
 		"daemonize = no",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("php-fpm.conf missing %q\ngot:\n%s", want, s)
 		}
+	}
+}
+
+func TestExecFPMIncludesCLIIniAndExtensionDir(t *testing.T) {
+	cmd := execFPM("/opt/php-fpm", "/tmp/fpm.conf", "/opt/php/lib", "/opt/php/lib/php/extensions/api")
+	args := strings.Join(cmd.Args, " ")
+	for _, want := range []string{
+		"-F",
+		"-y /tmp/fpm.conf",
+		"-c /opt/php/lib",
+		"-d extension_dir=/opt/php/lib/php/extensions/api",
+	} {
+		if !strings.Contains(args, want) {
+			t.Errorf("php-fpm args missing %q: %v", want, cmd.Args)
+		}
+	}
+}
+
+func TestCLIRuntimeReadsPHPConfig(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\ncase \"$1\" in\n--ini-path) echo \"$0-ini\";;\n--extension-dir) echo \"$0-ext\";;\nesac\n"
+	phpConfig := filepath.Join(dir, "bin", "php-config")
+	if err := os.WriteFile(phpConfig, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	iniDir, extDir := CLIRuntime(dir)
+	if iniDir != phpConfig+"-ini" {
+		t.Errorf("iniDir = %q, want php-config --ini-path output", iniDir)
+	}
+	if extDir != phpConfig+"-ext" {
+		t.Errorf("extDir = %q, want php-config --extension-dir output", extDir)
+	}
+}
+
+func TestCLIRuntimeFallsBackToExtensionAPIDir(t *testing.T) {
+	dir := t.TempDir()
+	apiDir := filepath.Join(dir, "lib", "php", "extensions", "no-debug-non-zts-20250925")
+	if err := os.MkdirAll(apiDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, extDir := CLIRuntime(dir)
+	if extDir != apiDir {
+		t.Errorf("extDir = %q, want %q", extDir, apiDir)
 	}
 }
 
@@ -116,7 +152,7 @@ func TestCaddyfileRendering(t *testing.T) {
 		StateDir: dir,
 	}
 	var d CaddyDriver
-	conf, err := d.WriteConfig(inst, "")
+	conf, err := d.WriteConfig(inst, Runtime{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +187,7 @@ func TestNginxConfRendering(t *testing.T) {
 		StateDir: dir,
 	}
 	var d NginxDriver
-	conf, err := d.WriteConfig(inst, "")
+	conf, err := d.WriteConfig(inst, Runtime{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +216,7 @@ func TestApacheConfRendering(t *testing.T) {
 		StateDir: dir,
 	}
 	var d ApacheDriver
-	conf, err := d.WriteConfig(inst, "")
+	conf, err := d.WriteConfig(inst, Runtime{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,8 +284,101 @@ func TestPickFreePortPreferredBusy(t *testing.T) {
 }
 
 func TestInstanceID(t *testing.T) {
-	got := InstanceID("nginx", "5.6.40", 8080)
+	got := InstanceID("nginx", "5.6.40", 8080, "")
 	if got != "nginx-8080-php5.6.40" {
 		t.Errorf("InstanceID = %q", got)
+	}
+}
+
+func TestApacheModPHPConfig(t *testing.T) {
+	dir := t.TempDir()
+	inst := domain.ServerInstance{
+		ID:         "apache-modphp-8080-php8.5.12",
+		Server:     "apache",
+		SAPI:       "modphp",
+		PHPVersion: "8.5.12",
+		Dir:        "/srv/app",
+		Port:       8080,
+		StateDir:   dir,
+	}
+	conf, err := (ApacheDriver{}).WriteConfig(inst, Runtime{
+		SAPI:         "modphp",
+		ApacheModule: "/opt/php-apache/8.5.12/modules/libphp.so",
+		PHPIniDir:    "/opt/php/8.5.12/lib",
+		ExtensionDir: "/opt/php/8.5.12/lib/php/extensions/api",
+		MPM:          "prefork",
+	})
+	if err != nil {
+		t.Fatalf("WriteConfig: %v", err)
+	}
+	data, _ := os.ReadFile(conf)
+	s := string(data)
+	for _, want := range []string{
+		"LoadModule mpm_prefork_module modules/mod_mpm_prefork.so",
+		"LoadModule php_module /opt/php-apache/8.5.12/modules/libphp.so",
+		`PHPIniDir "/opt/php/8.5.12/lib"`,
+		`php_admin_value extension_dir "/opt/php/8.5.12/lib/php/extensions/api"`,
+		"AddHandler application/x-httpd-php .php",
+		"SetHandler application/x-httpd-php",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("httpd.conf missing %q\ngot:\n%s", want, s)
+		}
+	}
+	if strings.Contains(s, "proxy_fcgi") || strings.Contains(s, "proxy:unix:") {
+		t.Errorf("mod_php config must not use FastCGI:\n%s", s)
+	}
+}
+
+func TestApacheFPMConfigUsesEventAndFastCGI(t *testing.T) {
+	dir := t.TempDir()
+	inst := domain.ServerInstance{
+		ID:       "apache-8080-php8.5.12",
+		Server:   "apache",
+		SAPI:     "fpm",
+		Dir:      "/srv/app",
+		Port:     8080,
+		Socket:   "/tmp/fpm.sock",
+		StateDir: dir,
+	}
+	conf, err := (ApacheDriver{}).WriteConfig(inst, Runtime{SAPI: "fpm", MPM: "event", FPMConf: "/tmp/fpm.conf"})
+	if err != nil {
+		t.Fatalf("WriteConfig: %v", err)
+	}
+	data, _ := os.ReadFile(conf)
+	s := string(data)
+	for _, want := range []string{
+		"LoadModule mpm_event_module modules/mod_mpm_event.so",
+		"LoadModule proxy_fcgi_module modules/mod_proxy_fcgi.so",
+		`SetHandler "proxy:unix:/tmp/fpm.sock|fcgi://localhost"`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("httpd.conf missing %q\ngot:\n%s", want, s)
+		}
+	}
+	if strings.Contains(s, "php_module") {
+		t.Error("FPM config must not load the embedded PHP module")
+	}
+}
+
+func TestInstanceIDModPHP(t *testing.T) {
+	if got := InstanceID("apache", "8.5.12", 8080, "modphp"); got != "apache-modphp-8080-php8.5.12" {
+		t.Errorf("InstanceID = %q", got)
+	}
+	if got := InstanceID("apache", "8.5.12", 8080, "fpm"); got != "apache-8080-php8.5.12" {
+		t.Errorf("InstanceID = %q", got)
+	}
+}
+
+func TestApachePHPModuleName(t *testing.T) {
+	cases := map[string]string{
+		"8.5.12": "php_module",
+		"7.4.33": "php7_module",
+		"5.6.40": "php5_module",
+	}
+	for version, want := range cases {
+		if got := apachePHPModuleName(version); got != want {
+			t.Errorf("apachePHPModuleName(%q) = %q, want %q", version, got, want)
+		}
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -30,7 +31,7 @@ func (h *PHPHandler) serverManager() (*webserver.Manager, error) {
 			}
 			// The cold FPM build takes minutes; show the same spinner used by
 			// package installs unless raw build output was requested.
-			needsBuild := fpm.FPMBinary(phpVersion) == ""
+			needsBuild := fpm.NeedsRebuild(phpVersion, tc)
 			var progress assembler.ProgressFunc
 			stopProgress := func() {}
 			if needsBuild && !verbose {
@@ -43,6 +44,44 @@ func (h *PHPHandler) serverManager() (*webserver.Manager, error) {
 			}
 			return bin, err
 		},
+		EnsureApacheModule: func(ctx context.Context, phpVersion, httpdPrefix string, verbose bool, jobs int) (string, error) {
+			tc, err := compiler.Resolve(h.compilerName())
+			if err != nil {
+				return "", err
+			}
+			moduleSvc := assembler.NewApacheService(h.assemblerConcrete(), root)
+			prefork := filepath.Join(httpdPrefix, "modules", "mod_mpm_prefork.so")
+			needsHTTPDRebuild := !fileExists(prefork) || apacheThreaded(httpdPrefix)
+			needsModule := moduleSvc.NeedsRebuild(phpVersion, httpdPrefix, tc)
+
+			if needsHTTPDRebuild {
+				fmt.Printf("  rebuilding apache %s with a prefork MPM for mod_php…\n", filepath.Base(httpdPrefix))
+			}
+
+			var progress assembler.ProgressFunc
+			stopProgress := func() {}
+			if !verbose && (needsHTTPDRebuild || needsModule) {
+				progress, stopProgress = newProgressReporter()
+			}
+
+			if needsHTTPDRebuild {
+				version := filepath.Base(httpdPrefix)
+				if err := h.rebuildServer(ctx, "apache", version, verbose, jobs, tc, progress); err != nil {
+					stopProgress()
+					return "", fmt.Errorf("rebuild apache with prefork MPM: %w", err)
+				}
+				if !fileExists(prefork) || apacheThreaded(httpdPrefix) {
+					stopProgress()
+					return "", fmt.Errorf("apache at %s still has no prefork default MPM; reinstall with: phpv server install apache --force", httpdPrefix)
+				}
+			}
+			module, err := moduleSvc.EnsureApacheModule(ctx, phpVersion, httpdPrefix, verbose, jobs, tc, progress)
+			stopProgress()
+			if !verbose && (needsHTTPDRebuild || needsModule) {
+				fmt.Println()
+			}
+			return module, err
+		},
 		CLIPrefix: func(phpVersion string) string {
 			return h.siloConcrete().PHPOutputPath(phpVersion)
 		},
@@ -54,6 +93,45 @@ func (h *PHPHandler) serverManager() (*webserver.Manager, error) {
 		},
 	})
 	return m, nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// apacheThreaded reports whether the installed httpd advertises a threaded
+// default MPM. mod_php must be built against a non-threaded (prefork) httpd,
+// otherwise PHP configure enables ZTS and cannot load the CLI's shared
+// extensions.
+func apacheThreaded(prefix string) bool {
+	httpd := filepath.Join(prefix, "bin", "httpd")
+	out, err := exec.Command(httpd, "-V").CombinedOutput()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(out), "threaded:     yes") || strings.Contains(string(out), "threaded: yes")
+}
+
+// rebuildServer replaces an installed server package without losing the old
+// build when the new one fails. Used to add shared prefork MPMs for mod_php.
+func (h *PHPHandler) rebuildServer(ctx context.Context, name, version string, verbose bool, jobs int, tc compiler.Toolchain, progress assembler.ProgressFunc) error {
+	prefix := h.siloSvc.PackagePrefix(name, version)
+	bak := prefix + ".bak"
+	_ = os.RemoveAll(bak)
+	if _, err := os.Stat(prefix); err == nil {
+		if err := os.Rename(prefix, bak); err != nil {
+			return err
+		}
+	}
+	_, err := h.assemblerConcrete().AssembleServer(ctx, name, version, verbose, jobs, tc, progress)
+	if err != nil {
+		_ = os.RemoveAll(prefix)
+		_ = os.Rename(bak, prefix)
+		return err
+	}
+	_ = os.RemoveAll(bak)
+	return nil
 }
 
 // resolveServerPHPVersion resolves the PHP version a server run is pinned to.
@@ -125,7 +203,7 @@ func resolvePHPVRootForServer() string {
 func (h *PHPHandler) serverCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "server",
-		Short: "Install and run local webservers (caddy, nginx, apache) serving PHP via FastCGI",
+		Short: "Install and run local webservers (caddy, nginx, apache) serving PHP via FPM or mod_php",
 	}
 
 	install := &cobra.Command{
@@ -144,13 +222,16 @@ func (h *PHPHandler) serverCmd() *cobra.Command {
 			}
 			verbose, _ := cmd.Flags().GetBool("verbose")
 			jobs, _ := cmd.Flags().GetInt("jobs")
+			force, _ := cmd.Flags().GetBool("force")
 			tc, err := compiler.Resolve(h.compilerName())
 			if err != nil {
 				return err
 			}
 
 			banner := server
-			if exact, err := h.assemblerSvc.ResolveVersion(assembler.ServerPackageName(server), version); err == nil {
+			exact := ""
+			if resolved, err := h.assemblerSvc.ResolveVersion(assembler.ServerPackageName(server), version); err == nil {
+				exact = resolved
 				banner = fmt.Sprintf("%s %s", server, exact)
 			}
 			fmt.Printf("Installing %s...\n\n", banner)
@@ -160,7 +241,11 @@ func (h *PHPHandler) serverCmd() *cobra.Command {
 			if !verbose {
 				progress, stopProgress = newProgressReporter()
 			}
-			_, err = h.assemblerConcrete().AssembleServer(h.ctx, server, version, verbose, jobs, tc, progress)
+			if force && exact != "" {
+				err = h.rebuildServer(h.ctx, server, exact, verbose, jobs, tc, progress)
+			} else {
+				_, err = h.assemblerConcrete().AssembleServer(h.ctx, server, version, verbose, jobs, tc, progress)
+			}
 			stopProgress()
 			if err != nil {
 				fmt.Println()
@@ -174,6 +259,7 @@ func (h *PHPHandler) serverCmd() *cobra.Command {
 	}
 	install.Flags().Bool("verbose", false, "Show full build output")
 	install.Flags().Int("jobs", 0, "Number of parallel build jobs (default: CPU count)")
+	install.Flags().Bool("force", false, "Rebuild even when already installed (also upgrades httpd MPM support)")
 
 	serverUse := &cobra.Command{
 		Use:               "use <caddy|nginx|apache>",
@@ -193,17 +279,23 @@ func (h *PHPHandler) serverCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := h.recordServerPreference(phpVersion, server); err != nil {
+			sapi, err := resolveCommandSAPI(cmd, server)
+			if err != nil {
+				return err
+			}
+			if err := h.recordServerSelection(phpVersion, server, sapi); err != nil {
 				return fmt.Errorf("associate %s with PHP %s: %w", server, phpVersion, err)
 			}
-			fmt.Printf("✓ %s is now associated with PHP %s\n", server, phpVersion)
+			fmt.Printf("✓ %s (%s) is now associated with PHP %s\n", server, sapiLabel(sapi), phpVersion)
 			return nil
 		},
 	}
 	serverUse.Flags().String("php", "", "PHP version to associate with (default: active version)")
+	serverUse.Flags().String("sapi", "", "PHP SAPI: fpm (default) or modphp (apache only)")
 	_ = serverUse.RegisterFlagCompletionFunc("php", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return h.versionNameCompletion(toComplete)
 	})
+	_ = serverUse.RegisterFlagCompletionFunc("sapi", sapiCompletion)
 
 	serverDefault := &cobra.Command{
 		Use:               "default <caddy|nginx|apache>",
@@ -218,17 +310,26 @@ func (h *PHPHandler) serverCmd() *cobra.Command {
 			if !containsString(h.installedServers(), server) {
 				return fmt.Errorf("%s is not installed — run: phpv server install %s", server, server)
 			}
+			sapi, err := resolveCommandSAPI(cmd, server)
+			if err != nil {
+				return err
+			}
 			if err := h.configSvc.Set("server", server); err != nil {
 				return fmt.Errorf("set global default webserver: %w", err)
 			}
-			fmt.Printf("✓ global default webserver: %s\n", server)
+			if err := h.configSvc.Set("server_sapi", sapi); err != nil {
+				return fmt.Errorf("set global default SAPI: %w", err)
+			}
+			fmt.Printf("✓ global default webserver: %s (%s)\n", server, sapiLabel(sapi))
 			return nil
 		},
 	}
+	serverDefault.Flags().String("sapi", "", "PHP SAPI: fpm (default) or modphp (apache only)")
+	_ = serverDefault.RegisterFlagCompletionFunc("sapi", sapiCompletion)
 
 	run := &cobra.Command{
 		Use:   "run <dir>",
-		Short: "Serve a directory through the webserver and PHP-FPM for the active PHP version",
+		Short: "Serve a directory through the webserver and PHP for the active PHP version",
 		Long: `Serve a directory (replaces ` + "`php -S localhost:... -t public`" + `).
 
 The PHP version follows the active version (` + "`phpv use`" + `, ` + "`.php-version`" + `,
@@ -237,10 +338,15 @@ default), exactly like ` + "`php`" + ` itself. The webserver is picked per PHP v
 ` + "`PHPV_DEFAULT_SERVER`" + `, the global default (` + "`phpv server default`" + `), then the
 first installed server. No association is required to run.
 
+APIs: ` + "`--sapi fpm`" + ` (default, FastCGI) or ` + "`--sapi modphp`" + ` (Apache's
+embedded PHP module; requires apache). Without ` + "`--sapi`" + `, the association for
+this PHP version, ` + "`PHPV_DEFAULT_SAPI`" + `, then ` + "`phpv server default`" + ` apply.
+
 Examples:
   phpv server run .                          # serve cwd on localhost:8080
   phpv server run . --host myapp.local       # vhost + /etc/hosts entry
   phpv server run . --server nginx --version 1.26.3   # this run only
+  phpv server run . --server apache --sapi modphp      # embedded Apache PHP
   phpv server run . --php 7.4                # pin a PHP version explicitly
   phpv server run . -d                       # detach; manage with phpv server stop/list`,
 		Args: cobra.ExactArgs(1),
@@ -252,19 +358,24 @@ Examples:
 			server, _ := cmd.Flags().GetString("server")
 			serverVersion, _ := cmd.Flags().GetString("version")
 			phpVersion, _ := cmd.Flags().GetString("php")
+			sapiFlag, _ := cmd.Flags().GetString("sapi")
 			host, _ := cmd.Flags().GetString("host")
 			port, _ := cmd.Flags().GetInt("port")
 			detach, _ := cmd.Flags().GetBool("detach")
 			verbose, _ := cmd.Flags().GetBool("verbose")
 			jobs, _ := cmd.Flags().GetInt("jobs")
 
-			// Resolution order: flags → preference recorded for this PHP
-			// version → config (default PHP only) → install-first error.
+			// Resolution order: --server → per-version association →
+			// PHPV_DEFAULT_SERVER → global default → first installed.
 			resolvedPHP, err := h.resolveServerPHPVersion(phpVersion)
 			if err != nil {
 				return err
 			}
 			server, serverSource, err := h.resolveServerForPHP(server, resolvedPHP)
+			if err != nil {
+				return err
+			}
+			sapi, err := h.resolveSAPIForPHP(sapiFlag, server, resolvedPHP)
 			if err != nil {
 				return err
 			}
@@ -281,6 +392,7 @@ Examples:
 				Server:        server,
 				ServerVersion: serverVersion,
 				PHPVersion:    resolvedPHP,
+				SAPI:          sapi,
 				Dir:           dir,
 				Host:          host,
 				Port:          port,
@@ -292,7 +404,7 @@ Examples:
 				return err
 			}
 
-			fmt.Printf("✓ %s %s serving %s with PHP %s (FPM)\n", inst.Server, inst.ServerVersion, inst.Dir, inst.PHPVersion)
+			fmt.Printf("✓ %s %s serving %s with PHP %s (%s)\n", inst.Server, inst.ServerVersion, inst.Dir, inst.PHPVersion, sapiLabel(inst.SAPI))
 			fmt.Printf("  url:     %s\n", inst.URL())
 			if inst.Host != "" && inst.Host != "localhost" {
 				fmt.Printf("  vhost:   %s (via /etc/hosts)\n", inst.Host)
@@ -316,15 +428,17 @@ Examples:
 			return m.Stop(inst)
 		},
 	}
-	run.Flags().String("server", "", "Webserver to use (caddy, nginx, apache); default: recorded for the active PHP version, else config for the default PHP version")
+	run.Flags().String("server", "", "Webserver to use (caddy, nginx, apache); default: per-version association, then PHPV_DEFAULT_SERVER, then global default")
 	run.Flags().String("version", "", "Webserver version to use; default from config or newest installed")
 	run.Flags().String("php", "", "PHP version to serve with (e.g. 5.6, 8.3); default: active/default")
+	run.Flags().String("sapi", "", "PHP SAPI: fpm (default) or modphp (apache only)")
 	run.Flags().String("host", "", "Hostname for auto vhost (adds /etc/hosts entry)")
 	run.Flags().Int("port", 0, "TCP port (default: 8080, auto-increments when busy)")
 	run.Flags().BoolP("detach", "d", false, "Run in the background")
-	run.Flags().Bool("verbose", false, "Show full build output (when php-fpm must be built)")
+	run.Flags().Bool("verbose", false, "Show full build output (when a PHP runtime must be built)")
 	run.Flags().Int("jobs", 0, "Number of parallel build jobs (default: CPU count)")
 	_ = run.RegisterFlagCompletionFunc("server", serverNameCompletion)
+	_ = run.RegisterFlagCompletionFunc("sapi", sapiCompletion)
 	_ = run.RegisterFlagCompletionFunc("php", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return h.versionNameCompletion(toComplete)
 	})
@@ -410,10 +524,26 @@ Examples:
 			fmt.Println("\nGlobal default:")
 			switch def := strings.TrimSpace(os.Getenv(defaultServerEnv)); {
 			case def != "":
-				fmt.Printf("  %s (from %s)\n", def, defaultServerEnv)
+				envSAPI := webserver.NormalizeSAPI(os.Getenv(defaultSAPIEnv))
+				if strings.TrimSpace(os.Getenv(defaultSAPIEnv)) == "" {
+					cfgSAPI, _ := h.configSvc.Get("server_sapi")
+					envSAPI = webserver.NormalizeSAPI(cfgSAPI)
+				}
+				if envSAPI == "" || (envSAPI == "modphp" && def != domain.ServerApache) {
+					envSAPI = "fpm"
+				}
+				fmt.Printf("  %s (%s, from %s)\n", def, sapiLabel(envSAPI), defaultServerEnv)
 			default:
 				if cfg, _ := h.configSvc.Get("server"); cfg != "" {
-					fmt.Printf("  %s (from phpv server default)\n", cfg)
+					sapi, _ := h.configSvc.Get("server_sapi")
+					if env := strings.TrimSpace(os.Getenv(defaultSAPIEnv)); env != "" {
+						sapi = env
+					}
+					sapi = webserver.NormalizeSAPI(sapi)
+					if sapi == "" || (sapi == "modphp" && cfg != domain.ServerApache) {
+						sapi = "fpm"
+					}
+					fmt.Printf("  %s (%s, from phpv server default)\n", cfg, sapiLabel(sapi))
 				} else {
 					fmt.Println("  (none — falls back to the first installed server)")
 				}
@@ -434,12 +564,20 @@ Examples:
 					if version == activePHP {
 						marker = "  (active)"
 					}
-					fmt.Printf("  PHP %-10s -> %s%s\n", version, prefs.Servers[version], marker)
+					sapi := "fpm"
+					if recorded, ok := prefs.getSAPI(version); ok {
+						sapi = webserver.NormalizeSAPI(recorded)
+					}
+					fmt.Printf("  PHP %-10s -> %s (%s)%s\n", version, prefs.Servers[version], sapiLabel(sapi), marker)
 				}
 			}
 			if activePHP != "" {
 				if server, source, err := h.resolveServerForPHP("", activePHP); err == nil {
-					fmt.Printf("\nActive PHP %s -> %s (%s)\n", activePHP, server, serverSourceLabel(source))
+					sapi, sapiErr := h.resolveSAPIForPHP("", server, activePHP)
+					if sapiErr != nil {
+						sapi = "fpm"
+					}
+					fmt.Printf("\nActive PHP %s -> %s (%s) (%s)\n", activePHP, server, sapiLabel(sapi), serverSourceLabel(source))
 				}
 			}
 
@@ -464,7 +602,7 @@ Examples:
 				if m.Store().Running(inst) {
 					state = "running"
 				}
-				fmt.Printf("  %-28s %-8s %s  php-%s  %s  %s\n", inst.ID, state, inst.Server, inst.PHPVersion, inst.URL(), inst.Dir)
+				fmt.Printf("  %-28s %-8s %s (%s)  php-%s  %s  %s\n", inst.ID, state, inst.Server, sapiLabel(inst.SAPI), inst.PHPVersion, inst.URL(), inst.Dir)
 			}
 			return nil
 		},
@@ -476,4 +614,33 @@ Examples:
 
 func serverNameCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	return domain.ServerNames(), cobra.ShellCompDirectiveNoFileComp
+}
+
+func sapiCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	return []string{"fpm", "modphp"}, cobra.ShellCompDirectiveNoFileComp
+}
+
+// resolveCommandSAPI validates the --sapi flag for use/default commands;
+// an omitted flag means the default fpm SAPI.
+func resolveCommandSAPI(cmd *cobra.Command, server string) (string, error) {
+	flag, _ := cmd.Flags().GetString("sapi")
+	sapi := webserver.NormalizeSAPI(flag)
+	if strings.TrimSpace(flag) == "" {
+		sapi = "fpm"
+	}
+	if sapi != "fpm" && sapi != "modphp" {
+		return "", fmt.Errorf("unknown SAPI %q (available: fpm, modphp)", flag)
+	}
+	if sapi == "modphp" && server != domain.ServerApache {
+		return "", fmt.Errorf("SAPI modphp is only supported with apache (got %s)", server)
+	}
+	return sapi, nil
+}
+
+// sapiLabel renders the SAPI for user-facing output.
+func sapiLabel(sapi string) string {
+	if sapi == "modphp" {
+		return "mod_php"
+	}
+	return "FPM"
 }

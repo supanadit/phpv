@@ -10,9 +10,18 @@ import (
 	"time"
 )
 
-// execFPM builds the php-fpm foreground command for a rendered config.
-func execFPM(fpmBin, confPath string) *exec.Cmd {
-	return exec.Command(fpmBin, "-F", "-y", confPath)
+// execFPM builds the php-fpm foreground command for a rendered config. It
+// reads the CLI install's php.ini (`-c`) and pins extension_dir so shared
+// extensions resolve exactly like they do for `php -S`.
+func execFPM(fpmBin, confPath, iniDir, extDir string) *exec.Cmd {
+	args := []string{"-F", "-y", confPath}
+	if iniDir != "" {
+		args = append(args, "-c", iniDir)
+	}
+	if extDir != "" {
+		args = append(args, "-d", "extension_dir="+extDir)
+	}
+	return exec.Command(fpmBin, args...)
 }
 
 // waitSocket polls until the unix socket accepts connections.

@@ -2,6 +2,8 @@ package terminal
 
 import (
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -62,5 +64,91 @@ func TestServerDefaultCommand_SetsGlobalConfig(t *testing.T) {
 	}
 	if got != "nginx" {
 		t.Fatalf("config server = %q, want nginx", got)
+	}
+	if sapi, _ := h.configSvc.Get("server_sapi"); sapi != "fpm" {
+		t.Fatalf("config server_sapi = %q, want fpm", sapi)
+	}
+}
+
+func TestServerUseCommand_StoresPerVersionSAPI(t *testing.T) {
+	root := t.TempDir()
+	createFakePHPInstall(t, root, "8.5.12")
+	createFakeServerInstall(t, root, "apache", "2.4.62", time.Now())
+	h := newServerTestHandler(t, root, nil)
+
+	cmd := h.serverCmd()
+	use, _, err := cmd.Find([]string{"use"})
+	if err != nil {
+		t.Fatalf("find use: %v", err)
+	}
+	if err := use.Flags().Set("php", "8.5.12"); err != nil {
+		t.Fatal(err)
+	}
+	if err := use.Flags().Set("sapi", "modphp"); err != nil {
+		t.Fatal(err)
+	}
+	if err := use.RunE(use, []string{"apache"}); err != nil {
+		t.Fatalf("server use: %v", err)
+	}
+	if got := h.serverSAPI("8.5.12"); got != "modphp" {
+		t.Fatalf("stored SAPI = %q, want modphp", got)
+	}
+	if got, _ := h.serverPreference("8.5.12"); got != "apache" {
+		t.Fatalf("stored server = %q, want apache", got)
+	}
+
+	// A plain `server use` clears the mod_php choice (back to FPM).
+	if err := use.Flags().Set("sapi", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := use.RunE(use, []string{"apache"}); err != nil {
+		t.Fatalf("server use without --sapi: %v", err)
+	}
+	if got := h.serverSAPI("8.5.12"); got != "fpm" {
+		t.Fatalf("stored SAPI after reset = %q, want fpm", got)
+	}
+}
+
+func TestServerDefaultCommand_ModPHP(t *testing.T) {
+	root := t.TempDir()
+	createFakeServerInstall(t, root, "apache", "2.4.62", time.Now())
+	h := newServerTestHandler(t, root, nil)
+
+	cmd := h.serverCmd()
+	def, _, err := cmd.Find([]string{"default"})
+	if err != nil {
+		t.Fatalf("find default: %v", err)
+	}
+	if err := def.Flags().Set("sapi", "modphp"); err != nil {
+		t.Fatal(err)
+	}
+	if err := def.RunE(def, []string{"apache"}); err != nil {
+		t.Fatalf("server default apache --sapi modphp: %v", err)
+	}
+	if got, _ := h.configSvc.Get("server"); got != "apache" {
+		t.Fatalf("config server = %q, want apache", got)
+	}
+	if got, _ := h.configSvc.Get("server_sapi"); got != "modphp" {
+		t.Fatalf("config server_sapi = %q, want modphp", got)
+	}
+}
+
+func TestApacheThreadedDetectsMPM(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	httpd := filepath.Join(dir, "bin", "httpd")
+	if err := os.WriteFile(httpd, []byte("#!/bin/sh\necho '  threaded:     yes'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !apacheThreaded(dir) {
+		t.Fatal("threaded httpd not detected")
+	}
+	if err := os.WriteFile(httpd, []byte("#!/bin/sh\necho '  threaded:     no'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if apacheThreaded(dir) {
+		t.Fatal("prefork httpd misdetected as threaded")
 	}
 }

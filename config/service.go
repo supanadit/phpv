@@ -16,6 +16,7 @@ type Data struct {
 	StaticLibGCC  bool   `toml:"static_libgcc,omitempty"`
 	Server        string `toml:"server,omitempty"`
 	ServerVersion string `toml:"server_version,omitempty"`
+	ServerSAPI    string `toml:"server_sapi,omitempty"`
 }
 
 type ConfigRepository interface {
@@ -38,6 +39,7 @@ var knownKeys = []keyDef{
 	{key: "static_libgcc", typ: "bool", desc: "Statically link libgcc in static builds"},
 	{key: "server", typ: "string", desc: "Global default webserver for `phpv server run` (caddy, nginx, apache)"},
 	{key: "server_version", typ: "string", desc: "Default webserver version for `phpv server run`"},
+	{key: "server_sapi", typ: "string", desc: "Global default PHP SAPI for `phpv server run` (fpm, modphp)"},
 }
 
 var knownMap map[string]keyDef
@@ -98,6 +100,8 @@ func (s *Service) Get(key string) (string, error) {
 			return s.data.Server, nil
 		case "server_version":
 			return s.data.ServerVersion, nil
+		case "server_sapi":
+			return s.data.ServerSAPI, nil
 		}
 	case "int":
 		switch key {
@@ -148,6 +152,11 @@ func (s *Service) Set(key, value string) error {
 			s.data.Server = value
 		case "server_version":
 			s.data.ServerVersion = value
+		case "server_sapi":
+			if value != "fpm" && value != "modphp" {
+				return fmt.Errorf("invalid SAPI %q (available: fpm, modphp)", value)
+			}
+			s.data.ServerSAPI = value
 		}
 	case "int":
 		n, err := parseInt(value)

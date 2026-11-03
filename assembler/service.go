@@ -396,6 +396,14 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 			emit("error", fmt.Sprintf("Install failed for %s", name))
 			return nil, fmt.Errorf("install %s@%s: %w", name, exactVersion, err)
 		}
+		// Persist how this CLI was configured so SAPI variants (php-fpm,
+		// mod_php) can be built with the same extensions and deps.
+		if err := saveBuildProfile(prefix, BuildProfile{
+			ConfigureArgs: configureFlags,
+			Env:           profileEnv(env),
+		}); err != nil {
+			return nil, fmt.Errorf("save build profile: %w", err)
+		}
 	}
 
 	emit("done", fmt.Sprintf("%s %s installed at %s", name, exactVersion, prefix))
@@ -420,14 +428,14 @@ func (s *Service) Assemble(ctx context.Context, name string, version string, sta
 // DepBuildResult carries the compiler/linker flags and paths produced by
 // building (or resolving) a build plan's dependency list.
 type DepBuildResult struct {
-	LocalCppFlags   []string
-	LocalLdFlags    []string
-	LocalPcPaths    []string
-	SystemCppFlags  []string
-	SystemLdFlags   []string
-	SystemPcPaths   []string
-	LibraryPaths    []string
-	BinPaths        []string
+	LocalCppFlags  []string
+	LocalLdFlags   []string
+	LocalPcPaths   []string
+	SystemCppFlags []string
+	SystemLdFlags  []string
+	SystemPcPaths  []string
+	LibraryPaths   []string
+	BinPaths       []string
 }
 
 // buildDependencies builds every source dependency in the plan (or resolves

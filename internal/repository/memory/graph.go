@@ -283,6 +283,8 @@ var configureFlagRules = map[string][]configureFlagRule{
 			"--with-pcre={{dep:pcre2}}",
 			"--with-expat={{dep:expat}}",
 			"--enable-so",
+			"--enable-mpms-shared=event prefork",
+			"--with-mpm=prefork",
 			"--enable-proxy",
 			"--enable-proxy-fcgi",
 			"--disable-userdir",

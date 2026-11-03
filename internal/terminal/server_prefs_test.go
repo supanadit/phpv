@@ -48,6 +48,7 @@ func newServerTestHandler(t *testing.T, root string, config map[string]string) *
 	t.Helper()
 	t.Setenv("PHPV_ROOT", root)
 	t.Setenv(defaultServerEnv, "")
+	t.Setenv(defaultSAPIEnv, "")
 	h := newTestPHPHandler(root)
 	h.configSvc = &fakeConfigService{data: config}
 	return h
@@ -318,5 +319,97 @@ func TestResolveServerForPHP_InvalidServerNameHintsPHPVersionMixup(t *testing.T)
 	}
 	if !strings.Contains(err.Error(), "PHP versions are switched with `phpv use <version>`") {
 		t.Fatalf("error = %q, want the version mix-up hint", err)
+	}
+}
+
+func TestResolveSAPIForPHP_DefaultsToFPM(t *testing.T) {
+	root := t.TempDir()
+	h := newServerTestHandler(t, root, nil)
+
+	sapi, err := h.resolveSAPIForPHP("", "apache", "8.5.12")
+	if err != nil {
+		t.Fatalf("resolveSAPIForPHP: %v", err)
+	}
+	if sapi != "fpm" {
+		t.Fatalf("sapi = %q, want fpm", sapi)
+	}
+}
+
+func TestResolveSAPIForPHP_PerVersionAssociation(t *testing.T) {
+	root := t.TempDir()
+	h := newServerTestHandler(t, root, nil)
+	if err := h.recordServerSelection("8.5.12", "apache", "modphp"); err != nil {
+		t.Fatal(err)
+	}
+
+	sapi, err := h.resolveSAPIForPHP("", "apache", "8.5.12")
+	if err != nil {
+		t.Fatalf("resolveSAPIForPHP: %v", err)
+	}
+	if sapi != "modphp" {
+		t.Fatalf("sapi = %q, want modphp", sapi)
+	}
+	// Another version is unaffected.
+	if sapi, _ := h.resolveSAPIForPHP("", "apache", "7.4.33"); sapi != "fpm" {
+		t.Fatalf("sapi for unassociated version = %q, want fpm", sapi)
+	}
+}
+
+func TestResolveSAPIForPHP_EnvAndConfig(t *testing.T) {
+	root := t.TempDir()
+	h := newServerTestHandler(t, root, map[string]string{"server_sapi": "modphp"})
+	t.Setenv(defaultSAPIEnv, "fpm")
+
+	sapi, err := h.resolveSAPIForPHP("", "apache", "8.5.12")
+	if err != nil {
+		t.Fatalf("resolveSAPIForPHP: %v", err)
+	}
+	if sapi != "fpm" {
+		t.Fatalf("env SAPI should win: got %q", sapi)
+	}
+
+	t.Setenv(defaultSAPIEnv, "")
+	sapi, err = h.resolveSAPIForPHP("", "apache", "8.5.12")
+	if err != nil {
+		t.Fatalf("resolveSAPIForPHP: %v", err)
+	}
+	if sapi != "modphp" {
+		t.Fatalf("config SAPI should apply: got %q", sapi)
+	}
+	// mod_php cannot apply to a non-Apache fallback; fall back to FPM.
+	if sapi, err := h.resolveSAPIForPHP("", "caddy", "8.5.12"); err != nil || sapi != "fpm" {
+		t.Fatalf("non-apache config SAPI = (%q, %v), want fpm", sapi, err)
+	}
+}
+
+func TestResolveSAPIForPHP_FlagWinsAndValidates(t *testing.T) {
+	root := t.TempDir()
+	h := newServerTestHandler(t, root, map[string]string{"server_sapi": "fpm"})
+
+	sapi, err := h.resolveSAPIForPHP("modphp", "apache", "8.5.12")
+	if err != nil || sapi != "modphp" {
+		t.Fatalf("flag SAPI = (%q, %v), want modphp", sapi, err)
+	}
+	if _, err := h.resolveSAPIForPHP("modphp", "nginx", "8.5.12"); err == nil {
+		t.Fatal("modphp with nginx must error")
+	}
+	if _, err := h.resolveSAPIForPHP("bogus", "apache", "8.5.12"); err == nil {
+		t.Fatal("unknown SAPI must error")
+	}
+}
+
+func TestServerPreferences_BackwardCompatibleSAPI(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("PHPV_ROOT", root)
+	if err := os.MkdirAll(filepath.Join(root, "servers"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := `{"servers":{"8.5.12":"apache"}}`
+	if err := os.WriteFile(filepath.Join(root, "servers", "preferences.json"), []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := newTestPHPHandler(root)
+	if got := h.serverSAPI("8.5.12"); got != "fpm" {
+		t.Fatalf("legacy SAPI = %q, want fpm", got)
 	}
 }

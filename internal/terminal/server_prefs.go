@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/webserver"
 )
 
 // serverPreferenceFile records which webserver belongs to which PHP version.
@@ -16,6 +17,7 @@ import (
 // the webserver instead of leaking the global (default-PHP) server choice.
 type serverPreferenceFile struct {
 	Servers map[string]string `json:"servers,omitempty"`
+	SAPIs   map[string]string `json:"sapis,omitempty"`
 }
 
 func serverPreferencesPath(root string) string {
@@ -33,6 +35,9 @@ func loadServerPreferences(root string) serverPreferenceFile {
 	}
 	if prefs.Servers == nil {
 		prefs.Servers = map[string]string{}
+	}
+	if prefs.SAPIs == nil {
+		prefs.SAPIs = map[string]string{}
 	}
 	return prefs
 }
@@ -61,6 +66,14 @@ func (p serverPreferenceFile) get(phpVersion string) (string, bool) {
 	return server, ok && server != ""
 }
 
+func (p serverPreferenceFile) getSAPI(phpVersion string) (string, bool) {
+	if phpVersion == "" {
+		return "", false
+	}
+	sapi, ok := p.SAPIs[phpVersion]
+	return sapi, ok && sapi != ""
+}
+
 func (p *serverPreferenceFile) set(phpVersion, server string) {
 	if phpVersion == "" || server == "" {
 		return
@@ -71,6 +84,20 @@ func (p *serverPreferenceFile) set(phpVersion, server string) {
 	p.Servers[phpVersion] = server
 }
 
+func (p *serverPreferenceFile) setSAPI(phpVersion, sapi string) {
+	if phpVersion == "" {
+		return
+	}
+	if sapi == "" || sapi == "fpm" {
+		delete(p.SAPIs, phpVersion)
+		return
+	}
+	if p.SAPIs == nil {
+		p.SAPIs = map[string]string{}
+	}
+	p.SAPIs[phpVersion] = sapi
+}
+
 // serverPreference returns the webserver recorded for a PHP version.
 func (h *PHPHandler) serverPreference(phpVersion string) (string, bool) {
 	return loadServerPreferences(resolvePHPVRootForServer()).get(phpVersion)
@@ -78,13 +105,29 @@ func (h *PHPHandler) serverPreference(phpVersion string) (string, bool) {
 
 // recordServerPreference remembers the webserver chosen for a PHP version.
 func (h *PHPHandler) recordServerPreference(phpVersion, server string) error {
+	return h.recordServerSelection(phpVersion, server, "")
+}
+
+// recordServerSelection remembers both the webserver and SAPI for a version.
+// An empty/fpm SAPI clears any previous mod_php choice.
+func (h *PHPHandler) recordServerSelection(phpVersion, server, sapi string) error {
 	if phpVersion == "" || server == "" {
 		return nil
 	}
 	root := resolvePHPVRootForServer()
 	prefs := loadServerPreferences(root)
 	prefs.set(phpVersion, server)
+	prefs.setSAPI(phpVersion, sapi)
 	return saveServerPreferences(root, prefs)
+}
+
+// serverSAPI returns the SAPI recorded for a PHP version ("fpm" default).
+func (h *PHPHandler) serverSAPI(phpVersion string) string {
+	prefs := loadServerPreferences(resolvePHPVRootForServer())
+	if sapi, ok := prefs.getSAPI(phpVersion); ok {
+		return sapi
+	}
+	return "fpm"
 }
 
 // installedServers lists webserver names with at least one installed version.
@@ -131,6 +174,49 @@ func serverSourceLabel(source serverSelectionSource) string {
 // defaultServerEnv names the fallback webserver for PHP versions that have no
 // explicit association. It is never written implicitly by `server install`.
 const defaultServerEnv = "PHPV_DEFAULT_SERVER"
+
+// defaultSAPIEnv names the fallback PHP SAPI for versions without an
+// association (fpm or modphp).
+const defaultSAPIEnv = "PHPV_DEFAULT_SAPI"
+
+// resolveSAPIForPHP picks the PHP execution mode for a run. A --sapi flag
+// wins; otherwise an associated PHP version uses its recorded SAPI (fpm when
+// none was recorded), and unassociated versions fall back to
+// PHPV_DEFAULT_SAPI, then the global server_sapi config.
+func (h *PHPHandler) resolveSAPIForPHP(flagSAPI, server, phpVersion string) (string, error) {
+	explicit := strings.TrimSpace(flagSAPI) != ""
+	sapi := webserver.NormalizeSAPI(flagSAPI)
+
+	if !explicit {
+		prefs := loadServerPreferences(resolvePHPVRootForServer())
+		if _, hasServer := prefs.get(phpVersion); hasServer {
+			if recorded, ok := prefs.getSAPI(phpVersion); ok {
+				sapi = webserver.NormalizeSAPI(recorded)
+			} else {
+				sapi = "fpm"
+			}
+		} else if env := strings.TrimSpace(os.Getenv(defaultSAPIEnv)); env != "" {
+			sapi = webserver.NormalizeSAPI(env)
+		} else if cfg, _ := h.configSvc.Get("server_sapi"); cfg != "" {
+			sapi = webserver.NormalizeSAPI(cfg)
+		} else {
+			sapi = "fpm"
+		}
+	}
+
+	if sapi != "fpm" && sapi != "modphp" {
+		return "", fmt.Errorf("unknown SAPI %q (available: fpm, modphp)", sapi)
+	}
+	if sapi == "modphp" && server != domain.ServerApache {
+		if explicit {
+			return "", fmt.Errorf("SAPI modphp is only supported with apache (got %s)", server)
+		}
+		// A global default may not apply to the selected server; fall back
+		// to FPM rather than blocking the run.
+		sapi = "fpm"
+	}
+	return sapi, nil
+}
 
 // resolveServerForPHP picks the webserver for a run. Resolution is aware of
 // the active PHP version: a per-version association wins, then an explicit

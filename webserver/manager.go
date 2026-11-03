@@ -20,6 +20,9 @@ type Deps struct {
 	ResolveVersion func(constraint string) (string, error)
 	// EnsureFPM installs (when needed) and returns the php-fpm binary.
 	EnsureFPM func(ctx context.Context, phpVersion string, verbose bool, jobs int) (string, error)
+	// EnsureApacheModule builds/returns the mod_php libphp.so for the PHP
+	// version, rebuilding httpd with a prefork MPM when required.
+	EnsureApacheModule func(ctx context.Context, phpVersion, httpdPrefix string, verbose bool, jobs int) (string, error)
 	// CLIPrefix returns the install prefix of the CLI php for a version.
 	CLIPrefix func(phpVersion string) string
 	// InstalledServerVersion resolves a server version constraint against
@@ -67,6 +70,7 @@ type RunOptions struct {
 	Server        string // caddy|nginx|apache (resolved upstream when empty)
 	ServerVersion string // constraint; empty = config/default/only installed
 	PHPVersion    string // constraint; empty = active/default php
+	SAPI          string // fpm (default) or modphp (apache only)
 	Dir           string // document root (absolute)
 	Host          string // optional vhost hostname
 	Port          int    // 0 = auto-pick from 8080
@@ -75,7 +79,25 @@ type RunOptions struct {
 	Jobs          int
 }
 
-// Start brings up an instance: FPM, then the server, then records state.
+// normalizeSAPI canonicalizes a user-supplied SAPI value.
+func NormalizeSAPI(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "fpm":
+		return "fpm"
+	case "modphp", "mod_php", "apache":
+		return "modphp"
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
+	}
+}
+
+// hasSharedMPM reports whether an installed httpd ships a shared MPM module.
+func hasSharedMPM(prefix, name string) bool {
+	_, err := os.Stat(filepath.Join(prefix, "modules", "mod_mpm_"+name+".so"))
+	return err == nil
+}
+
+// Start brings up an instance: PHP runtime, then the server, then records state.
 // Foreground runs block until interrupted (processes are stopped on the
 // way out); detached runs return the instance once serving.
 func (m *Manager) Start(ctx context.Context, opts RunOptions) (domain.ServerInstance, error) {
@@ -91,17 +113,19 @@ func (m *Manager) Start(ctx context.Context, opts RunOptions) (domain.ServerInst
 		}
 	}
 
-	// Resolve the PHP version and ensure its FPM variant exists.
+	// Resolve the PHP version and the server before selecting the SAPI.
 	phpVersion, err := m.deps.ResolveVersion(opts.PHPVersion)
 	if err != nil {
 		return domain.ServerInstance{}, fmt.Errorf("resolve php version: %w", err)
 	}
-	fpmBin, err := m.deps.EnsureFPM(ctx, phpVersion, opts.Verbose, opts.Jobs)
-	if err != nil {
-		return domain.ServerInstance{}, err
+	sapi := NormalizeSAPI(opts.SAPI)
+	if sapi != "fpm" && sapi != "modphp" {
+		return domain.ServerInstance{}, fmt.Errorf("unknown SAPI %q (available: fpm, modphp)", opts.SAPI)
+	}
+	if sapi == "modphp" && opts.Server != domain.ServerApache {
+		return domain.ServerInstance{}, fmt.Errorf("--sapi modphp is only supported with apache (got %s)", opts.Server)
 	}
 
-	// Resolve the server and its binary.
 	driver, err := m.Driver(opts.Server)
 	if err != nil {
 		return domain.ServerInstance{}, err
@@ -116,17 +140,35 @@ func (m *Manager) Start(ctx context.Context, opts RunOptions) (domain.ServerInst
 		return domain.ServerInstance{}, fmt.Errorf("%s binary not found in %s (install it: phpv server install %s)", opts.Server, prefix, opts.Server)
 	}
 
+	// Ensure the PHP runtime for the selected SAPI.
+	var (
+		fpmBin       string
+		apacheModule string
+	)
+	if sapi == "modphp" {
+		apacheModule, err = m.deps.EnsureApacheModule(ctx, phpVersion, prefix, opts.Verbose, opts.Jobs)
+		if err != nil {
+			return domain.ServerInstance{}, err
+		}
+	} else {
+		fpmBin, err = m.deps.EnsureFPM(ctx, phpVersion, opts.Verbose, opts.Jobs)
+		if err != nil {
+			return domain.ServerInstance{}, err
+		}
+	}
+
 	port, err := PickFreePort(opts.Port)
 	if err != nil {
 		return domain.ServerInstance{}, err
 	}
 
-	id := InstanceID(opts.Server, phpVersion, port)
+	id := InstanceID(opts.Server, phpVersion, port, sapi)
 	inst := domain.ServerInstance{
 		ID:            id,
 		Server:        opts.Server,
 		ServerVersion: serverVersion,
 		PHPVersion:    phpVersion,
+		SAPI:          sapi,
 		Dir:           opts.Dir,
 		Host:          opts.Host,
 		Port:          port,
@@ -155,51 +197,73 @@ func (m *Manager) Start(ctx context.Context, opts RunOptions) (domain.ServerInst
 
 	// Prepare state dirs and socket hygiene. The socket lives in
 	// servers/state/ (alongside instance records), so that directory must
-	// exist before php-fpm binds.
+	// exist before php-fpm binds. mod_php has no socket.
 	for _, d := range []string{filepath.Dir(inst.Socket), inst.StateDir, filepath.Join(inst.StateDir, "logs"), filepath.Join(inst.StateDir, "tmp")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return domain.ServerInstance{}, err
 		}
 	}
-	_ = os.Remove(inst.Socket)
-
-	// Render the FPM config from the CLI install's extension layout.
-	fpmConf, err := m.renderFPM(inst, fpmBin)
-	if err != nil {
-		return domain.ServerInstance{}, err
+	if sapi != "modphp" {
+		_ = os.Remove(inst.Socket)
 	}
 
-	// Start FPM. Its stderr/stdout always land in fpm.log (foreground or
-	// detached) so a failed start is diagnosable.
-	fpmLogPath := filepath.Join(inst.StateDir, "fpm.log")
-	fpmCmd := execFPM(fpmBin, fpmConf)
-	if opts.Detach {
-		fpmPID, err := Detach(fpmCmd, fpmLogPath)
+	iniDir, extDir := CLIRuntime(m.deps.CLIPrefix(phpVersion))
+
+	var fpmConf string
+	if sapi != "modphp" {
+		// Render and start the FPM master. The CLI php.ini and
+		// extension_dir are passed so FPM matches `php -S`.
+		fpmConf, err = m.renderFPM(inst, fpmBin)
 		if err != nil {
-			return domain.ServerInstance{}, fmt.Errorf("start php-fpm: %w", err)
+			return domain.ServerInstance{}, err
 		}
-		inst.FPMPID = fpmPID
-	} else {
-		logFile, logErr := os.OpenFile(fpmLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-		if logErr != nil {
-			return domain.ServerInstance{}, logErr
+		fpmLogPath := filepath.Join(inst.StateDir, "fpm.log")
+		fpmCmd := execFPM(fpmBin, fpmConf, iniDir, extDir)
+		if opts.Detach {
+			fpmPID, err := Detach(fpmCmd, fpmLogPath)
+			if err != nil {
+				return domain.ServerInstance{}, fmt.Errorf("start php-fpm: %w", err)
+			}
+			inst.FPMPID = fpmPID
+		} else {
+			logFile, logErr := os.OpenFile(fpmLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+			if logErr != nil {
+				return domain.ServerInstance{}, logErr
+			}
+			fpmCmd.Stdout = logFile
+			fpmCmd.Stderr = logFile
+			if err := fpmCmd.Start(); err != nil {
+				logFile.Close()
+				return domain.ServerInstance{}, fmt.Errorf("start php-fpm: %w", err)
+			}
+			inst.FPMPID = fpmCmd.Process.Pid
+			go func() { _ = fpmCmd.Wait(); _ = logFile.Close() }()
 		}
-		fpmCmd.Stdout = logFile
-		fpmCmd.Stderr = logFile
-		if err := fpmCmd.Start(); err != nil {
-			logFile.Close()
-			return domain.ServerInstance{}, fmt.Errorf("start php-fpm: %w", err)
+		if err := waitSocket(inst.Socket, 15*time.Second); err != nil {
+			m.Stop(inst)
+			return domain.ServerInstance{}, fmt.Errorf("php-fpm did not open %s: %w", inst.Socket, err)
 		}
-		inst.FPMPID = fpmCmd.Process.Pid
-		go func() { _ = fpmCmd.Wait(); _ = logFile.Close() }()
 	}
-	if err := waitSocket(inst.Socket, 15*time.Second); err != nil {
-		m.Stop(inst)
-		return domain.ServerInstance{}, fmt.Errorf("php-fpm did not open %s: %w", inst.Socket, err)
+
+	mpm := ""
+	if opts.Server == domain.ServerApache {
+		if sapi == "modphp" {
+			mpm = "prefork"
+		} else if hasSharedMPM(prefix, "event") {
+			mpm = "event"
+		}
+	}
+	runtime := Runtime{
+		SAPI:         sapi,
+		FPMConf:      fpmConf,
+		ApacheModule: apacheModule,
+		PHPIniDir:    iniDir,
+		ExtensionDir: extDir,
+		MPM:          mpm,
 	}
 
 	// Start the webserver.
-	confPath, err := driver.WriteConfig(inst, fpmConf)
+	confPath, err := driver.WriteConfig(inst, runtime)
 	if err != nil {
 		m.Stop(inst)
 		return domain.ServerInstance{}, err
@@ -233,59 +297,22 @@ func (m *Manager) Start(ctx context.Context, opts RunOptions) (domain.ServerInst
 	return inst, nil
 }
 
-// renderFPM builds the FPMConfig for an instance from the CLI install.
+// renderFPM builds the FPMConfig for an instance. Runtime ini settings and
+// extension_dir are supplied on the php-fpm command line so FPM reads the
+// exact same php.ini as the CLI install.
 func (m *Manager) renderFPM(inst domain.ServerInstance, fpmBin string) (string, error) {
-	cliPrefix := m.deps.CLIPrefix(inst.PHPVersion)
-	iniPath := filepath.Join(cliPrefix, "lib", "php.ini")
-	extDir, extensions := scanExtensions(cliPrefix)
 	legacy := domain.CompareVersions(inst.PHPVersion, "7.0.0") < 0
 	conf, err := RenderFPMConf(FPMConfig{
-		Binary:      fpmBin,
-		PHPVersion:  inst.PHPVersion,
-		Socket:      inst.Socket,
-		PIDFile:     filepath.Join(inst.StateDir, "fpm.pid"),
-		ErrorLog:    filepath.Join(inst.StateDir, "logs", "fpm-error.log"),
-		SlowLog:     filepath.Join(inst.StateDir, "logs", "fpm-slow.log"),
-		StateDir:    inst.StateDir,
-		PHPIniPath:  iniPath,
-		ExtensionDir: extDir,
-		Extensions:  extensions,
-		Legacy:      legacy,
+		Binary:     fpmBin,
+		PHPVersion: inst.PHPVersion,
+		Socket:     inst.Socket,
+		PIDFile:    filepath.Join(inst.StateDir, "fpm.pid"),
+		ErrorLog:   filepath.Join(inst.StateDir, "logs", "fpm-error.log"),
+		SlowLog:    filepath.Join(inst.StateDir, "logs", "fpm-slow.log"),
+		StateDir:   inst.StateDir,
+		Legacy:     legacy,
 	})
 	return conf, err
-}
-
-// scanExtensions returns the extension_dir and extension basenames from the
-// CLI install's php.ini, so FPM loads the same shared modules.
-func scanExtensions(cliPrefix string) (string, []string) {
-	iniPath := filepath.Join(cliPrefix, "lib", "php.ini")
-	data, err := os.ReadFile(iniPath)
-	if err != nil {
-		return "", nil
-	}
-	var extDir string
-	var exts []string
-	for _, raw := range strings.Split(string(data), "\n") {
-		line := strings.TrimSpace(raw)
-		if line == "" || strings.HasPrefix(line, ";") || strings.HasPrefix(line, "#") {
-			continue
-		}
-		key, val, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		key = strings.TrimSpace(strings.ToLower(key))
-		val = strings.TrimSpace(val)
-		switch key {
-		case "extension_dir":
-			extDir = val
-		case "extension":
-			if val != "" {
-				exts = append(exts, filepath.Base(val))
-			}
-		}
-	}
-	return extDir, exts
 }
 
 // Stop terminates a running instance: server first, then FPM.

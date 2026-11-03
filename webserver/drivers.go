@@ -9,6 +9,23 @@ import (
 	"github.com/supanadit/phpv/domain"
 )
 
+// Runtime describes how PHP is executed for an instance.
+type Runtime struct {
+	// SAPI is "fpm" (default) or "modphp".
+	SAPI string
+	// FPMConf is the generated php-fpm.conf (FPM only).
+	FPMConf string
+	// ApacheModule is the absolute libphp.so path (mod_php only).
+	ApacheModule string
+	// PHPIniDir is the CLI install's php.ini directory.
+	PHPIniDir string
+	// ExtensionDir is the CLI install's extension_dir.
+	ExtensionDir string
+	// MPM is the Apache MPM to load when built as a shared module
+	// ("event" or "prefork"); empty means the MPM is static.
+	MPM string
+}
+
 // Driver is the per-server behavior: config generation, start and stop.
 // One implementation per supported webserver; the Manager selects by name.
 type Driver interface {
@@ -18,7 +35,7 @@ type Driver interface {
 	Binary(prefix string) string
 	// WriteConfig renders the server config for the instance into
 	// inst.StateDir and returns the config file path.
-	WriteConfig(inst domain.ServerInstance, fpmConf string) (string, error)
+	WriteConfig(inst domain.ServerInstance, rt Runtime) (string, error)
 	// StartArgs returns the command line to start the server with the
 	// rendered config (foreground; the Manager handles detach).
 	StartArgs(inst domain.ServerInstance, confPath string) []string
@@ -35,7 +52,7 @@ func (CaddyDriver) Binary(prefix string) string {
 	return FindBinary(prefix, "caddy")
 }
 
-func (CaddyDriver) WriteConfig(inst domain.ServerInstance, fpmConf string) (string, error) {
+func (CaddyDriver) WriteConfig(inst domain.ServerInstance, rt Runtime) (string, error) {
 	if err := os.MkdirAll(inst.StateDir, 0o755); err != nil {
 		return "", err
 	}
@@ -77,7 +94,7 @@ func (NginxDriver) Binary(prefix string) string {
 	return FindBinary(prefix, "nginx")
 }
 
-func (NginxDriver) WriteConfig(inst domain.ServerInstance, fpmConf string) (string, error) {
+func (NginxDriver) WriteConfig(inst domain.ServerInstance, rt Runtime) (string, error) {
 	if err := os.MkdirAll(filepath.Join(inst.StateDir, "logs"), 0o755); err != nil {
 		return "", err
 	}
@@ -135,7 +152,8 @@ func (NginxDriver) Stop(inst domain.ServerInstance) error {
 	return nil
 }
 
-// ApacheDriver serves PHP via mod_proxy_fcgi to the instance socket.
+// ApacheDriver serves PHP either through mod_proxy_fcgi (FPM) or the embedded
+// mod_php module, depending on the instance SAPI.
 type ApacheDriver struct{}
 
 func (ApacheDriver) Name() string { return domain.ServerApache }
@@ -144,9 +162,13 @@ func (ApacheDriver) Binary(prefix string) string {
 	return FindBinary(prefix, "httpd")
 }
 
-func (ApacheDriver) WriteConfig(inst domain.ServerInstance, fpmConf string) (string, error) {
+func (ApacheDriver) WriteConfig(inst domain.ServerInstance, rt Runtime) (string, error) {
 	if err := os.MkdirAll(filepath.Join(inst.StateDir, "logs"), 0o755); err != nil {
 		return "", err
+	}
+	sapi := rt.SAPI
+	if sapi == "" {
+		sapi = "fpm"
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "ServerName %s\n", hostOrLocalhost(inst.Host))
@@ -154,18 +176,34 @@ func (ApacheDriver) WriteConfig(inst domain.ServerInstance, fpmConf string) (str
 	b.WriteString("PidFile " + inst.StateDir + "/httpd.pid\n")
 	b.WriteString("ErrorLog " + inst.StateDir + "/logs/error.log\n")
 	b.WriteString("CustomLog " + inst.StateDir + "/logs/access.log combined\n\n")
-	// The MPM (event) is compiled into phpv's httpd build (httpd -l), so it
-	// must NOT be LoadModule'd. mod_so is likewise built in and provides the
-	// LoadModule directive itself.
+
+	// MPM: phpv builds httpd with shared event and prefork modules when
+	// available. mod_php requires prefork (it is not thread-safe).
+	if rt.MPM != "" {
+		fmt.Fprintf(&b, "LoadModule mpm_%s_module modules/mod_mpm_%s.so\n", rt.MPM, rt.MPM)
+	}
 	b.WriteString("LoadModule authz_core_module modules/mod_authz_core.so\n")
 	b.WriteString("LoadModule unixd_module modules/mod_unixd.so\n")
 	b.WriteString("LoadModule log_config_module modules/mod_log_config.so\n")
 	b.WriteString("LoadModule mime_module modules/mod_mime.so\n")
 	b.WriteString("LoadModule dir_module modules/mod_dir.so\n")
-	b.WriteString("LoadModule proxy_module modules/mod_proxy.so\n")
-	b.WriteString("LoadModule proxy_fcgi_module modules/mod_proxy_fcgi.so\n")
-	b.WriteString("LoadModule setenvif_module modules/mod_setenvif.so\n\n")
-	b.WriteString("TypesConfig conf/mime.types\n")
+	b.WriteString("LoadModule setenvif_module modules/mod_setenvif.so\n")
+
+	switch sapi {
+	case "modphp":
+		fmt.Fprintf(&b, "LoadModule %s %s\n", apachePHPModuleName(inst.PHPVersion), rt.ApacheModule)
+		if rt.PHPIniDir != "" {
+			fmt.Fprintf(&b, "PHPIniDir \"%s\"\n", rt.PHPIniDir)
+		}
+		if rt.ExtensionDir != "" {
+			fmt.Fprintf(&b, "php_admin_value extension_dir \"%s\"\n", rt.ExtensionDir)
+		}
+		b.WriteString("AddHandler application/x-httpd-php .php\n\n")
+	default: // fpm
+		b.WriteString("LoadModule proxy_module modules/mod_proxy.so\n")
+		b.WriteString("LoadModule proxy_fcgi_module modules/mod_proxy_fcgi.so\n")
+	}
+	b.WriteString("\nTypesConfig conf/mime.types\n")
 	b.WriteString("DirectoryIndex index.php index.html\n\n")
 	fmt.Fprintf(&b, "DocumentRoot \"%s\"\n", inst.Dir)
 	fmt.Fprintf(&b, "<Directory \"%s\">\n", inst.Dir)
@@ -173,9 +211,15 @@ func (ApacheDriver) WriteConfig(inst domain.ServerInstance, fpmConf string) (str
 	b.WriteString("  AllowOverride All\n")
 	b.WriteString("  Require all granted\n")
 	b.WriteString("</Directory>\n\n")
-	b.WriteString("<FilesMatch \\.php$>\n")
-	fmt.Fprintf(&b, "  SetHandler \"proxy:unix:%s|fcgi://localhost\"\n", inst.Socket)
-	b.WriteString("</FilesMatch>\n")
+	if sapi == "modphp" {
+		b.WriteString("<FilesMatch \\.php$>\n")
+		b.WriteString("  SetHandler application/x-httpd-php\n")
+		b.WriteString("</FilesMatch>\n")
+	} else {
+		b.WriteString("<FilesMatch \\.php$>\n")
+		fmt.Fprintf(&b, "  SetHandler \"proxy:unix:%s|fcgi://localhost\"\n", inst.Socket)
+		b.WriteString("</FilesMatch>\n")
+	}
 	conf := filepath.Join(inst.StateDir, "httpd.conf")
 	if err := os.WriteFile(conf, []byte(b.String()), 0o644); err != nil {
 		return "", fmt.Errorf("write httpd.conf: %w", err)
@@ -196,6 +240,19 @@ func hostOrLocalhost(h string) string {
 		return "localhost"
 	}
 	return h
+}
+
+// apachePHPModuleName returns the LoadModule name for mod_php on this PHP
+// version (php_module since PHP 8, php7_module on 7.x, php5_module on 5.x).
+func apachePHPModuleName(phpVersion string) string {
+	switch {
+	case domain.CompareVersions(phpVersion, "8.0.0") >= 0:
+		return "php_module"
+	case domain.CompareVersions(phpVersion, "7.0.0") >= 0:
+		return "php7_module"
+	default:
+		return "php5_module"
+	}
 }
 
 // fastcgiParams is the standard nginx FastCGI parameter set (from the

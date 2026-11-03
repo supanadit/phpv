@@ -28,9 +28,10 @@ func IsValidServerName(name string) bool {
 }
 
 // ServerInstance describes one running (or recently stopped) server run.
-// Instances are isolated per PHP version: each run pins one PHP version,
-// gets its own FPM master process, FastCGI socket and log directory, so
-// e.g. a PHP 5.6 app and a PHP 8.3 app can be served simultaneously.
+// Instances are isolated per PHP version: each run pins one PHP version and
+// gets its own PHP runtime (FPM master + socket, or an embedded mod_php
+// module) and log directory, so e.g. a PHP 5.6 app and a PHP 8.3 app can be
+// served simultaneously.
 type ServerInstance struct {
 	// ID uniquely identifies the instance, e.g. "caddy-8080-php5.6.40".
 	ID string
@@ -38,8 +39,10 @@ type ServerInstance struct {
 	Server string
 	// ServerVersion is the installed webserver version used for this run.
 	ServerVersion string
-	// PHPVersion is the exact PHP version whose FPM serves this instance.
+	// PHPVersion is the exact PHP version whose runtime serves this instance.
 	PHPVersion string
+	// SAPI is how PHP runs: "fpm" (default) or "modphp".
+	SAPI string
 	// Dir is the absolute document root being served.
 	Dir string
 	// Host is the optional vhost hostname (--host). Empty means localhost only.

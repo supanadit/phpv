@@ -1,8 +1,9 @@
 // Package webserver installs and runs local webservers (caddy, nginx,
-// apache) that serve PHP applications through FastCGI. Instances are fully
-// isolated per PHP version: each run pins one PHP version, gets its own
-// php-fpm master, FastCGI unix socket, config set and log directory, so
-// several PHP versions can be served simultaneously.
+// apache) that serve PHP applications through FastCGI or Apache's embedded
+// mod_php. Instances are fully isolated per PHP version: each run pins one
+// PHP version and gets its own runtime (FPM master + socket, or a mod_php
+// module), config set and log directory, so several PHP versions can be
+// served simultaneously.
 package webserver
 
 import (
@@ -119,9 +120,13 @@ func (s *Store) Running(inst domain.ServerInstance) bool {
 	return ProcessAlive(inst.ServerPID)
 }
 
-// InstanceID builds the deterministic instance id for a run.
-func InstanceID(server, phpVersion string, port int) string {
-	return fmt.Sprintf("%s-%d-php%s", server, port, phpVersion)
+// InstanceID builds the deterministic instance id for a run. The SAPI is only
+// part of the id when it is not the default FPM one, keeping existing ids.
+func InstanceID(server, phpVersion string, port int, sapi string) string {
+	if sapi == "" || sapi == "fpm" {
+		return fmt.Sprintf("%s-%d-php%s", server, port, phpVersion)
+	}
+	return fmt.Sprintf("%s-%s-%d-php%s", server, sapi, port, phpVersion)
 }
 
 // Timeout for graceful shutdowns before processes get killed.

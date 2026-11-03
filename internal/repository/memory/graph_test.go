@@ -463,6 +463,71 @@ func TestGetBuildPlan_PHP8_4_DependencyOrdering(t *testing.T) {
 	}
 }
 
+// TestGetBuildPlan_PHP5_6_CurlPin verifies the PHP 5.6 default build plan:
+// the curl extension must resolve to the curl.se archeology-published 7.20.0
+// (its flat /download/ URL 404s for releases <= 7.29.0), and openssl stays at
+// the ext pin 1.0.1u even though curl's own dep row prefers >= 1.1.0 — direct
+// extension pins win over transitive dep preferences.
+func TestGetBuildPlan_PHP5_6_CurlPin(t *testing.T) {
+	repo := NewGraphRepository()
+	svc := graph.NewService(repo)
+
+	defaults := []string{
+		"bcmath", "curl", "dom", "fileinfo", "filter", "gd",
+		"iconv", "intl", "json", "mbstring", "openssl",
+		"pdo", "pdo_mysql", "pdo_sqlite", "phar", "session",
+		"simplexml", "sqlite3", "tokenizer", "xml", "xmlreader",
+		"xmlwriter", "zip", "zlib",
+	}
+
+	plan, err := svc.GetBuildPlan("php", "5.6.40", defaults, "")
+	if err != nil {
+		t.Fatalf("GetBuildPlan(php, 5.6.40) returned error: %v", err)
+	}
+
+	depMap := make(map[string]string)
+	positions := make(map[string]int)
+	for i, dep := range plan.Deps {
+		depMap[dep.Name] = dep.Version
+		positions[dep.Name] = i
+	}
+
+	wantDeps := map[string]string{
+		"curl":      "7.20.0|>=7.20.0,<7.21.0",
+		"openssl":   "1.0.1u|>=1.0.0,<1.1.0",
+		"libxml2":   "2.9.14|~2.9.0",
+		"oniguruma": "5.9.6|~5.9.0",
+		"icu":       "58.2|>=58.0,<60",
+		"zlib":      "1.2.13|>=1.2.0,<1.3.0",
+	}
+	for name, want := range wantDeps {
+		got, ok := depMap[name]
+		if !ok {
+			t.Errorf("dep %q missing from PHP 5.6.40 build plan", name)
+			continue
+		}
+		if got != want {
+			t.Errorf("dep %s = %q, want %q", name, got, want)
+		}
+	}
+
+	// curl and its build tools must build after openssl and zlib.
+	mustComeBefore := map[string]string{
+		"openssl": "curl",
+		"zlib":    "curl",
+	}
+	for dep, dependent := range mustComeBefore {
+		depPos, depOK := positions[dep]
+		dependentPos, dependentOK := positions[dependent]
+		if !depOK || !dependentOK {
+			continue
+		}
+		if depPos >= dependentPos {
+			t.Errorf("%s (pos %d) must come before %s (pos %d) in build plan", dep, depPos, dependent, dependentPos)
+		}
+	}
+}
+
 func TestGetBuildPlan_PHP8_2_HasDeps(t *testing.T) {
 	repo := NewGraphRepository()
 	svc := graph.NewService(repo)

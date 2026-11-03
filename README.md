@@ -90,7 +90,18 @@ phpv phar update composer                     # Update to latest
 phpv phar list                                # List for active PHP version
 phpv phar which composer                      # Show phar path
 
-# PECL extensions
+# Composer globals are scoped per PHP version (see "Composer isolation" below)
+composer global require laravel/installer     # Installs into the active version's composer home
+laravel new blog                              # Global bins are shimmed like php itself
+
+# Extensions — one entry point for bundled + PECL
+phpv extension add xdebug                    # PECL: resolves the release matching your PHP, builds, verifies it loads
+phpv extension add xdebug --ini xdebug.mode=debug
+phpv extension add gd pdo_pgsql              # bundled: built from the PHP source tree
+phpv extension add xdebug --dry-run          # show which release would be installed
+phpv extension remove xdebug
+
+# Low-level PECL access (name resolves latest; no compatibility picking)
 phpv pecl install /path/to/ext-1.0.0.tgz
 phpv pecl list
 phpv pecl uninstall ext
@@ -121,6 +132,18 @@ phpv completion bash                          # Generate shell completion
 ---
 
 Each PHP version gets its own isolated install prefix and phar directory — no conflicts between versions. Dependency versions are resolved per-extension per-PHP-version from the extension graph, so PHP 8.2+ now get the same deterministic dep resolution as 7.x/8.0/8.1. Dependencies are keyed by `(name, version)` and shared across PHP versions that pin the same version — build once, reuse everywhere.
+
+### Composer isolation
+
+When composer runs through its shim, phpv scopes `COMPOSER_HOME` to the active PHP version (`$PHPV_ROOT/packages/php/<version>/composer/`), unless you set `COMPOSER_HOME` yourself. `composer global require` therefore installs into the active version — no cross-version platform checks or silent downgrades when you switch with `phpv use`. Global vendor binaries are shimmed into `$PHPV_ROOT/bin` and resolved per-execution like every other shim, and a successful `composer global ...` command rehashes automatically. Non-PHP bins and name collisions with built-in shims/phars are skipped, and shims for removed global packages are pruned on the next rehash.
+
+**Migration note:** packages previously installed into the shared `~/.config/composer` home are not migrated. Re-run `composer global require <package>` once per PHP version that needs it.
+
+### Extension installation
+
+`phpv extension add` is the single entry point. Extensions known to phpv's dependency graph (gd, pdo_pgsql, bz2, ...) build from the PHP source tree as before. Anything else — xdebug, redis, apcu, ... — is fetched from pecl.php.net with **PHP-version-aware release selection**: the newest stable release whose published PHP dependency range admits the target version (e.g. xdebug 3.x on PHP 8, xdebug 2.x on PHP 7.4). Zend extensions are handled automatically: phpv writes the correct `zend_extension=`/`extension=` directive, verifies the module actually loads via `php -m`, flips the directive once if needed, and fails with PHP's own error when neither form loads.
+
+Use `--ini key=value` (repeatable) to append INI settings after install — e.g. `phpv extension add xdebug --ini xdebug.mode=debug`. `--dry-run` resolves and prints the would-be release without building. `phpv pecl install <name>` still works for the raw "latest release" behavior.
 
 phpv only downloads and extracts what it will actually compile. System packages that satisfy the required version constraints are used directly (no source download), build tools come from the system, and the download phase shows per-package progress. System dev-libraries for extensions are checked automatically and recommended before building — e.g. `phpv extension add pdo_pgsql` prompts to install `postgresql-libs` (Arch), `libpq-dev` (Debian/Alpine), or `postgresql-devel` (Fedora).
 

@@ -262,6 +262,34 @@ var configureFlagRules = map[string][]configureFlagRule{
 			"-DENABLE_ZSTD=OFF",
 		}},
 	},
+	"nginx": {
+		{Flags: []string{
+			// nginx compiles PCRE2 and zlib from their source trees (not
+			// install prefixes) — both placeholders resolve to the actual
+			// extracted source dir containing ./configure.
+			"--with-pcre={{source:pcre2}}",
+			"--with-zlib={{source:zlib}}",
+			"--with-http_gzip_static_module",
+			"--with-http_stub_status_module",
+		}},
+	},
+	"httpd": {
+		{Flags: []string{
+			// apr/apr-util are vendored into srclib/ by the assembler
+			// (see AssembleServer) before configure runs. httpd needs
+			// installed pcre2 (pcre2-config) and expat (vendored apr-util's
+			// xml support links it).
+			"--with-included-apr",
+			"--with-pcre={{dep:pcre2}}",
+			"--with-expat={{dep:expat}}",
+			"--enable-so",
+			"--enable-mpms-shared=event prefork",
+			"--with-mpm=prefork",
+			"--enable-proxy",
+			"--enable-proxy-fcgi",
+			"--disable-userdir",
+		}},
+	},
 }
 
 func (r *GraphRepository) GetConfigureFlags(name, version string) []string {
@@ -799,6 +827,61 @@ func builtInPackages() []domain.Package {
 			Default:     []domain.Dependency{},
 			Constraints: []domain.VersionConstraint{},
 		},
+		{
+			// nginx links PCRE2 for rewrite support. The system libpcre2
+			// satisfies it when present; otherwise the assembler builds the
+			// pinned version from source.
+			Package: "pcre2",
+			Default: []domain.Dependency{
+				{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
+			},
+			Constraints: []domain.VersionConstraint{},
+		},
+		{
+			Package: "nginx",
+			Default: []domain.Dependency{
+				{Name: "pcre2", Version: "10.44|>=10.42"},
+				{Name: "zlib", Version: "1.2.13|>=1.2.0,<1.3.0"},
+			},
+			Constraints: []domain.VersionConstraint{},
+		},
+		{
+			// httpd vendors apr/apr-util into its source tree at configure
+			// time (--with-included-apr): they are downloaded so the
+			// assembler can copy them into srclib/, but never built
+			// standalone. pcre2 IS built standalone (httpd invokes
+			// pcre2-config from the install prefix).
+			Package: "httpd",
+			Default: []domain.Dependency{
+				{Name: "apr", Version: "1.7.4"},
+				{Name: "apr-util", Version: "1.6.3"},
+				// apr-util hard-requires expat (its configure refuses
+				// --without-expat), consumed as an installed prefix.
+				{Name: "expat", Version: "2.6.3|>=2.6.0"},
+				{Name: "pcre2", Version: "10.44|>=10.42"},
+			},
+			Constraints: []domain.VersionConstraint{},
+		},
+		{
+			Package:     "apr",
+			Default:     []domain.Dependency{},
+			Constraints: []domain.VersionConstraint{},
+		},
+		{
+			Package:     "apr-util",
+			Default:     []domain.Dependency{},
+			Constraints: []domain.VersionConstraint{},
+		},
+		{
+			Package:     "expat",
+			Default:     []domain.Dependency{},
+			Constraints: []domain.VersionConstraint{},
+		},
+		{
+			Package:     "caddy",
+			Default:     []domain.Dependency{},
+			Constraints: []domain.VersionConstraint{},
+		},
 	}
 }
 
@@ -839,7 +922,9 @@ func builtInExtensions() []domain.ExtensionDef {
 				{VersionRange: ">=8.0.0", Version: "8.10.1|>=8.0.0"},
 				{VersionRange: ">=7.0.0 <8.0.0", Version: "7.88.1|>=7.80.0"},
 				{VersionRange: ">=5.6.0 <7.0.0", Version: "7.20.0|>=7.20.0,<7.21.0"},
-				{VersionRange: ">=5.1.0 <5.6.0", Version: "7.12.1|>=7.12.0,<7.13.0"},
+				// curl 7.12.1 was never published on curl.se (not even in the
+				// archeology archive); 7.12.0 is the nearest available release.
+				{VersionRange: ">=5.1.0 <5.6.0", Version: "7.12.0|>=7.12.0,<7.13.0"},
 				{VersionRange: ">=5.0.0 <5.1.0", Version: "7.12.0|>=7.12.0,<7.13.0"},
 			},
 		},

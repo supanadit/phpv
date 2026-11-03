@@ -49,12 +49,14 @@ func TestRegistryRepository_List_PHP_ChecksumFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List(php, true, \"\") returned error: %v", err)
 	}
-	if len(onlyWithChecksum) != 5 {
-		t.Fatalf("List(php, true, \"\") returned %d entries, want 5", len(onlyWithChecksum))
+	if len(onlyWithChecksum) != 7 {
+		t.Fatalf("List(php, true, \"\") returned %d entries, want 7", len(onlyWithChecksum))
 	}
 	wantChecksums := map[string]string{
 		"8.5.12": "81a0f450349e84b08eb43faa85f8a4c835684f3cc1c50471775d1317a046c525",
 		"8.4.27": "5bafed9994c1a49796b25b5f61c22c9183bfe046b6acc7b363842d03c77f972f",
+		"8.3.36": "c93f3441f87f6ab156bef4432db215d7e61ca2c0183bb3a2aa28d9886ab59f53",
+		"8.2.35": "9db4204f0a2d1911277ae832185e07bb4c3b3559772753a70d2968ca346d6910",
 		"8.5.10": "f5c0ac99b85b3d677de475c2e4f509f9b4f54663f3ee5a84d6d9481a521d4100",
 		"8.4.25": "5cde1da976b728fa09e6b549a4c8afcd0c180337028dacf34f73b11be50253db",
 		"8.5.8":  "6ebc55e52af4396385e689f7af0f28944fbbf966843433b573e9dc1dc03df539",
@@ -340,6 +342,74 @@ func TestRegistryRepository_Get_Perl(t *testing.T) {
 	}
 	if !strings.HasSuffix(got.URL, ".tar.gz") {
 		t.Fatalf("Get(perl, 5.42.1).URL = %q, want .tar.gz suffix", got.URL)
+	}
+}
+
+func TestRegistryRepository_Get_CURL_ArcheologyURL(t *testing.T) {
+	repo := NewRegistryRepository()
+
+	// curl <= 7.29.0 is only hosted under /download/archeology/ on curl.se;
+	// the flat /download/ path returns 404 for those releases.
+	for _, version := range []string{"7.12.0", "7.20.0"} {
+		got, err := repo.Get("curl", version, false, "")
+		if err != nil {
+			t.Fatalf("Get(curl, %s) returned error: %v", version, err)
+		}
+		want := "https://curl.se/download/archeology/curl-" + version + ".tar.gz"
+		if got.URL != want {
+			t.Errorf("Get(curl, %s).URL = %q, want %q", version, got.URL, want)
+		}
+	}
+
+	// Modern releases stay on the flat /download/ path. (7.30.0–7.54.x also
+	// resolve flat, but those versions are not currently listed in the registry;
+	// the oldest flat-path version listed is 7.80.0.)
+	for _, version := range []string{"7.80.0", "8.10.1"} {
+		got, err := repo.Get("curl", version, false, "")
+		if err != nil {
+			t.Fatalf("Get(curl, %s) returned error: %v", version, err)
+		}
+		want := "https://curl.se/download/curl-" + version + ".tar.gz"
+		if got.URL != want {
+			t.Errorf("Get(curl, %s).URL = %q, want %q", version, got.URL, want)
+		}
+	}
+}
+
+func TestRegistryRepository_Get_CURL_Checksums(t *testing.T) {
+	repo := NewRegistryRepository()
+
+	wantChecksums := map[string]string{
+		"7.20.0": "e12d06b551c5c9d3420b0eda20eb2861a6daab032c4d6d8fab07b56f34c8a848",
+		"7.12.0": "43dcb0419453e48d6b4f3883e80a55de5da5811c0a519133f10bcc59d9412e07",
+	}
+	for version, want := range wantChecksums {
+		got, err := repo.Get("curl", version, true, "")
+		if err != nil {
+			t.Fatalf("Get(curl, %s, checksum=true) returned error: %v", version, err)
+		}
+		if got.ChecksumType != "sha256" {
+			t.Errorf("curl %s ChecksumType = %q, want sha256", version, got.ChecksumType)
+		}
+		if got.ChecksumValue != want {
+			t.Errorf("curl %s ChecksumValue = %q, want %q", version, got.ChecksumValue, want)
+		}
+	}
+}
+
+func TestRegistryRepository_CURL_7_12_1_Removed(t *testing.T) {
+	repo := NewRegistryRepository()
+
+	// curl 7.12.1 was never published on curl.se (not even in the archeology
+	// archive), so the registry must not offer it as a downloadable version.
+	entries, err := repo.List("curl", false, "")
+	if err != nil {
+		t.Fatalf("List(curl) returned error: %v", err)
+	}
+	for _, e := range entries {
+		if e.Version == "7.12.1" {
+			t.Fatal("List(curl) contains 7.12.1, which is not downloadable from curl.se")
+		}
 	}
 }
 

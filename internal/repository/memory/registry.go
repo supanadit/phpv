@@ -2,6 +2,7 @@ package memory
 
 import (
 	"fmt"
+	"runtime"
 
 	"github.com/supanadit/phpv/domain"
 )
@@ -23,8 +24,8 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				domain.BuildMinorRanges(8, []domain.MinorRange{
 					{Minor: 0, PatchEnd: 30},
 					{Minor: 1, PatchEnd: 33},
-					{Minor: 2, PatchEnd: 33},
-					{Minor: 3, PatchEnd: 33},
+					{Minor: 2, PatchEnd: 35},
+					{Minor: 3, PatchEnd: 36},
 					{Minor: 4, PatchEnd: 27},
 					{Minor: 5, PatchEnd: 12},
 				}),
@@ -67,6 +68,16 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 						Version: "8.4.27",
 						Type:    "sha256",
 						Value:   "5bafed9994c1a49796b25b5f61c22c9183bfe046b6acc7b363842d03c77f972f",
+					},
+					{
+						Version: "8.3.36",
+						Type:    "sha256",
+						Value:   "c93f3441f87f6ab156bef4432db215d7e61ca2c0183bb3a2aa28d9886ab59f53",
+					},
+					{
+						Version: "8.2.35",
+						Type:    "sha256",
+						Value:   "9db4204f0a2d1911277ae832185e07bb4c3b3559772753a70d2968ca346d6910",
 					},
 					{
 						Version: "8.5.10",
@@ -218,9 +229,19 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				"7.88.1", "7.88.0", "7.87.0", "7.86.0", "7.85.0", "7.84.0",
 				"7.83.0", "7.82.0", "7.81.0", "7.80.0",
 				"7.20.0",
-				"7.12.1", "7.12.0",
+				"7.12.0",
 			},
 			URLTemplate: "https://curl.se/download/curl-{version}.tar.gz",
+			// curl.se keeps releases <= 7.29.0 only under /download/archeology/;
+			// the flat /download/ path returns 404 for them (verified 7.30.0 is
+			// the oldest version still served from /download/).
+			URLOverrides: []URLOverride{
+				{Before: "7.30.0", URL: "https://curl.se/download/archeology/curl-{version}.tar.gz"},
+			},
+			Checksums: []Checksum{
+				{Version: "7.20.0", Type: "sha256", Value: "e12d06b551c5c9d3420b0eda20eb2861a6daab032c4d6d8fab07b56f34c8a848"},
+				{Version: "7.12.0", Type: "sha256", Value: "43dcb0419453e48d6b4f3883e80a55de5da5811c0a519133f10bcc59d9412e07"},
+			},
 		})
 
 	case "m4":
@@ -322,6 +343,28 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 			URLTemplate: "https://github.com/skvadrik/re2c/releases/download/{version}/re2c-{version}.tar.xz",
 		})
 
+	case "pcre2":
+		result = BuildRegistries(PackageConfig{
+			Name: "pcre2",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"10.44", "10.43", "10.42",
+			},
+			URLTemplate: "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-{version}/pcre2-{version}.tar.gz",
+		})
+
+	case "expat":
+		result = BuildRegistries(PackageConfig{
+			Name: "expat",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"2.6.3", "2.6.2",
+			},
+			URLTemplate: "https://github.com/libexpat/libexpat/releases/download/R_{major}_{minor}_{patch}/expat-{version}.tar.gz",
+		})
+
 	case "icu":
 		result = BuildRegistries(PackageConfig{
 			Name: "icu",
@@ -349,6 +392,70 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 			Checksums: []Checksum{
 				{Version: "0.14.0", Type: "sha256", Value: "bd4c07e9dfe142d13f1a37ec7c0537e3c6c8c05f4d80c8e5f2d20e0a9c53c1be"},
 			},
+		})
+
+	case "caddy":
+		// Caddy publishes a prebuilt static binary per OS/arch. The
+		// {os}/{arch} placeholders render to runtime.GOOS/GOARCH at
+		// registry build time (OS is set to runtime.GOOS so non-matching
+		// platforms simply see no entries).
+		result = BuildRegistries(PackageConfig{
+			Name: "caddy",
+			Type: "binary",
+			OS:   runtime.GOOS,
+			Versions: []string{
+				"2.10.2", "2.10.1", "2.10.0",
+				"2.8.4", "2.8.3",
+			},
+			URLTemplate: "https://github.com/caddyserver/caddy/releases/download/v{version}/caddy_{version}_{os}_{arch}.tar.gz",
+			Checksums: []Checksum{
+				{Version: "2.10.2", Type: "sha256", Value: "5c218bc34c9197369263da7e9317a83acdbd80ef45d94dca5eff76e727c67cdd"},
+			},
+		})
+
+	case "nginx":
+		result = BuildRegistries(PackageConfig{
+			Name: "nginx",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"1.28.0", "1.27.4",
+				"1.26.3", "1.26.2",
+			},
+			URLTemplate: "https://nginx.org/download/nginx-{version}.tar.gz",
+		})
+
+	case "httpd":
+		result = BuildRegistries(PackageConfig{
+			Name: "httpd",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"2.4.62", "2.4.61",
+			},
+			URLTemplate: "https://archive.apache.org/dist/httpd/httpd-{version}.tar.gz",
+		})
+
+	case "apr":
+		result = BuildRegistries(PackageConfig{
+			Name: "apr",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"1.7.4", "1.7.2",
+			},
+			URLTemplate: "https://archive.apache.org/dist/apr/apr-{version}.tar.gz",
+		})
+
+	case "apr-util":
+		result = BuildRegistries(PackageConfig{
+			Name: "apr-util",
+			Type: "source_code",
+			OS:   "all",
+			Versions: []string{
+				"1.6.3",
+			},
+			URLTemplate: "https://archive.apache.org/dist/apr/apr-util-{version}.tar.gz",
 		})
 
 	default:

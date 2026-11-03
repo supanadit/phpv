@@ -56,6 +56,10 @@ func NewRootCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "phpv",
 		Short: "PHP version manager",
+		// Runtime failures are not usage mistakes: print the error once
+		// (main does that) instead of dumping the flag reference too.
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 }
 

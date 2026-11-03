@@ -43,10 +43,17 @@ func (h *PHPHandler) extensionCmd() *cobra.Command {
 		Short: "Install one or more extensions",
 		Long: `Install one or more extensions for a PHP version.
 
+Bundled extensions (gd, pdo_pgsql, ...) are built from the PHP source tree.
+Non-bundled extensions (xdebug, redis, apcu, ...) are resolved from
+pecl.php.net against the target PHP version's compatibility range, built,
+verified to load, and enabled.
+
 Without --version, the extension is installed into the active PHP version.
 Examples:
   phpv extension add pdo_pgsql                # active version
-  phpv extension add gd intl --version 8.4    # specific version`,
+  phpv extension add gd intl --version 8.4    # specific version
+  phpv extension add xdebug --ini xdebug.mode=debug
+  phpv extension add xdebug --dry-run         # show the resolved release`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: h.extensionAdd,
 	}
@@ -56,6 +63,7 @@ Examples:
 	extCmd.Flags().Bool("no-system", false, "Skip system package check, always build from source")
 	extCmd.Flags().Bool("dry-run", false, "Show what would be done without doing it")
 	extCmd.Flags().String("version", "", "PHP version to install into (defaults to the active version)")
+	extCmd.Flags().StringArray("ini", nil, "INI setting to add after install (key=value, repeatable)")
 	cmd.AddCommand(extCmd)
 
 	removeCmd := &cobra.Command{
@@ -304,6 +312,11 @@ func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
 	noSystem, _ := cmd.Flags().GetBool("no-system")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 
+	iniSettings, err := parseINITFlags(cmd)
+	if err != nil {
+		return err
+	}
+
 	tc, err := h.selectToolchain("")
 	if err != nil {
 		return err
@@ -315,24 +328,6 @@ func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
 		}
 		if err := h.checkBuildTools(tc, autoDeps, dryRun); err != nil {
 			return err
-		}
-	}
-
-	if dryRun {
-		fmt.Println("Dry run complete. Run without --dry-run to install.")
-		return nil
-	}
-
-	sourceDir := h.siloSvc.SourcePath("php", version)
-	srcPath := source.Find(sourceDir, "php")
-	if srcPath == "" {
-		fmt.Printf("PHP source not found, downloading PHP %s source...\n", version)
-		if err := h.downloadPHPSource(version); err != nil {
-			return fmt.Errorf("download PHP source: %w", err)
-		}
-		srcPath = source.Find(sourceDir, "php")
-		if srcPath == "" {
-			return fmt.Errorf("PHP source not found at %s after download", sourceDir)
 		}
 	}
 
@@ -368,18 +363,119 @@ func (h *PHPHandler) extensionAdd(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Bundled extensions need the PHP source tree; resolve it lazily so a
+	// pure-PECL request never downloads PHP source.
+	srcPath := ""
+	resolveSource := func() (string, error) {
+		if srcPath != "" {
+			return srcPath, nil
+		}
+		sourceDir := h.siloSvc.SourcePath("php", version)
+		srcPath = source.Find(sourceDir, "php")
+		if srcPath == "" {
+			fmt.Printf("PHP source not found, downloading PHP %s source...\n", version)
+			if err := h.downloadPHPSource(version); err != nil {
+				return "", fmt.Errorf("download PHP source: %w", err)
+			}
+			srcPath = source.Find(sourceDir, "php")
+			if srcPath == "" {
+				return "", fmt.Errorf("PHP source not found at %s after download", sourceDir)
+			}
+		}
+		return srcPath, nil
+	}
+
+	dryRunPrinted := false
 	for _, ext := range extNames {
 		if installed[ext] {
 			fmt.Printf("↷ %s already installed, skipping\n", ext)
 			continue
 		}
-		fmt.Printf("Building extension %s...\n", ext)
-		if err := h.assemblerSvc.InstallExtension(h.ctx, version, ext, srcPath, prefix, jobs); err != nil {
-			return fmt.Errorf("install extension %s: %w", ext, err)
+
+		// Route: graph-known extensions are bundled (build from the PHP
+		// source tree); anything else comes from pecl.php.net with version
+		// compatibility.
+		_, knownBundled := h.assemblerSvc.GetExtensionDef(ext)
+		if knownBundled {
+			if dryRun {
+				fmt.Printf("Would build bundled extension %s from PHP %s source\n", ext, version)
+				dryRunPrinted = true
+				continue
+			}
+			src, err := resolveSource()
+			if err != nil {
+				return err
+			}
+			extDir := filepath.Join(src, "ext", ext)
+			if _, err := os.Stat(extDir); os.IsNotExist(err) {
+				return fmt.Errorf("extension %q is a bundled extension but was not found in the PHP source tree at %s", ext, extDir)
+			}
+			fmt.Printf("Building extension %s...\n", ext)
+			if err := h.assemblerSvc.InstallExtension(h.ctx, version, ext, src, prefix, jobs); err != nil {
+				return fmt.Errorf("install extension %s: %w", ext, err)
+			}
+			fmt.Printf("✓ %s installed\n", ext)
+			continue
 		}
-		fmt.Printf("✓ %s installed\n", ext)
+
+		if dryRun {
+			rel, err := h.peclSvc.ResolveCompatibleRelease(ext, version)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Would install PECL extension %s %s for PHP %s\n", ext, rel, version)
+			dryRunPrinted = true
+			continue
+		}
+		fmt.Printf("Installing PECL extension %s (resolving compatible release for PHP %s)...\n", ext, version)
+		res, err := h.peclSvc.InstallCompatible(h.ctx, ext, version, jobs, iniSettings)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("✓ %s %s installed (PECL)\n", res.Name, res.Version)
+		h.printExtensionHint(ext)
 	}
+	if dryRun {
+		fmt.Println("Dry run complete. Run without --dry-run to install.")
+	}
+	_ = dryRunPrinted
 	return nil
+}
+
+// parseINITFlags reads the repeatable --ini key=value flag and validates
+// each entry: non-empty key, no whitespace, exactly one '='.
+func parseINITFlags(cmd *cobra.Command) ([]string, error) {
+	raw, _ := cmd.Flags().GetStringArray("ini")
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, s := range raw {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		eq := strings.Index(s, "=")
+		if eq <= 0 {
+			return nil, fmt.Errorf("invalid --ini setting %q: expected key=value (e.g. xdebug.mode=debug)", s)
+		}
+		key := s[:eq]
+		if strings.ContainsAny(key, " \t") {
+			return nil, fmt.Errorf("invalid --ini key %q: keys must not contain whitespace", key)
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+// printExtensionHint prints a short, informational post-install hint for
+// extensions that commonly need one more step. No files are written.
+func (h *PHPHandler) printExtensionHint(ext string) {
+	switch ext {
+	case "xdebug":
+		fmt.Println("ℹ xdebug is disabled by default until xdebug.mode is set, e.g.:")
+		fmt.Println("    phpv extension add xdebug --ini xdebug.mode=debug")
+	}
 }
 
 func (h *PHPHandler) downloadPHPSource(version string) error {

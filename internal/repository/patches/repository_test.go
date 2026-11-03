@@ -3,6 +3,7 @@ package patches
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -143,7 +144,41 @@ func TestRangeMatchNoMatchAndOrdering(t *testing.T) {
 
 func TestPatchesForNoTreeIsEmptyNotError(t *testing.T) {
 	repo := NewRepository(filepath.Join(t.TempDir(), "does-not-exist"), "")
-	if got := repo.PatchesFor("php", "8.0.30"); len(got) != 0 {
-		t.Errorf("missing tree returned %v, want empty", got)
+	if got := repo.PatchesFor("php", "8.0.0"); len(got) != 0 {
+		t.Fatalf("PatchesFor on missing tree = %d patches, want 0", len(got))
+	}
+}
+
+// TestPublishedCurlLegacyRangeHasEraCFlags reads the real publication tree
+// (../../..//patches) and verifies the legacy-curl range directory selects
+// era CFLAGS for the archeology-era versions while leaving modern releases
+// untouched. Without -std=gnu89 (or equivalent), GCC 14+ rejects curl 7.2x's
+// K&R conftest programs (implicit-int main) and configure aborts with
+// "libs available at link-time are not available run-time".
+func TestPublishedCurlLegacyRangeHasEraCFlags(t *testing.T) {
+	pubRoot := filepath.Join("..", "..", "..", "patches")
+	if _, err := os.Stat(pubRoot); err != nil {
+		t.Skipf("publication tree not found at %s: %v", pubRoot, err)
+	}
+	repo := NewRepository(pubRoot, "")
+
+	legacy := repo.PatchesFor("curl", "7.20.0")
+	var cflags []string
+	for _, p := range legacy {
+		cflags = append(cflags, p.ExtraCFlags...)
+	}
+	joined := strings.Join(cflags, " ")
+	if !strings.Contains(joined, "-std=gnu89") {
+		t.Errorf("curl 7.20.0 ExtraCFlags = %q, want -std=gnu89 (GCC 14+ K&R conftest compat)", joined)
+	}
+
+	for _, modern := range []string{"7.80.0", "8.10.1"} {
+		var modernFlags []string
+		for _, p := range repo.PatchesFor("curl", modern) {
+			modernFlags = append(modernFlags, p.ExtraCFlags...)
+		}
+		if joined := strings.Join(modernFlags, " "); strings.Contains(joined, "-std=gnu89") {
+			t.Errorf("curl %s should not receive legacy era flags, got %q", modern, joined)
+		}
 	}
 }

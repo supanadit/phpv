@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/supanadit/phpv/assembler"
@@ -84,6 +83,8 @@ type ShimService interface {
 // PECLService is the set of PECL operations the terminal handler needs.
 type PECLService interface {
 	Install(ctx context.Context, source, phpVersion string, jobs int) (*pecl.InstallResult, error)
+	InstallCompatible(ctx context.Context, name, phpVersion string, jobs int, extraINI []string) (*pecl.InstallResult, error)
+	ResolveCompatibleRelease(name, phpVersion string) (string, error)
 	List(phpVersion string) ([]domain.ExtensionState, error)
 	Uninstall(name, phpVersion string) error
 }
@@ -157,6 +158,7 @@ func NewPHPHandler(rootCmd *cobra.Command, lc fx.Lifecycle, siloSvc SiloService,
 	rootCmd.AddCommand(h.initCmd())
 	rootCmd.AddCommand(h.rehashCmd())
 	rootCmd.AddCommand(h.pharCmd())
+	rootCmd.AddCommand(h.serverCmd())
 	rootCmd.AddCommand(h.autoDetectResolveCmd())
 	rootCmd.AddCommand(h.peclCmd())
 	rootCmd.AddCommand(h.uninstallCmd())
@@ -463,42 +465,9 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	progressCh := make(chan progressMsg, 64)
-	doneCh := make(chan struct{})
-
-	go func() {
-		defer close(doneCh)
-		var current string
-		ticker := time.NewTicker(80 * time.Millisecond)
-		defer ticker.Stop()
-		frame := 0
-		for {
-			select {
-			case msg, ok := <-progressCh:
-				if !ok {
-					return
-				}
-				glyph := stageGlyph(msg.stage)
-				if msg.stage == "done" {
-					fmt.Fprintf(os.Stdout, "\r\033[2K%s %s\n", glyph, msg.message)
-				} else {
-					current = fmt.Sprintf("%s %s", glyph, msg.message)
-					fmt.Fprintf(os.Stdout, "\r\033[2K%s %s", spinnerFrames[frame%len(spinnerFrames)], current)
-				}
-			case <-ticker.C:
-				if current != "" {
-					fmt.Fprintf(os.Stdout, "\r\033[2K%s %s", spinnerFrames[frame%len(spinnerFrames)], current)
-				}
-				frame++
-			}
-		}
-	}()
-
-	result, err := h.assemblerSvc.Assemble(h.ctx, "php", version, static, extensions, false, func(stage, message string) {
-		progressCh <- progressMsg{stage: stage, message: message}
-	}, systemPkgs, jobs, force, tc)
-	close(progressCh)
-	<-doneCh
+	progress, stopProgress := newProgressReporter()
+	result, err := h.assemblerSvc.Assemble(h.ctx, "php", version, static, extensions, false, progress, systemPkgs, jobs, force, tc)
+	stopProgress()
 
 	if err != nil {
 		fmt.Println()
@@ -1252,45 +1221,6 @@ func (h *PHPHandler) autoDetectResolveCmd() *cobra.Command {
 			fmt.Println(exact)
 			return nil
 		},
-	}
-}
-
-// progressMsg is sent by the assembler through a progress callback.
-type progressMsg struct {
-	stage   string
-	message string
-}
-
-// spinnerFrames are the animation frames for the spinner.
-var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-
-// stageGlyph returns a short glyph for the given stage.
-func stageGlyph(stage string) string {
-	switch stage {
-	case "resolve":
-		return "→"
-	case "deps":
-		return "→"
-	case "download":
-		return "↓"
-	case "build":
-		return "⚙"
-	case "configure":
-		return "⚙"
-	case "make":
-		return "⚙"
-	case "install":
-		return "↑"
-	case "skip":
-		return "↷"
-	case "patch":
-		return "✎"
-	case "error":
-		return "✗"
-	case "done":
-		return "✓"
-	default:
-		return "·"
 	}
 }
 

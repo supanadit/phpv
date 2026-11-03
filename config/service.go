@@ -4,14 +4,19 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/supanadit/phpv/domain"
 )
 
 type Data struct {
-	CacheDir     string `toml:"cache_dir,omitempty"`
-	Concurrency  int    `toml:"concurrency,omitempty"`
-	Compiler     string `toml:"compiler,omitempty"`
-	Mirror       string `toml:"mirror,omitempty"`
-	StaticLibGCC bool   `toml:"static_libgcc,omitempty"`
+	CacheDir      string `toml:"cache_dir,omitempty"`
+	Concurrency   int    `toml:"concurrency,omitempty"`
+	Compiler      string `toml:"compiler,omitempty"`
+	Mirror        string `toml:"mirror,omitempty"`
+	StaticLibGCC  bool   `toml:"static_libgcc,omitempty"`
+	Server        string `toml:"server,omitempty"`
+	ServerVersion string `toml:"server_version,omitempty"`
+	ServerSAPI    string `toml:"server_sapi,omitempty"`
 }
 
 type ConfigRepository interface {
@@ -32,6 +37,9 @@ var knownKeys = []keyDef{
 	{key: "compiler", typ: "string", desc: "C compiler used for builds (e.g., gcc, clang, zig)"},
 	{key: "mirror", typ: "string", desc: "PHP download mirror URL"},
 	{key: "static_libgcc", typ: "bool", desc: "Statically link libgcc in static builds"},
+	{key: "server", typ: "string", desc: "Global default webserver for `phpv server run` (caddy, nginx, apache)"},
+	{key: "server_version", typ: "string", desc: "Default webserver version for `phpv server run`"},
+	{key: "server_sapi", typ: "string", desc: "Global default PHP SAPI for `phpv server run` (fpm, modphp)"},
 }
 
 var knownMap map[string]keyDef
@@ -88,6 +96,12 @@ func (s *Service) Get(key string) (string, error) {
 			return s.data.Compiler, nil
 		case "mirror":
 			return s.data.Mirror, nil
+		case "server":
+			return s.data.Server, nil
+		case "server_version":
+			return s.data.ServerVersion, nil
+		case "server_sapi":
+			return s.data.ServerSAPI, nil
 		}
 	case "int":
 		switch key {
@@ -131,6 +145,18 @@ func (s *Service) Set(key, value string) error {
 			s.data.Compiler = value
 		case "mirror":
 			s.data.Mirror = value
+		case "server":
+			if !domain.IsValidServerName(value) {
+				return fmt.Errorf("invalid server %q (available: %s)", value, strings.Join(domain.ServerNames(), ", "))
+			}
+			s.data.Server = value
+		case "server_version":
+			s.data.ServerVersion = value
+		case "server_sapi":
+			if value != "fpm" && value != "modphp" {
+				return fmt.Errorf("invalid SAPI %q (available: fpm, modphp)", value)
+			}
+			s.data.ServerSAPI = value
 		}
 	case "int":
 		n, err := parseInt(value)
@@ -178,6 +204,10 @@ func (s *Service) List() ([]string, error) {
 				v = s.data.Compiler
 			case "mirror":
 				v = s.data.Mirror
+			case "server":
+				v = s.data.Server
+			case "server_version":
+				v = s.data.ServerVersion
 			}
 		case "int":
 			switch k.key {

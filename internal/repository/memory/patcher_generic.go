@@ -1,4 +1,4 @@
-package repository
+package memory
 
 import (
 	"strconv"
@@ -6,6 +6,9 @@ import (
 
 	"github.com/supanadit/phpv/domain"
 )
+
+// FlagCatalog is the built-in, in-memory source of compiler and configure flag rules.
+type FlagCatalog struct{}
 
 type compilerFlagRule struct {
 	Compiler  string
@@ -173,7 +176,7 @@ func versionLE(v string, max string) bool {
 	return vmin <= mmin
 }
 
-func GetCompilerFlagCandidates(compiler string, phpVersion string) []domain.CompilerFlagDef {
+func (f *FlagCatalog) CompilerFlagCandidates(compiler string, phpVersion string) []domain.CompilerFlagDef {
 	for _, rule := range compilerFlagRuleCandidates {
 		if rule.Compiler != compiler {
 			continue
@@ -189,8 +192,8 @@ func GetCompilerFlagCandidates(compiler string, phpVersion string) []domain.Comp
 	return nil
 }
 
-func GetCompilerFlags(compiler string, phpVersion string) []string {
-	candidates := GetCompilerFlagCandidates(compiler, phpVersion)
+func (f *FlagCatalog) CompilerFlags(compiler string, phpVersion string) []string {
+	candidates := f.CompilerFlagCandidates(compiler, phpVersion)
 	result := make([]string, len(candidates))
 	for i, c := range candidates {
 		result[i] = c.Flag
@@ -198,7 +201,7 @@ func GetCompilerFlags(compiler string, phpVersion string) []string {
 	return result
 }
 
-func GetCompilerStdRule(phpVersion string) domain.CompilerRule {
+func (f *FlagCatalog) CompilerStdRule(phpVersion string) domain.CompilerRule {
 	for _, rule := range cstdRules {
 		minOK := rule.MinPHP == "" || versionGE(phpVersion, rule.MinPHP)
 		maxOK := rule.MaxPHP == "" || versionLE(phpVersion, rule.MaxPHP)
@@ -212,3 +215,9 @@ func GetCompilerStdRule(phpVersion string) domain.CompilerRule {
 	}
 	return domain.CompilerRule{CStd: "-std=gnu11", CXXStd: "-std=gnu++17"}
 }
+
+// NewFlagCatalog returns the built-in in-memory flag catalog.
+func NewFlagCatalog() *FlagCatalog { return &FlagCatalog{} }
+
+func getCompilerStdRule(v string) domain.CompilerRule { return (&FlagCatalog{}).CompilerStdRule(v) }
+func getCompilerFlags(c, v string) []string           { return (&FlagCatalog{}).CompilerFlags(c, v) }

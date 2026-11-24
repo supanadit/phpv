@@ -1,8 +1,6 @@
 package memory
 
 import (
-	"github.com/supanadit/phpv/internal/repository"
-
 	vsn "github.com/supanadit/phpv/pkg/version"
 
 	"github.com/supanadit/phpv/domain"
@@ -24,7 +22,7 @@ import (
 func (r *GraphRepository) DefaultExtensions(phpVersion string) ([]string, []string) {
 	var included []string
 	var skipped []string
-	for _, name := range repository.DefaultExtensionCandidates {
+	for _, name := range DefaultExtensionCandidates {
 		def, ok := r.extensions[name]
 		if !ok {
 			skipped = append(skipped, name+" (not found in registry)")
@@ -167,11 +165,11 @@ func (r *GraphRepository) GetExtensionConfigureFlags(name string, phpVersion str
 }
 
 func (r *GraphRepository) GetCompilerStdRule(phpVersion string) domain.CompilerRule {
-	return repository.GetCompilerStdRule(phpVersion)
+	return getCompilerStdRule(phpVersion)
 }
 
 func (r *GraphRepository) GetCompilerFlags(compiler, phpVersion string) []string {
-	return repository.GetCompilerFlags(compiler, phpVersion)
+	return getCompilerFlags(compiler, phpVersion)
 }
 
 // getDependencies returns the dependency list for a package at a specific version.

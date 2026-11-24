@@ -82,6 +82,9 @@ func (m *mockGraphRepo) GetPHPConfigureFlags(phpVersion string, extensions []str
 func (m *mockGraphRepo) GetExtensionConfigureFlags(name string, phpVersion string) []string {
 	return nil
 }
+func (m *mockGraphRepo) CompilerFlags(c, v string) []string           { return nil }
+func (m *mockGraphRepo) CompilerStdRule(v string) domain.CompilerRule { return m.GetCompilerStdRule(v) }
+
 func (m *mockGraphRepo) GetCompilerStdRule(phpVersion string) domain.CompilerRule {
 	return domain.CompilerRule{CStd: "-std=gnu11", CXXStd: "-std=gnu++17"}
 }
@@ -95,7 +98,7 @@ func TestService_GetBuildPlan(t *testing.T) {
 			{Name: "openssl", Version: "1.1.1w"},
 		},
 	}
-	svc := NewService(mock, mock)
+	svc := NewService(mock, mock, mock)
 
 	plan, err := svc.GetBuildPlan("php", "8.4.0", nil, "")
 	if err != nil {
@@ -134,7 +137,7 @@ func TestService_GetBuildPlan_WithExtensions(t *testing.T) {
 			},
 		},
 	}
-	svc := NewService(mock, mock)
+	svc := NewService(mock, mock, mock)
 
 	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"openssl", "curl"}, "")
 	if err != nil {
@@ -167,7 +170,7 @@ func TestService_GetBuildPlan_Minimal_NoDeps(t *testing.T) {
 	mock := &mockGraphRepo{
 		deps: []domain.Dependency{},
 	}
-	svc := NewService(mock, mock)
+	svc := NewService(mock, mock, mock)
 
 	plan, err := svc.GetBuildPlan("php", "8.4.0", nil, "")
 	if err != nil {
@@ -179,7 +182,7 @@ func TestService_GetBuildPlan_Minimal_NoDeps(t *testing.T) {
 }
 
 func TestService_GetBuildPlan_UnknownCompiler(t *testing.T) {
-	svc := NewService(&mockGraphRepo{}, &mockGraphRepo{})
+	svc := NewService(&mockGraphRepo{}, &mockGraphRepo{}, &mockGraphRepo{})
 
 	if _, err := svc.GetBuildPlan("php", "8.4.0", nil, "tcc"); err == nil {
 		t.Fatal("expected an error for an unregistered compiler")
@@ -198,7 +201,7 @@ func TestService_GetBuildPlan_DedupConflictingVersions(t *testing.T) {
 			"ext2": {"openssl", "1.0.1u|>=0.9.8,<1.2.0", true},
 		},
 	}
-	svc := NewService(mock, mock)
+	svc := NewService(mock, mock, mock)
 
 	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"ext1", "ext2"}, "")
 	if err != nil {
@@ -222,7 +225,7 @@ func TestService_GetOrderedDependencies(t *testing.T) {
 			{Name: "zlib", Version: "1.2.13"},
 		},
 	}
-	svc := NewService(mock, mock)
+	svc := NewService(mock, mock, mock)
 
 	deps, err := svc.GetOrderedDependencies("php", "8.4.0")
 	if err != nil {

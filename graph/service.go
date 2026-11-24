@@ -54,16 +54,23 @@ type ExtensionSource interface {
 	GetExtensionDependencyWithVersion(extName, phpVersion string) (string, string, bool)
 }
 
+// FlagSource is the compiler-flag capability graph consumes from patcher.
+type FlagSource interface {
+	CompilerFlags(compiler, phpVersion string) []string
+	CompilerStdRule(phpVersion string) domain.CompilerRule
+}
+
 // Service wraps GraphRepository and adds value by consolidating
 // multiple queries into a single GetBuildPlan call.
 type Service struct {
 	repo GraphRepository
+	FlagSource
 	ExtensionSource
 }
 
 // NewService creates a graph service backed by the given repository.
-func NewService(repo GraphRepository, ext ExtensionSource) *Service {
-	return &Service{repo: repo, ExtensionSource: ext}
+func NewService(repo GraphRepository, flags FlagSource, ext ExtensionSource) *Service {
+	return &Service{repo: repo, FlagSource: flags, ExtensionSource: ext}
 }
 
 // GetBuildPlan returns everything needed to build (name, version) in one call.
@@ -96,8 +103,8 @@ func (s *Service) GetBuildPlan(name string, version string, extensions []string,
 	} else {
 		configureFlags = s.repo.GetConfigureFlags(name, version)
 	}
-	cflags := s.repo.GetCompilerFlags(tc.Name, version)
-	compilerRule := s.repo.GetCompilerStdRule(version)
+	cflags := s.FlagSource.CompilerFlags(tc.Name, version)
+	compilerRule := s.FlagSource.CompilerStdRule(version)
 	var cCompilerFlags []string
 	var cxxCompilerFlags []string
 	// Era flags first, then the language standard last so the C standard is the
@@ -268,12 +275,12 @@ func (s *Service) GetConfigureFlags(name string, version string) []string {
 
 // GetCompilerStdRule returns C/C++ compiler standard flags for a PHP version.
 func (s *Service) GetCompilerStdRule(phpVersion string) domain.CompilerRule {
-	return s.repo.GetCompilerStdRule(phpVersion)
+	return s.FlagSource.CompilerStdRule(phpVersion)
 }
 
 // GetCompilerFlags returns C compiler flags for a specific compiler and PHP version.
 func (s *Service) GetCompilerFlags(compiler string, phpVersion string) []string {
-	return s.repo.GetCompilerFlags(compiler, phpVersion)
+	return s.FlagSource.CompilerFlags(compiler, phpVersion)
 }
 
 // CXXFlagsFromCFlagsWithStd converts a set of C compiler flags into their C++

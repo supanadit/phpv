@@ -1,13 +1,10 @@
-package repository
+package memory
 
-type configureFlagRule struct {
-	MinVer string
-	MaxVer string
-	Flags  []string
-	Needs  string
-}
+import "github.com/supanadit/phpv/domain"
 
-var ConfigureFlagRules = map[string][]configureFlagRule{
+type ConfigureFlagRule = domain.ConfigureFlagRule
+
+var ConfigureFlagRules = map[string][]ConfigureFlagRule{
 	"openssl": {
 		{MaxVer: "1.0.2", Flags: []string{"shared", "no-ssl3"}},
 		{MinVer: "1.1.0", Flags: []string{"shared", "no-ssl3", "no-tests"}},
@@ -77,4 +74,11 @@ var DefaultExtensionCandidates = []string{
 	"pdo", "pdo_mysql", "pdo_sqlite", "phar", "session",
 	"simplexml", "sqlite3", "tokenizer", "xml", "xmlreader",
 	"xmlwriter", "zip", "zlib",
+}
+
+func (f *FlagCatalog) ConfigureFlagRules(name string) []ConfigureFlagRule {
+	return ConfigureFlagRules[name]
+}
+func (f *FlagCatalog) DefaultExtensionCandidates() []string {
+	return append([]string(nil), DefaultExtensionCandidates...)
 }

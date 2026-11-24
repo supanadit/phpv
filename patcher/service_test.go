@@ -2,6 +2,8 @@ package patcher
 
 import (
 	"testing"
+
+	"github.com/supanadit/phpv/domain"
 )
 
 type mockPatcherRepo struct {
@@ -20,7 +22,7 @@ func TestService_PatchesFor_FiltersByVersion(t *testing.T) {
 			{Name: "always", VersionRange: ""},
 		},
 	}
-	svc := NewService(mock)
+	svc := NewService(mock, &testFlags{})
 
 	patches := svc.PatchesFor("php", "8.3.0")
 	if len(patches) != 3 {
@@ -50,7 +52,7 @@ func TestService_Prepare_AppliesPatches(t *testing.T) {
 			},
 		},
 	}
-	svc := NewService(mock)
+	svc := NewService(mock, &testFlags{})
 
 	result, err := svc.Prepare("php", "8.3.0", "/src")
 	if err != nil {
@@ -72,7 +74,7 @@ func TestService_Prepare_AppliesPatches(t *testing.T) {
 
 func TestService_Prepare_NoPatches(t *testing.T) {
 	mock := &mockPatcherRepo{patches: nil}
-	svc := NewService(mock)
+	svc := NewService(mock, &testFlags{})
 
 	result, err := svc.Prepare("php", "8.3.0", "/src")
 	if err != nil {
@@ -82,3 +84,10 @@ func TestService_Prepare_NoPatches(t *testing.T) {
 		t.Fatalf("expected 0 applied, got %d", len(result.Applied))
 	}
 }
+
+type testFlags struct{}
+
+func (t *testFlags) CompilerFlags(c, v string) []string                     { return nil }
+func (t *testFlags) CompilerStdRule(v string) domain.CompilerRule           { return domain.CompilerRule{} }
+func (t *testFlags) ConfigureFlagRules(n string) []domain.ConfigureFlagRule { return nil }
+func (t *testFlags) DefaultExtensionCandidates() []string                   { return nil }

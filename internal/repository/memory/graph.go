@@ -3,8 +3,6 @@ package memory
 import (
 	"fmt"
 
-	"github.com/supanadit/phpv/internal/repository"
-
 	vsn "github.com/supanadit/phpv/pkg/version"
 
 	"github.com/supanadit/phpv/domain"
@@ -229,7 +227,7 @@ func (r *GraphRepository) ExpandImplied(extensions []string) ([]string, []string
 }
 
 func (r *GraphRepository) GetConfigureFlags(name, version string) []string {
-	rules, ok := repository.ConfigureFlagRules[name]
+	rules, ok := ConfigureFlagRules[name]
 	if !ok {
 		return nil
 	}

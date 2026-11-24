@@ -16,16 +16,40 @@ type PatcherRepository interface {
 // PreparedPatches holds the result of preparing patches for a package.
 type PreparedPatches = domain.PreparedPatches
 
+// FlagCatalog is the swappable source of compiler and configure flag rules.
+// The built-in catalog lives in the memory driver; a REST or SQL driver can
+// replace it without changing this module.
+type FlagCatalog interface {
+	CompilerFlags(compiler, phpVersion string) []string
+	CompilerStdRule(phpVersion string) domain.CompilerRule
+	ConfigureFlagRules(name string) []domain.ConfigureFlagRule
+	DefaultExtensionCandidates() []string
+}
+
 // Service wraps PatcherRepository and adds value by filtering patches
 // by version constraint and providing a high-level Prepare method that
 // applies patches and returns combined flags.
 type Service struct {
-	repo PatcherRepository
+	repo  PatcherRepository
+	flags FlagCatalog
 }
 
-// NewService creates a patcher service backed by the given repository.
-func NewService(r PatcherRepository) *Service {
-	return &Service{repo: r}
+// NewService creates a patcher service backed by the given repository and flag catalog.
+func NewService(r PatcherRepository, flags FlagCatalog) *Service {
+	return &Service{repo: r, flags: flags}
+}
+
+func (s *Service) CompilerFlags(compiler, phpVersion string) []string {
+	return s.flags.CompilerFlags(compiler, phpVersion)
+}
+func (s *Service) CompilerStdRule(phpVersion string) domain.CompilerRule {
+	return s.flags.CompilerStdRule(phpVersion)
+}
+func (s *Service) ConfigureFlagRules(name string) []domain.ConfigureFlagRule {
+	return s.flags.ConfigureFlagRules(name)
+}
+func (s *Service) DefaultExtensionCandidates() []string {
+	return s.flags.DefaultExtensionCandidates()
 }
 
 // PatchesFor returns patches that apply to the given (name, version),

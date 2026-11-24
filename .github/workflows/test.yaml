@@ -7,30 +7,78 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Every PHP minor phpv can resolve (4.0-4.4, 5.0-5.6, 7.0-7.4, 8.0-8.6) on
+# both Linux and macOS, the way Citus tests every supported PG version. One
+# list feeds both OSes so they cannot drift.
+#
+# experimental=false  required: a red build fails the workflow
+# experimental=true   tested and reported, but cannot block: too old to
+#                     guarantee on current toolchains until proven stable.
+#                     Flip to false once a version is green, to lock it in.
+
 jobs:
-  test-php-matrix-linux:
-    name: Test PHP ${{ matrix.php_version }} on Linux
-    timeout-minutes: 60
-    runs-on: ubuntu-latest
+  test-php-matrix:
+    name: PHP ${{ matrix.php.version }} on ${{ matrix.os.name }}
+    timeout-minutes: ${{ matrix.os.timeout }}
+    runs-on: ${{ matrix.os.runner }}
+    continue-on-error: ${{ matrix.php.experimental }}
     strategy:
       fail-fast: false
       matrix:
-        php_version:
-          - "7.0"
-          - "7.1"
-          - "7.2"
-          - "7.3"
-          - "7.4"
-          - "8.0"
-          - "8.1"
-          - "8.2"
-          - "8.3"
-          - "8.4"
-          - "8.5"
-          - "8.6"
-
+        php:
+          - version: "8.6"
+            experimental: false
+          - version: "8.5"
+            experimental: false
+          - version: "8.4"
+            experimental: false
+          - version: "8.3"
+            experimental: false
+          - version: "8.2"
+            experimental: false
+          - version: "8.1"
+            experimental: false
+          - version: "8.0"
+            experimental: false
+          - version: "7.4"
+            experimental: false
+          - version: "7.3"
+            experimental: false
+          - version: "7.2"
+            experimental: true
+          - version: "7.1"
+            experimental: true
+          - version: "7.0"
+            experimental: true
+          - version: "5.6"
+            experimental: true
+          - version: "5.5"
+            experimental: true
+          - version: "5.4"
+            experimental: true
+          - version: "5.3"
+            experimental: true
+          - version: "5.2"
+            experimental: true
+          - version: "5.1"
+            experimental: true
+          - version: "5.0"
+            experimental: true
+          - version: "4.4"
+            experimental: true
+          - version: "4.3"
+            experimental: true
+          - version: "4.2"
+            experimental: true
+          - version: "4.1"
+            experimental: true
+          - version: "4.0"
+            experimental: true
+        os:
+          - { name: Linux, runner: ubuntu-latest, timeout: 60 }
+          - { name: macOS, runner: macos-15,    timeout: 120 }
     env:
-      PHPV_ROOT: ${{ github.workspace }}/phpv-root-${{ matrix.php_version }}
+      PHPV_ROOT: ${{ github.workspace }}/phpv-root-${{ matrix.php.version }}
 
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +89,8 @@ jobs:
           go-version: "1.25"
           cache: true
 
-      - name: Install system dependencies (apt)
+      - name: Install system dependencies (Linux, apt)
+        if: matrix.os.name == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -52,119 +101,13 @@ jobs:
             libwebp-dev libxpm-dev libfreetype6-dev \
             libmariadb-dev gettext
 
-      - name: Set up PKG_CONFIG_PATH
+      - name: Set up PKG_CONFIG_PATH (Linux)
+        if: matrix.os.name == 'Linux'
         run: |
           echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/lib/pkgconfig" >> $GITHUB_ENV
 
-      - name: Compute cache key
-        id: cache-key
-        run: |
-          HASH=$(sha256sum \
-            internal/repository/memory/*.go \
-            internal/repository/disk/*.go \
-            assembler/service.go \
-            bundle/service.go \
-            app/main.go \
-            go.mod \
-            go.sum \
-            .github/workflows/test.yaml \
-            | sha256sum | cut -d' ' -f1)
-          echo "key=phpv-caches-${{ matrix.php_version }}-$HASH" >> $GITHUB_OUTPUT
-          echo "restore-key=phpv-caches-${{ matrix.php_version }}-" >> $GITHUB_OUTPUT
-
-      - name: Cache downloaded archives
-        id: cache-phpv
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.PHPV_ROOT }}/caches
-          key: ${{ steps.cache-key.outputs.key }}
-          restore-keys: |
-            ${{ steps.cache-key.outputs.restore-key }}
-
-      - name: Build phpv binary
-        run: |
-          mkdir -p $PHPV_ROOT/bin
-          go build -o $PHPV_ROOT/bin/phpv ./app/main.go
-          echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
-
-      - name: Install PHP ${{ matrix.php_version }}
-        run: |
-          eval "$($PHPV_ROOT/bin/phpv init bash)"
-          phpv install ${{ matrix.php_version }}
-
-      - name: Verify PHP ${{ matrix.php_version }}
-        run: |
-          eval "$($PHPV_ROOT/bin/phpv init bash)"
-          phpv use ${{ matrix.php_version }}
-
-          PHP_PATH=$(which php)
-          echo "PHP binary: $PHP_PATH"
-
-          if [[ "$PHP_PATH" != "$PHPV_ROOT"* ]]; then
-            echo "Error: PHP is not running from the isolated root!"
-            exit 1
-          fi
-
-          php -v
-          echo ""
-          echo "=== Installed extensions ==="
-          php -m | sort
-          echo ""
-
-          MISSING=""
-          for ext in dom gd intl mbstring pdo_mysql zip curl json phar opcache openssl simplexml xml xmlreader xmlwriter tokenizer session fileinfo filter bcmath pdo zlib; do
-            if php -m | grep -qi -w "$ext"; then
-              echo "✓ $ext"
-            elif [ "$ext" = "opcache" ] && \
-                 php -r '
-                   if (extension_loaded("Zend OPcache")) exit(0);
-                   $f = ini_get("extension_dir") . "/opcache.so";
-                   exit(file_exists($f) ? 0 : 1);
-                 ' 2>/dev/null; then
-              echo "✓ $ext (shared)"
-            else
-              echo "✗ $ext MISSING"
-              MISSING="$MISSING $ext"
-            fi
-          done
-
-          if [ -n "$MISSING" ]; then
-            echo ""
-            echo "FAILED: Missing extensions:$MISSING"
-            exit 1
-          fi
-
-          echo ""
-          echo "All critical extensions present ✓"
-
-  test-php-matrix-macos:
-    name: Test PHP ${{ matrix.php_version }} on macOS (${{ matrix.runner }})
-    timeout-minutes: 120
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        php_version:
-          - "7.4"
-          - "8.5"
-          - "8.6"
-        runner:
-          - macos-15
-    continue-on-error: true
-
-    env:
-      PHPV_ROOT: ${{ github.workspace }}/phpv-root-${{ matrix.php_version }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-          cache: true
-
-      - name: Install Homebrew dependencies
+      - name: Install system dependencies (macOS, Homebrew)
+        if: matrix.os.name == 'macOS'
         run: |
           brew install \
             autoconf automake libtool m4 re2c bison \
@@ -173,21 +116,18 @@ jobs:
             freetype libzip mariadb-connector-c \
             gettext webp libxpm libiconv
 
-      - name: Set up environment variables
+      - name: Set up environment variables (macOS)
+        if: matrix.os.name == 'macOS'
         run: |
           echo "PKG_CONFIG_PATH=/opt/homebrew/opt/openssl@3/lib/pkgconfig:/opt/homebrew/opt/libxml2/lib/pkgconfig:/opt/homebrew/opt/sqlite3/lib/pkgconfig:/opt/homebrew/opt/oniguruma/lib/pkgconfig:/opt/homebrew/opt/icu4c/lib/pkgconfig:/opt/homebrew/opt/libpng/lib/pkgconfig:/opt/homebrew/opt/jpeg-turbo/lib/pkgconfig:/opt/homebrew/opt/freetype/lib/pkgconfig:/opt/homebrew/opt/libzip/lib/pkgconfig:/opt/homebrew/opt/mariadb-connector-c/lib/pkgconfig:/opt/homebrew/opt/webp/lib/pkgconfig:/opt/homebrew/opt/libxpm/lib/pkgconfig:/opt/homebrew/opt/zlib/lib/pkgconfig:/opt/homebrew/opt/bison/lib/pkgconfig:/opt/homebrew/opt/libiconv/lib/pkgconfig" >> $GITHUB_ENV
           echo "PATH=/opt/homebrew/opt/bison/bin:$PATH" >> $GITHUB_ENV
 
-      - name: Build phpv binary
-        run: |
-          mkdir -p $PHPV_ROOT/bin
-          go build -o $PHPV_ROOT/bin/phpv ./app/main.go
-          echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
-
       - name: Compute cache key
         id: cache-key
         run: |
-          HASH=$(sha256sum \
+          # shasum -a 256 is portable (macOS has no sha256sum). Globs expand
+          # deterministically (alphabetical) so the key is stable per OS.
+          HASH=$(cat \
             internal/repository/memory/*.go \
             internal/repository/disk/*.go \
             assembler/service.go \
@@ -196,9 +136,9 @@ jobs:
             go.mod \
             go.sum \
             .github/workflows/test.yaml \
-            | sha256sum | cut -d' ' -f1)
-          echo "key=phpv-caches-macos-${{ matrix.php_version }}-$HASH" >> $GITHUB_OUTPUT
-          echo "restore-key=phpv-caches-macos-${{ matrix.php_version }}-" >> $GITHUB_OUTPUT
+            | shasum -a 256 | cut -d' ' -f1)
+          echo "key=phpv-caches-${{ matrix.os.name }}-${{ matrix.php.version }}-$HASH" >> $GITHUB_OUTPUT
+          echo "restore-key=phpv-caches-${{ matrix.os.name }}-${{ matrix.php.version }}-" >> $GITHUB_OUTPUT
 
       - name: Cache downloaded archives
         id: cache-phpv
@@ -215,15 +155,15 @@ jobs:
           go build -o $PHPV_ROOT/bin/phpv ./app/main.go
           echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
 
-      - name: Install PHP ${{ matrix.php_version }}
+      - name: Install PHP ${{ matrix.php.version }}
         run: |
           eval "$($PHPV_ROOT/bin/phpv init bash)"
-          phpv install ${{ matrix.php_version }}
+          phpv install ${{ matrix.php.version }}
 
-      - name: Verify PHP ${{ matrix.php_version }}
+      - name: Verify PHP ${{ matrix.php.version }}
         run: |
           eval "$($PHPV_ROOT/bin/phpv init bash)"
-          phpv use ${{ matrix.php_version }}
+          phpv use ${{ matrix.php.version }}
 
           PHP_PATH=$(which php)
           echo "PHP binary: $PHP_PATH"
@@ -264,3 +204,4 @@ jobs:
 
           echo ""
           echo "All critical extensions present ✓"
+

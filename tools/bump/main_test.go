@@ -32,12 +32,12 @@ const preBumpRegistry = `case "php":
 			},
 		})`
 
-const preBumpWorkflow = `        php_version:
-          - "7.0"
-          - "8.4"
-          - "8.5"
-
-    env:`
+const preBumpWorkflow = `        php:
+          - version: "8.5"
+            experimental: false
+          - version: "8.4"
+            experimental: false
+        os:`
 
 // The diff must name every change upstream has that we lack.
 func TestDiff_ReportsPatchBumpsAndNewMinor(t *testing.T) {
@@ -164,8 +164,9 @@ func TestApply_ReplaysReal20261124Bump(t *testing.T) {
 	}
 
 	gotWf := read(t, wf)
-	if !strings.Contains(gotWf, "- \"8.5\"\n          - \"8.6\"\n") {
-		t.Errorf("workflow matrix missing 8.6 after 8.5:\n%s", gotWf)
+	// New minor goes first (newest-first list) and is required.
+	if !strings.Contains(gotWf, "        php:\n          - version: \"8.6\"\n            experimental: false\n          - version: \"8.5\"\n") {
+		t.Errorf("workflow matrix missing 8.6 at the top as required:\n%s", gotWf)
 	}
 }
 

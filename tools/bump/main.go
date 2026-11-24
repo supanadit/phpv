@@ -88,7 +88,7 @@ func main() {
 	if *check {
 		os.Exit(1)
 	}
-	if err := applyChanges(changed); err != nil {
+	if err := applyChanges(changed, upstream); err != nil {
 		fatalf("%v", err)
 	}
 }
@@ -208,7 +208,7 @@ func diff(state, upstream map[string]int) []string {
 // applyChanges rewrites the registry, test and CI matrix. Only `changed`
 // entries get new checksums (each requires downloading its tarball); the
 // range table and matrix are reconciled against the full upstream picture.
-func applyChanges(changed map[string]int) error {
+func applyChanges(changed, upstream map[string]int) error {
 	if err := updateRangeTable(changed); err != nil {
 		return err
 	}
@@ -218,7 +218,7 @@ func applyChanges(changed map[string]int) error {
 	if err := updateTestCount(); err != nil {
 		return err
 	}
-	if err := updateWorkflowMatrix(changed); err != nil {
+	if err := updateWorkflowMatrix(upstream); err != nil {
 		return err
 	}
 	// gofmt-align the edited Go files so the committed tree is canonical.
@@ -379,11 +379,10 @@ func updateTestCount() error {
 	return os.WriteFile(testFile, []byte(s), 0o644)
 }
 
+// updateWorkflowMatrix adds a newly seen major-8 minor to test.yaml's php
+// matrix (newest first, required). Patch-only bumps change nothing here: the
+// matrix is keyed on minors, not patches.
 func updateWorkflowMatrix(upstream map[string]int) error {
-	b, err := os.ReadFile(workflowFile)
-	if err != nil {
-		return err
-	}
 	maxMinor := -1
 	for key := range upstream {
 		m, _ := strconv.Atoi(strings.TrimPrefix(key, "8."))
@@ -394,14 +393,20 @@ func updateWorkflowMatrix(upstream map[string]int) error {
 	if maxMinor < 0 {
 		return nil
 	}
-	s := string(b)
-	// Each matrix lists minors as `- "8.N"` rows; add the newest minor after
-	// the previous newest one in every matrix that already carries it.
-	prev := fmt.Sprintf("          - \"8.%d\"\n", maxMinor-1)
-	next := fmt.Sprintf("          - \"8.%d\"\n", maxMinor)
-	if !strings.Contains(s, next) {
-		s = strings.ReplaceAll(s, prev, prev+next)
+	b, err := os.ReadFile(workflowFile)
+	if err != nil {
+		return err
 	}
+	s := string(b)
+	if strings.Contains(s, fmt.Sprintf("version: \"8.%d\"", maxMinor)) {
+		return nil
+	}
+	row := fmt.Sprintf("          - version: \"8.%d\"\n            experimental: false\n", maxMinor)
+	anchor := "        php:\n"
+	if !strings.Contains(s, anchor) {
+		return fmt.Errorf("php matrix anchor %q not found in %s", anchor, workflowFile)
+	}
+	s = strings.Replace(s, anchor, anchor+row, 1)
 	return os.WriteFile(workflowFile, []byte(s), 0o644)
 }
 

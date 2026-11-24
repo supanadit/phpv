@@ -8,13 +8,19 @@ import (
 	"testing"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/graph"
-	"github.com/supanadit/phpv/internal/repository/memory"
 )
 
-func newTestGraphService() *graph.Service {
-	return graph.NewService(memory.NewGraphRepository())
+type fakeGraphLookup struct{}
+
+func (f *fakeGraphLookup) GetExtensionDef(name string) (domain.ExtensionDef, bool) {
+	defs := map[string]domain.ExtensionDef{
+		"zip": {Name: "zip", RequiresPackage: "libzip"},
+	}
+	d, ok := defs[name]
+	return d, ok
 }
+
+func newTestGraphService() GraphLookup { return &fakeGraphLookup{} }
 
 func newTestService(repo Repository) *Service {
 	return NewService(repo, newTestSystemService(), newTestGraphService())

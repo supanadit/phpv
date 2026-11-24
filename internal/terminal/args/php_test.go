@@ -1,30 +1,11 @@
 package args
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/supanadit/phpv/assembler"
-	"github.com/supanadit/phpv/bundle"
-	"github.com/supanadit/phpv/config"
-	"github.com/supanadit/phpv/doctor"
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/forge"
-	"github.com/supanadit/phpv/graph"
-	"github.com/supanadit/phpv/inifile"
-	"github.com/supanadit/phpv/internal/repository/disk"
-	"github.com/supanadit/phpv/internal/repository/memory"
-	"github.com/supanadit/phpv/internal/repository/patches"
-	"github.com/supanadit/phpv/launchers"
-	"github.com/supanadit/phpv/mirror"
-	"github.com/supanadit/phpv/patcher"
-	"github.com/supanadit/phpv/pecl"
-	"github.com/supanadit/phpv/registry"
-	"github.com/supanadit/phpv/silo"
-	"github.com/supanadit/phpv/system"
-	"github.com/supanadit/phpv/update"
 )
 
 type mockConfigRepo struct{}
@@ -160,8 +141,9 @@ func TestResolveActivePHP_Default(t *testing.T) {
 	createFakePHPInstall(t, dir, "8.3.0")
 
 	// Set default to 8.3.0.
-	diskRepo := disk.NewSiloRepository()
-	diskRepo.SetDefault("8.3.0")
+	if err := os.WriteFile(filepath.Join(dir, "default"), []byte("8.3.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	h := newTestPHPHandler(dir)
 	path, err := h.resolveActivePHP()
@@ -302,38 +284,7 @@ func createFakePHPInstall(t *testing.T, root, version string) {
 }
 
 func newTestPHPHandler(root string) *PHPHandler {
-	diskRepo := disk.NewSiloRepository()
-	regSvc := registry.NewService(&mockRegistryRepo{})
-	siloSvc := silo.NewService(diskRepo, regSvc)
-	bundleSvc := bundle.NewService(siloSvc)
-	systemSvc := system.NewService()
-	shimSvc := launchers.NewService(siloSvc)
-	peclSvc := pecl.NewService(siloSvc, inifile.NewService())
-	configSvc := config.NewService(&mockConfigRepo{})
-	doctorSvc := doctor.NewService(disk.NewDoctorRepository(), system.NewService(), graph.NewService(memory.NewGraphRepository()))
-	updateSvc := update.NewService(disk.NewUpdateRepository(), "dev")
-	// Assembler wired like app/phpv.go so graph-backed routing works.
-	graphSvc := graph.NewService(memory.NewGraphRepository())
-	forgeSvc := forge.NewService(disk.NewForgeRepository())
-	patcherSvc := patcher.NewService(patches.NewRepository(
-		filepath.Join(root, "patches"),
-		filepath.Join(root, "patches-local"),
-	))
-	patchSyncSvc := mirror.NewService(disk.NewPatchRemote(), filepath.Join(root, "patches"), 0)
-	assemblerSvc := assembler.NewService(assembler.ServiceDeps{Graph: graphSvc, Silo: siloSvc, Forge: forgeSvc, Patcher: patcherSvc, Registry: regSvc, Mirror: patchSyncSvc})
-	return &PHPHandler{
-		ctx:          context.Background(),
-		siloSvc:      siloSvc,
-		registrySvc:  regSvc,
-		bundleSvc:    bundleSvc,
-		systemSvc:    systemSvc,
-		shimSvc:      shimSvc,
-		peclSvc:      peclSvc,
-		configSvc:    configSvc,
-		doctorSvc:    doctorSvc,
-		updateSvc:    updateSvc,
-		assemblerSvc: assemblerSvc,
-	}
+	return newTestHandlerDeps(root)
 }
 
 type mockRegistryRepo struct{}

@@ -13,15 +13,8 @@ import (
 	vsn "github.com/supanadit/phpv/pkg/version"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/repository/disk"
-	"github.com/supanadit/phpv/internal/repository/memory"
-	"github.com/supanadit/phpv/internal/repository/patches"
-	"github.com/supanadit/phpv/mirror"
-	"github.com/supanadit/phpv/patcher"
 	"github.com/supanadit/phpv/pkg/compiler"
 	"github.com/supanadit/phpv/pkg/source"
-	"github.com/supanadit/phpv/registry"
-	"github.com/supanadit/phpv/silo"
 )
 
 // mockSiloRepo is a minimal SiloRepository implementation for tests that only
@@ -181,8 +174,7 @@ func TestFindDepPrefix_FallbackRespectsConstraint(t *testing.T) {
 		}
 	}
 
-	mock := &mockSiloRepo{root: tmpDir}
-	siloSvc := silo.NewService(mock, nil)
+	siloSvc := &testSiloService{root: tmpDir}
 	svc := &Service{silo: siloSvc}
 	deps := []domain.Dependency{
 		{Name: "curl", Version: "7.88.1|>=7.80.0,<8.0.0"},
@@ -209,8 +201,7 @@ func TestFindDepPrefix_FallbackWithoutExactMatch(t *testing.T) {
 		}
 	}
 
-	mock := &mockSiloRepo{root: tmpDir}
-	siloSvc := silo.NewService(mock, nil)
+	siloSvc := &testSiloService{root: tmpDir}
 	svc := &Service{silo: siloSvc}
 	deps := []domain.Dependency{
 		{Name: "curl", Version: "7.80.0|>=7.80.0,<8.0.0"},
@@ -239,8 +230,7 @@ func TestResolveDependencyFlags_RespectsConstraintFallback(t *testing.T) {
 		}
 	}
 
-	mock := &mockSiloRepo{root: tmpDir}
-	siloSvc := silo.NewService(mock, nil)
+	siloSvc := &testSiloService{root: tmpDir}
 	svc := &Service{silo: siloSvc}
 	deps := []domain.Dependency{
 		{Name: "curl", Version: "7.88.1|>=7.80.0,<8.0.0"},
@@ -260,8 +250,7 @@ func TestResolveDependencyFlags_RespectsConstraintFallback(t *testing.T) {
 // directory will exist before the dependent is configured.
 func TestResolveDepPlaceholders_ResolvesWithInstalledPrefix(t *testing.T) {
 	tmpDir := t.TempDir()
-	mock := &mockSiloRepo{root: tmpDir}
-	siloSvc := silo.NewService(mock, nil)
+	siloSvc := &testSiloService{root: tmpDir}
 	svc := &Service{silo: siloSvc}
 
 	deps := []domain.Dependency{
@@ -288,8 +277,7 @@ func TestResolveDepPlaceholders_ResolvesWithInstalledPrefix(t *testing.T) {
 // configure script can find the system version via pkg-config.
 func TestResolveDepPlaceholders_SkipsWhenPrefixMissing(t *testing.T) {
 	tmpDir := t.TempDir()
-	mock := &mockSiloRepo{root: tmpDir}
-	siloSvc := silo.NewService(mock, nil)
+	siloSvc := &testSiloService{root: tmpDir}
 	svc := &Service{silo: siloSvc}
 
 	deps := []domain.Dependency{
@@ -491,8 +479,8 @@ func TestEnsureCLIBinary_NoCLIBuilt(t *testing.T) {
 
 func newApacheTestService(t *testing.T, root string) *ApacheService {
 	t.Helper()
-	regSvc := registry.NewService(memory.NewRegistryRepository())
-	return NewApacheService(&Service{reg: regSvc}, root)
+	regSvc := &testRegistryService{}
+	return NewApacheService(&Service{reg: regSvc, silo: &testSiloService{root: root}}, root)
 }
 
 func TestEnsureApacheModule_ExistingSkipsProgress(t *testing.T) {
@@ -588,8 +576,8 @@ func TestApacheNeedsRebuild(t *testing.T) {
 
 func newFPMTestService(t *testing.T, root string) *FPMService {
 	t.Helper()
-	regSvc := registry.NewService(memory.NewRegistryRepository())
-	return NewFPMService(&Service{reg: regSvc}, root)
+	regSvc := &testRegistryService{}
+	return NewFPMService(&Service{reg: regSvc, silo: &testSiloService{root: root}}, root)
 }
 
 func writeFakeCLIProfile(t *testing.T, root, version string) BuildProfile {
@@ -732,13 +720,13 @@ type fakePatchRemote struct {
 	fail error
 }
 
-func (f *fakePatchRemote) ListTree(ctx context.Context) ([]mirror.RemoteFile, string, error) {
+func (f *fakePatchRemote) ListTree(ctx context.Context) ([]domain.RemoteFile, string, error) {
 	if f.fail != nil {
 		return nil, "", f.fail
 	}
-	out := make([]mirror.RemoteFile, 0, len(f.tree))
+	out := make([]domain.RemoteFile, 0, len(f.tree))
 	for p, c := range f.tree {
-		out = append(out, mirror.RemoteFile{Path: p, BlobSHA: "sha-" + c})
+		out = append(out, domain.RemoteFile{Path: p, BlobSHA: "sha-" + c})
 	}
 	return out, f.rev, nil
 }
@@ -751,9 +739,7 @@ func (f *fakePatchRemote) FetchBlob(ctx context.Context, path, dest string) erro
 }
 
 func TestSyncPatchesWarnAndContinueOnFailure(t *testing.T) {
-	svc := &Service{patches: mirror.NewService(
-		&fakePatchRemote{fail: errors.New("dial: connection refused")},
-		t.TempDir(), time.Hour)}
+	svc := &Service{patches: &testMirrorService{fail: errors.New("dial: connection refused")}}
 
 	var events []string
 	svc.syncPatches(context.Background(), func(stage, msg string) {
@@ -768,11 +754,7 @@ func TestSyncPatchesWarnAndContinueOnFailure(t *testing.T) {
 }
 
 func TestSyncPatchesSyncsDeltaBeforeBuild(t *testing.T) {
-	svc := &Service{patches: mirror.NewService(
-		&fakePatchRemote{tree: map[string]string{
-			"php/8.0.0-8.1.0/0001-intl-cxx17.patch": "A",
-		}, rev: "rev1"},
-		t.TempDir(), time.Hour)}
+	svc := &Service{patches: &testMirrorService{files: 1}}
 
 	var events []string
 	svc.syncPatches(context.Background(), func(stage, msg string) {
@@ -784,10 +766,7 @@ func TestSyncPatchesSyncsDeltaBeforeBuild(t *testing.T) {
 }
 
 func TestSyncPatchesSkipsWithinLease(t *testing.T) {
-	root := t.TempDir()
-	svc := &Service{patches: mirror.NewService(
-		&fakePatchRemote{tree: map[string]string{"a/1.0-2.0/0001-a.patch": "A"}, rev: "rev1"},
-		root, time.Hour)}
+	svc := &Service{patches: &testMirrorService{}}
 	// Prime the lease with a successful full sync.
 	if _, err := svc.patches.Update(context.Background(), nil); err != nil {
 		t.Fatal(err)
@@ -839,9 +818,9 @@ func TestPreparePHPSourceCleansPartialExtraction(t *testing.T) {
 	}
 	// No configure -> source.Find cannot use this tree.
 
-	regSvc := registry.NewService(memory.NewRegistryRepository())
-	siloSvc := silo.NewService(&extractSiloRepo{mockSiloRepo{root: root}}, regSvc)
-	patcherSvc := patcher.NewService(patches.NewRepository(t.TempDir(), t.TempDir()))
+	regSvc := &testRegistryService{}
+	siloSvc := &testSiloService{root: root, extract: true}
+	patcherSvc := &testPatcherService{}
 	deps := &Service{reg: regSvc, silo: siloSvc, patcher: patcherSvc}
 
 	if err := preparePHPSource(deps, "8.5.12", work); err != nil {
@@ -958,8 +937,9 @@ func TestBuildProfileRoundTrip(t *testing.T) {
 
 func newServerTestService(t *testing.T) *Service {
 	t.Helper()
-	regSvc := registry.NewService(memory.NewRegistryRepository())
-	siloSvc := silo.NewService(disk.NewSiloRepository(), regSvc)
+	regSvc := &testRegistryService{}
+	root := os.Getenv("PHPV_ROOT")
+	siloSvc := &testSiloService{root: root}
 	return &Service{silo: siloSvc, reg: regSvc}
 }
 
@@ -1050,4 +1030,99 @@ func TestAssembleServer_EmitsResolveProgressOnError(t *testing.T) {
 	if len(stages) == 0 || stages[0] != "resolve" {
 		t.Fatalf("progress stages = %v, want resolve first", stages)
 	}
+}
+
+// testSiloService implements AssemblerSilo without importing the silo module.
+type testSiloService struct {
+	root    string
+	extract bool
+}
+
+func (s *testSiloService) Download(name, version string) (bool, error) { return false, nil }
+func (s *testSiloService) DownloadURL(url, checksumType, checksumValue string) (bool, error) {
+	return false, nil
+}
+func (s *testSiloService) Extract(archivePath, destDir string) (bool, error) {
+	if !s.extract {
+		return false, nil
+	}
+	src := filepath.Join(destDir, "php")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		return false, err
+	}
+	if err := os.WriteFile(filepath.Join(src, "configure"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+func (s *testSiloService) GetSilo() domain.Silo { return domain.Silo{Root: s.root} }
+func (s *testSiloService) GetState(name, version string) (domain.InstallState, error) {
+	return domain.StateNone, nil
+}
+func (s *testSiloService) MarkInProgress(name, version string) error  { return nil }
+func (s *testSiloService) MarkComplete(name, version string) error    { return nil }
+func (s *testSiloService) MarkFailed(name, version string) error      { return nil }
+func (s *testSiloService) MarkInterrupted(name, version string) error { return nil }
+func (s *testSiloService) GetDefault() (string, error)                { return "", nil }
+func (s *testSiloService) SetDefault(version string) error            { return nil }
+func (s *testSiloService) SourcePath(pkg, version string) string {
+	return filepath.Join(s.root, "src", pkg+"-"+version)
+}
+func (s *testSiloService) PackagePrefix(name, version string) string {
+	return filepath.Join(s.root, "packages", name, version)
+}
+func (s *testSiloService) PHPOutputPath(phpVersion string) string {
+	return filepath.Join(s.root, "packages", "php", phpVersion)
+}
+func (s *testSiloService) GetExtensionManifest(string) (*domain.ExtensionManifest, error) {
+	return nil, nil
+}
+func (s *testSiloService) SaveExtensionManifest(string, *domain.ExtensionManifest) error {
+	return nil
+}
+
+// testRegistryService implements AssemblerRegistry without importing the registry module.
+type testRegistryService struct{}
+
+func (r *testRegistryService) Get(name, version string) (domain.Registry, error) {
+	return domain.Registry{}, nil
+}
+func (r *testRegistryService) List(name string) ([]domain.Registry, error) {
+	if name == "nginx" {
+		return []domain.Registry{{Name: "nginx", Version: "1.28.0", URL: "https://example.test/nginx.tar.gz"}}, nil
+	}
+	return nil, nil
+}
+
+// testPatcherService implements AssemblerPatcher without importing the patcher module.
+type testPatcherService struct{}
+
+func (p *testPatcherService) Prepare(name, version, sourceDir string) (*domain.PreparedPatches, error) {
+	return &domain.PreparedPatches{}, nil
+}
+
+// testMirrorService implements AssemblerMirror without importing the mirror module.
+type testMirrorService struct {
+	fail   error
+	files  int
+	primed bool
+}
+
+func (m *testMirrorService) EnsureFresh(context.Context) (domain.PatchSyncResult, error) {
+	if m.fail != nil {
+		return domain.PatchSyncResult{}, m.fail
+	}
+	if m.primed {
+		return domain.PatchSyncResult{SkippedCheck: true}, nil
+	}
+	res := domain.PatchSyncResult{}
+	for i := 0; i < m.files; i++ {
+		res.Downloaded = append(res.Downloaded, "file")
+	}
+	return res, nil
+}
+
+func (m *testMirrorService) Update(context.Context, *domain.PatchSyncScope) (domain.PatchSyncResult, error) {
+	m.primed = true
+	return domain.PatchSyncResult{}, nil
 }

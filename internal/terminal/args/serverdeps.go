@@ -45,3 +45,18 @@ type ServerManager interface {
 func domainToolchain(tc compiler.Toolchain) domain.Toolchain {
 	return domain.Toolchain{Name: tc.Name, CC: tc.CC, CXX: tc.CXX, Hint: tc.Hint}
 }
+
+// ServerManagerDeps is the delivery-side description of the webserver manager
+// inputs. The composition root adapts it to the concrete manager.
+type ServerManagerDeps struct {
+	Root                   string
+	ResolveVersion         func(constraint string) (string, error)
+	EnsureFPM              func(ctx context.Context, phpVersion string, verbose bool, jobs int) (string, error)
+	EnsureApacheModule     func(ctx context.Context, phpVersion, httpdPrefix string, opts domain.ServerRunOptions) (string, error)
+	CLIPrefix              func(phpVersion string) string
+	InstalledServerVersion func(server, constraint string) (string, error)
+	ServerPrefix           func(server, version string) string
+}
+
+// ServerManagerFactory constructs a server manager from delivery-supplied callbacks.
+type ServerManagerFactory func(deps ServerManagerDeps) ServerManager

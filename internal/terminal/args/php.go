@@ -46,6 +46,7 @@ type PHPHandler struct {
 	fpmSvc       FPMService
 	apacheSvc    ApacheService
 	serverAsbl   ServerAssembler
+	serverMgrFn  ServerManagerFactory
 	version      string
 }
 
@@ -68,6 +69,7 @@ type HandlerDeps struct {
 	FPM         FPMService
 	Apache      ApacheService
 	ServerAsm   ServerAssembler
+	ServerMgr   ServerManagerFactory
 	Version     string
 }
 
@@ -89,6 +91,7 @@ func NewPHPHandler(deps HandlerDeps) {
 		fpmSvc:       deps.FPM,
 		apacheSvc:    deps.Apache,
 		serverAsbl:   deps.ServerAsm,
+		serverMgrFn:  deps.ServerMgr,
 		version:      deps.Version,
 	}
 	deps.Lifecycle.Append(fx.Hook{

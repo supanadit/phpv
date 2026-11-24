@@ -15,6 +15,7 @@ import (
 	"github.com/supanadit/phpv/bundle"
 	"github.com/supanadit/phpv/config"
 	"github.com/supanadit/phpv/doctor"
+	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/graph"
 	"github.com/supanadit/phpv/inifile"
@@ -31,6 +32,7 @@ import (
 	"github.com/supanadit/phpv/silo"
 	"github.com/supanadit/phpv/system"
 	"github.com/supanadit/phpv/update"
+	"github.com/supanadit/phpv/webserver"
 )
 
 var version = "dev"
@@ -91,6 +93,39 @@ type terminalDeps struct {
 	PatchLister args.PatchLister
 }
 
+// serverManagerAdapter maps the concrete webserver manager onto the
+// consumer-owned interface declared by the terminal channel.
+type serverManagerAdapter struct{ m *webserver.Manager }
+
+func (a serverManagerAdapter) Start(ctx context.Context, opts domain.ServerRunOptions) (domain.ServerInstance, error) {
+	return a.m.Start(ctx, opts)
+}
+func (a serverManagerAdapter) Stop(inst domain.ServerInstance) error { return a.m.Stop(inst) }
+func (a serverManagerAdapter) StopByID(id string) (domain.ServerInstance, error) {
+	return a.m.StopByID(id)
+}
+func (a serverManagerAdapter) List() ([]domain.ServerInstance, error) { return a.m.List() }
+func (a serverManagerAdapter) Running() ([]domain.ServerInstance, error) {
+	return a.m.Running()
+}
+func (a serverManagerAdapter) Prune() (int, error)     { return a.m.Prune() }
+func (a serverManagerAdapter) Store() args.ServerStore { return a.m.Store() }
+
+// NewServerManagerFactory adapts delivery-supplied callbacks to the webserver module.
+func NewServerManagerFactory() args.ServerManagerFactory {
+	return func(deps args.ServerManagerDeps) args.ServerManager {
+		return serverManagerAdapter{m: webserver.NewManager(webserver.Deps{
+			Root:                   deps.Root,
+			ResolveVersion:         deps.ResolveVersion,
+			EnsureFPM:              deps.EnsureFPM,
+			EnsureApacheModule:     deps.EnsureApacheModule,
+			CLIPrefix:              deps.CLIPrefix,
+			InstalledServerVersion: deps.InstalledServerVersion,
+			ServerPrefix:           deps.ServerPrefix,
+		})}
+	}
+}
+
 // server service providers: the terminal channel consumes these through
 // consumer-owned interfaces rather than importing concrete modules.
 func NewFPMServiceForServer(a *assembler.Service) *assembler.FPMService {
@@ -147,6 +182,7 @@ func main() {
 			fx.Annotate(NewPatchesRepository, fx.As(new(patcher.PatcherRepository))),
 			NewPatchSyncService,
 			NewPatchLister,
+			NewServerManagerFactory,
 			fx.Annotate(memory.NewGraphRepository, fx.As(new(graph.GraphRepository))),
 			registry.NewService,
 			fx.Annotate(registry.NewService, fx.As(new(silo.RegistryLookup))),

@@ -42,7 +42,24 @@ func (f *fakeSystemService) Install(packages []domain.SystemPackage) error {
 }
 
 func (f *fakeSystemService) DependencySet(exts []domain.ExtensionDef) []domain.SystemPackage {
-	return nil
+	seen := make(map[string]bool)
+	var pkgs []domain.SystemPackage
+	add := func(name string, required bool) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		pkgs = append(pkgs, domain.SystemPackage{Name: name, SystemName: name, Required: required})
+	}
+	for _, def := range exts {
+		add(def.RequiresPackage, true)
+	}
+	for _, def := range exts {
+		for _, name := range def.RequiresPackages {
+			add(name, false)
+		}
+	}
+	return pkgs
 }
 
 func (f *fakeSystemService) InstallCommand(packages []domain.SystemPackage) string {

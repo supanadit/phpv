@@ -18,14 +18,13 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/pkg/compiler"
-	"github.com/supanadit/phpv/webserver"
 )
 
 // ServerManagerDeps adapts the PHPHandler's services to webserver.Manager.
 // Built lazily so command construction stays cheap.
-func (h *PHPHandler) serverManager() (*webserver.Manager, error) {
+func (h *PHPHandler) serverManager() (ServerManager, error) {
 	root := resolvePHPVRootForServer()
-	m := webserver.NewManager(webserver.Deps{
+	m := h.serverMgrFn(ServerManagerDeps{
 		Root:           root,
 		ResolveVersion: h.resolveServerPHPVersion,
 		EnsureFPM: func(ctx context.Context, phpVersion string, verbose bool, jobs int) (string, error) {
@@ -49,7 +48,7 @@ func (h *PHPHandler) serverManager() (*webserver.Manager, error) {
 			}
 			return bin, err
 		},
-		EnsureApacheModule: func(ctx context.Context, phpVersion, httpdPrefix string, opts webserver.RunOptions) (string, error) {
+		EnsureApacheModule: func(ctx context.Context, phpVersion, httpdPrefix string, opts domain.ServerRunOptions) (string, error) {
 			verbose, jobs := opts.Verbose, opts.Jobs
 			tc, err := compiler.Resolve(h.compilerName())
 			if err != nil {
@@ -403,7 +402,7 @@ Examples:
 			// A cold run builds the php-fpm variant first; EnsureFPM reports
 			// each stage through the spinner.
 
-			inst, err := m.Start(h.ctx, webserver.RunOptions{
+			inst, err := m.Start(h.ctx, domain.ServerRunOptions{
 				Server:        server,
 				ServerVersion: serverVersion,
 				PHPVersion:    resolvedPHP,

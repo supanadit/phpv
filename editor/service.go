@@ -1,5 +1,5 @@
-// Package inifile edits php.ini load directives for PHP extensions.
-package inifile
+// Package editor edits php.ini load directives for PHP extensions.
+package editor
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 // Service writes php.ini load directives and verifies PHP loads them.
 type Service struct{}
 
-// NewService creates an inifile service.
+// NewService creates an editor service.
 func NewService() *Service {
 	return &Service{}
 }

@@ -1,4 +1,4 @@
-package inifile
+package editor
 
 import (
 	"fmt"

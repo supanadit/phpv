@@ -16,13 +16,12 @@ import (
 	"github.com/supanadit/phpv/config"
 	"github.com/supanadit/phpv/doctor"
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/editor"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/graph"
-	"github.com/supanadit/phpv/inifile"
 	"github.com/supanadit/phpv/internal/repository"
 	"github.com/supanadit/phpv/internal/repository/disk"
 	"github.com/supanadit/phpv/internal/repository/memory"
-	"github.com/supanadit/phpv/internal/repository/patches"
 	"github.com/supanadit/phpv/internal/terminal/args"
 	"github.com/supanadit/phpv/launchers"
 	"github.com/supanadit/phpv/mirror"
@@ -40,9 +39,9 @@ var version = "dev"
 // NewPatchesRepository builds the file-based patch repository from the
 // two PHPV_ROOT patch trees: synced (managed by `phpv patch update`) and
 // user-local (never touched by sync), user-local taking precedence.
-func NewPatchesRepository() *patches.Repository {
+func NewPatchesRepository() *disk.PatchRepository {
 	root := repository.ResolveRoot()
-	return patches.NewRepository(
+	return disk.NewPatchRepository(
 		filepath.Join(root, "patches"),
 		filepath.Join(root, "patches-local"),
 	)
@@ -51,7 +50,7 @@ func NewPatchesRepository() *patches.Repository {
 // NewPatchLister exposes the on-disk patch tree to the terminal channel.
 func NewPatchLister() args.PatchLister {
 	root := repository.ResolveRoot()
-	return patches.NewRepository(
+	return disk.NewPatchRepository(
 		filepath.Join(root, "patches"),
 		filepath.Join(root, "patches-local"),
 	)
@@ -194,7 +193,7 @@ func main() {
 			fx.Annotate(silo.NewService, fx.As(new(launchers.ShimSilo))),
 			launchers.NewService,
 			fx.Annotate(silo.NewService, fx.As(new(pecl.PECLSilo))),
-			fx.Annotate(inifile.NewService, fx.As(new(pecl.IniEditor))),
+			fx.Annotate(editor.NewService, fx.As(new(pecl.IniEditor))),
 			pecl.NewService,
 			fx.Annotate(disk.NewConfigRepository, fx.As(new(config.ConfigRepository))),
 			config.NewService,

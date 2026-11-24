@@ -1,4 +1,4 @@
-package patches
+package disk
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Package patches implements the file-based patcher repository: patches
+// PatchRepository implements the file-based patch repository: patches
 // live as unified diff files in a versioned directory tree
 // (<root>/<package>/<version-range>/<ordinal>-<slug>.patch) with optional
 // flags.yaml manifests, merged from two on-disk sources (synced and
@@ -77,47 +77,47 @@ func isPlainVersion(s string) bool {
 
 // root is one patch source tree. Roots are consulted in precedence order;
 // the first root to claim a directory path owns it wholly.
-type root struct {
+type patchRoot struct {
 	path  string
 	label string
 }
 
 // Repository is the file-based patch repository.
-type Repository struct {
-	roots []root
+type PatchRepository struct {
+	roots []patchRoot
 }
 
 // NewRepository creates a patch repository reading patches from
 // the given on-disk trees in precedence order: localRoot (user-local)
 // shadows syncedRoot per directory. Missing roots are simply empty.
-func NewRepository(syncedRoot, localRoot string, opts ...Option) *Repository {
-	r := &Repository{}
+func NewPatchRepository(syncedRoot, localRoot string, opts ...PatchOption) *PatchRepository {
+	r := &PatchRepository{}
 	for _, o := range opts {
 		o(r)
 	}
 	// User-local patches take precedence: they are consulted first.
 	if localRoot != "" {
-		r.roots = append(r.roots, root{path: localRoot, label: SourceLocal})
+		r.roots = append(r.roots, patchRoot{path: localRoot, label: SourceLocal})
 	}
 	if syncedRoot != "" {
-		r.roots = append(r.roots, root{path: syncedRoot, label: SourceSynced})
+		r.roots = append(r.roots, patchRoot{path: syncedRoot, label: SourceSynced})
 	}
 	return r
 }
 
 // Option customizes the repository.
-type Option func(*Repository)
+type PatchOption func(*PatchRepository)
 
-// Entry is one selected patch-tree directory: its patch files (in
+// PatchEntry is one selected patch-tree directory: its patch files (in
 // application order), optional flags manifest, and the source tree it
 // came from.
-type Entry = domain.PatchEntry
+type PatchEntry = domain.PatchEntry
 
 // EntriesFor returns all patch-tree directories matching (name, version)
 // in ordinal order, labeled by their owning source tree. It is the
 // observability view behind PatchesFor (used by `phpv patch list`).
-func (r *Repository) EntriesFor(name string, version string) []Entry {
-	owned := make(map[string]Entry)
+func (r *PatchRepository) EntriesFor(name string, version string) []PatchEntry {
+	owned := make(map[string]PatchEntry)
 	for _, src := range r.roots {
 		pkgDir := filepath.Join(src.path, name)
 		pkgEntries, err := readPackageDir(pkgDir, src.label)
@@ -133,7 +133,7 @@ func (r *Repository) EntriesFor(name string, version string) []Entry {
 			}
 		}
 	}
-	entries := make([]Entry, 0, len(owned))
+	entries := make([]PatchEntry, 0, len(owned))
 	for _, e := range owned {
 		if !entryMatches(e, version) {
 			continue
@@ -147,7 +147,7 @@ func (r *Repository) EntriesFor(name string, version string) []Entry {
 // PatchesFor resolves the
 // selected entries for (name, version) and converts them into Patch
 // structs whose Apply runs `patch -p1` against the located source root.
-func (r *Repository) PatchesFor(name string, version string) []domain.SourcePatch {
+func (r *PatchRepository) PatchesFor(name string, version string) []domain.SourcePatch {
 	entries := r.EntriesFor(name, version)
 	if len(entries) == 0 {
 		return nil
@@ -194,7 +194,7 @@ func rangeExpr(rangeDir string) string {
 
 // entryMatches reports whether the directory's range name matches the
 // built version.
-func entryMatches(e Entry, version string) bool {
+func entryMatches(e PatchEntry, version string) bool {
 	if e.RangeDir == anyDirName {
 		return true
 	}
@@ -204,13 +204,13 @@ func entryMatches(e Entry, version string) bool {
 // sortEntries orders selected directories by their first patch file's
 // ordinal filename, then by range name for stability. Flags-only entries
 // sort by range name.
-func sortEntries(entries []Entry) {
+func sortEntries(entries []PatchEntry) {
 	sort.SliceStable(entries, func(i, j int) bool {
 		return firstOrdinal(entries[i]) < firstOrdinal(entries[j])
 	})
 }
 
-func firstOrdinal(e Entry) string {
+func firstOrdinal(e PatchEntry) string {
 	if len(e.PatchFiles) > 0 {
 		return filepath.Base(e.PatchFiles[0])
 	}
@@ -220,12 +220,12 @@ func firstOrdinal(e Entry) string {
 // readPackageDir reads every range directory under <pkgDir>, skipping
 // per-directory entries that fail to read (the other sources or a later
 // run still work).
-func readPackageDir(pkgDir string, label string) ([]Entry, error) {
+func readPackageDir(pkgDir string, label string) ([]PatchEntry, error) {
 	dirs, err := os.ReadDir(pkgDir)
 	if err != nil {
 		return nil, err
 	}
-	entries := make([]Entry, 0, len(dirs))
+	entries := make([]PatchEntry, 0, len(dirs))
 	for _, d := range dirs {
 		if !d.IsDir() {
 			continue
@@ -236,7 +236,7 @@ func readPackageDir(pkgDir string, label string) ([]Entry, error) {
 		if err != nil {
 			continue
 		}
-		manifest, err := LoadManifest(filepath.Join(dirPath, ManifestFileName))
+		manifest, err := LoadManifest(filepath.Join(dirPath, PatchFlagsFileName))
 		if err != nil {
 			continue
 		}
@@ -244,7 +244,7 @@ func readPackageDir(pkgDir string, label string) ([]Entry, error) {
 		if err != nil {
 			continue
 		}
-		entries = append(entries, Entry{
+		entries = append(entries, PatchEntry{
 			DirPath:    filepath.ToSlash(rel),
 			Package:    filepath.Base(pkgDir),
 			RangeDir:   rangeDir,
@@ -405,21 +405,21 @@ func firstDiffTarget(patchFile string) (string, error) {
 	return "", fmt.Errorf("%s: no target path found in diff", filepath.Base(patchFile))
 }
 
-// ManifestFileName is the optional flags manifest inside a patch range
+// PatchFlagsFileName is the optional flags manifest inside a patch range
 // directory. A directory containing only this file is still a valid
 // selection: it contributes build flags without any patch application.
-const ManifestFileName = "flags.yaml"
+const PatchFlagsFileName = "flags.yaml"
 
-// Manifest declares the build flags contributed by a patch range
+// PatchManifest declares the build flags contributed by a patch range
 // directory. Strings pass through unchanged so assembler-side
 // placeholder resolution ({{prefix}}, {{source}}, {{dep:NAME}}) is
 // preserved exactly as inline patch declarations resolve today.
-type Manifest = domain.PatchManifest
+type PatchManifest = domain.PatchManifest
 
 // ParseManifest decodes a flags.yaml manifest from its raw bytes.
 // Placeholder strings such as "{{dep:zlib}}" are preserved verbatim.
-func ParseManifest(data []byte) (*Manifest, error) {
-	var m Manifest
+func ParseManifest(data []byte) (*PatchManifest, error) {
+	var m PatchManifest
 	if err := yaml.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("parse flags manifest: %w", err)
 	}
@@ -429,7 +429,7 @@ func ParseManifest(data []byte) (*Manifest, error) {
 // LoadManifest reads and parses the flags manifest at the given path.
 // Returns nil (no error) when the file does not exist, so callers can
 // probe for a manifest without treating absence as a failure.
-func LoadManifest(path string) (*Manifest, error) {
+func LoadManifest(path string) (*PatchManifest, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {

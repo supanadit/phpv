@@ -1,4 +1,4 @@
-package patches
+package disk
 
 import (
 	"os"
@@ -35,12 +35,12 @@ func TestUserLocalShadowsSyncedDirectory(t *testing.T) {
 		"php/8.0.0-8.1.0/flags.yaml":       "extraCFlags:\n  - \"-Dlocal\"\n",
 	})
 
-	repo := NewRepository(synced, local)
+	repo := NewPatchRepository(synced, local)
 	entries := repo.EntriesFor("php", "8.0.30")
 	if len(entries) != 1 {
 		t.Fatalf("EntriesFor = %d entries, want 1 (local shadows synced dir)", len(entries))
 	}
-	var e80 *Entry
+	var e80 *PatchEntry
 	for i := range entries {
 		if entries[i].RangeDir == "8.0.0-8.1.0" {
 			e80 = &entries[i]
@@ -76,7 +76,7 @@ func TestUnclaimedSyncedDirectoryApplies(t *testing.T) {
 		"oniguruma/6.9.7/0001-hotfix.patch": "--- a/st.h\n+++ b/st.h\n",
 	})
 
-	repo := NewRepository(synced, local)
+	repo := NewPatchRepository(synced, local)
 	entries := repo.EntriesFor("oniguruma", "6.9.7")
 	if len(entries) != 2 {
 		t.Fatalf("EntriesFor = %d entries, want 2", len(entries))
@@ -90,12 +90,12 @@ func TestUnclaimedSyncedDirectoryApplies(t *testing.T) {
 	}
 }
 
-func TestManifestOnlyDirectorySelectsFlags(t *testing.T) {
+func TestPatchManifestOnlyDirectorySelectsFlags(t *testing.T) {
 	synced := filepath.Join(t.TempDir(), "patches")
 	writeTree(t, synced, map[string]string{
 		"libzip/any/flags.yaml": "configureFlags:\n  - \"-DZLIB_ROOT={{dep:zlib}}\"\n",
 	})
-	repo := NewRepository(synced, "")
+	repo := NewPatchRepository(synced, "")
 	patches := repo.PatchesFor("libzip", "1.11.3")
 	if len(patches) != 1 {
 		t.Fatalf("PatchesFor = %d, want 1", len(patches))
@@ -119,7 +119,7 @@ func TestRangeMatchNoMatchAndOrdering(t *testing.T) {
 		"php/7.0.0-8.0.0/0001-first.patch":  "--- a/configure\n+++ b/configure\n",
 		"php/8.0.0-8.1.0/0001-eight.patch":  "--- a/configure\n+++ b/configure\n",
 	})
-	repo := NewRepository(synced, "")
+	repo := NewPatchRepository(synced, "")
 
 	// One directory yields one Patch whose Apply runs its files in
 	// ordinal order (0001-first, then 0002-second).
@@ -143,7 +143,7 @@ func TestRangeMatchNoMatchAndOrdering(t *testing.T) {
 }
 
 func TestPatchesForNoTreeIsEmptyNotError(t *testing.T) {
-	repo := NewRepository(filepath.Join(t.TempDir(), "does-not-exist"), "")
+	repo := NewPatchRepository(filepath.Join(t.TempDir(), "does-not-exist"), "")
 	if got := repo.PatchesFor("php", "8.0.0"); len(got) != 0 {
 		t.Fatalf("PatchesFor on missing tree = %d patches, want 0", len(got))
 	}
@@ -160,7 +160,7 @@ func TestPublishedCurlLegacyRangeHasEraCFlags(t *testing.T) {
 	if _, err := os.Stat(pubRoot); err != nil {
 		t.Skipf("publication tree not found at %s: %v", pubRoot, err)
 	}
-	repo := NewRepository(pubRoot, "")
+	repo := NewPatchRepository(pubRoot, "")
 
 	legacy := repo.PatchesFor("curl", "7.20.0")
 	var cflags []string
@@ -367,7 +367,7 @@ func TestDirRangeExprMatchesVersions(t *testing.T) {
 		{"6.9.7", "6.9.8", false},
 	}
 	for _, tt := range tests {
-		if got := entryMatches(Entry{RangeDir: tt.dir}, tt.version); got != tt.want {
+		if got := entryMatches(PatchEntry{RangeDir: tt.dir}, tt.version); got != tt.want {
 			t.Errorf("dir %q vs %s = %v, want %v", tt.dir, tt.version, got, tt.want)
 		}
 	}
@@ -430,7 +430,7 @@ func TestParseManifestInvalidYAML(t *testing.T) {
 
 func TestLoadManifestMissingIsNil(t *testing.T) {
 	dir := t.TempDir()
-	m, err := LoadManifest(filepath.Join(dir, ManifestFileName))
+	m, err := LoadManifest(filepath.Join(dir, PatchFlagsFileName))
 	if err != nil {
 		t.Fatalf("LoadManifest on missing file: %v", err)
 	}
@@ -441,7 +441,7 @@ func TestLoadManifestMissingIsNil(t *testing.T) {
 
 func TestLoadManifestFromFile(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, ManifestFileName)
+	path := filepath.Join(dir, PatchFlagsFileName)
 	if err := os.WriteFile(path, []byte("configureFlags:\n  - \"-DZLIB_ROOT={{dep:zlib}}\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

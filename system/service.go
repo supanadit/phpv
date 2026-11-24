@@ -1,7 +1,6 @@
 package system
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,10 +9,21 @@ import (
 	"github.com/supanadit/phpv/domain"
 )
 
-type Service struct{}
+// SystemCatalog is the swappable source of distro package data and
+// host-level package-manager mechanics. Memory, REST or SQL drivers can
+// implement it without changing this module.
+type SystemCatalog interface {
+	Detect() (Distro, error)
+	PackagesForDistro(distro string) map[string]string
+	BuildToolsForDistro(distro string) map[string]string
+	AdvisoryLibraries() []string
+	InstallArgs(pm string, names []string) []string
+}
 
-func NewService() *Service {
-	return &Service{}
+type Service struct{ catalog SystemCatalog }
+
+func NewService(catalog SystemCatalog) *Service {
+	return &Service{catalog: catalog}
 }
 
 // Check reports which of the given system packages are installed. Dependencies
@@ -21,12 +31,12 @@ func NewService() *Service {
 // table; those with no mapping are skipped. The Required flag and any other
 // caller-supplied field is preserved on the returned packages.
 func (s *Service) Check(deps []Package) (*CheckResult, error) {
-	distro, err := Detect()
+	distro, err := s.catalog.Detect()
 	if err != nil {
 		return nil, fmt.Errorf("detect distro: %w", err)
 	}
 
-	pkgs := packagesForDistro(distro.Name)
+	pkgs := s.catalog.PackagesForDistro(distro.Name)
 	if pkgs == nil {
 		return &CheckResult{Distro: distro}, nil
 	}
@@ -53,12 +63,12 @@ func (s *Service) Check(deps []Package) (*CheckResult, error) {
 }
 
 func (s *Service) CheckBuildTools(toolNames []string) (*CheckResult, error) {
-	distro, err := Detect()
+	distro, err := s.catalog.Detect()
 	if err != nil {
 		return nil, fmt.Errorf("detect distro: %w", err)
 	}
 
-	pkgs := buildToolsForDistro(distro.Name)
+	pkgs := s.catalog.BuildToolsForDistro(distro.Name)
 	result := &CheckResult{Distro: distro}
 
 	for _, name := range toolNames {
@@ -85,7 +95,7 @@ func (s *Service) Install(packages []Package) error {
 	if len(packages) == 0 {
 		return nil
 	}
-	distro, err := Detect()
+	distro, err := s.catalog.Detect()
 	if err != nil {
 		return err
 	}
@@ -95,7 +105,7 @@ func (s *Service) Install(packages []Package) error {
 		names = append(names, p.SystemName)
 	}
 
-	args := installArgs(distro.PM, names)
+	args := s.catalog.InstallArgs(distro.PM, names)
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -107,17 +117,17 @@ func (s *Service) InstallCommand(packages []Package) string {
 	if len(packages) == 0 {
 		return ""
 	}
-	distro, _ := Detect()
+	distro, _ := s.catalog.Detect()
 	var names []string
 	for _, p := range packages {
 		names = append(names, p.SystemName)
 	}
-	args := installArgs(distro.PM, names)
+	args := s.catalog.InstallArgs(distro.PM, names)
 	return strings.Join(args, " ")
 }
 
 func (s *Service) DistroInfo() Distro {
-	d, _ := Detect()
+	d, _ := s.catalog.Detect()
 	return d
 }
 
@@ -220,40 +230,7 @@ func normalizeVersion(v string) string {
 	return v[:end]
 }
 
-func installArgs(pm string, names []string) []string {
-	if os.Geteuid() == 0 {
-		switch pm {
-		case "apt":
-			return append([]string{"apt-get", "install", "-y"}, names...)
-		case "dnf":
-			return append([]string{"dnf", "install", "-y"}, names...)
-		case "apk":
-			return append([]string{"apk", "add"}, names...)
-		case "pacman":
-			return append([]string{"pacman", "-S", "--noconfirm"}, names...)
-		default:
-			return nil
-		}
-	}
-	switch pm {
-	case "apt":
-		return append([]string{"sudo", "apt-get", "install", "-y"}, names...)
-	case "dnf":
-		return append([]string{"sudo", "dnf", "install", "-y"}, names...)
-	case "apk":
-		return append([]string{"sudo", "apk", "add"}, names...)
-	case "pacman":
-		return append([]string{"sudo", "pacman", "-S", "--noconfirm"}, names...)
-	default:
-		return nil
-	}
-}
-
-// baseAdvisoryLibraries are development libraries PHP can use at build time but
-// which are not modelled as buildable dependencies: they are expected to come
 // from the system, and no version constraint is checked for them. Libraries an
-// extension asks for arrive through ExtensionDef.RequiresPackages instead.
-var baseAdvisoryLibraries = []string{"sqlite3", "readline", "pcre2", "sodium"}
 
 // DependencySet returns the system packages to check for a build of the given
 // extensions. It is the single source of truth shared by `phpv install`,
@@ -263,17 +240,22 @@ var baseAdvisoryLibraries = []string{"sqlite3", "readline", "pcre2", "sodium"}
 // A package is marked Required when an extension names it in RequiresPackage,
 // because that field also feeds the source-build dependency resolver: the
 // package really is part of the build plan and its version is checked before
-// use. Packages from RequiresPackages and baseAdvisoryLibraries are advisory —
+// use. Packages from RequiresPackages and s.catalog.AdvisoryLibraries() are advisory —
 // dev libraries the build can consume but whose version is not gated.
 //
 // Only packages the build can actually consume are listed: a library with no
 // buildable package definition and no extension asking for it is not included.
 // DependencySet exposes the dependency derivation as a service method.
 func (s *Service) DependencySet(exts []domain.ExtensionDef) []Package {
-	return DependencySet(exts)
+	return dependencySet(exts, s.catalog.AdvisoryLibraries())
 }
 
+// DependencySet is the standalone helper used when no catalog is injected.
 func DependencySet(exts []domain.ExtensionDef) []Package {
+	return dependencySet(exts, []string{"sqlite3", "readline", "pcre2", "sodium"})
+}
+
+func dependencySet(exts []domain.ExtensionDef, advisory []string) []Package {
 	seen := make(map[string]bool)
 	var pkgs []Package
 
@@ -293,7 +275,7 @@ func DependencySet(exts []domain.ExtensionDef) []Package {
 			add(name, false)
 		}
 	}
-	for _, name := range baseAdvisoryLibraries {
+	for _, name := range advisory {
 		add(name, false)
 	}
 	return pkgs
@@ -307,213 +289,6 @@ func Names(pkgs []Package) []string {
 		names = append(names, p.Name)
 	}
 	return names
-}
-
-func Detect() (Distro, error) {
-	f, err := os.Open("/etc/os-release")
-	if err != nil {
-		return Distro{Name: "unknown", PM: "unknown"}, nil
-	}
-	defer f.Close()
-
-	var d Distro
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "ID=") {
-			d.Name = strings.Trim(strings.TrimPrefix(line, "ID="), `"`)
-		}
-		if strings.HasPrefix(line, "VERSION_ID=") {
-			d.Version = strings.Trim(strings.TrimPrefix(line, "VERSION_ID="), `"`)
-		}
-	}
-
-	switch d.Name {
-	case "ubuntu", "debian":
-		d.PM = "apt"
-	case "fedora", "rhel", "centos":
-		d.PM = "dnf"
-	case "alpine":
-		d.PM = "apk"
-	case "arch":
-		d.PM = "pacman"
-	default:
-		d.PM = "unknown"
-	}
-
-	return d, nil
-}
-
-type pkgMap map[string]string
-
-var fedoraPackages = pkgMap{
-	"openssl":   "openssl-devel",
-	"libxml2":   "libxml2-devel",
-	"zlib":      "zlib-devel",
-	"oniguruma": "oniguruma-devel",
-	"curl":      "libcurl-devel",
-	"sqlite3":   "sqlite-devel",
-	"readline":  "readline-devel",
-	"icu":       "libicu-devel",
-	"pcre2":     "pcre2-devel",
-	"argon2":    "libargon2-devel",
-	"sodium":    "libsodium-devel",
-	"libpng":    "libpng-devel",
-	"libjpeg":   "libjpeg-turbo-devel",
-	"freetype":  "freetype-devel",
-	"libzip":    "libzip-devel",
-	"libpq":     "postgresql-devel",
-}
-
-var ubuntuPackages = pkgMap{
-	"openssl":   "libssl-dev",
-	"libxml2":   "libxml2-dev",
-	"zlib":      "zlib1g-dev",
-	"oniguruma": "libonig-dev",
-	"curl":      "libcurl4-openssl-dev",
-	"sqlite3":   "libsqlite3-dev",
-	"readline":  "libreadline-dev",
-	"icu":       "libicu-dev",
-	"pcre2":     "libpcre2-dev",
-	"argon2":    "libargon2-dev",
-	"sodium":    "libsodium-dev",
-	"libpng":    "libpng-dev",
-	"libjpeg":   "libjpeg-dev",
-	"freetype":  "libfreetype-dev",
-	"libzip":    "libzip-dev",
-	"libpq":     "libpq-dev",
-}
-
-var alpinePackages = pkgMap{
-	"openssl":   "openssl-dev",
-	"libxml2":   "libxml2-dev",
-	"zlib":      "zlib-dev",
-	"oniguruma": "oniguruma-dev",
-	"curl":      "curl-dev",
-	"sqlite3":   "sqlite-dev",
-	"readline":  "readline-dev",
-	"icu":       "icu-dev",
-	"pcre2":     "pcre2-dev",
-	"argon2":    "argon2-dev",
-	"sodium":    "libsodium-dev",
-	"libpng":    "libpng-dev",
-	"libjpeg":   "libjpeg-dev",
-	"freetype":  "freetype-dev",
-	"libzip":    "libzip-dev",
-	"libpq":     "libpq-dev",
-}
-
-var archPackages = pkgMap{
-	"openssl":   "openssl",
-	"libxml2":   "libxml2",
-	"zlib":      "zlib",
-	"oniguruma": "oniguruma",
-	"curl":      "curl",
-	"sqlite3":   "sqlite",
-	"readline":  "readline",
-	"icu":       "icu",
-	"pcre2":     "pcre2",
-	"argon2":    "argon2",
-	"sodium":    "libsodium",
-	"libpng":    "libpng",
-	"libjpeg":   "libjpeg-turbo",
-	"freetype":  "freetype2",
-	"libzip":    "libzip",
-	"libpq":     "postgresql-libs",
-}
-
-var fedoraBuildTools = pkgMap{
-	"gcc":        "gcc",
-	"g++":        "gcc-c++",
-	"make":       "make",
-	"cmake":      "cmake",
-	"autoconf":   "autoconf",
-	"automake":   "automake",
-	"m4":         "m4",
-	"perl":       "perl",
-	"bison":      "bison",
-	"re2c":       "re2c",
-	"flex":       "flex",
-	"pkg-config": "pkgconf-pkg-config",
-	"xz":         "xz-devel",
-}
-
-var ubuntuBuildTools = pkgMap{
-	"gcc":        "gcc",
-	"g++":        "g++",
-	"make":       "make",
-	"cmake":      "cmake",
-	"autoconf":   "autoconf",
-	"automake":   "automake",
-	"m4":         "m4",
-	"perl":       "perl",
-	"bison":      "bison",
-	"re2c":       "re2c",
-	"flex":       "flex",
-	"pkg-config": "pkg-config",
-	"xz":         "xz-utils",
-}
-
-var alpineBuildTools = pkgMap{
-	"gcc":        "gcc",
-	"g++":        "g++",
-	"make":       "make",
-	"cmake":      "cmake",
-	"autoconf":   "autoconf",
-	"automake":   "automake",
-	"m4":         "m4",
-	"perl":       "perl",
-	"bison":      "bison",
-	"re2c":       "re2c",
-	"flex":       "flex",
-	"pkg-config": "pkgconfig",
-	"xz":         "xz",
-}
-
-var archBuildTools = pkgMap{
-	"gcc":        "gcc",
-	"g++":        "gcc",
-	"make":       "make",
-	"cmake":      "cmake",
-	"autoconf":   "autoconf",
-	"automake":   "automake",
-	"m4":         "m4",
-	"perl":       "perl",
-	"bison":      "bison",
-	"re2c":       "re2c",
-	"flex":       "flex",
-	"pkg-config": "pkg-config",
-	"xz":         "xz",
-}
-
-func packagesForDistro(distro string) pkgMap {
-	switch distro {
-	case "fedora", "rhel", "centos":
-		return fedoraPackages
-	case "ubuntu", "debian":
-		return ubuntuPackages
-	case "alpine":
-		return alpinePackages
-	case "arch":
-		return archPackages
-	default:
-		return nil
-	}
-}
-
-func buildToolsForDistro(distro string) pkgMap {
-	switch distro {
-	case "fedora", "rhel", "centos":
-		return fedoraBuildTools
-	case "ubuntu", "debian":
-		return ubuntuBuildTools
-	case "alpine":
-		return alpineBuildTools
-	case "arch":
-		return archBuildTools
-	default:
-		return nil
-	}
 }
 
 // Aliases keep the system package's vocabulary while the canonical data lives

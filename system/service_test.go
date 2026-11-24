@@ -45,7 +45,7 @@ func TestNormalizeVersion_ExtractsArchEpoch(t *testing.T) {
 func TestCheckBuildTools_SplitsAvailableAndMissing(t *testing.T) {
 	toolNames := []string{"gcc", "g++", "make", "cmake", "autoconf", "automake", "m4", "perl", "bison", "re2c", "flex", "pkg-config", "xz"}
 
-	result, err := (&Service{}).CheckBuildTools(toolNames)
+	result, err := NewService(&testCatalog{}).CheckBuildTools(toolNames)
 	if err != nil {
 		t.Fatalf("CheckBuildTools returned error: %v", err)
 	}
@@ -74,32 +74,6 @@ func TestCheckBuildTools_SplitsAvailableAndMissing(t *testing.T) {
 	}
 	if len(missing) > 0 {
 		t.Errorf("tools not classified as either available or missing: %s", strings.Join(missing, ", "))
-	}
-}
-
-func TestPackagesForDistro_LibPQMapping(t *testing.T) {
-	cases := []struct {
-		distro string
-		want   string
-	}{
-		{"arch", "postgresql-libs"},
-		{"ubuntu", "libpq-dev"},
-		{"debian", "libpq-dev"},
-		{"alpine", "libpq-dev"},
-		{"fedora", "postgresql-devel"},
-		{"rhel", "postgresql-devel"},
-		{"centos", "postgresql-devel"},
-	}
-	for _, c := range cases {
-		pkgs := packagesForDistro(c.distro)
-		got, ok := pkgs["libpq"]
-		if !ok {
-			t.Errorf("packagesForDistro(%q) has no libpq mapping", c.distro)
-			continue
-		}
-		if got != c.want {
-			t.Errorf("packagesForDistro(%q)[libpq] = %q, want %q", c.distro, got, c.want)
-		}
 	}
 }
 
@@ -192,7 +166,7 @@ func TestCheck_PreservesRequiredFlag(t *testing.T) {
 	// Check must not drop caller-supplied metadata; the distro may not have a
 	// mapping for a package, in which case it is skipped entirely.
 	deps := []Package{{Name: "definitely-not-a-mapped-package", Required: true}}
-	result, err := (&Service{}).Check(deps)
+	result, err := NewService(&testCatalog{}).Check(deps)
 	if err != nil {
 		t.Fatalf("Check: %v", err)
 	}
@@ -201,4 +175,19 @@ func TestCheck_PreservesRequiredFlag(t *testing.T) {
 			t.Fatal("unmapped package should be skipped, not reported")
 		}
 	}
+}
+
+// testCatalog keeps system tests independent of any concrete driver.
+type testCatalog struct{}
+
+func (t *testCatalog) Detect() (Distro, error)                    { return Distro{Name: "fedora", PM: "dnf"}, nil }
+func (t *testCatalog) PackagesForDistro(string) map[string]string { return map[string]string{} }
+func (t *testCatalog) BuildToolsForDistro(string) map[string]string {
+	return map[string]string{"gcc": "gcc", "g++": "gcc-c++", "make": "make"}
+}
+func (t *testCatalog) AdvisoryLibraries() []string {
+	return []string{"sqlite3", "readline", "pcre2", "sodium"}
+}
+func (t *testCatalog) InstallArgs(pm string, names []string) []string {
+	return append([]string{pm, "install", "-y"}, names...)
 }

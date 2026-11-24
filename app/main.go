@@ -194,6 +194,8 @@ func main() {
 			silo.NewService,
 			fx.Annotate(silo.NewService, fx.As(new(bundle.BundleSilo))),
 			bundle.NewService,
+			memory.NewSystemCatalog,
+			fx.Annotate(memory.NewSystemCatalog, fx.As(new(system.SystemCatalog))),
 			system.NewService,
 			fx.Annotate(silo.NewService, fx.As(new(launchers.ShimSilo))),
 			launchers.NewService,

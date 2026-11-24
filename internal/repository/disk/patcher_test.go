@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/supanadit/phpv/internal/repository"
 )
 
 // writeTree materializes a patch tree: keys are slash-separated relative
@@ -212,8 +214,8 @@ func TestApplyCleanOnNestedRoot(t *testing.T) {
 	if err := os.WriteFile(patch, []byte(samplePatch), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := applyPatchFile(patch, root); err != nil {
-		t.Fatalf("applyPatchFile: %v", err)
+	if err := repository.ApplyPatchFile(patch, root); err != nil {
+		t.Fatalf("repository.ApplyPatchFile: %v", err)
 	}
 	data, err := os.ReadFile(filepath.Join(root, "pkg-1.2.3", "hello.txt"))
 	if err != nil {
@@ -230,7 +232,7 @@ func TestApplyContextMismatchNamesFileAndRoot(t *testing.T) {
 	if err := os.WriteFile(patch, []byte(samplePatch), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err := applyPatches(patchSet{pkg: "php", version: "8.0.30", rangeDir: "8.0.0-8.1.0", files: []string{patch}, sourceDir: root})
+	err := repository.ApplyPatches(repository.PatchSet{Pkg: "php", Version: "8.0.30", RangeDir: "8.0.0-8.1.0", Files: []string{patch}, SourceDir: root})
 	if err == nil {
 		t.Fatal("expected loud failure on context mismatch")
 	}
@@ -248,7 +250,7 @@ func TestApplyAlreadyAppliedTolerated(t *testing.T) {
 	if err := os.WriteFile(patch, []byte(samplePatch), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := applyPatchFile(patch, root); err != nil {
+	if err := repository.ApplyPatchFile(patch, root); err != nil {
 		t.Fatalf("already-applied patch must be tolerated, got: %v", err)
 	}
 }
@@ -266,8 +268,8 @@ func TestApplyOrdinalOrder(t *testing.T) {
 	if err := os.WriteFile(second, []byte(secondPatch), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := applyPatches(patchSet{pkg: "php", version: "8.0.30", rangeDir: "any", files: []string{first, second}, sourceDir: root}); err != nil {
-		t.Fatalf("applyPatches: %v", err)
+	if err := repository.ApplyPatches(repository.PatchSet{Pkg: "php", Version: "8.0.30", RangeDir: "any", Files: []string{first, second}, SourceDir: root}); err != nil {
+		t.Fatalf("repository.ApplyPatches: %v", err)
 	}
 	data, _ := os.ReadFile(filepath.Join(root, "hello.txt"))
 	if string(data) != "final\n" {
@@ -277,7 +279,7 @@ func TestApplyOrdinalOrder(t *testing.T) {
 
 func TestMissingPatchToolPreflight(t *testing.T) {
 	t.Setenv("PATH", t.TempDir()) // empty PATH: no `patch` binary
-	err := preflightPatchTool()
+	err := repository.PreflightPatchTool()
 	if err == nil {
 		t.Skip("patch binary still reachable; environment does not honor empty PATH")
 	}
@@ -292,12 +294,12 @@ func TestResolveSourceRootFallsBackToSourceDir(t *testing.T) {
 	if err := os.WriteFile(patch, []byte(samplePatch), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := resolveSourceRoot(patch, root)
+	got, err := repository.ResolveSourceRoot(patch, root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != root {
-		t.Errorf("resolveSourceRoot = %q, want fallback %q", got, root)
+		t.Errorf("repository.ResolveSourceRoot = %q, want fallback %q", got, root)
 	}
 }
 
@@ -317,7 +319,7 @@ func TestFirstDiffTarget(t *testing.T) {
 			if err := os.WriteFile(p, []byte(tc.diff), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			got, err := firstDiffTarget(p)
+			got, err := repository.FirstDiffTarget(p)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("want error, got %q", got)
@@ -325,7 +327,7 @@ func TestFirstDiffTarget(t *testing.T) {
 				return
 			}
 			if err != nil || got != tc.want {
-				t.Fatalf("firstDiffTarget = %q, %v; want %q", got, err, tc.want)
+				t.Fatalf("repository.FirstDiffTarget = %q, %v; want %q", got, err, tc.want)
 			}
 		})
 	}
@@ -344,8 +346,8 @@ func TestDirRangeExpr(t *testing.T) {
 		{"6.9.9-6.9.10", ">=6.9.9,<6.9.10"},
 	}
 	for _, tt := range tests {
-		if got := DirRangeExpr(tt.dir); got != tt.want {
-			t.Errorf("DirRangeExpr(%q) = %q, want %q", tt.dir, got, tt.want)
+		if got := repository.DirRangeExpr(tt.dir); got != tt.want {
+			t.Errorf("repository.DirRangeExpr(%q) = %q, want %q", tt.dir, got, tt.want)
 		}
 	}
 }

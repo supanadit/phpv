@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/supanadit/phpv/internal/repository"
 )
 
 // paths and install prefix.
@@ -41,7 +43,7 @@ func TestInvalidateStaleCMakeCache_MissingCompilerWipes(t *testing.T) {
 	// machine (the /usr/lib64/ccache/gcc scenario).
 	writeFakeCache(t, fakeCacheSpec{buildDir: buildDir, cc: filepath.Join(dir, "ghost", "gcc"), cxx: "", prefix: filepath.Join(dir, "prefix")})
 
-	if err := invalidateStaleCMakeCache(buildDir, filepath.Join(dir, "prefix")); err != nil {
+	if err := repository.InvalidateStaleCMakeCache(buildDir, filepath.Join(dir, "prefix")); err != nil {
 		t.Fatalf("invalidateStaleCMakeCache: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(buildDir, "CMakeCache.txt")); !os.IsNotExist(err) {
@@ -62,7 +64,7 @@ func TestInvalidateStaleCMakeCache_ValidCompilerKept(t *testing.T) {
 	}
 	writeFakeCache(t, fakeCacheSpec{buildDir: buildDir, cc: realCC, cxx: "", prefix: filepath.Join(dir, "prefix")})
 
-	if err := invalidateStaleCMakeCache(buildDir, filepath.Join(dir, "prefix")); err != nil {
+	if err := repository.InvalidateStaleCMakeCache(buildDir, filepath.Join(dir, "prefix")); err != nil {
 		t.Fatalf("invalidateStaleCMakeCache: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(buildDir, "CMakeCache.txt")); err != nil {
@@ -82,7 +84,7 @@ func TestInvalidateStaleCMakeCache_PrefixChangeWipes(t *testing.T) {
 	}
 	writeFakeCache(t, fakeCacheSpec{buildDir: buildDir, cc: realCC, cxx: "", prefix: filepath.Join(dir, "old-prefix")})
 
-	if err := invalidateStaleCMakeCache(buildDir, filepath.Join(dir, "new-prefix")); err != nil {
+	if err := repository.InvalidateStaleCMakeCache(buildDir, filepath.Join(dir, "new-prefix")); err != nil {
 		t.Fatalf("invalidateStaleCMakeCache: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(buildDir, "CMakeCache.txt")); !os.IsNotExist(err) {
@@ -96,7 +98,7 @@ func TestInvalidateStaleCMakeCache_NoCacheIsNoop(t *testing.T) {
 	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := invalidateStaleCMakeCache(buildDir, filepath.Join(dir, "prefix")); err != nil {
+	if err := repository.InvalidateStaleCMakeCache(buildDir, filepath.Join(dir, "prefix")); err != nil {
 		t.Fatalf("invalidateStaleCMakeCache: %v", err)
 	}
 	// No cache, nothing to do; build dir must still exist for cmake.
@@ -118,7 +120,7 @@ func TestInvalidateStaleCMakeCache_CXXOnlyStale(t *testing.T) {
 	}
 	writeFakeCache(t, fakeCacheSpec{buildDir: buildDir, cc: realCC, cxx: filepath.Join(dir, "ghost", "g++"), prefix: filepath.Join(dir, "prefix")})
 
-	if err := invalidateStaleCMakeCache(buildDir, filepath.Join(dir, "prefix")); err != nil {
+	if err := repository.InvalidateStaleCMakeCache(buildDir, filepath.Join(dir, "prefix")); err != nil {
 		t.Fatalf("invalidateStaleCMakeCache: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(buildDir, "CMakeCache.txt")); !os.IsNotExist(err) {
@@ -139,16 +141,16 @@ func TestCmakeCacheCompiler_ParsesRealisticCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := cmakeCacheCompiler(cachePath, "C_COMPILER"); got != "/usr/bin/gcc" {
+	if got := repository.CMakeCacheCompiler(cachePath, "C_COMPILER"); got != "/usr/bin/gcc" {
 		t.Errorf("cmakeCacheCompiler C = %q, want /usr/bin/gcc", got)
 	}
-	if got := cmakeCacheCompiler(cachePath, "CXX_COMPILER"); got != "/usr/bin/g++" {
+	if got := repository.CMakeCacheCompiler(cachePath, "CXX_COMPILER"); got != "/usr/bin/g++" {
 		t.Errorf("cmakeCacheCompiler CXX = %q, want /usr/bin/g++", got)
 	}
-	if got := cmakeCacheString(cachePath, "INSTALL_PREFIX"); got != "/tmp/prefix" {
+	if got := repository.CMakeCacheString(cachePath, "INSTALL_PREFIX"); got != "/tmp/prefix" {
 		t.Errorf("cmakeCacheString INSTALL_PREFIX = %q, want /tmp/prefix", got)
 	}
-	if got := cmakeCacheString(cachePath, "NONEXISTENT"); got != "" {
+	if got := repository.CMakeCacheString(cachePath, "NONEXISTENT"); got != "" {
 		t.Errorf("cmakeCacheString missing key = %q, want empty", got)
 	}
 }
@@ -186,9 +188,9 @@ func TestMakeArgs_SerialPackages(t *testing.T) {
 		{"curl", "7.20.0", 0, []string{"-j4"}},
 	}
 	for _, tt := range tests {
-		got := makeArgs(tt.name, tt.version, tt.jobs)
+		got := repository.MakeArgs(tt.name, tt.version, tt.jobs)
 		if !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("makeArgs(%s, %s, %d) = %q, want %q", tt.name, tt.version, tt.jobs, got, tt.want)
+			t.Errorf("repository.MakeArgs(%s, %s, %d) = %q, want %q", tt.name, tt.version, tt.jobs, got, tt.want)
 		}
 	}
 }

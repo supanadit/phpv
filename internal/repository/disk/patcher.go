@@ -3,11 +3,11 @@ package disk
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/supanadit/phpv/internal/repository"
 	vsn "github.com/supanadit/phpv/pkg/version"
 
 	"github.com/supanadit/phpv/domain"
@@ -30,8 +30,6 @@ const (
 
 // anyDirName is the special range-directory name matching every version
 // of a package (used by config-only entries).
-const anyDirName = "any"
-
 // DirRangeExpr translates a range-directory name into the version-range
 // expression evaluated by vsn.MatchVersionRange. Directory names use
 // a Windows-safe encoding of the range syntax:
@@ -40,43 +38,6 @@ const anyDirName = "any"
 //	8.0.0-8.1.0  → ">=8.0.0,<8.1.0"   (lower inclusive, upper exclusive)
 //	6.0.0+       → ">=6.0.0"          (open-ended)
 //	6.9.7        → "=6.9.7"           (exact version)
-func DirRangeExpr(dir string) string {
-	if dir == anyDirName || dir == "" {
-		return ""
-	}
-	if strings.HasSuffix(dir, "+") {
-		return ">=" + strings.TrimSuffix(dir, "+")
-	}
-	if a, b, ok := strings.Cut(dir, "-"); ok && a != "" && b != "" {
-		// Both sides must look like plain versions to avoid misreading
-		// other directory names; versions carry no dashes in phpv.
-		if isPlainVersion(a) && isPlainVersion(b) {
-			return ">=" + a + ",<" + b
-		}
-	}
-	return "=" + dir
-}
-
-// isPlainVersion reports whether s is a bare x[.y[.z]] version.
-func isPlainVersion(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, seg := range strings.Split(s, ".") {
-		if seg == "" {
-			return false
-		}
-		for _, r := range seg {
-			if r < '0' || r > '9' {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-// root is one patch source tree. Roots are consulted in precedence order;
-// the first root to claim a directory path owns it wholly.
 type patchRoot struct {
 	path  string
 	label string
@@ -169,7 +130,7 @@ func (r *PatchRepository) PatchesFor(name string, version string) []domain.Sourc
 			dirName := filepath.Base(e.DirPath)
 			p.Name = patchDisplayName(files)
 			p.Apply = func(sourceDir string) error {
-				return applyPatches(patchSet{pkg: name, version: version, rangeDir: dirName, files: files, sourceDir: sourceDir})
+				return repository.ApplyPatches(repository.PatchSet{Pkg: name, Version: version, RangeDir: dirName, Files: files, SourceDir: sourceDir})
 			}
 		} else {
 			p.Name = e.DirPath
@@ -189,16 +150,16 @@ func patchDisplayName(files []string) string {
 // rangeExpr converts a range directory name into the VersionRange value
 // carried on the Patch struct. "any" matches everything.
 func rangeExpr(rangeDir string) string {
-	return DirRangeExpr(rangeDir)
+	return repository.DirRangeExpr(rangeDir)
 }
 
 // entryMatches reports whether the directory's range name matches the
 // built version.
 func entryMatches(e PatchEntry, version string) bool {
-	if e.RangeDir == anyDirName {
+	if e.RangeDir == repository.DirRangeAny {
 		return true
 	}
-	return vsn.MatchVersionRange(DirRangeExpr(e.RangeDir), version)
+	return vsn.MatchVersionRange(repository.DirRangeExpr(e.RangeDir), version)
 }
 
 // sortEntries orders selected directories by their first patch file's
@@ -278,136 +239,6 @@ func patchFilesIn(dirPath string) ([]string, error) {
 // order, against the resolved source root under sourceDir. The first
 // failure aborts loudly (the caller surfaces the error and the build
 // stops) — silent skips of mismatching context are gone.
-type patchSet struct {
-	pkg, version, rangeDir string
-	files                  []string
-	sourceDir              string
-}
-
-func applyPatches(set patchSet) error {
-	pkg, version, rangeDir, files, sourceDir := set.pkg, set.version, set.rangeDir, set.files, set.sourceDir
-	if err := preflightPatchTool(); err != nil {
-		return err
-	}
-	for _, f := range files {
-		if err := applyPatchFile(f, sourceDir); err != nil {
-			return fmt.Errorf("patch %s failed for %s@%s (range %s): %w",
-				filepath.Base(f), pkg, version, rangeDir, err)
-		}
-	}
-	return nil
-}
-
-// preflightPatchTool verifies the system `patch` binary is available,
-// with an actionable per-distro install hint when it is not.
-func preflightPatchTool() error {
-	if _, err := exec.LookPath("patch"); err == nil {
-		return nil
-	}
-	return fmt.Errorf("the 'patch' tool is required to apply source patches but was not found in PATH; install it with e.g. 'sudo dnf install patch', 'sudo apt install patch', or 'sudo pacman -S patch'")
-}
-
-// applyPatchFile applies one unified diff with `patch -p1 --forward -d
-// <root> -i <file>`. Already-applied patches (patch reports them and
-// skips under --forward) are tolerated; any other failure is loud.
-func applyPatchFile(patchFile, sourceDir string) error {
-	root, err := resolveSourceRoot(patchFile, sourceDir)
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command("patch", "-p1", "--forward", "-d", root, "-i", patchFile)
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		return nil
-	}
-	if isAlreadyApplied(string(out)) {
-		return nil
-	}
-	return fmt.Errorf("applying patch failed (source root %s):\n%s", root, strings.TrimRight(string(out), "\n"))
-}
-
-// isAlreadyApplied recognizes patch's "previously applied" / skipped
-// output, the one tolerated outcome per spec.
-func isAlreadyApplied(out string) bool {
-	l := strings.ToLower(out)
-	return strings.Contains(l, "previously applied") ||
-		strings.Contains(l, "reversed (or previously applied)")
-}
-
-// resolveSourceRoot locates the directory the patch's first target path
-// lives in, probing the extracted tree shallowly (the tree is typically
-// nested, e.g. <sourceDir>/php-7.4.33/). It replaces the old findFile
-// content walk: only the first target path of the diff is probed, at
-// directory depth <= 2, and the first candidate root containing that
-// path wins.
-func resolveSourceRoot(patchFile, sourceDir string) (string, error) {
-	target, err := firstDiffTarget(patchFile)
-	if err != nil {
-		return "", err
-	}
-	// Candidate roots: sourceDir itself, then subdirectories at depth 1
-	// and 2 (e.g. <sourceDir>/php-8.0.30/, <sourceDir>/a/b/).
-	candidates := []string{sourceDir}
-	for _, sub := range subdirs(sourceDir) {
-		candidates = append(candidates, sub)
-		candidates = append(candidates, subdirs(sub)...)
-	}
-	for _, c := range candidates {
-		if _, err := os.Stat(filepath.Join(c, target)); err == nil {
-			return c, nil
-		}
-	}
-	// Nothing probed: fall back to the top of the extracted tree so the
-	// patch tool produces the context-mismatch failure itself, which the
-	// caller reports with the root included.
-	return sourceDir, nil
-}
-
-// subdirs lists the immediate subdirectories of dir.
-func subdirs(dir string) []string {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	var out []string
-	for _, e := range entries {
-		if e.IsDir() {
-			out = append(out, filepath.Join(dir, e.Name()))
-		}
-	}
-	return out
-}
-
-// firstDiffTarget extracts the first real target path from the diff's
-// +++ lines (skipping /dev/null entries used for created files) and
-// strips the a/ prefix added by git/diff -u.
-func firstDiffTarget(patchFile string) (string, error) {
-	data, err := os.ReadFile(patchFile)
-	if err != nil {
-		return "", fmt.Errorf("read patch: %w", err)
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if !strings.HasPrefix(line, "+++ ") {
-			continue
-		}
-		path := strings.TrimSpace(strings.TrimPrefix(line, "+++ "))
-		path = strings.TrimPrefix(path, "b/")
-		path = strings.TrimPrefix(path, "a/")
-		if path == "/dev/null" {
-			continue
-		}
-		// Drop a trailing tab-timestamp that plain `diff -u` headers carry.
-		if i := strings.IndexAny(path, "\t"); i >= 0 {
-			path = path[:i]
-		}
-		return path, nil
-	}
-	return "", fmt.Errorf("%s: no target path found in diff", filepath.Base(patchFile))
-}
-
-// PatchFlagsFileName is the optional flags manifest inside a patch range
-// directory. A directory containing only this file is still a valid
-// selection: it contributes build flags without any patch application.
 const PatchFlagsFileName = "flags.yaml"
 
 // PatchManifest declares the build flags contributed by a patch range

@@ -6,14 +6,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
-	"strconv"
-	"strings"
 	"syscall"
-	"time"
+
+	"github.com/supanadit/phpv/internal/repository"
 
 	"github.com/supanadit/phpv/domain"
-	vsn "github.com/supanadit/phpv/pkg/version"
 
 	"github.com/supanadit/phpv/pkg/source"
 )
@@ -40,10 +37,10 @@ func (f *ForgeRepository) Build(ctx context.Context, req domain.BuildRequest) (b
 		return "", nil, fmt.Errorf("could not find source directory in %s", req.SourceDir)
 	}
 
-	chmodBuildScripts(srcPath)
-	touchAutotools(srcPath)
+	repository.ChmodBuildScripts(srcPath)
+	repository.TouchAutotools(srcPath)
 
-	strategy := detectStrategy(req.Name)
+	strategy := repository.DetectStrategy(req.Name)
 
 	prefix := req.InstallPrefix
 	if prefix == "" {
@@ -103,20 +100,6 @@ func (f *ForgeRepository) Install(ctx context.Context, req domain.InstallRequest
 	return nil
 }
 
-func runCmd(ctx context.Context, cmd *exec.Cmd, verbose bool) ([]byte, error) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if verbose {
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err := cmd.Run()
-		if err != nil {
-			return nil, err
-		}
-		return nil, nil
-	}
-	return cmd.CombinedOutput()
-}
-
 func (f *ForgeRepository) buildCMake(ctx context.Context, spec buildSpec) (string, map[string]string, error) {
 	name, srcPath, extraEnv, extraFlags, prefix, verbose, jobs := spec.name, spec.srcPath, spec.extraEnv, spec.extraFlags, spec.prefix, spec.verbose, spec.jobs
 
@@ -131,7 +114,7 @@ func (f *ForgeRepository) buildCMake(ctx context.Context, spec buildSpec) (strin
 	// path to an existing compiler tool". A changed install prefix would
 	// likewise silently keep the old one. Wipe the cache dir when it is
 	// stale; cmake regenerates it in milliseconds.
-	if err := invalidateStaleCMakeCache(buildDir, prefix); err != nil {
+	if err := repository.InvalidateStaleCMakeCache(buildDir, prefix); err != nil {
 		return "", nil, fmt.Errorf("invalidate cmake cache %s: %w", name, err)
 	}
 
@@ -144,99 +127,19 @@ func (f *ForgeRepository) buildCMake(ctx context.Context, spec buildSpec) (strin
 
 	cmake := exec.CommandContext(ctx, "cmake", cmakeArgs...)
 	cmake.Dir = buildDir
-	cmake.Env = mergeEnv(extraEnv)
-	if out, err := runCmd(ctx, cmake, verbose); err != nil {
+	cmake.Env = repository.MergeEnv(extraEnv)
+	if out, err := repository.RunCmd(ctx, cmake, verbose); err != nil {
 		return "", nil, fmt.Errorf("cmake %s: %w\n%s", name, err, out)
 	}
 
 	make := exec.CommandContext(ctx, "make", fmt.Sprintf("-j%d", jobs))
 	make.Dir = buildDir
-	make.Env = mergeEnv(extraEnv)
-	if out, err := runCmd(ctx, make, verbose); err != nil {
+	make.Env = repository.MergeEnv(extraEnv)
+	if out, err := repository.RunCmd(ctx, make, verbose); err != nil {
 		return "", nil, fmt.Errorf("make %s: %w\n%s", name, err, out)
 	}
 
-	return buildDir, forgeEnv(prefix), nil
-}
-
-// cmakeCacheCompiler reads a CMAKE_<VAR>:FILEPATH value from a
-// CMakeCache.txt (VAR: C_COMPILER or CXX_COMPILER). Returns "" when the
-// file or key is absent.
-func cmakeCacheCompiler(cachePath, varName string) string {
-	data, err := os.ReadFile(cachePath)
-	if err != nil {
-		return ""
-	}
-	prefix := "CMAKE_" + varName + ":FILEPATH="
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(line, prefix) {
-			return strings.TrimSpace(strings.TrimPrefix(line, prefix))
-		}
-	}
-	return ""
-}
-
-// invalidateStaleCMakeCache removes a build dir whose CMake cache is stale:
-// cached compiler paths that no longer exist on disk (toolchain removed or
-// changed), or a cached install prefix that differs from the requested one.
-// A missing cache is fine (fresh configure).
-func invalidateStaleCMakeCache(buildDir, wantPrefix string) error {
-	cachePath := filepath.Join(buildDir, "CMakeCache.txt")
-	if _, err := os.Stat(cachePath); err != nil {
-		return nil // no cache yet: cmake will configure fresh
-	}
-
-	stale := false
-	reason := ""
-	for _, varName := range []string{"C_COMPILER", "CXX_COMPILER"} {
-		cached := cmakeCacheCompiler(cachePath, varName)
-		if cached == "" {
-			continue
-		}
-		if _, err := os.Stat(cached); err != nil {
-			stale = true
-			reason = fmt.Sprintf("cached %s %q no longer exists", varName, cached)
-			break
-		}
-	}
-	if !stale {
-		cachedPrefix := cmakeCacheString(cachePath, "INSTALL_PREFIX")
-		if cachedPrefix != "" && cachedPrefix != wantPrefix {
-			stale = true
-			reason = fmt.Sprintf("cached install prefix %q differs from requested %q", cachedPrefix, wantPrefix)
-		}
-	}
-	if !stale {
-		return nil
-	}
-
-	if err := os.RemoveAll(buildDir); err != nil {
-		return fmt.Errorf("remove stale build dir (%s): %w", reason, err)
-	}
-	if err := os.MkdirAll(buildDir, 0o755); err != nil {
-		return fmt.Errorf("recreate build dir: %w", err)
-	}
-	return nil
-}
-
-// cmakeCacheString reads a CMAKE_<VAR>:<TYPE>=value line of any type from
-// a CMakeCache.txt. Returns "" when absent.
-func cmakeCacheString(cachePath, varName string) string {
-	data, err := os.ReadFile(cachePath)
-	if err != nil {
-		return ""
-	}
-	marker := "CMAKE_" + varName + ":"
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(line, marker) {
-			idx := strings.Index(line, "=")
-			if idx < 0 {
-				return ""
-			}
-			return strings.TrimSpace(line[idx+1:])
-		}
-	}
-	return ""
+	return buildDir, repository.ForgeEnv(prefix), nil
 }
 
 func (f *ForgeRepository) buildConfigure(ctx context.Context, spec buildSpec) (string, map[string]string, error) {
@@ -246,15 +149,15 @@ func (f *ForgeRepository) buildConfigure(ctx context.Context, spec buildSpec) (s
 		if _, err := os.Stat(filepath.Join(srcPath, "configure")); os.IsNotExist(err) {
 			autoreconf := exec.CommandContext(ctx, "autoreconf", "-fi")
 			autoreconf.Dir = srcPath
-			autoreconf.Env = mergeEnv(extraEnv)
-			if out, err := runCmd(ctx, autoreconf, verbose); err != nil {
+			autoreconf.Env = repository.MergeEnv(extraEnv)
+			if out, err := repository.RunCmd(ctx, autoreconf, verbose); err != nil {
 				return "", nil, fmt.Errorf("autoreconf %s: %w\n%s", name, err, out)
 			}
 		}
 	}
 
 	if name == "automake" {
-		touchAllGeneratedFiles(srcPath)
+		repository.TouchAllGeneratedFiles(srcPath)
 	}
 
 	var configurePath string
@@ -286,25 +189,25 @@ func (f *ForgeRepository) buildConfigure(ctx context.Context, spec buildSpec) (s
 
 	var configure *exec.Cmd
 	if usePerl {
-		opensslTarget := opensslTarget()
+		opensslTarget := repository.OpensslTarget()
 		perlArgs := []string{configurePath, opensslTarget}
 		for _, a := range args {
 			perlArgs = append(perlArgs, a)
 		}
 		configure = exec.CommandContext(ctx, "perl", perlArgs...)
 		configure.Dir = srcPath
-		configure.Env = mergeEnv(extraEnv)
+		configure.Env = repository.MergeEnv(extraEnv)
 	} else if useConfig {
 		configure = exec.CommandContext(ctx, "./config", args...)
 		configure.Dir = srcPath
-		configure.Env = mergeEnv(extraEnv)
+		configure.Env = repository.MergeEnv(extraEnv)
 	} else {
 		configure = exec.CommandContext(ctx, "./configure", args...)
 		configure.Dir = srcPath
-		configure.Env = mergeEnv(extraEnv)
+		configure.Env = repository.MergeEnv(extraEnv)
 	}
 
-	if out, err := runCmd(ctx, configure, verbose); err != nil {
+	if out, err := repository.RunCmd(ctx, configure, verbose); err != nil {
 		return "", nil, fmt.Errorf("configure %s: %w\n%s", name, err, out)
 	}
 
@@ -312,7 +215,7 @@ func (f *ForgeRepository) buildConfigure(ctx context.Context, spec buildSpec) (s
 		return "", nil, err
 	}
 
-	return srcPath, forgeEnv(prefix), nil
+	return srcPath, repository.ForgeEnv(prefix), nil
 }
 
 func (f *ForgeRepository) buildAutogen(ctx context.Context, spec buildSpec) (string, map[string]string, error) {
@@ -320,8 +223,8 @@ func (f *ForgeRepository) buildAutogen(ctx context.Context, spec buildSpec) (str
 
 	autoreconf := exec.CommandContext(ctx, "autoreconf", "-fi")
 	autoreconf.Dir = srcPath
-	autoreconf.Env = mergeEnv(extraEnv)
-	if out, err := runCmd(ctx, autoreconf, verbose); err != nil {
+	autoreconf.Env = repository.MergeEnv(extraEnv)
+	if out, err := repository.RunCmd(ctx, autoreconf, verbose); err != nil {
 		return "", nil, fmt.Errorf("autoreconf %s: %w\n%s", name, err, out)
 	}
 
@@ -330,8 +233,8 @@ func (f *ForgeRepository) buildAutogen(ctx context.Context, spec buildSpec) (str
 
 	configure := exec.CommandContext(ctx, "./configure", args...)
 	configure.Dir = srcPath
-	configure.Env = mergeEnv(extraEnv)
-	if out, err := runCmd(ctx, configure, verbose); err != nil {
+	configure.Env = repository.MergeEnv(extraEnv)
+	if out, err := repository.RunCmd(ctx, configure, verbose); err != nil {
 		return "", nil, fmt.Errorf("configure %s: %w\n%s", name, err, out)
 	}
 
@@ -339,7 +242,7 @@ func (f *ForgeRepository) buildAutogen(ctx context.Context, spec buildSpec) (str
 		return "", nil, err
 	}
 
-	return srcPath, forgeEnv(prefix), nil
+	return srcPath, repository.ForgeEnv(prefix), nil
 }
 
 func (f *ForgeRepository) buildMakeOnly(ctx context.Context, spec buildSpec) (string, map[string]string, error) {
@@ -351,137 +254,18 @@ func (f *ForgeRepository) buildMakeOnly(ctx context.Context, spec buildSpec) (st
 		return "", nil, err
 	}
 
-	return srcPath, forgeEnv(prefix), nil
-}
-
-// serialMakeOnly names packages whose build systems are not parallel-safe:
-// GNU autotools regenerating docs race under -j, and OpenSSL 1.0.x's
-// crypto/Makefile builds the parent "lib" and subdirectory "subdirs"
-// targets independently, so two concurrent `ar r libcrypto.a` invocations
-// corrupt the archive (observed as `ar` dying with SIGBUS under -j16).
-// OpenSSL 1.1.0+ rewrote its build system and is parallel-safe.
-var serialMakeOnly = map[string]string{
-	"automake": "",
-	"autoconf": "",
-	"libtool":  "",
-	"openssl":  "1.1.0", // serial only for versions < 1.1.0
-}
-
-// makeArgs returns the make arguments for (name, version). Versions before
-// the package's serialMakeOnly threshold build with -j1. jobs < 1 falls back
-// to the historical default of 4.
-func makeArgs(name, version string, jobs int) []string {
-	if jobs < 1 {
-		jobs = 4
-	}
-	if threshold, ok := serialMakeOnly[name]; ok {
-		if threshold == "" || vsn.CompareVersions(version, threshold) < 0 {
-			return []string{"-j1", "MAKEINFO=true", "HELP2MAN=true"}
-		}
-	}
-	return []string{"-j" + strconv.Itoa(jobs)}
+	return srcPath, repository.ForgeEnv(prefix), nil
 }
 
 func runMake(ctx context.Context, spec buildSpec, srcPath string) error {
 	name, version, extraEnv, verbose, jobs := spec.name, spec.version, spec.extraEnv, spec.verbose, spec.jobs
-	args := makeArgs(name, version, jobs)
+	args := repository.MakeArgs(name, version, jobs)
 
 	make := exec.CommandContext(ctx, "make", args...)
 	make.Dir = srcPath
-	make.Env = mergeEnv(extraEnv)
-	if out, err := runCmd(ctx, make, verbose); err != nil {
+	make.Env = repository.MergeEnv(extraEnv)
+	if out, err := repository.RunCmd(ctx, make, verbose); err != nil {
 		return fmt.Errorf("make %s: %w\n%s", name, err, out)
 	}
 	return nil
-}
-
-func mergeEnv(extraEnv []string) []string {
-	if len(extraEnv) == 0 {
-		return nil
-	}
-	env := os.Environ()
-	for _, e := range extraEnv {
-		env = append(env, e)
-	}
-	return env
-}
-
-func detectStrategy(name string) string {
-	switch name {
-	case "zlib", "openssl", "ossl", "libtool", "libxml2", "php", "m4", "automake", "autoconf":
-		return "configure"
-	case "cmake", "libzip":
-		return "cmake"
-	case "bison", "flex", "perl":
-		return "makeonly"
-	default:
-		return "configure"
-	}
-}
-
-func chmodBuildScripts(sourcePath string) {
-	for _, dir := range []string{"build", "ext", "build-aux", "lib", "scripts"} {
-		exec.Command("chmod", "-R", "+x", filepath.Join(sourcePath, dir)).Run()
-	}
-	for _, script := range []string{"install-sh", "depcomp", "ylwrap", "compile",
-		"config.guess", "config.sub", "configure", "missing", "mkinstalldirs"} {
-		p := filepath.Join(sourcePath, script)
-		if _, err := os.Stat(p); err == nil {
-			os.Chmod(p, 0o755)
-		}
-	}
-}
-
-func touchAutotools(sourcePath string) {
-	for _, f := range []string{"aclocal.m4", "Makefile.in", "configure", "config.h.in"} {
-		p := filepath.Join(sourcePath, f)
-		if _, err := os.Stat(p); err == nil {
-			os.Chtimes(p, time.Now(), time.Now())
-		}
-	}
-}
-
-func touchAllGeneratedFiles(sourcePath string) {
-	now := time.Now()
-	filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(path, ".am") {
-			os.Chtimes(path, now, now)
-		}
-		return nil
-	})
-	time.Sleep(time.Second)
-	now = time.Now()
-	filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(path, ".in") {
-			os.Chtimes(path, now, now)
-		}
-		return nil
-	})
-}
-
-func forgeEnv(prefix string) map[string]string {
-	env := map[string]string{
-		"PKG_CONFIG_PATH": filepath.Join(prefix, "lib", "pkgconfig"),
-	}
-	env["CPPFLAGS"] = "-I" + filepath.Join(prefix, "include")
-	env["LDFLAGS"] = "-L" + filepath.Join(prefix, "lib") + " -Wl,-rpath," + filepath.Join(prefix, "lib")
-	return env
-}
-
-// TODO: Hardcoded OS/arch OpenSSL target
-// Description: We should instead make this dynamic like "List" in "internal/repository/memory/registry.go"
-func opensslTarget() string {
-	if runtime.GOOS == "darwin" {
-		if runtime.GOARCH == "arm64" {
-			return "darwin64-arm64-cc"
-		}
-		return "darwin64-x86_64-cc"
-	}
-	return "linux-x86_64"
 }

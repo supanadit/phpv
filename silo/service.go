@@ -2,8 +2,15 @@ package silo
 
 import (
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/registry"
 )
+
+// RegistryLookup resolves a package's download location. It is declared here
+// because silo consumes it; app/main.go injects the concrete registry service.
+//
+//go:generate mockery --name RegistryLookup
+type RegistryLookup interface {
+	Get(name, version string) (domain.Registry, error)
+}
 
 // SiloRepository is the low-level storage interface. It owns downloads,
 // archive extraction, state tracking, and default version management.
@@ -49,10 +56,10 @@ type SiloRepository interface {
 
 type Service struct {
 	siloRep     SiloRepository
-	registryRep *registry.Service
+	registryRep RegistryLookup
 }
 
-func NewService(sr SiloRepository, rr *registry.Service) *Service {
+func NewService(sr SiloRepository, rr RegistryLookup) *Service {
 	return &Service{
 		siloRep:     sr,
 		registryRep: rr,

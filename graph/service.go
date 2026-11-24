@@ -3,9 +3,12 @@ package graph
 import (
 	"fmt"
 	"sort"
+	"strings"
 
-	"github.com/supanadit/phpv/compiler"
+	vsn "github.com/supanadit/phpv/pkg/version"
+
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/pkg/compiler"
 )
 
 // GraphRepository is the data-access contract for PHP build knowledge.
@@ -43,14 +46,7 @@ type GraphRepository interface {
 }
 
 // BuildPlan consolidates everything needed to build a package.
-type BuildPlan struct {
-	Deps             []domain.Dependency
-	ConfigureFlags   []string
-	CFlags           []string
-	CompilerFlags    []string
-	CXXCompilerFlags []string
-	Warnings         []string // non-fatal warnings (e.g. conflicting dep versions)
-}
+type BuildPlan = domain.BuildPlan
 
 // Service wraps GraphRepository and adds value by consolidating
 // multiple queries into a single GetBuildPlan call.
@@ -140,15 +136,15 @@ func (s *Service) resolveExtensionDeps(phpVersion string, extensions []string) (
 			continue
 		}
 		if existing, dup := direct[pkgName]; dup && existing != pkgVersion {
-			existingVer, _ := domain.SplitVersionSpec(existing)
-			newVer, _ := domain.SplitVersionSpec(pkgVersion)
-			if domain.CompareVersions(newVer, existingVer) > 0 {
+			existingVer, _ := vsn.SplitVersionSpec(existing)
+			newVer, _ := vsn.SplitVersionSpec(pkgVersion)
+			if vsn.CompareVersions(newVer, existingVer) > 0 {
 				warnings = append(warnings, fmt.Sprintf(
 					"conflicting dep %s: extension %q wants %q, but another extension already pinned %q — using %q (higher)",
 					pkgName, ext, pkgVersion, existing, pkgVersion,
 				))
 				direct[pkgName] = pkgVersion
-			} else if domain.CompareVersions(newVer, existingVer) < 0 {
+			} else if vsn.CompareVersions(newVer, existingVer) < 0 {
 				warnings = append(warnings, fmt.Sprintf(
 					"conflicting dep %s: extension %q wants %q, but another extension already pinned %q — keeping %q (higher)",
 					pkgName, ext, pkgVersion, existing, existing,
@@ -176,7 +172,7 @@ func (s *Service) resolveExtensionDeps(phpVersion string, extensions []string) (
 		if _, ok := adj[name]; ok {
 			return
 		}
-		exactVer, _ := domain.SplitVersionSpec(ver)
+		exactVer, _ := vsn.SplitVersionSpec(ver)
 		transitive, err := s.repo.GetOrderedDependencies(name, exactVer)
 		if err != nil {
 			transitive = nil
@@ -344,4 +340,59 @@ func (s *Service) GetCompilerStdRule(phpVersion string) domain.CompilerRule {
 // GetCompilerFlags returns C compiler flags for a specific compiler and PHP version.
 func (s *Service) GetCompilerFlags(compiler string, phpVersion string) []string {
 	return s.repo.GetCompilerFlags(compiler, phpVersion)
+}
+
+// CXXFlagsFromCFlagsWithStd converts a set of C compiler flags into their C++
+// equivalents, substituting the C standard flag with the configured C++ standard
+// and dropping C-only warnings. Used when PHP's build needs both CFLAGS and
+// CXXFLAGS derived from a single source of truth.
+// CXXFlagsFromCFlagsWithStd exposes the flag translation as a service method.
+func (s *Service) CXXFlagsFromCFlagsWithStd(cflags []string, isPHPBuild bool, stdRule domain.CompilerRule) []string {
+	return CXXFlagsFromCFlagsWithStd(cflags, isPHPBuild, stdRule)
+}
+
+func CXXFlagsFromCFlagsWithStd(cflags []string, isPHPBuild bool, stdRule domain.CompilerRule) []string {
+	cxxflags := make([]string, 0, len(cflags))
+	hasCXXStd := false
+
+	for _, f := range cflags {
+		if strings.HasPrefix(f, "-std=c++") || strings.HasPrefix(f, "-std=gnu++") {
+			cxxflags = append(cxxflags, f)
+			hasCXXStd = true
+		} else if strings.HasPrefix(f, "-std=") {
+			// Any C standard (-std=gnu11, -std=gnu89, ...) becomes the C++
+			// standard instead of being copied through, where a C-only std
+			// would be rejected by g++/clang++. Several C stds all map to the
+			// same C++ std, so emit it only once.
+			if !hasCXXStd {
+				if stdRule.CXXStd != "" {
+					cxxflags = append(cxxflags, stdRule.CXXStd)
+				} else {
+					cxxflags = append(cxxflags, "-std=gnu++17")
+				}
+				hasCXXStd = true
+			}
+		} else if cOnlyWarnings[f] {
+			continue
+		} else {
+			cxxflags = append(cxxflags, f)
+		}
+	}
+
+	if isPHPBuild && !hasCXXStd {
+		if stdRule.CXXStd != "" {
+			cxxflags = append(cxxflags, stdRule.CXXStd)
+		} else {
+			cxxflags = append(cxxflags, "-std=gnu++17")
+		}
+	}
+
+	return cxxflags
+}
+
+var cOnlyWarnings = map[string]bool{
+	"-Wno-implicit-function-declaration": true,
+	"-Wno-incompatible-pointer-types":    true,
+	"-Wno-array-parameter":               true,
+	"-Wno-deprecated-non-prototype":      true,
 }

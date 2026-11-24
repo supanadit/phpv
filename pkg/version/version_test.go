@@ -1,0 +1,222 @@
+package version
+
+import (
+	"reflect"
+	"testing"
+)
+
+func TestBuildMinorRanges(t *testing.T) {
+	got := BuildMinorRanges(4, []MinorRange{
+		{Minor: 0, PatchEnd: 2},
+		{Minor: 1, PatchEnd: 1},
+	})
+	want := []VersionRange{
+		{From: "4.0.0", To: "4.0.2"},
+		{From: "4.1.0", To: "4.1.1"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("BuildMinorRanges() = %v, want %v", got, want)
+	}
+}
+
+func TestBuildMinorRanges_PatchStart(t *testing.T) {
+	got := BuildMinorRanges(8, []MinorRange{
+		{Minor: 0, PatchStart: 2, PatchEnd: 4},
+	})
+	want := []VersionRange{
+		{From: "8.0.2", To: "8.0.4"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("BuildMinorRanges() = %v, want %v", got, want)
+	}
+}
+
+func TestBuildRanges(t *testing.T) {
+	got := BuildRanges(
+		BuildMinorRanges(8, []MinorRange{{Minor: 0, PatchEnd: 1}}),
+		BuildMinorRanges(7, []MinorRange{{Minor: 4, PatchEnd: 1}}),
+	)
+	want := []VersionRange{
+		{From: "8.0.0", To: "8.0.1"},
+		{From: "7.4.0", To: "7.4.1"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("BuildRanges() = %v, want %v", got, want)
+	}
+}
+
+func TestGenerateVersions(t *testing.T) {
+	ranges := []VersionRange{
+		{From: "1.0.0", To: "1.0.2"},
+		{From: "1.1.0", To: "1.1.1"},
+	}
+	got := GenerateVersions(ranges, nil)
+	want := []string{"1.0.0", "1.0.1", "1.0.2", "1.1.0", "1.1.1"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("GenerateVersions() = %v, want %v", got, want)
+	}
+}
+
+func TestGenerateVersions_Skip(t *testing.T) {
+	ranges := []VersionRange{{From: "1.0.0", To: "1.0.3"}}
+	got := GenerateVersions(ranges, []string{"1.0.1"})
+	want := []string{"1.0.0", "1.0.2", "1.0.3"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("GenerateVersions(skip) = %v, want %v", got, want)
+	}
+}
+
+func TestGenerateVersions_Gap(t *testing.T) {
+	ranges := []VersionRange{
+		{From: "1.0.0", To: "1.0.1"},
+		{From: "1.0.3", To: "1.0.3"},
+	}
+	got := GenerateVersions(ranges, nil)
+	want := []string{"1.0.0", "1.0.1", "1.0.3"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("GenerateVersions(gap) = %v, want %v", got, want)
+	}
+}
+
+func TestGenerateVersions_Wildcard(t *testing.T) {
+	ranges := []VersionRange{
+		{From: "1.x.x", To: "1.0.1"},
+	}
+	got := GenerateVersions(ranges, nil)
+	want := []string{"1.0.0", "1.0.1"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("GenerateVersions(wildcard) = %v, want %v", got, want)
+	}
+}
+
+func TestRenderTemplate(t *testing.T) {
+	got := RenderTemplate("https://php.net/distributions/php-{version}.tar.gz", "8.2.1")
+	want := "https://php.net/distributions/php-8.2.1.tar.gz"
+	if got != want {
+		t.Fatalf("RenderTemplate() = %q, want %q", got, want)
+	}
+}
+
+func TestRenderTemplate_MajorMinor(t *testing.T) {
+	got := RenderTemplate("https://download.gnome.org/sources/libxml2/{major}.{minor}/libxml2-{version}.tar.xz", "2.9.14")
+	want := "https://download.gnome.org/sources/libxml2/2.9/libxml2-2.9.14.tar.xz"
+	if got != want {
+		t.Fatalf("RenderTemplate() = %q, want %q", got, want)
+	}
+}
+
+func TestCompareVersions(t *testing.T) {
+	tests := []struct {
+		a, b string
+		want int
+	}{
+		{"1.0.0", "1.0.0", 0},
+		{"1.0.0", "1.0.1", -1},
+		{"1.0.1", "1.0.0", 1},
+		{"1.9.0", "1.10.0", -1},
+		{"5.9.0", "5.20.0", -1},
+		{"5.20.0", "5.9.0", 1},
+		{"2.0.0", "1.99.99", 1},
+	}
+	for _, tt := range tests {
+		got := CompareVersions(tt.a, tt.b)
+		if got != tt.want {
+			t.Fatalf("CompareVersions(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
+		}
+	}
+}
+
+func TestParseVersion(t *testing.T) {
+	tests := []struct {
+		input string
+		want  Semver
+	}{
+		{"8.2.1", Semver{Major: 8, Minor: 2, Patch: 1}},
+		{"8.x.x", Semver{Major: 8, Minor: -1, Patch: -1}},
+		{"x.X.x", Semver{Major: -1, Minor: -1, Patch: -1}},
+		{"not-a-version", Semver{}},
+	}
+	for _, tt := range tests {
+		got := ParseVersion(tt.input)
+		if !reflect.DeepEqual(got, tt.want) {
+			t.Fatalf("ParseVersion(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestMatchVersionRange(t *testing.T) {
+	tests := []struct {
+		rangeStr string
+		version  string
+		want     bool
+	}{
+		{">=8.1.0,<8.2.0", "8.1.5", true},
+		{">=8.1.0,<8.2.0", "8.2.0", false},
+		{"~6.9.0", "6.9.3", true},
+		{"~6.9.0", "6.10.0", false},
+		{"^8.0", "8.5.1", true},
+		{"^8.0", "9.0.0", false},
+		{"=7.4.0", "7.4.0", true},
+		{"=7.4.0", "7.4.1", false},
+	}
+	for _, tt := range tests {
+		got := MatchVersionRange(tt.rangeStr, tt.version)
+		if got != tt.want {
+			t.Fatalf("MatchVersionRange(%q, %q) = %v, want %v", tt.rangeStr, tt.version, got, tt.want)
+		}
+	}
+}
+
+// TestCompareVersions_LenientParsing pins the behavior that the duplicated
+// compareVersions helpers in assembler and graph implemented: any segment count
+// is accepted, segments past the third are ignored, and a segment compares by
+// its leading digits. Every input below comes from this repo's own data
+// (internal/repository/memory/registry.go version lists and install dirs).
+func TestCompareVersions_LenientParsing(t *testing.T) {
+	tests := []struct {
+		a, b string
+		want int
+	}{
+		// Single-segment versions must not collapse to 0.0.0.
+		{"9", "8.3", 1},
+		{"8", "8.4.0", -1},
+		{"8", "8", 0},
+		// Four-segment versions ignore the fourth.
+		{"8.4.0.1", "8.4.0", 0},
+		{"8.4.0.1", "8.4.1", -1},
+		// Letter suffixes compare by leading digits.
+		{"1.1.1a", "1.1.1", 0},
+		{"1.1.1w", "1.1.1v", 0},
+		{"0.9.8zh", "0.9.8zc", 0},
+		{"1.0.2u", "1.0.1u", 1},
+		{"1.1.1w", "3.0.0", -1},
+	}
+	for _, tt := range tests {
+		if got := CompareVersions(tt.a, tt.b); got != tt.want {
+			t.Errorf("CompareVersions(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
+		}
+		if got := CompareVersions(tt.b, tt.a); got != -tt.want {
+			t.Errorf("CompareVersions(%q, %q) = %d, want %d (antisymmetry)", tt.b, tt.a, got, -tt.want)
+		}
+	}
+}
+
+func TestSplitVersionSpec(t *testing.T) {
+	tests := []struct {
+		spec          string
+		version, cons string
+	}{
+		{"1.1.1w|>=1.1.0", "1.1.1w", ">=1.1.0"},
+		{"5.38.2|>=5.32.0", "5.38.2", ">=5.32.0"},
+		{"2.4.6", "2.4.6", ""},
+		{"", "", ""},
+		{"8.0|", "8.0", ""},
+		{"1.4.19|>=1.4.19", "1.4.19", ">=1.4.19"},
+	}
+	for _, tt := range tests {
+		v, c := SplitVersionSpec(tt.spec)
+		if v != tt.version || c != tt.cons {
+			t.Errorf("SplitVersionSpec(%q) = (%q, %q), want (%q, %q)", tt.spec, v, c, tt.version, tt.cons)
+		}
+	}
+}

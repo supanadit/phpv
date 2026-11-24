@@ -1,14 +1,27 @@
 package assembler
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
+	vsn "github.com/supanadit/phpv/pkg/version"
+
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/internal/repository/disk"
+	"github.com/supanadit/phpv/internal/repository/memory"
+	"github.com/supanadit/phpv/internal/repository/patches"
+	"github.com/supanadit/phpv/mirror"
+	"github.com/supanadit/phpv/patcher"
+	"github.com/supanadit/phpv/pkg/compiler"
+	"github.com/supanadit/phpv/pkg/source"
+	"github.com/supanadit/phpv/registry"
 	"github.com/supanadit/phpv/silo"
-	"github.com/supanadit/phpv/system"
 )
 
 // mockSiloRepo is a minimal SiloRepository implementation for tests that only
@@ -97,7 +110,7 @@ func TestResolveVersionConstraint_EmptyVersions(t *testing.T) {
 
 func TestLatestMatching(t *testing.T) {
 	versions := []string{"8.4.0", "8.4.1", "8.4.2", "8.3.0", "7.4.0"}
-	got := domain.LatestMatching(versions, "8.4.")
+	got := vsn.LatestMatching(versions, "8.4.")
 	if got != "8.4.2" {
 		t.Fatalf("got %q, want 8.4.2", got)
 	}
@@ -105,7 +118,7 @@ func TestLatestMatching(t *testing.T) {
 
 func TestLatestMatching_NoMatch(t *testing.T) {
 	versions := []string{"8.4.0", "8.3.0"}
-	got := domain.LatestMatching(versions, "7.")
+	got := vsn.LatestMatching(versions, "7.")
 	if got != "" {
 		t.Fatalf("got %q, want empty", got)
 	}
@@ -124,7 +137,7 @@ func TestCompareVersions(t *testing.T) {
 		{"7.4.0", "8.4.0", -1},
 	}
 	for _, tt := range tests {
-		got := domain.CompareVersions(tt.a, tt.b)
+		got := vsn.CompareVersions(tt.a, tt.b)
 		if got != tt.want {
 			t.Errorf("CompareVersions(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
 		}
@@ -291,7 +304,7 @@ func TestResolveDepPlaceholders_SkipsWhenPrefixMissing(t *testing.T) {
 }
 
 func TestShouldDownloadDep(t *testing.T) {
-	systemPkgs := map[string]system.Package{
+	systemPkgs := map[string]domain.SystemPackage{
 		"openssl": {Name: "openssl", SystemName: "openssl", Version: "3.2.0", Installed: true},
 		"zlib":    {Name: "zlib", SystemName: "zlib", Version: "1.3.1", Installed: true},
 	}
@@ -300,7 +313,7 @@ func TestShouldDownloadDep(t *testing.T) {
 		name       string
 		dep        domain.Dependency
 		mustBuild  map[string]bool
-		systemPkgs map[string]system.Package
+		systemPkgs map[string]domain.SystemPackage
 		static     bool
 		want       bool
 	}{
@@ -364,7 +377,7 @@ func TestShouldDownloadDep(t *testing.T) {
 }
 
 func TestComputeMustBuild(t *testing.T) {
-	systemPkgs := map[string]system.Package{
+	systemPkgs := map[string]domain.SystemPackage{
 		"openssl": {Name: "openssl", Version: "3.2.0", Installed: true},
 		"zlib":    {Name: "zlib", Version: "1.3.1", Installed: true},
 	}
@@ -473,5 +486,568 @@ func TestEnsureCLIBinary_NoCLIBuilt(t *testing.T) {
 	}
 	if string(got) != "cgi-binary" {
 		t.Errorf("bin/php = %q, want untouched (cgi-binary)", got)
+	}
+}
+
+func newApacheTestService(t *testing.T, root string) *ApacheService {
+	t.Helper()
+	regSvc := registry.NewService(memory.NewRegistryRepository())
+	return NewApacheService(&Service{reg: regSvc}, root)
+}
+
+func TestEnsureApacheModule_ExistingSkipsProgress(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("PHPV_ROOT", root)
+	profile := writeFakeCLIProfile(t, root, "7.4.33")
+
+	prefix := filepath.Join(root, "packages", "php-apache", "7.4.33")
+	module := filepath.Join(prefix, "modules", "libphp.so")
+	if err := os.MkdirAll(filepath.Dir(module), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(module, []byte("ELF"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeVariantMarker(prefix, VariantMarker{
+		SAPI:        "modphp",
+		PHPVersion:  "7.4.33",
+		ProfileHash: profile.Hash("modphp") + ":" + filepath.Base("/no-httpd") + ":",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var stages []string
+	got, err := newApacheTestService(t, root).EnsureApacheModule(context.Background(), ApacheModuleSpec{PHPVersion: "7.4.33", HTTPDPrefix: "/no-httpd", Verbose: false, Jobs: 1, TC: compiler.Toolchain{}, Progress: func(stage, _ string) { stages = append(stages, stage) }})
+	if err != nil {
+		t.Fatalf("EnsureApacheModule: %v", err)
+	}
+	if got != module {
+		t.Fatalf("module = %q, want %q", got, module)
+	}
+	if len(stages) != 0 {
+		t.Fatalf("progress stages = %v, want none", stages)
+	}
+}
+
+func TestEnsureApacheModule_RequiresApxs(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("PHPV_ROOT", root)
+	writeFakeCLIProfile(t, root, "7.4.33")
+
+	_, err := newApacheTestService(t, root).EnsureApacheModule(context.Background(), ApacheModuleSpec{PHPVersion: "7.4.33", HTTPDPrefix: "/no-httpd", Verbose: false, Jobs: 1, TC: compiler.Toolchain{}, Progress: nil})
+	if err == nil || !strings.Contains(err.Error(), "apxs") {
+		t.Fatalf("error = %v, want an apxs hint", err)
+	}
+}
+
+func TestFindApacheModule(t *testing.T) {
+	src := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(src, "libs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	module := filepath.Join(src, "libs", "libphp.so")
+	if err := os.WriteFile(module, []byte("ELF"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := findApacheModule(src)
+	if err != nil {
+		t.Fatalf("findApacheModule: %v", err)
+	}
+	if got != module {
+		t.Fatalf("module = %q, want %q", got, module)
+	}
+}
+
+func TestApacheNeedsRebuild(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("PHPV_ROOT", root)
+	profile := writeFakeCLIProfile(t, root, "7.4.33")
+	svc := newApacheTestService(t, root)
+	httpdPrefix := "/no-httpd"
+
+	if !svc.NeedsRebuild("7.4.33", httpdPrefix, compiler.Toolchain{}) {
+		t.Fatal("missing module must need a rebuild")
+	}
+
+	prefix := filepath.Join(root, "packages", "php-apache", "7.4.33")
+	module := filepath.Join(prefix, "modules", "libphp.so")
+	if err := os.MkdirAll(filepath.Dir(module), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(module, []byte("ELF"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hash := profile.Hash("modphp") + ":" + filepath.Base(httpdPrefix) + ":"
+	if err := writeVariantMarker(prefix, VariantMarker{SAPI: "modphp", PHPVersion: "7.4.33", ProfileHash: hash}); err != nil {
+		t.Fatal(err)
+	}
+	if svc.NeedsRebuild("7.4.33", httpdPrefix, compiler.Toolchain{}) {
+		t.Fatal("matching marker must not need a rebuild")
+	}
+}
+
+func newFPMTestService(t *testing.T, root string) *FPMService {
+	t.Helper()
+	regSvc := registry.NewService(memory.NewRegistryRepository())
+	return NewFPMService(&Service{reg: regSvc}, root)
+}
+
+func writeFakeCLIProfile(t *testing.T, root, version string) BuildProfile {
+	t.Helper()
+	prefix := filepath.Join(root, "packages", "php", version)
+	if err := os.MkdirAll(prefix, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	profile := BuildProfile{ConfigureArgs: []string{
+		"--prefix=" + prefix,
+		"--disable-all",
+		"--enable-cli",
+		"--with-zlib",
+	}}
+	if err := saveBuildProfile(prefix, profile); err != nil {
+		t.Fatal(err)
+	}
+	return profile
+}
+
+// Regression: the php-fpm build used to print plain lines with no spinner.
+// Progress must be reported through the callback so `server run` can animate.
+func TestEnsureFPM_ReportsPrepareProgress(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("PHPV_ROOT", root)
+	writeFakeCLIProfile(t, root, "0.0.0")
+
+	var stages []string
+	_, err := newFPMTestService(t, root).EnsureFPM(context.Background(), FPMSpec{PHPVersion: "0.0.0", Verbose: false, Jobs: 1, TC: compiler.Toolchain{}, StagedFrom: "", Progress: func(stage, _ string) { stages = append(stages, stage) }})
+	if err == nil {
+		t.Fatal("expected an error for an unknown PHP version")
+	}
+	if len(stages) == 0 || stages[0] != "prepare" {
+		t.Fatalf("progress stages = %v, want prepare first", stages)
+	}
+}
+
+// An existing FPM binary with a matching profile marker needs no work and must
+// not animate or emit stages.
+func TestEnsureFPM_ExistingBinarySkipsProgress(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("PHPV_ROOT", root)
+	profile := writeFakeCLIProfile(t, root, "7.4.33")
+
+	prefix := filepath.Join(root, "packages", "php-fpm", "7.4.33")
+	bin := filepath.Join(prefix, "sbin", "php-fpm")
+	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeVariantMarker(prefix, VariantMarker{
+		SAPI:        "fpm",
+		PHPVersion:  "7.4.33",
+		ProfileHash: profile.Hash("fpm"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var stages []string
+	got, err := newFPMTestService(t, root).EnsureFPM(context.Background(), FPMSpec{PHPVersion: "7.4.33", Verbose: false, Jobs: 1, TC: compiler.Toolchain{}, StagedFrom: "", Progress: func(stage, _ string) { stages = append(stages, stage) }})
+	if err != nil {
+		t.Fatalf("EnsureFPM: %v", err)
+	}
+	if got != bin {
+		t.Fatalf("binary = %q, want %q", got, bin)
+	}
+	if len(stages) != 0 {
+		t.Fatalf("progress stages = %v, want none", stages)
+	}
+}
+
+// A stale marker (CLI rebuilt with different extensions) must force a rebuild.
+func TestEnsureFPM_StaleMarkerRebuilds(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("PHPV_ROOT", root)
+	writeFakeCLIProfile(t, root, "0.0.0")
+
+	prefix := filepath.Join(root, "packages", "php-fpm", "0.0.0")
+	bin := filepath.Join(prefix, "sbin", "php-fpm")
+	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeVariantMarker(prefix, VariantMarker{
+		SAPI:        "fpm",
+		PHPVersion:  "0.0.0",
+		ProfileHash: "stale",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var stages []string
+	if _, err := newFPMTestService(t, root).EnsureFPM(context.Background(), FPMSpec{PHPVersion: "0.0.0", Verbose: false, Jobs: 1, TC: compiler.Toolchain{}, StagedFrom: "", Progress: func(stage, _ string) { stages = append(stages, stage) }}); err == nil {
+		t.Fatal("expected the stale build to attempt a rebuild and fail without php sources")
+	}
+	if len(stages) == 0 || stages[0] != "prepare" {
+		t.Fatalf("progress stages = %v, want a rebuild starting at prepare", stages)
+	}
+}
+
+func TestFPMNeedsRebuild(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("PHPV_ROOT", root)
+	profile := writeFakeCLIProfile(t, root, "7.4.33")
+	svc := newFPMTestService(t, root)
+
+	if !svc.NeedsRebuild("7.4.33", compiler.Toolchain{}) {
+		t.Fatal("missing FPM binary must need a rebuild")
+	}
+
+	prefix := filepath.Join(root, "packages", "php-fpm", "7.4.33")
+	bin := filepath.Join(prefix, "sbin", "php-fpm")
+	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeVariantMarker(prefix, VariantMarker{SAPI: "fpm", PHPVersion: "7.4.33", ProfileHash: profile.Hash("fpm")}); err != nil {
+		t.Fatal(err)
+	}
+	if svc.NeedsRebuild("7.4.33", compiler.Toolchain{}) {
+		t.Fatal("matching marker must not need a rebuild")
+	}
+	if err := writeVariantMarker(prefix, VariantMarker{SAPI: "fpm", PHPVersion: "7.4.33", ProfileHash: "stale"}); err != nil {
+		t.Fatal(err)
+	}
+	if !svc.NeedsRebuild("7.4.33", compiler.Toolchain{}) {
+		t.Fatal("stale marker must need a rebuild")
+	}
+}
+
+type fakePatchRemote struct {
+	tree map[string]string
+	rev  string
+	fail error
+}
+
+func (f *fakePatchRemote) ListTree(ctx context.Context) ([]mirror.RemoteFile, string, error) {
+	if f.fail != nil {
+		return nil, "", f.fail
+	}
+	out := make([]mirror.RemoteFile, 0, len(f.tree))
+	for p, c := range f.tree {
+		out = append(out, mirror.RemoteFile{Path: p, BlobSHA: "sha-" + c})
+	}
+	return out, f.rev, nil
+}
+
+func (f *fakePatchRemote) FetchBlob(ctx context.Context, path, dest string) error {
+	if f.fail != nil {
+		return f.fail
+	}
+	return nil
+}
+
+func TestSyncPatchesWarnAndContinueOnFailure(t *testing.T) {
+	svc := &Service{patches: mirror.NewService(
+		&fakePatchRemote{fail: errors.New("dial: connection refused")},
+		t.TempDir(), time.Hour)}
+
+	var events []string
+	svc.syncPatches(context.Background(), func(stage, msg string) {
+		events = append(events, stage+": "+msg)
+	})
+	if len(events) != 1 {
+		t.Fatalf("events = %v, want exactly the warning", events)
+	}
+	if events[0][:4] != "warn" {
+		t.Errorf("event = %q, want a warn event", events[0])
+	}
+}
+
+func TestSyncPatchesSyncsDeltaBeforeBuild(t *testing.T) {
+	svc := &Service{patches: mirror.NewService(
+		&fakePatchRemote{tree: map[string]string{
+			"php/8.0.0-8.1.0/0001-intl-cxx17.patch": "A",
+		}, rev: "rev1"},
+		t.TempDir(), time.Hour)}
+
+	var events []string
+	svc.syncPatches(context.Background(), func(stage, msg string) {
+		events = append(events, stage+": "+msg)
+	})
+	if len(events) != 1 || events[0][:10] != "patch-sync" {
+		t.Fatalf("events = %v, want a patch-sync event", events)
+	}
+}
+
+func TestSyncPatchesSkipsWithinLease(t *testing.T) {
+	root := t.TempDir()
+	svc := &Service{patches: mirror.NewService(
+		&fakePatchRemote{tree: map[string]string{"a/1.0-2.0/0001-a.patch": "A"}, rev: "rev1"},
+		root, time.Hour)}
+	// Prime the lease with a successful full sync.
+	if _, err := svc.patches.Update(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	var events []string
+	svc.syncPatches(context.Background(), func(stage, msg string) {
+		events = append(events, stage+": "+msg)
+	})
+	if len(events) != 1 || events[0][:10] != "patch-sync" {
+		t.Fatalf("events = %v, want the lease-skip report", events)
+	}
+}
+
+func TestSyncPatchesNilServiceIsNoop(t *testing.T) {
+	svc := &Service{}
+	var events []string
+	svc.syncPatches(context.Background(), func(stage, msg string) {
+		events = append(events, stage+": "+msg)
+	})
+	if len(events) != 0 {
+		t.Fatalf("events = %v, want none", events)
+	}
+}
+
+// extractSiloRepo simulates a successful extraction.
+type extractSiloRepo struct{ mockSiloRepo }
+
+func (r *extractSiloRepo) Extract(archivePath, destDir string) (bool, error) {
+	src := filepath.Join(destDir, "php-8.5.12")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		return false, err
+	}
+	if err := os.WriteFile(filepath.Join(src, "configure"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// Regression: an interrupted extraction leaves a non-empty src dir; the
+// shared Extract guard would skip re-extracting it forever.
+func TestPreparePHPSourceCleansPartialExtraction(t *testing.T) {
+	root := t.TempDir()
+	work := filepath.Join(root, "build", "php-apache", "8.5.12")
+
+	partial := filepath.Join(work, "src", "php-8.5.12")
+	if err := os.MkdirAll(partial, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// No configure -> source.Find cannot use this tree.
+
+	regSvc := registry.NewService(memory.NewRegistryRepository())
+	siloSvc := silo.NewService(&extractSiloRepo{mockSiloRepo{root: root}}, regSvc)
+	patcherSvc := patcher.NewService(patches.NewRepository(t.TempDir(), t.TempDir()))
+	deps := &Service{reg: regSvc, silo: siloSvc, patcher: patcherSvc}
+
+	if err := preparePHPSource(deps, "8.5.12", work); err != nil {
+		t.Fatalf("preparePHPSource: %v", err)
+	}
+	if source.Find(filepath.Join(work, "src"), "php") == "" {
+		t.Fatal("source tree was not re-extracted")
+	}
+}
+
+func TestParseConfigureOptions(t *testing.T) {
+	args, env := parseConfigureOptions("--prefix=/x --disable-all --with-curl PKG_CONFIG_PATH=/a:/b")
+	if len(args) != 3 {
+		t.Fatalf("args = %v, want 3", args)
+	}
+	if env["PKG_CONFIG_PATH"] != "/a:/b" {
+		t.Fatalf("env = %v, want PKG_CONFIG_PATH", env)
+	}
+}
+
+func TestVariantArgsFPMKeepsExtensions(t *testing.T) {
+	profile := BuildProfile{ConfigureArgs: []string{
+		"--prefix=/cli", "--disable-all", "--enable-cli", "--with-curl",
+		"--with-pdo-mysql=mysqlnd", "--enable-mbstring",
+	}}
+	args, err := profile.VariantArgs("fpm", "/fpm", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(args, " ")
+	for _, want := range []string{
+		"--prefix=/fpm", "--enable-fpm", "--with-curl",
+		"--with-pdo-mysql=mysqlnd", "--enable-mbstring",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("fpm args missing %q: %v", want, args)
+		}
+	}
+	for _, unwanted := range []string{"--prefix=/cli", "--enable-cli"} {
+		if strings.Contains(joined, unwanted) {
+			t.Errorf("fpm args still contain %q: %v", unwanted, args)
+		}
+	}
+}
+
+func TestVariantArgsModPHPRequiresApxs(t *testing.T) {
+	profile := BuildProfile{ConfigureArgs: []string{"--disable-all"}}
+	if _, err := profile.VariantArgs("modphp", "/apache-php", "/no-httpd"); err == nil {
+		t.Fatal("expected an error when apxs is missing")
+	}
+
+	httpd := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(httpd, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	apxs := filepath.Join(httpd, "bin", "apxs")
+	if err := os.WriteFile(apxs, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	args, err := profile.VariantArgs("modphp", "/apache-php", httpd)
+	if err != nil {
+		t.Fatalf("VariantArgs: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "--with-apxs2="+apxs) || !strings.Contains(joined, "--disable-fpm") {
+		t.Fatalf("modphp args = %v", args)
+	}
+}
+
+func TestProfileHashChangesWithSAPI(t *testing.T) {
+	profile := BuildProfile{ConfigureArgs: []string{"--with-curl"}}
+	if profile.Hash("fpm") == profile.Hash("modphp") {
+		t.Fatal("profile hash must differ by SAPI")
+	}
+	if profile.Hash("fpm") == (BuildProfile{ConfigureArgs: []string{"--with-curl", "--enable-gd"}}).Hash("fpm") {
+		t.Fatal("profile hash must change when extensions change")
+	}
+}
+
+func TestCLIExtensionDir(t *testing.T) {
+	prefix := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(prefix, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	phpConfig := filepath.Join(prefix, "bin", "php-config")
+	if err := os.WriteFile(phpConfig, []byte("#!/bin/sh\necho /opt/php/ext\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := cliExtensionDir(prefix); got != "/opt/php/ext" {
+		t.Fatalf("cliExtensionDir = %q, want /opt/php/ext", got)
+	}
+}
+
+func TestBuildProfileRoundTrip(t *testing.T) {
+	prefix := t.TempDir()
+	want := BuildProfile{
+		ConfigureArgs: []string{"--disable-all", "--enable-pdo"},
+		Env:           map[string]string{"PKG_CONFIG_PATH": "/a:/b", "CFLAGS": "-O2"},
+	}
+	if err := saveBuildProfile(prefix, want); err != nil {
+		t.Fatalf("saveBuildProfile: %v", err)
+	}
+	got, err := readBuildProfile(prefix)
+	if err != nil {
+		t.Fatalf("readBuildProfile: %v", err)
+	}
+	if strings.Join(got.ConfigureArgs, " ") != strings.Join(want.ConfigureArgs, " ") {
+		t.Fatalf("args = %v, want %v", got.ConfigureArgs, want.ConfigureArgs)
+	}
+	if got.Env["PKG_CONFIG_PATH"] != "/a:/b" || got.Env["CFLAGS"] != "-O2" {
+		t.Fatalf("env = %v", got.Env)
+	}
+}
+
+func newServerTestService(t *testing.T) *Service {
+	t.Helper()
+	regSvc := registry.NewService(memory.NewRegistryRepository())
+	siloSvc := silo.NewService(disk.NewSiloRepository(), regSvc)
+	return &Service{silo: siloSvc, reg: regSvc}
+}
+
+func writeFakeServerBinary(t *testing.T, prefix, sub, name string) {
+	t.Helper()
+	dir := filepath.Join(prefix, sub)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Regression: servers have no include/ tree, so the old isDepInstalled check
+// always reported them missing and re-downloaded/rebuilt on every install.
+func TestAssembleServer_SkipsInstalledStateWithoutIncludeDir(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("PHPV_ROOT", root)
+
+	prefix := filepath.Join(root, "packages", "nginx", "1.28.0")
+	writeFakeServerBinary(t, prefix, "sbin", "nginx")
+	if err := os.WriteFile(filepath.Join(prefix, ".state"), []byte("installed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(prefix, "include")); err == nil {
+		t.Fatal("test setup must not create include/, servers do not ship one")
+	}
+
+	var stages []string
+	got, err := newServerTestService(t).AssembleServer(context.Background(), ServerAssembleSpec{Name: "nginx", Version: "1.28.0", Verbose: false, Jobs: 1, TC: compiler.Toolchain{}, Progress: func(stage, _ string) { stages = append(stages, stage) }})
+	if err != nil {
+		t.Fatalf("AssembleServer: %v", err)
+	}
+	if got != prefix {
+		t.Fatalf("prefix = %q, want %q", got, prefix)
+	}
+	want := []string{"resolve", "skip"}
+	if !reflect.DeepEqual(stages, want) {
+		t.Fatalf("progress stages = %v, want %v", stages, want)
+	}
+}
+
+// Legacy installs predate state markers; the installed binary alone must be
+// enough to skip a rebuild.
+func TestAssembleServer_SkipsLegacyBinaryWithoutState(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("PHPV_ROOT", root)
+
+	prefix := filepath.Join(root, "packages", "nginx", "1.28.0")
+	writeFakeServerBinary(t, prefix, "sbin", "nginx")
+
+	var stages []string
+	if _, err := newServerTestService(t).AssembleServer(context.Background(), ServerAssembleSpec{Name: "nginx", Version: "1.28.0", Verbose: false, Jobs: 1, TC: compiler.Toolchain{}, Progress: func(stage, _ string) { stages = append(stages, stage) }}); err != nil {
+		t.Fatalf("AssembleServer: %v", err)
+	}
+	want := []string{"resolve", "skip"}
+	if !reflect.DeepEqual(stages, want) {
+		t.Fatalf("progress stages = %v, want %v", stages, want)
+	}
+}
+
+func TestServerInstalled_NotInstalled(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("PHPV_ROOT", root)
+
+	svc := newServerTestService(t)
+	prefix := filepath.Join(root, "packages", "nginx", "1.28.0")
+	if err := os.MkdirAll(prefix, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if svc.serverInstalled("nginx", "nginx", "1.28.0", prefix) {
+		t.Fatal("serverInstalled = true for an empty prefix")
+	}
+}
+
+// Progress must be reported even when assembly fails early, so callers can
+// show what the command is doing.
+func TestAssembleServer_EmitsResolveProgressOnError(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("PHPV_ROOT", root)
+
+	var stages []string
+	_, err := newServerTestService(t).AssembleServer(context.Background(), ServerAssembleSpec{Name: "nginx", Version: "0.0.0-nope", Verbose: false, Jobs: 1, TC: compiler.Toolchain{}, Progress: func(stage, _ string) { stages = append(stages, stage) }})
+	if err == nil {
+		t.Fatal("expected an error for an unknown version")
+	}
+	if len(stages) == 0 || stages[0] != "resolve" {
+		t.Fatalf("progress stages = %v, want resolve first", stages)
 	}
 }

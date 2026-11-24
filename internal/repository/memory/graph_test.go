@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/supanadit/phpv/compiler"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/graph"
+	"github.com/supanadit/phpv/pkg/compiler"
 )
 
 func TestGraphRepository_GetOrderedDependencies_PHP7_4(t *testing.T) {

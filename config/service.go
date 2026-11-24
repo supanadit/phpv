@@ -6,18 +6,11 @@ import (
 	"sync"
 
 	"github.com/supanadit/phpv/domain"
+	webidentity "github.com/supanadit/phpv/pkg/webidentity"
 )
 
-type Data struct {
-	CacheDir      string `toml:"cache_dir,omitempty"`
-	Concurrency   int    `toml:"concurrency,omitempty"`
-	Compiler      string `toml:"compiler,omitempty"`
-	Mirror        string `toml:"mirror,omitempty"`
-	StaticLibGCC  bool   `toml:"static_libgcc,omitempty"`
-	Server        string `toml:"server,omitempty"`
-	ServerVersion string `toml:"server_version,omitempty"`
-	ServerSAPI    string `toml:"server_sapi,omitempty"`
-}
+// Data is the persisted configuration document.
+type Data = domain.ConfigData
 
 type ConfigRepository interface {
 	Path() string
@@ -146,8 +139,8 @@ func (s *Service) Set(key, value string) error {
 		case "mirror":
 			s.data.Mirror = value
 		case "server":
-			if !domain.IsValidServerName(value) {
-				return fmt.Errorf("invalid server %q (available: %s)", value, strings.Join(domain.ServerNames(), ", "))
+			if !webidentity.IsValidServerName(value) {
+				return fmt.Errorf("invalid server %q (available: %s)", value, strings.Join(webidentity.ServerNames(), ", "))
 			}
 			s.data.Server = value
 		case "server_version":

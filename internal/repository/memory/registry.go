@@ -3,6 +3,9 @@ package memory
 import (
 	"fmt"
 	"runtime"
+	"strings"
+
+	vsn "github.com/supanadit/phpv/pkg/version"
 
 	"github.com/supanadit/phpv/domain"
 )
@@ -20,8 +23,8 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 			Name: "php",
 			Type: "source_code",
 			OS:   "all",
-			Ranges: domain.BuildRanges(
-				domain.BuildMinorRanges(8, []domain.MinorRange{
+			Ranges: vsn.BuildRanges(
+				vsn.BuildMinorRanges(8, []vsn.MinorRange{
 					{Minor: 0, PatchEnd: 30},
 					{Minor: 1, PatchEnd: 33},
 					{Minor: 2, PatchEnd: 35},
@@ -29,14 +32,14 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 					{Minor: 4, PatchEnd: 27},
 					{Minor: 5, PatchEnd: 12},
 				}),
-				domain.BuildMinorRanges(7, []domain.MinorRange{
+				vsn.BuildMinorRanges(7, []vsn.MinorRange{
 					{Minor: 0, PatchEnd: 33},
 					{Minor: 1, PatchEnd: 33},
 					{Minor: 2, PatchEnd: 34},
 					{Minor: 3, PatchEnd: 33},
 					{Minor: 4, PatchEnd: 33},
 				}),
-				domain.BuildMinorRanges(5, []domain.MinorRange{
+				vsn.BuildMinorRanges(5, []vsn.MinorRange{
 					{Minor: 0, PatchEnd: 5},
 					{Minor: 1, PatchEnd: 6},
 					{Minor: 2, PatchEnd: 17},
@@ -45,7 +48,7 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 					{Minor: 5, PatchEnd: 38},
 					{Minor: 6, PatchEnd: 40},
 				}),
-				domain.BuildMinorRanges(4, []domain.MinorRange{
+				vsn.BuildMinorRanges(4, []vsn.MinorRange{
 					{Minor: 0, PatchEnd: 6},
 					{Minor: 1, PatchEnd: 2},
 					{Minor: 2, PatchEnd: 3},
@@ -58,29 +61,29 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 				{Before: "5.0.0", URL: "https://museum.php.net/php4/php-{version}.tar.gz"},
 				{Before: "5.3.0", URL: "https://museum.php.net/php5/php-{version}.tar.gz"},
 			},
-				Checksums: []Checksum{
-					{
-						Version: "8.5.12",
-						Type:    "sha256",
-						Value:   "81a0f450349e84b08eb43faa85f8a4c835684f3cc1c50471775d1317a046c525",
-					},
-					{
-						Version: "8.4.27",
-						Type:    "sha256",
-						Value:   "5bafed9994c1a49796b25b5f61c22c9183bfe046b6acc7b363842d03c77f972f",
-					},
-					{
-						Version: "8.3.36",
-						Type:    "sha256",
-						Value:   "c93f3441f87f6ab156bef4432db215d7e61ca2c0183bb3a2aa28d9886ab59f53",
-					},
-					{
-						Version: "8.2.35",
-						Type:    "sha256",
-						Value:   "9db4204f0a2d1911277ae832185e07bb4c3b3559772753a70d2968ca346d6910",
-					},
-					{
-						Version: "8.5.10",
+			Checksums: []Checksum{
+				{
+					Version: "8.5.12",
+					Type:    "sha256",
+					Value:   "81a0f450349e84b08eb43faa85f8a4c835684f3cc1c50471775d1317a046c525",
+				},
+				{
+					Version: "8.4.27",
+					Type:    "sha256",
+					Value:   "5bafed9994c1a49796b25b5f61c22c9183bfe046b6acc7b363842d03c77f972f",
+				},
+				{
+					Version: "8.3.36",
+					Type:    "sha256",
+					Value:   "c93f3441f87f6ab156bef4432db215d7e61ca2c0183bb3a2aa28d9886ab59f53",
+				},
+				{
+					Version: "8.2.35",
+					Type:    "sha256",
+					Value:   "9db4204f0a2d1911277ae832185e07bb4c3b3559772753a70d2968ca346d6910",
+				},
+				{
+					Version: "8.5.10",
 					Type:    "sha256",
 					Value:   "f5c0ac99b85b3d677de475c2e4f509f9b4f54663f3ee5a84d6d9481a521d4100",
 				},
@@ -102,8 +105,8 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 			Name: "cmake",
 			Type: "binary",
 			OS:   "linux",
-			Ranges: domain.BuildRanges(
-				domain.BuildMinorRanges(3, []domain.MinorRange{
+			Ranges: vsn.BuildRanges(
+				vsn.BuildMinorRanges(3, []vsn.MinorRange{
 					{Minor: 21, PatchEnd: 4},
 					{Minor: 22, PatchEnd: 1},
 					{Minor: 23, PatchEnd: 3},
@@ -499,4 +502,139 @@ func (reg *RegistryRepository) Get(name string, version string, checksum bool, o
 		}
 	}
 	return r, fmt.Errorf("registry %s version %s not found", name, version)
+}
+
+// ExtOverride defines an extension override for versions older than Before.
+// Overrides are evaluated in order — first match wins.
+type ExtOverride struct {
+	Before string
+	Ext    string
+}
+
+// Checksum binds a specific version to its checksum algorithm and value.
+type Checksum struct {
+	Version string
+	Type    string
+	Value   string
+}
+
+// ExtensionConfig defines the default extension and optional overrides.
+// Overrides are evaluated in order — first match wins. If no override matches,
+// Default is used.
+//
+// Example:
+//
+//	ExtensionConfig{
+//	    Default: "tar.gz",
+//	    Override: []ExtOverride{
+//	        {Before: "5.20.0", Ext: "tar.bz2"},
+//	    },
+//	}
+type ExtensionConfig struct {
+	Default  string
+	Override []ExtOverride
+}
+
+// URLOverride defines a URL template override for versions older than Before.
+// Overrides are evaluated in order — first match wins.
+type URLOverride struct {
+	Before string
+	URL    string
+}
+
+// PackageConfig defines a package's registry entries declaratively.
+// Provide either Ranges (for contiguous version ranges) or Versions (for
+// explicit individual versions). BuildRegistries will generate or use the
+// versions, build URLs from URLTemplate, and create domain.Registry entries.
+//
+// URLTemplate supports placeholders:
+//   - {version} — replaced with the version string
+//   - {ext}     — replaced by evaluating Extension rules
+//
+// URLOverrides allows version-conditional URL templates. The first override
+// whose Before version is greater than the current version wins. This is
+// useful for packages that moved their archive host (e.g., PHP < 5.3 is on
+// museum.php.net instead of www.php.net).
+//
+// OS sets the OS property on every generated entry. Use "all" (or
+// leave empty) for packages that are OS-agnostic (e.g., source code).
+// Use a specific OS value such as "linux", "darwin", or "windows" for
+// pre-built binaries that target a single platform.
+type PackageConfig struct {
+	Name         string
+	Type         string
+	Ranges       []vsn.VersionRange
+	Versions     []string
+	Skip         []string
+	URLTemplate  string
+	URLOverrides []URLOverride
+	Extension    ExtensionConfig
+	OS           string
+	Checksums    []Checksum
+}
+
+// BuildRegistries generates domain.Registry entries from a PackageConfig.
+// If Ranges is provided, versions are generated via vsn.GenerateVersions.
+// Otherwise, Versions is used directly.
+// Each version's URL is built from URLTemplate with {version} and {ext}
+// placeholders resolved. The OS field is set from cfg.OS, defaulting to
+// "all" when empty.
+func BuildRegistries(cfg PackageConfig) []domain.Registry {
+	var versions []string
+	if len(cfg.Ranges) > 0 {
+		versions = vsn.GenerateVersions(cfg.Ranges, cfg.Skip)
+	} else {
+		versions = cfg.Versions
+	}
+
+	checksumMap := make(map[string]Checksum, len(cfg.Checksums))
+	for _, c := range cfg.Checksums {
+		checksumMap[c.Version] = c
+	}
+
+	os := cfg.OS
+	if os == "" {
+		os = "all"
+	}
+
+	registries := make([]domain.Registry, 0, len(versions))
+	for _, v := range versions {
+		tmpl := cfg.URLTemplate
+		for _, override := range cfg.URLOverrides {
+			if vsn.CompareVersions(v, override.Before) < 0 {
+				tmpl = override.URL
+				break
+			}
+		}
+		url := vsn.RenderTemplate(tmpl, v)
+		if cfg.Extension.Default != "" {
+			ext := resolveExtension(cfg.Extension, v)
+			url = strings.ReplaceAll(url, "{ext}", ext)
+		}
+
+		entry := domain.Registry{
+			Name:    cfg.Name,
+			Type:    cfg.Type,
+			URL:     url,
+			Version: v,
+			OS:      os,
+		}
+		if c, ok := checksumMap[v]; ok {
+			entry.ChecksumType = c.Type
+			entry.ChecksumValue = c.Value
+		}
+		registries = append(registries, entry)
+	}
+	return registries
+}
+
+// resolveExtension evaluates Override rules in order and returns the first
+// matching Ext. If no override matches, Default is returned.
+func resolveExtension(cfg ExtensionConfig, version string) string {
+	for _, rule := range cfg.Override {
+		if vsn.CompareVersions(version, rule.Before) < 0 {
+			return rule.Ext
+		}
+	}
+	return cfg.Default
 }

@@ -1,9 +1,6 @@
 package domain
 
-import (
-	"strconv"
-	"time"
-)
+import "time"
 
 // Supported webserver names for the `phpv server` command family.
 const (
@@ -11,21 +8,6 @@ const (
 	ServerNginx  = "nginx"
 	ServerApache = "apache"
 )
-
-// ServerNames lists every supported webserver in default preference order.
-func ServerNames() []string {
-	return []string{ServerCaddy, ServerNginx, ServerApache}
-}
-
-// IsValidServerName reports whether name is a supported webserver.
-func IsValidServerName(name string) bool {
-	for _, n := range ServerNames() {
-		if n == name {
-			return true
-		}
-	}
-	return false
-}
 
 // ServerInstance describes one running (or recently stopped) server run.
 // Instances are isolated per PHP version: each run pins one PHP version and
@@ -61,13 +43,4 @@ type ServerInstance struct {
 	Detached bool
 	// StartedAt is when the instance was started.
 	StartedAt time.Time
-}
-
-// URL returns the primary URL of the instance.
-func (i ServerInstance) URL() string {
-	host := i.Host
-	if host == "" {
-		host = "localhost"
-	}
-	return "http://" + host + ":" + strconv.Itoa(i.Port) + "/"
 }

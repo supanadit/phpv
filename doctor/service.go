@@ -7,24 +7,17 @@ import (
 	"strings"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/graph"
-	"github.com/supanadit/phpv/system"
 )
 
-type Severity string
+type Severity = domain.Severity
 
 const (
-	SeverityCritical Severity = "critical"
-	SeverityWarning  Severity = "warning"
-	SeverityInfo     Severity = "info"
+	SeverityCritical = domain.SeverityCritical
+	SeverityWarning  = domain.SeverityWarning
+	SeverityInfo     = domain.SeverityInfo
 )
 
-type Issue struct {
-	Severity Severity `json:"severity"`
-	Title    string   `json:"title"`
-	Detail   string   `json:"detail"`
-	Fix      string   `json:"fix,omitempty"`
-}
+type Issue = domain.Issue
 
 // Repository is the diagnostic data-access boundary for the doctor service.
 // It exposes only the probes needed to diagnose a phpv installation, hiding
@@ -78,18 +71,24 @@ type Repository interface {
 type Service struct {
 	repo     Repository
 	sysSvc   SystemService
-	graphSvc *graph.Service
+	graphSvc GraphLookup
 }
 
 // SystemService is the subset of system operations doctor needs. It exists so
 // tests can supply package-manager state without touching the host.
 type SystemService interface {
-	DistroInfo() system.Distro
-	Check(deps []system.Package) (*system.CheckResult, error)
-	InstallCommand(packages []system.Package) string
+	DistroInfo() domain.Distro
+	Check(deps []domain.SystemPackage) (*domain.SystemCheckResult, error)
+	InstallCommand(packages []domain.SystemPackage) string
+	DependencySet(exts []domain.ExtensionDef) []domain.SystemPackage
 }
 
-func NewService(repo Repository, sysSvc *system.Service, graphSvc *graph.Service) *Service {
+// GraphLookup is the extension-definition capability doctor consumes.
+type GraphLookup interface {
+	GetExtensionDef(name string) (domain.ExtensionDef, bool)
+}
+
+func NewService(repo Repository, sysSvc SystemService, graphSvc GraphLookup) *Service {
 	return &Service{repo: repo, sysSvc: sysSvc, graphSvc: graphSvc}
 }
 
@@ -169,7 +168,7 @@ func (s *Service) checkSystemPackages() []Issue {
 			defs = append(defs, def)
 		}
 	}
-	phpDeps := system.DependencySet(defs)
+	phpDeps := s.sysSvc.DependencySet(defs)
 
 	result, err := s.sysSvc.Check(phpDeps)
 	if err != nil {
@@ -185,7 +184,7 @@ func (s *Service) checkSystemPackages() []Issue {
 
 	// A missing build dependency breaks the build; a missing advisory dev
 	// library only limits optional functionality, so they are reported apart.
-	var required, advisory []system.Package
+	var required, advisory []domain.SystemPackage
 	for _, p := range result.Missing {
 		if p.Required {
 			required = append(required, p)
@@ -217,7 +216,7 @@ func (s *Service) checkSystemPackages() []Issue {
 }
 
 // packageNames joins the names of pkgs for display.
-func packageNames(pkgs []system.Package) string {
+func packageNames(pkgs []domain.SystemPackage) string {
 	names := make([]string, 0, len(pkgs))
 	for _, p := range pkgs {
 		names = append(names, p.Name)
@@ -256,9 +255,9 @@ func (s *Service) installedExtensions() []string {
 }
 
 func (s *Service) installCommandFor(tools []string) string {
-	pkgs := make([]system.Package, 0, len(tools))
+	pkgs := make([]domain.SystemPackage, 0, len(tools))
 	for _, name := range tools {
-		pkgs = append(pkgs, system.Package{Name: name, SystemName: name})
+		pkgs = append(pkgs, domain.SystemPackage{Name: name, SystemName: name})
 	}
 	cmd := s.sysSvc.InstallCommand(pkgs)
 	if cmd == "" {

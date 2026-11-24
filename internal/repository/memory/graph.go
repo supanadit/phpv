@@ -2,6 +2,10 @@ package memory
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+
+	vsn "github.com/supanadit/phpv/pkg/version"
 
 	"github.com/supanadit/phpv/domain"
 )
@@ -68,7 +72,7 @@ func (r *GraphRepository) GetOrderedDependencies(name string, version string) ([
 		}
 
 		for _, dep := range deps {
-			depVersion, _ := domain.SplitVersionSpec(dep.Version)
+			depVersion, _ := vsn.SplitVersionSpec(dep.Version)
 			if dep.Optional {
 				optional[dep.Name] = true
 			}
@@ -116,10 +120,10 @@ func (r *GraphRepository) IsExtensionValidForPHPVersion(name, phpVersion string)
 	if !ok {
 		return false
 	}
-	if def.MinPHPVersion != "" && domain.CompareVersions(phpVersion, def.MinPHPVersion) < 0 {
+	if def.MinPHPVersion != "" && vsn.CompareVersions(phpVersion, def.MinPHPVersion) < 0 {
 		return false
 	}
-	if def.MaxPHPVersion != "" && domain.CompareVersions(phpVersion, def.MaxPHPVersion) > 0 {
+	if def.MaxPHPVersion != "" && vsn.CompareVersions(phpVersion, def.MaxPHPVersion) > 0 {
 		return false
 	}
 	return true
@@ -146,7 +150,7 @@ func (r *GraphRepository) GetExtensionDependencyWithVersion(extName, phpVersion 
 		return "", "", false
 	}
 	for _, v := range def.Versions {
-		if domain.MatchVersionRange(v.VersionRange, phpVersion) {
+		if vsn.MatchVersionRange(v.VersionRange, phpVersion) {
 			return def.RequiresPackage, v.Version, true
 		}
 	}
@@ -298,8 +302,8 @@ func (r *GraphRepository) GetConfigureFlags(name, version string) []string {
 		return nil
 	}
 	for _, rule := range rules {
-		minOK := rule.MinVer == "" || domain.CompareVersions(version, rule.MinVer) >= 0
-		maxOK := rule.MaxVer == "" || domain.CompareVersions(version, rule.MaxVer) <= 0
+		minOK := rule.MinVer == "" || vsn.CompareVersions(version, rule.MinVer) >= 0
+		maxOK := rule.MaxVer == "" || vsn.CompareVersions(version, rule.MaxVer) <= 0
 		if minOK && maxOK {
 			return rule.Flags
 		}
@@ -340,11 +344,11 @@ func (r *GraphRepository) DefaultExtensions(phpVersion string) ([]string, []stri
 			skipped = append(skipped, name+" (not found in registry)")
 			continue
 		}
-		if def.MinPHPVersion != "" && domain.CompareVersions(phpVersion, def.MinPHPVersion) < 0 {
+		if def.MinPHPVersion != "" && vsn.CompareVersions(phpVersion, def.MinPHPVersion) < 0 {
 			skipped = append(skipped, name+" (requires PHP "+def.MinPHPVersion+"+)")
 			continue
 		}
-		if def.MaxPHPVersion != "" && domain.CompareVersions(phpVersion, def.MaxPHPVersion) > 0 {
+		if def.MaxPHPVersion != "" && vsn.CompareVersions(phpVersion, def.MaxPHPVersion) > 0 {
 			skipped = append(skipped, name+" (not available in PHP "+def.MaxPHPVersion+"+)")
 			continue
 		}
@@ -375,7 +379,7 @@ func (r *GraphRepository) DefaultExtensions(phpVersion string) ([]string, []stri
 // (IsBuiltIn: false, needs phpize). Always check IsBuiltIn explicitly.
 func isBuiltInForVersion(def domain.ExtensionDef, phpVersion string) bool {
 	for _, fv := range def.FlagVersions {
-		if fv.IsBuiltIn && domain.MatchVersionRange(fv.VersionRange, phpVersion) {
+		if fv.IsBuiltIn && vsn.MatchVersionRange(fv.VersionRange, phpVersion) {
 			return true
 		}
 	}
@@ -413,7 +417,7 @@ func (r *GraphRepository) SharedOnlyExtensions(phpVersion string, requested []st
 			continue
 		}
 		for _, fv := range def.FlagVersions {
-			if fv.Flag == "" && domain.MatchVersionRange(fv.VersionRange, phpVersion) {
+			if fv.Flag == "" && vsn.MatchVersionRange(fv.VersionRange, phpVersion) {
 				result = append(result, name)
 				break
 			}
@@ -465,7 +469,7 @@ func (r *GraphRepository) GetExtensionConfigureFlags(name string, phpVersion str
 	// Start with the default flag, then check FlagVersions for an override.
 	flag := def.Flag
 	for _, fv := range def.FlagVersions {
-		if domain.MatchVersionRange(fv.VersionRange, phpVersion) {
+		if vsn.MatchVersionRange(fv.VersionRange, phpVersion) {
 			flag = fv.Flag
 			break
 		}
@@ -492,7 +496,7 @@ func (r *GraphRepository) getDependencies(name string, version string) ([]domain
 	}
 
 	for _, c := range pkg.Constraints {
-		if domain.MatchVersionRange(c.VersionRange, version) {
+		if vsn.MatchVersionRange(c.VersionRange, version) {
 			return c.Dependencies, nil
 		}
 	}
@@ -1407,4 +1411,210 @@ func builtInExtensions() []domain.ExtensionDef {
 			},
 		},
 	}
+}
+
+type compilerFlagRule struct {
+	Compiler  string
+	MinPHP    string
+	MaxPHP    string
+	CFLAGDefs []domain.CompilerFlagDef
+}
+
+type cstdRule struct {
+	MinPHP string
+	MaxPHP string
+	CStd   string
+	CXXStd string
+	// CFlags are additional flags every compiler needs for this PHP range.
+	CFlags []string
+}
+
+var compilerFlagRuleCandidates = []compilerFlagRule{
+	{
+		Compiler: "clang",
+		MinPHP:   "5.0",
+		MaxPHP:   "7.3",
+		CFLAGDefs: []domain.CompilerFlagDef{
+			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
+			{Flag: "-DTRUE=1", Purpose: "define TRUE for PHP 7.x intl compat"},
+			{Flag: "-DFALSE=0", Purpose: "define FALSE for PHP 7.x intl compat"},
+			{Flag: "-Wno-error", Purpose: "never treat warnings as errors"},
+			{Flag: "-Wno-incompatible-pointer-types", Purpose: "suppress incompatible-pointer warnings"},
+			{Flag: "-Wno-implicit-function-declaration", Purpose: "suppress C99 implicit-decl warnings"},
+		},
+	},
+	{
+		Compiler: "clang",
+		MinPHP:   "7.4",
+		MaxPHP:   "7.99",
+		CFLAGDefs: []domain.CompilerFlagDef{
+			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
+			{Flag: "-Wno-error", Purpose: "never treat warnings as errors"},
+			{Flag: "-Wno-incompatible-pointer-types", Purpose: "suppress incompatible-pointer warnings"},
+			{Flag: "-Wno-implicit-function-declaration", Purpose: "suppress C99 implicit-decl warnings"},
+		},
+	},
+	{
+		Compiler: "clang",
+		MinPHP:   "8.0",
+		MaxPHP:   "",
+		CFLAGDefs: []domain.CompilerFlagDef{
+			{Flag: "-Wno-error", Purpose: "never treat warnings as errors"},
+			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
+		},
+	},
+	{
+		Compiler: "gcc",
+		MinPHP:   "5.0",
+		MaxPHP:   "7.3",
+		CFLAGDefs: []domain.CompilerFlagDef{
+			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
+			{Flag: "-DTRUE=1", Purpose: "define TRUE for PHP 7.x intl compat on GCC 15+"},
+			{Flag: "-DFALSE=0", Purpose: "define FALSE for PHP 7.x intl compat on GCC 15+"},
+			{Flag: "-fpermissive", Needs: ">=gcc15", Purpose: "downgrade pointer-cast errors to warnings"},
+			{Flag: "-Wno-cast-function-type", Needs: ">=gcc8", Purpose: "suppress function-type cast warnings"},
+			{Flag: "-Wno-error", Purpose: "never treat warnings as errors"},
+			{Flag: "-Wno-array-parameter", Needs: ">=gcc11", Purpose: "suppress array-parameter mismatch warnings"},
+			{Flag: "-Wno-deprecated-non-prototype", Needs: ">=gcc15", Purpose: "suppress C23 prototype warnings"},
+			{Flag: "-Wno-implicit-function-declaration", Needs: ">=gcc14", Purpose: "suppress C99 implicit-decl warnings"},
+			{Flag: "-Wno-incompatible-pointer-types", Needs: ">=gcc14", Purpose: "suppress incompatible-pointer warnings"},
+		},
+	},
+	{
+		Compiler: "gcc",
+		MinPHP:   "7.4",
+		MaxPHP:   "7.99",
+		CFLAGDefs: []domain.CompilerFlagDef{
+			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
+			{Flag: "-fpermissive", Needs: ">=gcc15", Purpose: "downgrade pointer-cast errors to warnings"},
+			{Flag: "-Wno-cast-function-type", Needs: ">=gcc8", Purpose: "suppress function-type cast warnings"},
+			{Flag: "-Wno-error", Purpose: "never treat warnings as errors"},
+			{Flag: "-Wno-array-parameter", Needs: ">=gcc11", Purpose: "suppress array-parameter mismatch warnings"},
+			{Flag: "-Wno-deprecated-non-prototype", Needs: ">=gcc15", Purpose: "suppress C23 prototype warnings"},
+			{Flag: "-Wno-implicit-function-declaration", Needs: ">=gcc14", Purpose: "suppress C99 implicit-decl warnings"},
+			{Flag: "-Wno-incompatible-pointer-types", Needs: ">=gcc14", Purpose: "suppress incompatible-pointer warnings"},
+		},
+	},
+	{
+		Compiler: "gcc",
+		MinPHP:   "8.0",
+		MaxPHP:   "",
+		CFLAGDefs: []domain.CompilerFlagDef{
+			{Flag: "-fpermissive", Needs: ">=gcc15", Purpose: "downgrade pointer-cast errors to warnings"},
+			{Flag: "-Wno-cast-function-type", Needs: ">=gcc8", Purpose: "suppress function-type cast warnings"},
+			{Flag: "-Wno-error", Purpose: "never treat warnings as errors"},
+			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
+		},
+	},
+	{
+		Compiler: "zig",
+		MinPHP:   "",
+		MaxPHP:   "",
+		CFLAGDefs: []domain.CompilerFlagDef{
+			{Flag: "-fPIC", Purpose: "position-independent code for shared objects"},
+			{Flag: "-Wno-error", Purpose: "never treat warnings as errors"},
+			{Flag: "-fno-sanitize=undefined", Purpose: "disable UB sanitizer (zig-specific)"},
+			{Flag: "-Wno-cast-align", Purpose: "suppress cast-align warnings (zig-specific)"},
+			{Flag: "-Wno-unused-but-set-variable", Purpose: "suppress unused warnings"},
+			{Flag: "-Wno-deprecated-non-prototype", Purpose: "suppress C23 prototype warnings"},
+			{Flag: "-Wno-array-parameter", Purpose: "suppress array-parameter mismatch warnings"},
+			{Flag: "-Wno-implicit-function-declaration", Purpose: "suppress C99 implicit-decl warnings"},
+		},
+	},
+}
+
+var cstdRules = []cstdRule{
+	{
+		// PHP 4 ships an autoconf 2.13 configure whose test programs are K&R
+		// style (main(){return(0);}) and whose own sources are C89. Under C99
+		// or later, both GCC 14+ and clang 16+ (and therefore zig) reject
+		// implicit int as an error, so configure dies with "C compiler cannot
+		// create executables".
+		MinPHP: "0",
+		MaxPHP: "4.99",
+		CStd:   "-std=gnu89",
+		CXXStd: "-std=gnu++17",
+		// zend_language_scanner.c and zend_ini_scanner.c both define yytext as
+		// a tentative definition. Modern compilers default to -fno-common and
+		// ld.lld then fails the link with "duplicate symbol: yytext".
+		CFlags: []string{"-fcommon"},
+	},
+	{MinPHP: "5.0", MaxPHP: "7.4", CStd: "-std=gnu11", CXXStd: "-std=gnu++17"},
+	{MinPHP: "8.0", MaxPHP: "8.2", CStd: "-std=gnu11", CXXStd: "-std=gnu++17"},
+	{MinPHP: "8.3", MaxPHP: "", CStd: "-std=gnu11", CXXStd: "-std=gnu++17"},
+}
+
+func parseVersion(v string) (major, minor int) {
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) > 0 {
+		major, _ = strconv.Atoi(parts[0])
+	}
+	if len(parts) > 1 {
+		minor, _ = strconv.Atoi(parts[1])
+	}
+	return
+}
+
+func versionGE(v string, min string) bool {
+	vmaj, vmin := parseVersion(v)
+	mmaj, mmin := parseVersion(min)
+	if vmaj > mmaj {
+		return true
+	}
+	if vmaj < mmaj {
+		return false
+	}
+	return vmin >= mmin
+}
+
+func versionLE(v string, max string) bool {
+	vmaj, vmin := parseVersion(v)
+	mmaj, mmin := parseVersion(max)
+	if vmaj < mmaj {
+		return true
+	}
+	if vmaj > mmaj {
+		return false
+	}
+	return vmin <= mmin
+}
+
+func getCompilerFlagCandidates(compiler string, phpVersion string) []domain.CompilerFlagDef {
+	for _, rule := range compilerFlagRuleCandidates {
+		if rule.Compiler != compiler {
+			continue
+		}
+		minOK := rule.MinPHP == "" || versionGE(phpVersion, rule.MinPHP)
+		maxOK := rule.MaxPHP == "" || versionLE(phpVersion, rule.MaxPHP)
+		if minOK && maxOK {
+			result := make([]domain.CompilerFlagDef, len(rule.CFLAGDefs))
+			copy(result, rule.CFLAGDefs)
+			return result
+		}
+	}
+	return nil
+}
+
+func getCompilerFlags(compiler string, phpVersion string) []string {
+	candidates := getCompilerFlagCandidates(compiler, phpVersion)
+	result := make([]string, len(candidates))
+	for i, c := range candidates {
+		result[i] = c.Flag
+	}
+	return result
+}
+
+func getCompilerStdRule(phpVersion string) domain.CompilerRule {
+	for _, rule := range cstdRules {
+		minOK := rule.MinPHP == "" || versionGE(phpVersion, rule.MinPHP)
+		maxOK := rule.MaxPHP == "" || versionLE(phpVersion, rule.MaxPHP)
+		if minOK && maxOK {
+			return domain.CompilerRule{
+				CStd:   rule.CStd,
+				CXXStd: rule.CXXStd,
+				CFlags: append([]string(nil), rule.CFlags...),
+			}
+		}
+	}
+	return domain.CompilerRule{CStd: "-std=gnu11", CXXStd: "-std=gnu++17"}
 }

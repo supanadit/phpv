@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/registry"
 )
 
 type mockSiloRepo struct {
@@ -76,18 +75,15 @@ func (m *mockSiloRepo) SetSystemMode(enabled bool) error {
 	return nil
 }
 
-type mockRegistryRepo struct{}
+type mockRegistryLookup struct{}
 
-func (m *mockRegistryRepo) List(name string, checksum bool, os string) ([]domain.Registry, error) {
-	return nil, nil
-}
-func (m *mockRegistryRepo) Get(name, version string, checksum bool, os string) (domain.Registry, error) {
+func (m *mockRegistryLookup) Get(name, version string) (domain.Registry, error) {
 	return domain.Registry{}, nil
 }
 
 func TestService_GetSilo(t *testing.T) {
 	mock := &mockSiloRepo{silo: domain.Silo{Root: "/test/root"}}
-	svc := NewService(mock, registry.NewService(&mockRegistryRepo{}))
+	svc := NewService(mock, &mockRegistryLookup{})
 
 	s := svc.GetSilo()
 	if s.Root != "/test/root" {
@@ -97,7 +93,7 @@ func TestService_GetSilo(t *testing.T) {
 
 func TestService_GetState(t *testing.T) {
 	mock := &mockSiloRepo{state: domain.StateInstalled}
-	svc := NewService(mock, registry.NewService(&mockRegistryRepo{}))
+	svc := NewService(mock, &mockRegistryLookup{})
 
 	state, err := svc.GetState("php", "8.4.0")
 	if err != nil {
@@ -110,7 +106,7 @@ func TestService_GetState(t *testing.T) {
 
 func TestService_GetDefault(t *testing.T) {
 	mock := &mockSiloRepo{defaultVer: "8.4.0"}
-	svc := NewService(mock, registry.NewService(&mockRegistryRepo{}))
+	svc := NewService(mock, &mockRegistryLookup{})
 
 	ver, err := svc.GetDefault()
 	if err != nil {
@@ -126,7 +122,7 @@ func TestService_PathHelpers(t *testing.T) {
 		phpOutputPath: "/root/packages/php/8.4.0",
 		sourcePath:    "/root/sources/php/8.4.0",
 	}
-	svc := NewService(mock, registry.NewService(&mockRegistryRepo{}))
+	svc := NewService(mock, &mockRegistryLookup{})
 
 	if got := svc.PHPOutputPath("8.4.0"); got != "/root/packages/php/8.4.0" {
 		t.Fatalf("PHPOutputPath = %q", got)

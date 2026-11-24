@@ -1,10 +1,13 @@
 package system
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/supanadit/phpv/domain"
 )
 
 type Service struct{}
@@ -245,3 +248,278 @@ func installArgs(pm string, names []string) []string {
 		return nil
 	}
 }
+
+// baseAdvisoryLibraries are development libraries PHP can use at build time but
+// which are not modelled as buildable dependencies: they are expected to come
+// from the system, and no version constraint is checked for them. Libraries an
+// extension asks for arrive through ExtensionDef.RequiresPackages instead.
+var baseAdvisoryLibraries = []string{"sqlite3", "readline", "pcre2", "sodium"}
+
+// DependencySet returns the system packages to check for a build of the given
+// extensions. It is the single source of truth shared by `phpv install`,
+// `phpv extension add` and `phpv doctor`, so the three cannot disagree about
+// what a build needs.
+//
+// A package is marked Required when an extension names it in RequiresPackage,
+// because that field also feeds the source-build dependency resolver: the
+// package really is part of the build plan and its version is checked before
+// use. Packages from RequiresPackages and baseAdvisoryLibraries are advisory —
+// dev libraries the build can consume but whose version is not gated.
+//
+// Only packages the build can actually consume are listed: a library with no
+// buildable package definition and no extension asking for it is not included.
+// DependencySet exposes the dependency derivation as a service method.
+func (s *Service) DependencySet(exts []domain.ExtensionDef) []Package {
+	return DependencySet(exts)
+}
+
+func DependencySet(exts []domain.ExtensionDef) []Package {
+	seen := make(map[string]bool)
+	var pkgs []Package
+
+	add := func(name string, required bool) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		pkgs = append(pkgs, Package{Name: name, SystemName: name, Required: required})
+	}
+
+	for _, def := range exts {
+		add(def.RequiresPackage, true)
+	}
+	for _, def := range exts {
+		for _, name := range def.RequiresPackages {
+			add(name, false)
+		}
+	}
+	for _, name := range baseAdvisoryLibraries {
+		add(name, false)
+	}
+	return pkgs
+}
+
+// Names returns the dependency names of pkgs, in order. It is the form
+// Service.Check expects.
+func Names(pkgs []Package) []string {
+	names := make([]string, 0, len(pkgs))
+	for _, p := range pkgs {
+		names = append(names, p.Name)
+	}
+	return names
+}
+
+func Detect() (Distro, error) {
+	f, err := os.Open("/etc/os-release")
+	if err != nil {
+		return Distro{Name: "unknown", PM: "unknown"}, nil
+	}
+	defer f.Close()
+
+	var d Distro
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "ID=") {
+			d.Name = strings.Trim(strings.TrimPrefix(line, "ID="), `"`)
+		}
+		if strings.HasPrefix(line, "VERSION_ID=") {
+			d.Version = strings.Trim(strings.TrimPrefix(line, "VERSION_ID="), `"`)
+		}
+	}
+
+	switch d.Name {
+	case "ubuntu", "debian":
+		d.PM = "apt"
+	case "fedora", "rhel", "centos":
+		d.PM = "dnf"
+	case "alpine":
+		d.PM = "apk"
+	case "arch":
+		d.PM = "pacman"
+	default:
+		d.PM = "unknown"
+	}
+
+	return d, nil
+}
+
+type pkgMap map[string]string
+
+var fedoraPackages = pkgMap{
+	"openssl":   "openssl-devel",
+	"libxml2":   "libxml2-devel",
+	"zlib":      "zlib-devel",
+	"oniguruma": "oniguruma-devel",
+	"curl":      "libcurl-devel",
+	"sqlite3":   "sqlite-devel",
+	"readline":  "readline-devel",
+	"icu":       "libicu-devel",
+	"pcre2":     "pcre2-devel",
+	"argon2":    "libargon2-devel",
+	"sodium":    "libsodium-devel",
+	"libpng":    "libpng-devel",
+	"libjpeg":   "libjpeg-turbo-devel",
+	"freetype":  "freetype-devel",
+	"libzip":    "libzip-devel",
+	"libpq":     "postgresql-devel",
+}
+
+var ubuntuPackages = pkgMap{
+	"openssl":   "libssl-dev",
+	"libxml2":   "libxml2-dev",
+	"zlib":      "zlib1g-dev",
+	"oniguruma": "libonig-dev",
+	"curl":      "libcurl4-openssl-dev",
+	"sqlite3":   "libsqlite3-dev",
+	"readline":  "libreadline-dev",
+	"icu":       "libicu-dev",
+	"pcre2":     "libpcre2-dev",
+	"argon2":    "libargon2-dev",
+	"sodium":    "libsodium-dev",
+	"libpng":    "libpng-dev",
+	"libjpeg":   "libjpeg-dev",
+	"freetype":  "libfreetype-dev",
+	"libzip":    "libzip-dev",
+	"libpq":     "libpq-dev",
+}
+
+var alpinePackages = pkgMap{
+	"openssl":   "openssl-dev",
+	"libxml2":   "libxml2-dev",
+	"zlib":      "zlib-dev",
+	"oniguruma": "oniguruma-dev",
+	"curl":      "curl-dev",
+	"sqlite3":   "sqlite-dev",
+	"readline":  "readline-dev",
+	"icu":       "icu-dev",
+	"pcre2":     "pcre2-dev",
+	"argon2":    "argon2-dev",
+	"sodium":    "libsodium-dev",
+	"libpng":    "libpng-dev",
+	"libjpeg":   "libjpeg-dev",
+	"freetype":  "freetype-dev",
+	"libzip":    "libzip-dev",
+	"libpq":     "libpq-dev",
+}
+
+var archPackages = pkgMap{
+	"openssl":   "openssl",
+	"libxml2":   "libxml2",
+	"zlib":      "zlib",
+	"oniguruma": "oniguruma",
+	"curl":      "curl",
+	"sqlite3":   "sqlite",
+	"readline":  "readline",
+	"icu":       "icu",
+	"pcre2":     "pcre2",
+	"argon2":    "argon2",
+	"sodium":    "libsodium",
+	"libpng":    "libpng",
+	"libjpeg":   "libjpeg-turbo",
+	"freetype":  "freetype2",
+	"libzip":    "libzip",
+	"libpq":     "postgresql-libs",
+}
+
+var fedoraBuildTools = pkgMap{
+	"gcc":        "gcc",
+	"g++":        "gcc-c++",
+	"make":       "make",
+	"cmake":      "cmake",
+	"autoconf":   "autoconf",
+	"automake":   "automake",
+	"m4":         "m4",
+	"perl":       "perl",
+	"bison":      "bison",
+	"re2c":       "re2c",
+	"flex":       "flex",
+	"pkg-config": "pkgconf-pkg-config",
+	"xz":         "xz-devel",
+}
+
+var ubuntuBuildTools = pkgMap{
+	"gcc":        "gcc",
+	"g++":        "g++",
+	"make":       "make",
+	"cmake":      "cmake",
+	"autoconf":   "autoconf",
+	"automake":   "automake",
+	"m4":         "m4",
+	"perl":       "perl",
+	"bison":      "bison",
+	"re2c":       "re2c",
+	"flex":       "flex",
+	"pkg-config": "pkg-config",
+	"xz":         "xz-utils",
+}
+
+var alpineBuildTools = pkgMap{
+	"gcc":        "gcc",
+	"g++":        "g++",
+	"make":       "make",
+	"cmake":      "cmake",
+	"autoconf":   "autoconf",
+	"automake":   "automake",
+	"m4":         "m4",
+	"perl":       "perl",
+	"bison":      "bison",
+	"re2c":       "re2c",
+	"flex":       "flex",
+	"pkg-config": "pkgconfig",
+	"xz":         "xz",
+}
+
+var archBuildTools = pkgMap{
+	"gcc":        "gcc",
+	"g++":        "gcc",
+	"make":       "make",
+	"cmake":      "cmake",
+	"autoconf":   "autoconf",
+	"automake":   "automake",
+	"m4":         "m4",
+	"perl":       "perl",
+	"bison":      "bison",
+	"re2c":       "re2c",
+	"flex":       "flex",
+	"pkg-config": "pkg-config",
+	"xz":         "xz",
+}
+
+func packagesForDistro(distro string) pkgMap {
+	switch distro {
+	case "fedora", "rhel", "centos":
+		return fedoraPackages
+	case "ubuntu", "debian":
+		return ubuntuPackages
+	case "alpine":
+		return alpinePackages
+	case "arch":
+		return archPackages
+	default:
+		return nil
+	}
+}
+
+func buildToolsForDistro(distro string) pkgMap {
+	switch distro {
+	case "fedora", "rhel", "centos":
+		return fedoraBuildTools
+	case "ubuntu", "debian":
+		return ubuntuBuildTools
+	case "alpine":
+		return alpineBuildTools
+	case "arch":
+		return archBuildTools
+	default:
+		return nil
+	}
+}
+
+// Aliases keep the system package's vocabulary while the canonical data lives
+// in domain, so consumers can declare interfaces without importing this module.
+type (
+	Distro      = domain.Distro
+	Package     = domain.SystemPackage
+	CheckResult = domain.SystemCheckResult
+)

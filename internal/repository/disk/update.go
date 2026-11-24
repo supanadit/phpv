@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/supanadit/phpv/update"
+	"github.com/supanadit/phpv/domain"
 )
 
 type UpdateRepository struct {
@@ -21,15 +21,15 @@ func NewUpdateRepository() *UpdateRepository {
 	return &UpdateRepository{httpClient: http.DefaultClient}
 }
 
-func (r *UpdateRepository) FetchLatestRelease() (update.Release, error) {
+func (r *UpdateRepository) FetchLatestRelease() (domain.Release, error) {
 	resp, err := r.httpClient.Get("https://api.github.com/repos/supanadit/phpv/releases/latest")
 	if err != nil {
-		return update.Release{}, fmt.Errorf("fetch release: %w", err)
+		return domain.Release{}, fmt.Errorf("fetch release: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return update.Release{}, fmt.Errorf("GitHub API: unexpected status %s", resp.Status)
+		return domain.Release{}, fmt.Errorf("GitHub API: unexpected status %s", resp.Status)
 	}
 
 	var ghRel struct {
@@ -41,12 +41,12 @@ func (r *UpdateRepository) FetchLatestRelease() (update.Release, error) {
 		} `json:"assets"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&ghRel); err != nil {
-		return update.Release{}, fmt.Errorf("parse release: %w", err)
+		return domain.Release{}, fmt.Errorf("parse release: %w", err)
 	}
 
-	rel := update.Release{TagName: ghRel.TagName}
+	rel := domain.Release{TagName: ghRel.TagName}
 	for _, a := range ghRel.Assets {
-		rel.Assets = append(rel.Assets, update.Asset{
+		rel.Assets = append(rel.Assets, domain.ReleaseAsset{
 			Name:        a.Name,
 			DownloadURL: a.BrowserDownloadURL,
 			Size:        a.Size,

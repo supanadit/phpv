@@ -3,6 +3,8 @@ package forge
 import (
 	"context"
 	"strings"
+
+	"github.com/supanadit/phpv/domain"
 )
 
 // ForgeRepository handles building and installing packages from source.
@@ -16,10 +18,10 @@ type ForgeRepository interface {
 	// verbose enables live build output to terminal.
 	// jobs controls make parallelism (0 = auto).
 	// Returns the build directory and environment variables needed for installation.
-	Build(ctx context.Context, name string, version string, sourceDir string, extraEnv []string, extraConfigureFlags []string, installPrefix string, verbose bool, jobs int) (buildDir string, env map[string]string, err error)
+	Build(ctx context.Context, req domain.BuildRequest) (buildDir string, env map[string]string, err error)
 
 	// Install installs a previously built package into prefix.
-	Install(ctx context.Context, name string, version string, buildDir string, prefix string, verbose bool, jobs int) error
+	Install(ctx context.Context, req domain.InstallRequest) error
 }
 
 // Service wraps ForgeRepository and adds value by resolving
@@ -35,14 +37,14 @@ func NewService(r ForgeRepository) *Service {
 }
 
 // Build resolves placeholders in extraConfigureFlags before delegating.
-func (s *Service) Build(ctx context.Context, name string, version string, sourceDir string, extraEnv []string, extraConfigureFlags []string, installPrefix string, verbose bool, jobs int) (string, map[string]string, error) {
-	resolved := resolvePlaceholders(extraConfigureFlags, installPrefix, sourceDir)
-	return s.repo.Build(ctx, name, version, sourceDir, extraEnv, resolved, installPrefix, verbose, jobs)
+func (s *Service) Build(ctx context.Context, req domain.BuildRequest) (string, map[string]string, error) {
+	req.ExtraConfigureFlags = resolvePlaceholders(req.ExtraConfigureFlags, req.InstallPrefix, req.SourceDir)
+	return s.repo.Build(ctx, req)
 }
 
 // Install delegates to the repository.
-func (s *Service) Install(ctx context.Context, name string, version string, buildDir string, prefix string, verbose bool, jobs int) error {
-	return s.repo.Install(ctx, name, version, buildDir, prefix, verbose, jobs)
+func (s *Service) Install(ctx context.Context, req domain.InstallRequest) error {
+	return s.repo.Install(ctx, req)
 }
 
 // resolvePlaceholders replaces {{prefix}}, {{source}}, and {{dep:NAME}}

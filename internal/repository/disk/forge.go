@@ -13,8 +13,20 @@ import (
 	"time"
 
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/internal/source"
+	vsn "github.com/supanadit/phpv/pkg/version"
+
+	"github.com/supanadit/phpv/pkg/source"
 )
+
+// buildSpec is the driver's resolved build inputs; it keeps private build
+// helpers on short signatures without changing the build steps themselves.
+type buildSpec struct {
+	name, version, srcPath string
+	extraEnv, extraFlags   []string
+	prefix                 string
+	verbose                bool
+	jobs                   int
+}
 
 type ForgeRepository struct{}
 
@@ -22,18 +34,18 @@ func NewForgeRepository() *ForgeRepository {
 	return &ForgeRepository{}
 }
 
-func (f *ForgeRepository) Build(ctx context.Context, name string, version string, sourceDir string, extraEnv []string, extraConfigureFlags []string, installPrefix string, verbose bool, jobs int) (buildDir string, env map[string]string, err error) {
-	srcPath := source.Find(sourceDir, name)
+func (f *ForgeRepository) Build(ctx context.Context, req domain.BuildRequest) (buildDir string, env map[string]string, err error) {
+	srcPath := source.Find(req.SourceDir, req.Name)
 	if srcPath == "" {
-		return "", nil, fmt.Errorf("could not find source directory in %s", sourceDir)
+		return "", nil, fmt.Errorf("could not find source directory in %s", req.SourceDir)
 	}
 
 	chmodBuildScripts(srcPath)
 	touchAutotools(srcPath)
 
-	strategy := detectStrategy(name)
+	strategy := detectStrategy(req.Name)
 
-	prefix := installPrefix
+	prefix := req.InstallPrefix
 	if prefix == "" {
 		prefix = filepath.Dir(srcPath)
 	}
@@ -43,21 +55,27 @@ func (f *ForgeRepository) Build(ctx context.Context, name string, version string
 	env["CPPFLAGS"] = "-I" + filepath.Join(prefix, "include")
 	env["LDFLAGS"] = "-L" + filepath.Join(prefix, "lib") + " -Wl,-rpath," + filepath.Join(prefix, "lib")
 
+	spec := buildSpec{
+		name: req.Name, version: req.Version, srcPath: srcPath,
+		extraEnv: req.ExtraEnv, extraFlags: req.ExtraConfigureFlags,
+		prefix: prefix, verbose: req.Verbose, jobs: req.Jobs,
+	}
 	switch strategy {
 	case "cmake":
-		return f.buildCMake(ctx, name, version, srcPath, extraEnv, extraConfigureFlags, prefix, verbose, jobs)
+		return f.buildCMake(ctx, spec)
 	case "makeonly":
-		return f.buildMakeOnly(ctx, name, version, srcPath, extraEnv, verbose, jobs)
+		return f.buildMakeOnly(ctx, spec)
 	case "configure":
-		return f.buildConfigure(ctx, name, version, srcPath, extraEnv, extraConfigureFlags, prefix, verbose, jobs)
+		return f.buildConfigure(ctx, spec)
 	case "autogen":
-		return f.buildAutogen(ctx, name, version, srcPath, extraEnv, extraConfigureFlags, prefix, verbose, jobs)
+		return f.buildAutogen(ctx, spec)
 	default:
-		return "", nil, fmt.Errorf("unsupported build strategy: %s for %s", strategy, name)
+		return "", nil, fmt.Errorf("unsupported build strategy: %s for %s", strategy, req.Name)
 	}
 }
 
-func (f *ForgeRepository) Install(ctx context.Context, name string, version string, buildDir string, prefix string, verbose bool, jobs int) error {
+func (f *ForgeRepository) Install(ctx context.Context, req domain.InstallRequest) error {
+	name, buildDir, prefix, verbose, jobs := req.Name, req.BuildDir, req.Prefix, req.Verbose, req.Jobs
 	if err := os.MkdirAll(prefix, 0o755); err != nil {
 		return fmt.Errorf("create prefix %s: %w", prefix, err)
 	}
@@ -99,7 +117,9 @@ func runCmd(ctx context.Context, cmd *exec.Cmd, verbose bool) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 
-func (f *ForgeRepository) buildCMake(ctx context.Context, name, version, srcPath string, extraEnv []string, extraFlags []string, prefix string, verbose bool, jobs int) (string, map[string]string, error) {
+func (f *ForgeRepository) buildCMake(ctx context.Context, spec buildSpec) (string, map[string]string, error) {
+	name, srcPath, extraEnv, extraFlags, prefix, verbose, jobs := spec.name, spec.srcPath, spec.extraEnv, spec.extraFlags, spec.prefix, spec.verbose, spec.jobs
+
 	buildDir := filepath.Join(srcPath, "build")
 	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		return "", nil, fmt.Errorf("create build dir: %w", err)
@@ -219,7 +239,9 @@ func cmakeCacheString(cachePath, varName string) string {
 	return ""
 }
 
-func (f *ForgeRepository) buildConfigure(ctx context.Context, name, version, srcPath string, extraEnv []string, extraFlags []string, prefix string, verbose bool, jobs int) (string, map[string]string, error) {
+func (f *ForgeRepository) buildConfigure(ctx context.Context, spec buildSpec) (string, map[string]string, error) {
+	name, srcPath, extraEnv, extraFlags, prefix, verbose := spec.name, spec.srcPath, spec.extraEnv, spec.extraFlags, spec.prefix, spec.verbose
+
 	if name == "m4" {
 		if _, err := os.Stat(filepath.Join(srcPath, "configure")); os.IsNotExist(err) {
 			autoreconf := exec.CommandContext(ctx, "autoreconf", "-fi")
@@ -286,14 +308,16 @@ func (f *ForgeRepository) buildConfigure(ctx context.Context, name, version, src
 		return "", nil, fmt.Errorf("configure %s: %w\n%s", name, err, out)
 	}
 
-	if err := runMake(ctx, name, version, srcPath, extraEnv, verbose, jobs); err != nil {
+	if err := runMake(ctx, spec, srcPath); err != nil {
 		return "", nil, err
 	}
 
 	return srcPath, forgeEnv(prefix), nil
 }
 
-func (f *ForgeRepository) buildAutogen(ctx context.Context, name, version, srcPath string, extraEnv []string, extraFlags []string, prefix string, verbose bool, jobs int) (string, map[string]string, error) {
+func (f *ForgeRepository) buildAutogen(ctx context.Context, spec buildSpec) (string, map[string]string, error) {
+	name, srcPath, extraEnv, extraFlags, prefix, verbose := spec.name, spec.srcPath, spec.extraEnv, spec.extraFlags, spec.prefix, spec.verbose
+
 	autoreconf := exec.CommandContext(ctx, "autoreconf", "-fi")
 	autoreconf.Dir = srcPath
 	autoreconf.Env = mergeEnv(extraEnv)
@@ -311,17 +335,19 @@ func (f *ForgeRepository) buildAutogen(ctx context.Context, name, version, srcPa
 		return "", nil, fmt.Errorf("configure %s: %w\n%s", name, err, out)
 	}
 
-	if err := runMake(ctx, name, version, srcPath, extraEnv, verbose, jobs); err != nil {
+	if err := runMake(ctx, spec, srcPath); err != nil {
 		return "", nil, err
 	}
 
 	return srcPath, forgeEnv(prefix), nil
 }
 
-func (f *ForgeRepository) buildMakeOnly(ctx context.Context, name, version, srcPath string, extraEnv []string, verbose bool, jobs int) (string, map[string]string, error) {
+func (f *ForgeRepository) buildMakeOnly(ctx context.Context, spec buildSpec) (string, map[string]string, error) {
+	srcPath := spec.srcPath
+
 	prefix := filepath.Dir(srcPath)
 
-	if err := runMake(ctx, name, version, srcPath, extraEnv, verbose, jobs); err != nil {
+	if err := runMake(ctx, spec, srcPath); err != nil {
 		return "", nil, err
 	}
 
@@ -349,14 +375,15 @@ func makeArgs(name, version string, jobs int) []string {
 		jobs = 4
 	}
 	if threshold, ok := serialMakeOnly[name]; ok {
-		if threshold == "" || domain.CompareVersions(version, threshold) < 0 {
+		if threshold == "" || vsn.CompareVersions(version, threshold) < 0 {
 			return []string{"-j1", "MAKEINFO=true", "HELP2MAN=true"}
 		}
 	}
 	return []string{"-j" + strconv.Itoa(jobs)}
 }
 
-func runMake(ctx context.Context, name, version, srcPath string, extraEnv []string, verbose bool, jobs int) error {
+func runMake(ctx context.Context, spec buildSpec, srcPath string) error {
+	name, version, extraEnv, verbose, jobs := spec.name, spec.version, spec.extraEnv, spec.verbose, spec.jobs
 	args := makeArgs(name, version, jobs)
 
 	make := exec.CommandContext(ctx, "make", args...)

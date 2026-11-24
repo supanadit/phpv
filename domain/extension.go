@@ -54,12 +54,12 @@ type ExtensionDef struct {
 	// repository so it can be updated without a binary change.
 	RequiresPackages []string
 	MinPHPVersion    string
-	MaxPHPVersion   string
-	Implied         []string
-	Conflicts       []string
-	ConfigureFlags  []string
-	FlagVersions    []FlagVersionDef
-	Versions        []VersionConstraintDef
+	MaxPHPVersion    string
+	Implied          []string
+	Conflicts        []string
+	ConfigureFlags   []string
+	FlagVersions     []FlagVersionDef
+	Versions         []VersionConstraintDef
 }
 
 // ExtensionInfo describes an extension for listing/display purposes.

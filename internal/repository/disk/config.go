@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/pelletier/go-toml/v2"
-	"github.com/supanadit/phpv/config"
+	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/internal/repository"
 )
 
@@ -22,22 +22,22 @@ func (r *ConfigRepository) Path() string {
 	return filepath.Join(r.root, "config.toml")
 }
 
-func (r *ConfigRepository) Load() (config.Data, error) {
+func (r *ConfigRepository) Load() (domain.ConfigData, error) {
 	data, err := os.ReadFile(r.Path())
 	if err != nil {
 		if os.IsNotExist(err) {
-			return config.Data{}, nil
+			return domain.ConfigData{}, nil
 		}
-		return config.Data{}, err
+		return domain.ConfigData{}, err
 	}
-	var cfg config.Data
+	var cfg domain.ConfigData
 	if err := toml.Unmarshal(data, &cfg); err != nil {
-		return config.Data{}, err
+		return domain.ConfigData{}, err
 	}
 	return cfg, nil
 }
 
-func (r *ConfigRepository) Save(data config.Data) error {
+func (r *ConfigRepository) Save(data domain.ConfigData) error {
 	raw, err := toml.Marshal(data)
 	if err != nil {
 		return err

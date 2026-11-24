@@ -8,17 +8,16 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/supanadit/phpv/doctor"
 	"github.com/supanadit/phpv/domain"
 )
 
-// DoctorRepository is a disk-backed implementation of doctor.Repository.
+// DoctorRepository is a disk-backed implementation of the doctor repository port.
 // It exposes only the probes the doctor service needs to diagnose a phpv
 // installation, hiding the underlying filesystem and environment details.
 type DoctorRepository struct{}
 
-// NewDoctorRepository creates a doctor.Repository backed by the OS.
-func NewDoctorRepository() doctor.Repository {
+// NewDoctorRepository creates a disk-backed doctor repository.
+func NewDoctorRepository() *DoctorRepository {
 	return &DoctorRepository{}
 }
 

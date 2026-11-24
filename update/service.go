@@ -3,17 +3,20 @@ package update
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/supanadit/phpv/domain"
 )
 
 type Service struct {
-	repo    Repository
+	repo    UpdateRepository
 	version string
 }
 
-func NewService(repo Repository, version string) *Service {
+func NewService(repo UpdateRepository, version string) *Service {
 	return &Service{repo: repo, version: version}
 }
 
@@ -27,7 +30,8 @@ func (s *Service) CheckForUpdate() (latest string, hasUpdate bool, err error) {
 	if s.version == "dev" || s.version == "" {
 		return latest, true, nil
 	}
-	if s.version == latest {		return latest, false, nil
+	if s.version == latest {
+		return latest, false, nil
 	}
 	return latest, true, nil
 }
@@ -153,4 +157,23 @@ func listAssetNames(assets []Asset) string {
 		names = append(names, a.Name)
 	}
 	return strings.Join(names, ", ")
+}
+
+type Release = domain.Release
+
+type Asset = domain.ReleaseAsset
+
+type UpdateRepository interface {
+	FetchLatestRelease() (Release, error)
+	DownloadFile(ctx context.Context, url, destPath string) error
+	FetchChecksums(url string) (map[string]string, error)
+	VerifyChecksum(filePath, expectedHash string) error
+	ExecutablePath() (string, error)
+	Stat(path string) (os.FileInfo, error)
+	MkdirAll(path string, perm os.FileMode) error
+	WriteFile(path string, data []byte, perm os.FileMode) error
+	Remove(path string) error
+	Chmod(path string, mode os.FileMode) error
+	Rename(oldPath, newPath string) error
+	Getenv(key string) string
 }

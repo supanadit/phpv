@@ -1,0 +1,6 @@
+VBIN="$PHPV_PREFIX/composer/vendor/bin/{{NAME}}"
+if [ ! -f "$VBIN" ]; then
+    echo "Error: {{NAME}} is not installed for the active PHP version ($PHPV_VERSION). Run 'composer global require <package>' or switch PHP version." >&2
+    exit 1
+fi
+exec "$PHPV_PREFIX/bin/php" "$VBIN" "$@"

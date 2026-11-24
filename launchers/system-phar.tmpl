@@ -1,0 +1,13 @@
+if [ -f "$PHPV_ROOT/.phpv_system" ]; then
+    PHP_PATH="$(command -v php 2>/dev/null)"
+    if [ -z "$PHP_PATH" ]; then
+        echo "Error: System PHP not found" >&2
+        exit 1
+    fi
+    PHAR_PATH="$HOME/.phpv/packages/php/system/{{PHAR_REL}}"
+    if [ ! -f "$PHAR_PATH" ]; then
+        echo "Error: {{NAME}} not found for system PHP" >&2
+        exit 1
+    fi
+    exec "$PHP_PATH" "$PHAR_PATH" "$@"
+fi

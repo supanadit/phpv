@@ -12,8 +12,12 @@ name: Autobump PHP
 # release.yaml still fires on the `release: published` event.
 
 on:
+  # GitHub has no cross-repo trigger: a tag pushed to php/php-src cannot start
+  # a workflow here, so polling is the only GitHub-native option. PHP ships
+  # on a monthly cadence; a daily check is more than enough and costs one
+  # short runner boot per day (the tool exits early when nothing changed).
   schedule:
-    - cron: "0 */6 * * *" # every 6 hours, UTC
+    - cron: "17 6 * * *" # daily, 06:17 UTC (off the hour to dodge the cron rush)
   workflow_dispatch:
 
 permissions:

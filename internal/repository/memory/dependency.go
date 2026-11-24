@@ -1,6 +1,9 @@
-package repository
+package memory
 
 import "github.com/supanadit/phpv/domain"
+
+// dependencyCatalog indexes the built-in package dependency definitions.
+type dependencyCatalog struct{}
 
 // BuiltInPackages returns the hardcoded dependency definitions for all
 // packages that phpv knows how to build from source.

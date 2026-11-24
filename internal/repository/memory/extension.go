@@ -1,6 +1,9 @@
-package repository
+package memory
 
 import "github.com/supanadit/phpv/domain"
+
+// extensionCatalog indexes the built-in extension definitions.
+type extensionCatalog struct{}
 
 func BuiltInExtensions() []domain.ExtensionDef {
 	return append(builtInExtensionDefs(), builtInExtensionDefs2()...)

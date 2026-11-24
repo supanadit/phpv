@@ -1,4 +1,4 @@
-package repository
+package memory
 
 import "github.com/supanadit/phpv/domain"
 

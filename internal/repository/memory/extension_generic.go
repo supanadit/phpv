@@ -191,16 +191,16 @@ func (r *GraphRepository) getDependencies(name string, version string) ([]domain
 }
 
 func (r *GraphRepository) registerPackages() {
-	for _, pkg := range repository.BuiltInPackages() {
+	for _, pkg := range BuiltInPackages() {
 		r.packages[pkg.Package] = pkg
 	}
 }
 
 func (r *GraphRepository) registerExtensions() {
-	for _, ext := range repository.BuiltInExtensions() {
+	for _, ext := range BuiltInExtensions() {
 		r.extensions[ext.Name] = ext
 	}
-	for _, ext := range repository.BuiltInExtensions() {
+	for _, ext := range BuiltInExtensions() {
 		for _, imp := range ext.Implied {
 			r.implied[ext.Name] = append(r.implied[ext.Name], imp)
 		}

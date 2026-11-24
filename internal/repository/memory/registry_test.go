@@ -419,3 +419,25 @@ func TestRegistryRepository_CURL_7_12_1_Removed(t *testing.T) {
 }
 
 var _ domain.Registry = domain.Registry{}
+
+// Regression: the default branch used to discard listSecondary's result and
+// always return "unknown package", breaking icu/bison/re2c/httpd/... resolves
+// (PHP 7.x needs icu@63.1 and could not install at all).
+func TestRegistryRepository_List_SecondaryPackages(t *testing.T) {
+	repo := NewRegistryRepository()
+	for _, name := range []string{"icu", "bison", "re2c", "autoconf", "httpd"} {
+		got, err := repo.List(name, false, "")
+		if err != nil {
+			t.Fatalf("List(%q) returned error: %v", name, err)
+		}
+		if len(got) == 0 {
+			t.Fatalf("List(%q) returned empty result", name)
+		}
+	}
+	if _, err := repo.Get("icu", "63.1", false, ""); err != nil {
+		t.Fatalf("Get(icu, 63.1) returned error: %v", err)
+	}
+	if _, err := repo.List("definitely-not-a-package", false, ""); err == nil {
+		t.Fatal("List(unknown) returned nil error, want unknown package")
+	}
+}

@@ -19,14 +19,13 @@ func (reg *RegistryRepository) List(name string, checksum bool, os string) (resu
 	switch name {
 	case "php", "cmake", "libzip", "perl", "openssl", "zlib", "libxml2", "oniguruma", "curl", "m4":
 		result, err = reg.listPrimary(name)
-		if err != nil {
-			return nil, err
-		}
 	default:
 		result, err = reg.listSecondary(name)
-		if err != nil {
-			return nil, err
-		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(result) == 0 {
 		return nil, fmt.Errorf("unknown package: %s", name)
 	}
 

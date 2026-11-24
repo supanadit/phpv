@@ -3,6 +3,9 @@ name: Test PHP Matrix
 on:
   pull_request:
     branches: [main, development]
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   test-php-matrix-linux:

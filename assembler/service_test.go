@@ -243,6 +243,31 @@ func TestResolveDependencyFlags_RespectsConstraintFallback(t *testing.T) {
 	}
 }
 
+// Regression: curl gets a bare --with-ssl from graph defaults and
+// --with-openssl=<prefix> from its patch flags. Both used to reach configure;
+// curl 7.12 ignored the unknown --with-openssl and used the bare flag, so it
+// linked against system OpenSSL 3 and failed checking for CRYPTO_lock.
+func TestResolveDependencyFlags_CurlCollapsesSSLFlags(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("PHPV_ROOT", tmpDir)
+	prefix := filepath.Join(tmpDir, "packages", "openssl", "1.0.1u")
+	if err := os.MkdirAll(filepath.Join(prefix, "include", "openssl"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	svc := &Service{silo: &testSiloService{root: tmpDir}}
+	deps := []domain.Dependency{{Name: "openssl", Version: "1.0.1u|>=1.1.0,<2.0.0"}}
+
+	flags := []string{
+		"--with-ssl", "--without-brotli",
+		"--with-openssl=" + prefix, "--without-brotli",
+	}
+	got := svc.resolveDependencyFlags("curl", "7.12.0", flags, deps)
+	want := []string{"--without-brotli", "--without-brotli", "--with-ssl=" + prefix}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("resolveDependencyFlags = %q, want %q", got, want)
+	}
+}
+
 // TestResolveDepPlaceholders_ResolvesWithInstalledPrefix verifies that
 // {{dep:NAME}} placeholders are resolved for dependencies in the build plan
 // when their install prefix directory exists (i.e., the dependency was built

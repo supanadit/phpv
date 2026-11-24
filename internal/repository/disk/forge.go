@@ -72,7 +72,7 @@ func (f *ForgeRepository) Build(ctx context.Context, req domain.BuildRequest) (b
 }
 
 func (f *ForgeRepository) Install(ctx context.Context, req domain.InstallRequest) error {
-	name, buildDir, prefix, verbose, jobs := req.Name, req.BuildDir, req.Prefix, req.Verbose, req.Jobs
+	name, buildDir, prefix, verbose := req.Name, req.BuildDir, req.Prefix, req.Verbose
 	if err := os.MkdirAll(prefix, 0o755); err != nil {
 		return fmt.Errorf("create prefix %s: %w", prefix, err)
 	}
@@ -82,7 +82,10 @@ func (f *ForgeRepository) Install(ctx context.Context, req domain.InstallRequest
 		installTarget = "install_sw"
 	}
 
-	install := exec.CommandContext(ctx, "make", fmt.Sprintf("-j%d", jobs), installTarget)
+	// Install targets are short but not parallel-safe: PHP <= 5.6 uses an
+	// shtool mkdir -p wrapper whose check-then-mkdir races when install-cli
+	// and install-cgi run concurrently, failing with "File exists".
+	install := exec.CommandContext(ctx, "make", "-j1", installTarget)
 	install.Dir = buildDir
 	install.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if verbose {

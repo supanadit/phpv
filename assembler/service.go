@@ -625,6 +625,11 @@ func (s *Service) buildDependencies(ctx context.Context, spec depBuildSpec) (*De
 		}
 		depFlags := s.graph.GetConfigureFlags(dep.Name, depVersion)
 		depFlags = append(depFlags, s.resolveDepPlaceholders(prepared.ConfigureFlags, deps)...)
+		// Graph defaults and patch flags can both carry an SSL flag (curl has a
+		// bare --with-ssl in graph defaults and --with-openssl=<prefix> in its
+		// patch). Normalize them to one flag for this package before configure;
+		// otherwise the bare flag wins and curl builds against system OpenSSL 3.
+		depFlags = s.resolveDependencyFlags(dep.Name, depVersion, depFlags, deps)
 		buildDir, _, err := s.forge.Build(ctx, domain.BuildRequest{Name: dep.Name, Version: depVersion, SourceDir: sourceDir, ExtraEnv: buildEnv, ExtraConfigureFlags: depFlags, InstallPrefix: depPrefix, Verbose: verbose, Jobs: jobs})
 		if err != nil {
 			emit("error", fmt.Sprintf("Build failed for %s@%s", dep.Name, depVersion))
@@ -1982,17 +1987,26 @@ func (s *Service) ResolveDepPlaceholders(flags []string, deps []domain.Dependenc
 // is available (letting PHP use the system library).
 func (s *Service) resolveDependencyFlags(name, phpVersion string, flags []string, deps []domain.Dependency) []string {
 	result := make([]string, 0, len(flags))
+	var sslFlag string
 	for _, flag := range flags {
 		switch {
-		case flag == "--with-openssl" || flag == "--with-ssl":
-			opensslFlag := "--with-openssl"
-			if name != "php" {
-				opensslFlag = "--with-ssl"
+		case flag == "--with-openssl" || flag == "--with-ssl" ||
+			strings.HasPrefix(flag, "--with-openssl=") || strings.HasPrefix(flag, "--with-ssl="):
+			path := ""
+			if idx := strings.Index(flag, "="); idx >= 0 {
+				path = flag[idx+1:]
 			}
-			if path := s.findDepPrefix(deps, "openssl", "include/openssl"); path != "" {
-				result = append(result, opensslFlag+"="+path)
+			if path == "" {
+				path = s.findDepPrefix(deps, "openssl", "include/openssl")
+			}
+			if path != "" {
+				opensslFlag := "--with-openssl"
+				if name != "php" {
+					opensslFlag = "--with-ssl"
+				}
+				sslFlag = opensslFlag + "=" + path
 			} else {
-				result = append(result, flag)
+				sslFlag = flag
 			}
 
 		case flag == "--with-zlib" && (name == "libxml2" || name == "curl"):
@@ -2068,6 +2082,9 @@ func (s *Service) resolveDependencyFlags(name, phpVersion string, flags []string
 		default:
 			result = append(result, flag)
 		}
+	}
+	if sslFlag != "" {
+		result = append(result, sslFlag)
 	}
 	return result
 }

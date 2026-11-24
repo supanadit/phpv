@@ -24,6 +24,7 @@ jobs:
           - "8.3"
           - "8.4"
           - "8.5"
+          - "8.6"
 
     env:
       PHPV_ROOT: ${{ github.workspace }}/phpv-root-${{ matrix.php_version }}
@@ -150,6 +151,7 @@ jobs:
         php_version:
           - "7.4"
           - "8.5"
+          - "8.6"
         runner:
           - macos-14
     continue-on-error: true

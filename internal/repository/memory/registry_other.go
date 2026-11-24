@@ -18,10 +18,11 @@ func (reg *RegistryRepository) listPrimary(name string) ([]domain.Registry, erro
 				vsn.BuildMinorRanges(8, []vsn.MinorRange{
 					{Minor: 0, PatchEnd: 30},
 					{Minor: 1, PatchEnd: 33},
-					{Minor: 2, PatchEnd: 35},
-					{Minor: 3, PatchEnd: 36},
-					{Minor: 4, PatchEnd: 27},
-					{Minor: 5, PatchEnd: 12},
+					{Minor: 2, PatchEnd: 36},
+					{Minor: 3, PatchEnd: 37},
+					{Minor: 4, PatchEnd: 28},
+					{Minor: 5, PatchEnd: 13},
+					{Minor: 6, PatchEnd: 0},
 				}),
 				vsn.BuildMinorRanges(7, []vsn.MinorRange{
 					{Minor: 0, PatchEnd: 33},
@@ -53,6 +54,31 @@ func (reg *RegistryRepository) listPrimary(name string) ([]domain.Registry, erro
 				{Before: "5.3.0", URL: "https://museum.php.net/php5/php-{version}.tar.gz"},
 			},
 			Checksums: []Checksum{
+				{
+					Version: "8.6.0",
+					Type:    "sha256",
+					Value:   "62337dccde3d9fcc39797d4529f42637613036eaf3875353c206874e5813a3c1",
+				},
+				{
+					Version: "8.5.13",
+					Type:    "sha256",
+					Value:   "3aeb20a7e667e197929747f76047409196f91f0172357439319cba344df8b3e1",
+				},
+				{
+					Version: "8.4.28",
+					Type:    "sha256",
+					Value:   "deffc88c60fcfb99f683a9f6689e9c91cf41b7cba50bd5f01a232a98c27f2cd4",
+				},
+				{
+					Version: "8.3.37",
+					Type:    "sha256",
+					Value:   "cdd2ed867cb104ececff7c0292142c807c68a6b6da1b114ead4d586fba628a4f",
+				},
+				{
+					Version: "8.2.36",
+					Type:    "sha256",
+					Value:   "c871dbdc1cd3d898e48632c8b5fcc73f1b0e1cbb15ef816579ced7f2ae1696a8",
+				},
 				{
 					Version: "8.5.12",
 					Type:    "sha256",

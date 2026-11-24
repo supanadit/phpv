@@ -12,7 +12,7 @@ import (
 
 func TestGraphRepository_GetOrderedDependencies_PHP7_4(t *testing.T) {
 	repo := NewGraphRepository()
-	svc := graph.NewService(repo)
+	svc := graph.NewService(repo, repo)
 
 	defaults := []string{
 		"bcmath", "curl", "dom", "fileinfo", "filter", "gd",
@@ -53,7 +53,7 @@ func TestGraphRepository_GetOrderedDependencies_PHP7_4(t *testing.T) {
 
 func TestGraphRepository_GetOrderedDependencies_PHP8_1(t *testing.T) {
 	repo := NewGraphRepository()
-	svc := graph.NewService(repo)
+	svc := graph.NewService(repo, repo)
 
 	defaults := []string{
 		"bcmath", "curl", "dom", "fileinfo", "filter", "gd",
@@ -283,7 +283,7 @@ func TestGetExtensionConfigureFlags_Zip_PHP7_3(t *testing.T) {
 
 func TestGetBuildPlan_PHP7_4_HasLibzip(t *testing.T) {
 	repo := NewGraphRepository()
-	svc := graph.NewService(repo)
+	svc := graph.NewService(repo, repo)
 
 	defaults := []string{
 		"bcmath", "curl", "dom", "fileinfo", "filter", "gd",
@@ -331,7 +331,7 @@ func TestGetBuildPlan_PHP7_4_HasLibzip(t *testing.T) {
 
 func TestGetBuildPlan_PHP8_1_HasLibzip(t *testing.T) {
 	repo := NewGraphRepository()
-	svc := graph.NewService(repo)
+	svc := graph.NewService(repo, repo)
 
 	plan, err := svc.GetBuildPlan("php", "8.1.0", []string{"zip"}, "")
 	if err != nil {
@@ -362,7 +362,7 @@ func findDepPos(deps []domain.Dependency, name string) (int, bool) {
 
 func TestGetBuildPlan_PHP8_4_HasDeps(t *testing.T) {
 	repo := NewGraphRepository()
-	svc := graph.NewService(repo)
+	svc := graph.NewService(repo, repo)
 
 	defaults := []string{
 		"bcmath", "curl", "dom", "fileinfo", "filter", "gd",
@@ -422,7 +422,7 @@ func TestGetBuildPlan_PHP8_4_HasDeps(t *testing.T) {
 // unresolved {{dep:openssl}} placeholder because curl was built before openssl.
 func TestGetBuildPlan_PHP8_4_DependencyOrdering(t *testing.T) {
 	repo := NewGraphRepository()
-	svc := graph.NewService(repo)
+	svc := graph.NewService(repo, repo)
 
 	defaults := []string{
 		"bcmath", "curl", "dom", "fileinfo", "filter", "gd",
@@ -470,7 +470,7 @@ func TestGetBuildPlan_PHP8_4_DependencyOrdering(t *testing.T) {
 // extension pins win over transitive dep preferences.
 func TestGetBuildPlan_PHP5_6_CurlPin(t *testing.T) {
 	repo := NewGraphRepository()
-	svc := graph.NewService(repo)
+	svc := graph.NewService(repo, repo)
 
 	defaults := []string{
 		"bcmath", "curl", "dom", "fileinfo", "filter", "gd",
@@ -530,7 +530,7 @@ func TestGetBuildPlan_PHP5_6_CurlPin(t *testing.T) {
 
 func TestGetBuildPlan_PHP8_2_HasDeps(t *testing.T) {
 	repo := NewGraphRepository()
-	svc := graph.NewService(repo)
+	svc := graph.NewService(repo, repo)
 
 	defaults := []string{
 		"bcmath", "curl", "dom", "fileinfo", "filter", "gd",
@@ -564,7 +564,7 @@ func TestGetBuildPlan_PHP8_2_HasDeps(t *testing.T) {
 
 func TestGetBuildPlan_Minimal_NoDeps(t *testing.T) {
 	repo := NewGraphRepository()
-	svc := graph.NewService(repo)
+	svc := graph.NewService(repo, repo)
 
 	plan, err := svc.GetBuildPlan("php", "8.4.0", nil, "")
 	if err != nil {
@@ -609,7 +609,7 @@ func TestGraphRepository_RequiresPackages_DataDriven(t *testing.T) {
 
 func TestGetBuildPlan_ImpliedChains(t *testing.T) {
 	repo := NewGraphRepository()
-	svc := graph.NewService(repo)
+	svc := graph.NewService(repo, repo)
 
 	// Request only 'dom' — it should imply 'libxml' ext, which requires 'libxml2' pkg.
 	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"dom"}, "")
@@ -634,7 +634,7 @@ func TestGetBuildPlan_ImpliedChains(t *testing.T) {
 // ones mixed in) and an empty name behaves exactly like the platform default.
 func TestGetBuildPlan_SelectsCompilerFlagRules(t *testing.T) {
 	repo := NewGraphRepository()
-	svc := graph.NewService(repo)
+	svc := graph.NewService(repo, repo)
 
 	zigPlan, err := svc.GetBuildPlan("php", "5.6.40", nil, "zig")
 	if err != nil {
@@ -704,7 +704,7 @@ func TestGetCompilerStdRule_CStandardByPHPVersion(t *testing.T) {
 // that ordering contract for a PHP 4 build.
 func TestGetBuildPlan_PHP4StdFlagIsWhatTheCompilerSees(t *testing.T) {
 	repo := NewGraphRepository()
-	svc := graph.NewService(repo)
+	svc := graph.NewService(repo, repo)
 
 	for _, compilerName := range []string{"zig", "gcc", "clang"} {
 		plan, err := svc.GetBuildPlan("php", "4.4.9", nil, compilerName)

@@ -42,12 +42,16 @@ type AssemblerGraph interface {
 	GetCompilerStdRule(phpVersion string) domain.CompilerRule
 	CXXFlagsFromCFlagsWithStd(cflags []string, isPHPBuild bool, stdRule domain.CompilerRule) []string
 	GetConfigureFlags(name, version string) []string
-	GetExtensionConfigureFlags(name, phpVersion string) []string
+}
+
+// AssemblerExtensions is the extension-catalog capability assembler consumes.
+type AssemblerExtensions interface {
 	ListExtensionsForPHP(phpVersion string) []domain.ExtensionInfo
 	DefaultExtensions(phpVersion string) (included, skipped []string)
 	ExpandImplied(extensions []string) (expanded, added []string)
 	SharedOnlyExtensions(phpVersion string, requested []string) []string
 	GetExtensionDef(name string) (domain.ExtensionDef, bool)
+	GetExtensionConfigureFlags(name, phpVersion string) []string
 }
 
 // AssemblerSilo is the package-storage capability assembler consumes.
@@ -91,23 +95,25 @@ type AssemblerMirror interface {
 
 // ServiceDeps groups the assembler's injected capabilities.
 type ServiceDeps struct {
-	Graph    AssemblerGraph
-	Silo     AssemblerSilo
-	Forge    AssemblerForge
-	Patcher  AssemblerPatcher
-	Registry AssemblerRegistry
-	Mirror   AssemblerMirror
+	Graph      AssemblerGraph
+	Extensions AssemblerExtensions
+	Silo       AssemblerSilo
+	Forge      AssemblerForge
+	Patcher    AssemblerPatcher
+	Registry   AssemblerRegistry
+	Mirror     AssemblerMirror
 }
 
 // Service orchestrates the full build pipeline for any package:
 // resolve → get build plan → download → build deps → build package → mark complete.
 // It composes service wrappers that each add value over their underlying repositories.
 type Service struct {
-	graph   AssemblerGraph
-	silo    AssemblerSilo
-	forge   AssemblerForge
-	patcher AssemblerPatcher
-	reg     AssemblerRegistry
+	graph      AssemblerGraph
+	extensions AssemblerExtensions
+	silo       AssemblerSilo
+	forge      AssemblerForge
+	patcher    AssemblerPatcher
+	reg        AssemblerRegistry
 	// patches, when non-nil, is consulted before every build so freshly
 	// published patches reach installs regardless of binary age. A nil
 	// service disables the self-sync (e.g. in tests).
@@ -117,12 +123,13 @@ type Service struct {
 // NewService creates a new assembler service.
 func NewService(deps ServiceDeps) *Service {
 	return &Service{
-		graph:   deps.Graph,
-		silo:    deps.Silo,
-		forge:   deps.Forge,
-		patcher: deps.Patcher,
-		reg:     deps.Registry,
-		patches: deps.Mirror,
+		graph:      deps.Graph,
+		extensions: deps.Extensions,
+		silo:       deps.Silo,
+		forge:      deps.Forge,
+		patcher:    deps.Patcher,
+		reg:        deps.Registry,
+		patches:    deps.Mirror,
 	}
 }
 
@@ -133,27 +140,27 @@ func (s *Service) Graph() AssemblerGraph {
 
 // ListExtensionsForPHP delegates to the graph service.
 func (s *Service) ListExtensionsForPHP(phpVersion string) []domain.ExtensionInfo {
-	return s.graph.ListExtensionsForPHP(phpVersion)
+	return s.extensions.ListExtensionsForPHP(phpVersion)
 }
 
 // DefaultExtensions delegates to the graph service.
 func (s *Service) DefaultExtensions(phpVersion string) (included []string, skipped []string) {
-	return s.graph.DefaultExtensions(phpVersion)
+	return s.extensions.DefaultExtensions(phpVersion)
 }
 
 // ExpandImplied delegates to the graph service.
 func (s *Service) ExpandImplied(extensions []string) (expanded []string, added []string) {
-	return s.graph.ExpandImplied(extensions)
+	return s.extensions.ExpandImplied(extensions)
 }
 
 // SharedOnlyExtensions delegates to the graph service.
 func (s *Service) SharedOnlyExtensions(phpVersion string, requested []string) []string {
-	return s.graph.SharedOnlyExtensions(phpVersion, requested)
+	return s.extensions.SharedOnlyExtensions(phpVersion, requested)
 }
 
 // GetExtensionDef delegates to the graph service.
 func (s *Service) GetExtensionDef(name string) (domain.ExtensionDef, bool) {
-	return s.graph.GetExtensionDef(name)
+	return s.extensions.GetExtensionDef(name)
 }
 
 // syncPatches runs the pre-build patch-tree freshness check. Failures
@@ -762,7 +769,7 @@ func (s *Service) InstallExtension(ctx context.Context, req domain.ExtensionInst
 	}
 
 	args := []string{"--with-php-config=" + phpConfig}
-	extFlags := s.graph.GetExtensionConfigureFlags(extName, phpVersion)
+	extFlags := s.extensions.GetExtensionConfigureFlags(extName, phpVersion)
 	args = append(args, extFlags...)
 
 	configure := exec.CommandContext(ctx, "./configure", args...)

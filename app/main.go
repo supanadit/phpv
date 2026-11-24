@@ -17,6 +17,7 @@ import (
 	"github.com/supanadit/phpv/doctor"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/editor"
+	"github.com/supanadit/phpv/extension"
 	"github.com/supanadit/phpv/forge"
 	"github.com/supanadit/phpv/graph"
 	"github.com/supanadit/phpv/internal/repository"
@@ -139,17 +140,18 @@ func NewApacheServiceForServer(a *assembler.Service) *assembler.ApacheService {
 type assemblerDepsIn struct {
 	fx.In
 
-	Graph    *graph.Service
-	Silo     *silo.Service
-	Forge    *forge.Service
-	Patcher  *patcher.Service
-	Registry *registry.Service
-	Mirror   *mirror.Service
+	Graph      *graph.Service
+	Extensions assembler.AssemblerExtensions
+	Silo       *silo.Service
+	Forge      *forge.Service
+	Patcher    *patcher.Service
+	Registry   *registry.Service
+	Mirror     *mirror.Service
 }
 
 func NewAssemblerDeps(in assemblerDepsIn) assembler.ServiceDeps {
 	return assembler.ServiceDeps{
-		Graph: in.Graph, Silo: in.Silo, Forge: in.Forge,
+		Graph: in.Graph, Extensions: in.Extensions, Silo: in.Silo, Forge: in.Forge,
 		Patcher: in.Patcher, Registry: in.Registry, Mirror: in.Mirror,
 	}
 }
@@ -183,6 +185,7 @@ func main() {
 			NewPatchLister,
 			NewServerManagerFactory,
 			fx.Annotate(memory.NewGraphRepository, fx.As(new(graph.GraphRepository))),
+			fx.Annotate(memory.NewGraphRepository, fx.As(new(extension.ExtensionCatalog))),
 			registry.NewService,
 			fx.Annotate(registry.NewService, fx.As(new(silo.RegistryLookup))),
 			silo.NewService,
@@ -208,8 +211,10 @@ func main() {
 			fx.Annotate(NewApacheServiceForServer, fx.As(new(args.ApacheService))),
 			forge.NewService,
 			patcher.NewService,
+			fx.Annotate(extension.NewService, fx.As(new(graph.ExtensionSource))),
+			fx.Annotate(extension.NewService, fx.As(new(assembler.AssemblerExtensions))),
 			graph.NewService,
-			fx.Annotate(graph.NewService, fx.As(new(doctor.GraphLookup))),
+			fx.Annotate(extension.NewService, fx.As(new(doctor.GraphLookup))),
 		),
 		fx.Invoke(wireTerminal),
 		fx.Invoke(RegisterRootCmd),

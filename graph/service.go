@@ -3,7 +3,6 @@ package graph
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	vsn "github.com/supanadit/phpv/pkg/version"
 
@@ -48,15 +47,23 @@ type GraphRepository interface {
 // BuildPlan consolidates everything needed to build a package.
 type BuildPlan = domain.BuildPlan
 
+// ExtensionSource is the extension-catalog capability graph consumes.
+type ExtensionSource interface {
+	ExpandImplied(extensions []string) (expanded []string, added []string)
+	GetPHPConfigureFlags(phpVersion string, extensions []string) []string
+	GetExtensionDependencyWithVersion(extName, phpVersion string) (string, string, bool)
+}
+
 // Service wraps GraphRepository and adds value by consolidating
 // multiple queries into a single GetBuildPlan call.
 type Service struct {
 	repo GraphRepository
+	ExtensionSource
 }
 
 // NewService creates a graph service backed by the given repository.
-func NewService(repo GraphRepository) *Service {
-	return &Service{repo: repo}
+func NewService(repo GraphRepository, ext ExtensionSource) *Service {
+	return &Service{repo: repo, ExtensionSource: ext}
 }
 
 // GetBuildPlan returns everything needed to build (name, version) in one call.
@@ -78,14 +85,14 @@ func (s *Service) GetBuildPlan(name string, version string, extensions []string,
 	}
 	var warnings []string
 	if name == "php" && len(extensions) > 0 {
-		expanded, _ := s.repo.ExpandImplied(extensions)
+		expanded, _ := s.ExtensionSource.ExpandImplied(extensions)
 		extDeps, w := s.resolveExtensionDeps(version, expanded)
 		deps = mergeDeps(deps, extDeps)
 		warnings = w
 	}
 	var configureFlags []string
 	if name == "php" {
-		configureFlags = s.repo.GetPHPConfigureFlags(version, extensions)
+		configureFlags = s.ExtensionSource.GetPHPConfigureFlags(version, extensions)
 	} else {
 		configureFlags = s.repo.GetConfigureFlags(name, version)
 	}
@@ -125,7 +132,7 @@ func (s *Service) resolveExtensionDeps(phpVersion string, extensions []string) (
 	var warnings []string
 
 	for _, ext := range extensions {
-		pkgName, pkgVersion, ok := s.repo.GetExtensionDependencyWithVersion(ext, phpVersion)
+		pkgName, pkgVersion, ok := s.ExtensionSource.GetExtensionDependencyWithVersion(ext, phpVersion)
 		if !ok || pkgName == "" {
 			continue
 		}
@@ -254,82 +261,9 @@ func (s *Service) GetOrderedDependencies(name string, version string) ([]domain.
 	return s.repo.GetOrderedDependencies(name, version)
 }
 
-// GetExtensionDef returns the definition for a named extension.
-func (s *Service) GetExtensionDef(name string) (domain.ExtensionDef, bool) {
-	return s.repo.GetExtensionDef(name)
-}
-
-// IsExtensionValidForPHPVersion checks if an extension is valid for a PHP version.
-func (s *Service) IsExtensionValidForPHPVersion(name string, phpVersion string) bool {
-	return s.repo.IsExtensionValidForPHPVersion(name, phpVersion)
-}
-
-// GetConflictingExtensions returns extensions that conflict with the given one.
-func (s *Service) GetConflictingExtensions(name string) []string {
-	return s.repo.GetConflictingExtensions(name)
-}
-
-// GetExtensionDependency returns the package name an extension depends on.
-func (s *Service) GetExtensionDependency(name string) (string, bool) {
-	return s.repo.GetExtensionDependency(name)
-}
-
-// GetExtensionDependencyWithVersion returns package name and version for an extension.
-func (s *Service) GetExtensionDependencyWithVersion(extName string, phpVersion string) (string, string, bool) {
-	return s.repo.GetExtensionDependencyWithVersion(extName, phpVersion)
-}
-
-// ValidateExtensions validates a list of extensions and returns unknown ones.
-func (s *Service) ValidateExtensions(extensions []string, phpVersion string) ([]string, error) {
-	return s.repo.ValidateExtensions(extensions, phpVersion)
-}
-
-// CheckExtensionConflicts checks for extension conflicts in the given list.
-func (s *Service) CheckExtensionConflicts(extensions []string) ([]string, [][]string) {
-	return s.repo.CheckExtensionConflicts(extensions)
-}
-
-// ListExtensions returns all known extensions.
-func (s *Service) ListExtensions() []domain.ExtensionInfo {
-	return s.repo.ListExtensions()
-}
-
-// ListExtensionsForPHP returns extensions valid for a specific PHP version.
-func (s *Service) ListExtensionsForPHP(phpVersion string) []domain.ExtensionInfo {
-	return s.repo.ListExtensionsForPHP(phpVersion)
-}
-
-// ExpandImplied returns the full extension set after expanding implied deps.
-func (s *Service) ExpandImplied(extensions []string) (expanded []string, added []string) {
-	return s.repo.ExpandImplied(extensions)
-}
-
-// DefaultExtensions returns the recommended default extension set for a
-// typical PHP install, filtered to those compatible with the given PHP version.
-func (s *Service) DefaultExtensions(phpVersion string) ([]string, []string) {
-	return s.repo.DefaultExtensions(phpVersion)
-}
-
-// SharedOnlyExtensions returns extensions that must be built as shared.
-func (s *Service) SharedOnlyExtensions(phpVersion string, requested []string) []string {
-	return s.repo.SharedOnlyExtensions(phpVersion, requested)
-}
-
 // GetConfigureFlags returns configure flags for a package at a specific version.
 func (s *Service) GetConfigureFlags(name string, version string) []string {
 	return s.repo.GetConfigureFlags(name, version)
-}
-
-// GetPHPConfigureFlags returns configure flags for PHP with given extensions.
-func (s *Service) GetPHPConfigureFlags(phpVersion string, extensions []string) []string {
-	return s.repo.GetPHPConfigureFlags(phpVersion, extensions)
-}
-
-// GetExtensionConfigureFlags returns configure flags for a single extension
-// at a specific PHP version. Flags are version-gated (e.g., --with-external-pcre
-// only in PHP 7.4+).
-func (s *Service) GetExtensionConfigureFlags(name string, phpVersion string) []string {
-	return s.repo.GetExtensionConfigureFlags(name, phpVersion)
 }
 
 // GetCompilerStdRule returns C/C++ compiler standard flags for a PHP version.
@@ -348,51 +282,5 @@ func (s *Service) GetCompilerFlags(compiler string, phpVersion string) []string 
 // CXXFLAGS derived from a single source of truth.
 // CXXFlagsFromCFlagsWithStd exposes the flag translation as a service method.
 func (s *Service) CXXFlagsFromCFlagsWithStd(cflags []string, isPHPBuild bool, stdRule domain.CompilerRule) []string {
-	return CXXFlagsFromCFlagsWithStd(cflags, isPHPBuild, stdRule)
-}
-
-func CXXFlagsFromCFlagsWithStd(cflags []string, isPHPBuild bool, stdRule domain.CompilerRule) []string {
-	cxxflags := make([]string, 0, len(cflags))
-	hasCXXStd := false
-
-	for _, f := range cflags {
-		if strings.HasPrefix(f, "-std=c++") || strings.HasPrefix(f, "-std=gnu++") {
-			cxxflags = append(cxxflags, f)
-			hasCXXStd = true
-		} else if strings.HasPrefix(f, "-std=") {
-			// Any C standard (-std=gnu11, -std=gnu89, ...) becomes the C++
-			// standard instead of being copied through, where a C-only std
-			// would be rejected by g++/clang++. Several C stds all map to the
-			// same C++ std, so emit it only once.
-			if !hasCXXStd {
-				if stdRule.CXXStd != "" {
-					cxxflags = append(cxxflags, stdRule.CXXStd)
-				} else {
-					cxxflags = append(cxxflags, "-std=gnu++17")
-				}
-				hasCXXStd = true
-			}
-		} else if cOnlyWarnings[f] {
-			continue
-		} else {
-			cxxflags = append(cxxflags, f)
-		}
-	}
-
-	if isPHPBuild && !hasCXXStd {
-		if stdRule.CXXStd != "" {
-			cxxflags = append(cxxflags, stdRule.CXXStd)
-		} else {
-			cxxflags = append(cxxflags, "-std=gnu++17")
-		}
-	}
-
-	return cxxflags
-}
-
-var cOnlyWarnings = map[string]bool{
-	"-Wno-implicit-function-declaration": true,
-	"-Wno-incompatible-pointer-types":    true,
-	"-Wno-array-parameter":               true,
-	"-Wno-deprecated-non-prototype":      true,
+	return compiler.CXXFlagsFromCFlagsWithStd(cflags, isPHPBuild, compiler.StandardRule{CStd: stdRule.CStd, CXXStd: stdRule.CXXStd})
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/supanadit/phpv/domain"
+	"github.com/supanadit/phpv/pkg/compiler"
 )
 
 type mockGraphRepo struct {
@@ -94,7 +95,7 @@ func TestService_GetBuildPlan(t *testing.T) {
 			{Name: "openssl", Version: "1.1.1w"},
 		},
 	}
-	svc := NewService(mock)
+	svc := NewService(mock, mock)
 
 	plan, err := svc.GetBuildPlan("php", "8.4.0", nil, "")
 	if err != nil {
@@ -133,7 +134,7 @@ func TestService_GetBuildPlan_WithExtensions(t *testing.T) {
 			},
 		},
 	}
-	svc := NewService(mock)
+	svc := NewService(mock, mock)
 
 	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"openssl", "curl"}, "")
 	if err != nil {
@@ -166,7 +167,7 @@ func TestService_GetBuildPlan_Minimal_NoDeps(t *testing.T) {
 	mock := &mockGraphRepo{
 		deps: []domain.Dependency{},
 	}
-	svc := NewService(mock)
+	svc := NewService(mock, mock)
 
 	plan, err := svc.GetBuildPlan("php", "8.4.0", nil, "")
 	if err != nil {
@@ -178,7 +179,7 @@ func TestService_GetBuildPlan_Minimal_NoDeps(t *testing.T) {
 }
 
 func TestService_GetBuildPlan_UnknownCompiler(t *testing.T) {
-	svc := NewService(&mockGraphRepo{})
+	svc := NewService(&mockGraphRepo{}, &mockGraphRepo{})
 
 	if _, err := svc.GetBuildPlan("php", "8.4.0", nil, "tcc"); err == nil {
 		t.Fatal("expected an error for an unregistered compiler")
@@ -197,7 +198,7 @@ func TestService_GetBuildPlan_DedupConflictingVersions(t *testing.T) {
 			"ext2": {"openssl", "1.0.1u|>=0.9.8,<1.2.0", true},
 		},
 	}
-	svc := NewService(mock)
+	svc := NewService(mock, mock)
 
 	plan, err := svc.GetBuildPlan("php", "8.4.0", []string{"ext1", "ext2"}, "")
 	if err != nil {
@@ -221,7 +222,7 @@ func TestService_GetOrderedDependencies(t *testing.T) {
 			{Name: "zlib", Version: "1.2.13"},
 		},
 	}
-	svc := NewService(mock)
+	svc := NewService(mock, mock)
 
 	deps, err := svc.GetOrderedDependencies("php", "8.4.0")
 	if err != nil {
@@ -245,10 +246,10 @@ func TestCXXFlagsFromCFlagsWithStd_TranslatesCStd(t *testing.T) {
 		"-fvisibility=hidden",
 	}
 
-	got := CXXFlagsFromCFlagsWithStd(cflags, true, rule)
+	got := compiler.CXXFlagsFromCFlagsWithStd(cflags, true, compiler.StandardRule{CStd: rule.CStd, CXXStd: rule.CXXStd})
 	want := []string{"-fPIC", "-std=gnu++17", "-fvisibility=hidden"}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("CXXFlagsFromCFlagsWithStd() = %v, want %v", got, want)
+		t.Errorf("compiler.CXXFlagsFromCFlagsWithStd() = %v, want %v", got, want)
 	}
 }
 
@@ -256,9 +257,9 @@ func TestCXXFlagsFromCFlagsWithStd_TranslatesCStd(t *testing.T) {
 // standard passes through untouched.
 func TestCXXFlagsFromCFlagsWithStd_KeepsExplicitCXXStd(t *testing.T) {
 	rule := domain.CompilerRule{CStd: "-std=gnu11", CXXStd: "-std=gnu++17"}
-	got := CXXFlagsFromCFlagsWithStd([]string{"-std=gnu++20", "-O2"}, false, rule)
+	got := compiler.CXXFlagsFromCFlagsWithStd([]string{"-std=gnu++20", "-O2"}, false, compiler.StandardRule{CStd: rule.CStd, CXXStd: rule.CXXStd})
 	want := []string{"-std=gnu++20", "-O2"}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("CXXFlagsFromCFlagsWithStd() = %v, want %v", got, want)
+		t.Errorf("compiler.CXXFlagsFromCFlagsWithStd() = %v, want %v", got, want)
 	}
 }

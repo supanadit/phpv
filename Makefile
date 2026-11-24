@@ -42,7 +42,7 @@ all: build
 build:
 	@mkdir -p $(dir $(BIN))
 	@echo "==> Building phpv $(VERSION)"
-	$(GO) build $(LDFLAGS) -o $(BIN) ./app/phpv.go
+	$(GO) build $(LDFLAGS) -o $(BIN) ./app/main.go
 	@echo "✓ Built $(BIN)"
 
 install: build

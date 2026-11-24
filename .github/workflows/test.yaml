@@ -71,7 +71,7 @@ jobs:
             internal/repository/disk/update.go \
             assembler/service.go \
             bundle/service.go \
-            app/phpv.go \
+            app/main.go \
             go.mod \
             go.sum \
             .github/workflows/test.yaml \
@@ -91,7 +91,7 @@ jobs:
       - name: Build phpv binary
         run: |
           mkdir -p $PHPV_ROOT/bin
-          go build -o $PHPV_ROOT/bin/phpv ./app/phpv.go
+          go build -o $PHPV_ROOT/bin/phpv ./app/main.go
           echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
 
       - name: Install PHP ${{ matrix.php_version }}
@@ -188,7 +188,7 @@ jobs:
       - name: Build phpv binary
         run: |
           mkdir -p $PHPV_ROOT/bin
-          go build -o $PHPV_ROOT/bin/phpv ./app/phpv.go
+          go build -o $PHPV_ROOT/bin/phpv ./app/main.go
           echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
 
       - name: Compute cache key
@@ -206,7 +206,7 @@ jobs:
             internal/repository/disk/update.go \
             assembler/service.go \
             bundle/service.go \
-            app/phpv.go \
+            app/main.go \
             go.mod \
             go.sum \
             .github/workflows/test.yaml \
@@ -226,7 +226,7 @@ jobs:
       - name: Build phpv binary
         run: |
           mkdir -p $PHPV_ROOT/bin
-          go build -o $PHPV_ROOT/bin/phpv ./app/phpv.go
+          go build -o $PHPV_ROOT/bin/phpv ./app/main.go
           echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
 
       - name: Install PHP ${{ matrix.php_version }}

@@ -27,7 +27,7 @@ From source:
 
 ```bash
 git clone https://github.com/supanadit/phpv.git
-cd phpv && go build -o phpv ./app/phpv.go
+cd phpv && go build -o phpv ./app/main.go
 ```
 
 ---

@@ -24,7 +24,7 @@ You need Go 1.25+ and a Linux or macOS system with a C compiler. That's it.
 ```bash
 git clone https://github.com/supanadit/phpv.git
 cd phpv
-go build -o phpv ./app/phpv.go
+go build -o phpv ./app/main.go
 ./phpv install 8.4
 ```
 
@@ -48,7 +48,7 @@ phpv follows Clean Architecture. If you're adding code, know where it goes:
 
 **Delivery** (`app/`, `internal/terminal/`) — CLI commands, argument parsing, output formatting. This is the only place `fmt.Print` should appear. Business logic does not live here.
 
-Dependency injection uses Uber's fx. The wiring is in `app/phpv.go`.
+Dependency injection uses Uber's fx. The wiring is in `app/main.go`.
 
 A few conventions:
 

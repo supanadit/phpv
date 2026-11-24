@@ -591,6 +591,24 @@ func (s *Service) buildDependencies(ctx context.Context, spec depBuildSpec) (*De
 			emit("patch", fmt.Sprintf("Applied %d patch(es) to %s@%s", len(prepared.Applied), dep.Name, depVersion))
 		}
 		buildEnv := tc.Env()
+		// Dependencies built earlier in this run are shared libs installed only
+		// under their own prefix (e.g. OpenSSL 1.0.1's libssl.so.1.0.0). A
+		// dependent's ./configure links against them via -L but then RUNS its
+		// test programs, and the loader only knows LD_LIBRARY_PATH. Without this,
+		// curl 7.12's configure crashes with exit 77 ("cannot compute sizeof
+		// (curl_off_t)"), surfacing as "OpenSSL libs not found where specified".
+		if len(res.LibraryPaths) > 0 {
+			sep := string(os.PathListSeparator)
+			// Our prefixes come first so the loader finds the libs this run built
+			// (e.g. libssl.so.1.0.0) rather than a system one. MergeEnv appends
+			// extras after os.Environ() and the last entry wins, so the ambient
+			// value must be carried over here explicitly.
+			paths := strings.Join(res.LibraryPaths, sep)
+			if cur := os.Getenv(libPathEnvName()); cur != "" {
+				paths += sep + cur
+			}
+			buildEnv = append(buildEnv, libPathEnvName()+"="+paths)
+		}
 		if len(prepared.ExtraCFlags) > 0 {
 			buildEnv = append(buildEnv, "CFLAGS="+strings.Join(prepared.ExtraCFlags, " "), "CXXFLAGS="+strings.Join(prepared.ExtraCFlags, " "))
 		}

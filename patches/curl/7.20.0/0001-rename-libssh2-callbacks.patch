@@ -1,0 +1,67 @@
+From: phpv <https://github.com/supanadit/phpv>
+Subject: [PATCH] rename curl's libssh2 callbacks to avoid the system libssh2 API
+
+curl 7.20 bundles an old libssh2.h whose LIBSSH2_*_FUNC macros declare
+callbacks named libssh2_malloc/realloc/free. Its ssh.c also includes the
+system <libssh2.h>, where libssh2 1.9+ declares a real API function of
+the same name with a different signature, so the build fails:
+
+    ssh.c:122: error: conflicting types for 'libssh2_free'
+    /usr/include/libssh2.h:628: note: previous declaration here
+
+Rename curl's three static callbacks (local symbols only; no behavior
+change). Applies to curl 7.20.0, which PHP 5.6 is pinned to.
+---
+ lib/ssh.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/lib/ssh.c b/lib/ssh.c
+--- a/lib/ssh.c
++++ b/lib/ssh.c
+@@ -117,9 +117,9 @@
+ 
+ /* Local functions: */
+ static const char *sftp_libssh2_strerror(unsigned long err);
+-static LIBSSH2_ALLOC_FUNC(libssh2_malloc);
+-static LIBSSH2_REALLOC_FUNC(libssh2_realloc);
+-static LIBSSH2_FREE_FUNC(libssh2_free);
++static LIBSSH2_ALLOC_FUNC(curl_ssh_malloc);
++static LIBSSH2_REALLOC_FUNC(curl_ssh_realloc);
++static LIBSSH2_FREE_FUNC(curl_ssh_free);
+ 
+ static CURLcode get_pathname(const char **cpp, char **path);
+ 
+@@ -302,19 +302,19 @@
+   return CURLE_SSH;
+ }
+ 
+-static LIBSSH2_ALLOC_FUNC(libssh2_malloc)
++static LIBSSH2_ALLOC_FUNC(curl_ssh_malloc)
+ {
+   (void)abstract; /* arg not used */
+   return malloc(count);
+ }
+ 
+-static LIBSSH2_REALLOC_FUNC(libssh2_realloc)
++static LIBSSH2_REALLOC_FUNC(curl_ssh_realloc)
+ {
+   (void)abstract; /* arg not used */
+   return realloc(ptr, count);
+ }
+ 
+-static LIBSSH2_FREE_FUNC(libssh2_free)
++static LIBSSH2_FREE_FUNC(curl_ssh_free)
+ {
+   (void)abstract; /* arg not used */
+   free(ptr);
+@@ -2463,8 +2463,8 @@
+   sock = conn->sock[FIRSTSOCKET];
+ #endif /* CURL_LIBSSH2_DEBUG */
+ 
+-  ssh->ssh_session = libssh2_session_init_ex(libssh2_malloc, libssh2_free,
+-                                             libssh2_realloc, conn);
++  ssh->ssh_session = libssh2_session_init_ex(curl_ssh_malloc, curl_ssh_free,
++                                             curl_ssh_realloc, conn);
+   if(ssh->ssh_session == NULL) {
+     failf(data, "Failure initialising ssh session");
+     return CURLE_FAILED_INIT;

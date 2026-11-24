@@ -155,6 +155,13 @@ jobs:
           go build -o $PHPV_ROOT/bin/phpv ./app/main.go
           echo "$PHPV_ROOT/bin" >> $GITHUB_PATH
 
+      # Fresh runners have no $PHPV_ROOT/patches. The runtime sync uses the
+      # GitHub tree API, which is easily rate-limited (403) and silently leaves
+      # the tree empty — old PHP then builds without its compatibility patches.
+      # Seed from this checkout; EnsureFresh still updates it when it can.
+      - name: Seed patch tree
+        run: mkdir -p $PHPV_ROOT/patches && cp -R patches/. $PHPV_ROOT/patches/
+
       - name: Install PHP ${{ matrix.php.version }}
         run: |
           eval "$($PHPV_ROOT/bin/phpv init bash)"

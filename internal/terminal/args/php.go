@@ -73,7 +73,9 @@ type HandlerDeps struct {
 	Version     string
 }
 
-func NewPHPHandler(deps HandlerDeps) {
+// NewPHPHandler builds the handler and registers its commands on the root
+// command. The returned handler lets callers and tests inspect what was wired.
+func NewPHPHandler(deps HandlerDeps) *PHPHandler {
 	h := &PHPHandler{
 		ctx:          context.Background(),
 		siloSvc:      deps.Silo,
@@ -121,6 +123,7 @@ func NewPHPHandler(deps HandlerDeps) {
 	deps.RootCmd.AddCommand(h.doctorCmd())
 	deps.RootCmd.AddCommand(h.updateCmd())
 	deps.RootCmd.AddCommand(h.patchCmd())
+	return h
 }
 
 func (h *PHPHandler) uninstallCmd() *cobra.Command {

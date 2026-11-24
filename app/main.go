@@ -91,6 +91,10 @@ type terminalDeps struct {
 	Update      *update.Service
 	PatchSync   *mirror.Service
 	PatchLister args.PatchLister
+	FPM         args.FPMService
+	Apache      args.ApacheService
+	ServerAsm   args.ServerAssembler
+	ServerMgr   args.ServerManagerFactory
 }
 
 // serverManagerAdapter maps the concrete webserver manager onto the
@@ -163,6 +167,10 @@ func wireTerminal(deps terminalDeps) {
 		System: deps.System, Shim: deps.Shim, PECL: deps.PECL, Config: deps.Config,
 		Doctor: deps.Doctor, Update: deps.Update, PatchSync: deps.PatchSync,
 		PatchLister: deps.PatchLister,
+		FPM:         deps.FPM,
+		Apache:      deps.Apache,
+		ServerAsm:   deps.ServerAsm,
+		ServerMgr:   deps.ServerMgr,
 		Version:     version,
 	})
 }

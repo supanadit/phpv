@@ -43,3 +43,11 @@ func NormalizeSAPI(value string) string {
 		return v
 	}
 }
+
+// ServerPackageName maps the user-facing server name to its registry package name.
+func ServerPackageName(server string) string {
+	if server == "apache" {
+		return "httpd"
+	}
+	return server
+}

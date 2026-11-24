@@ -27,22 +27,10 @@ import (
 )
 
 // AssemblerResult holds the outcome of assembling a package.
-type AssemblerResult struct {
-	DownloadResults  []DownloadResult
-	Version          string
-	Prefix           string
-	Env              map[string]string
-	AlreadyInstalled bool
-}
+type AssemblerResult = domain.AssemblerResult
 
 // DownloadResult holds the outcome of downloading + extracting a single package.
-type DownloadResult struct {
-	Name       string
-	Version    string
-	Downloaded bool
-	Extracted  bool
-	Err        error
-}
+type DownloadResult = domain.DownloadResult
 
 // ProgressFunc receives human-readable status updates during assembly.
 // Pass nil to disable progress reporting.
@@ -186,17 +174,7 @@ func (s *Service) syncPatches(ctx context.Context, emit func(stage, msg string))
 }
 
 // AssembleSpec groups the inputs to a full PHP assembly.
-type AssembleSpec struct {
-	Name, Version string
-	Static        bool
-	Extensions    []string
-	Verbose       bool
-	Progress      ProgressFunc
-	SystemPkgs    map[string]domain.SystemPackage
-	Jobs          int
-	Force         bool
-	TC            compiler.Toolchain
-}
+type AssembleSpec = domain.AssembleSpec
 
 // depBuildSpec groups the inputs to a dependency build pass.
 type depBuildSpec struct {
@@ -225,7 +203,8 @@ type downloadSpec struct {
 // tc is the resolved compiler toolchain (see compiler.Resolve) used for both
 // compiler flag selection and the CC/CXX of every build it spawns.
 func (s *Service) Assemble(ctx context.Context, spec AssembleSpec) (*AssemblerResult, error) {
-	name, version, static, extensions, verbose, progress, systemPkgs, jobs, force, tc := spec.Name, spec.Version, spec.Static, spec.Extensions, spec.Verbose, spec.Progress, spec.SystemPkgs, spec.Jobs, spec.Force, spec.TC
+	name, version, static, extensions, verbose, progress, systemPkgs, jobs, force := spec.Name, spec.Version, spec.Static, spec.Extensions, spec.Verbose, spec.Progress, spec.SystemPkgs, spec.Jobs, spec.Force
+	tc := compiler.Toolchain{Name: spec.TC.Name, CC: spec.TC.CC, CXX: spec.TC.CXX, Hint: spec.TC.Hint}
 	emit := func(stage, msg string) {
 		if progress != nil {
 			progress(stage, msg)
@@ -1186,37 +1165,20 @@ func (a *ApacheService) NeedsRebuild(phpVersion, httpdPrefix string, tc compiler
 }
 
 // ApacheModuleSpec groups the inputs to building a mod_php module.
-type ApacheModuleSpec struct {
-	PHPVersion, HTTPDPrefix string
-	Verbose                 bool
-	Jobs                    int
-	TC                      compiler.Toolchain
-	Progress                ProgressFunc
-}
+type ApacheModuleSpec = domain.ApacheModuleSpec
 
 // FPMSpec groups the inputs to ensuring a php-fpm runtime.
-type FPMSpec struct {
-	PHPVersion, StagedFrom string
-	Verbose                bool
-	Jobs                   int
-	TC                     compiler.Toolchain
-	Progress               ProgressFunc
-}
+type FPMSpec = domain.FPMSpec
 
 // ServerAssembleSpec groups the inputs to assembling a webserver package.
-type ServerAssembleSpec struct {
-	Name, Version string
-	Verbose       bool
-	Jobs          int
-	TC            compiler.Toolchain
-	Progress      ProgressFunc
-}
+type ServerAssembleSpec = domain.ServerAssembleSpec
 
 // EnsureApacheModule builds libphp.so against the installed httpd (apxs) and
 // returns its path. httpdPrefix must point at an installed Apache (httpd)
 // package.
 func (a *ApacheService) EnsureApacheModule(ctx context.Context, spec ApacheModuleSpec) (string, error) {
-	phpVersion, httpdPrefix, verbose, jobs, tc, progress := spec.PHPVersion, spec.HTTPDPrefix, spec.Verbose, spec.Jobs, spec.TC, spec.Progress
+	phpVersion, httpdPrefix, verbose, jobs, progress := spec.PHPVersion, spec.HTTPDPrefix, spec.Verbose, spec.Jobs, spec.Progress
+	tc := compiler.Toolchain{Name: spec.TC.Name, CC: spec.TC.CC, CXX: spec.TC.CXX, Hint: spec.TC.Hint}
 	cliPrefix := filepath.Join(a.root, "packages", "php", phpVersion)
 	profile, err := loadCLIProfile(phpVersion, cliPrefix, a.root)
 	if err != nil {
@@ -1523,7 +1485,8 @@ func (f *FPMService) NeedsRebuild(phpVersion string, tc compiler.Toolchain) bool
 // profile changed) and returns the php-fpm binary path. stagedFrom resumes
 // from a previously completed phase.
 func (f *FPMService) EnsureFPM(ctx context.Context, spec FPMSpec) (string, error) {
-	phpVersion, verbose, jobs, tc, stagedFrom, progress := spec.PHPVersion, spec.Verbose, spec.Jobs, spec.TC, spec.StagedFrom, spec.Progress
+	phpVersion, verbose, jobs, stagedFrom, progress := spec.PHPVersion, spec.Verbose, spec.Jobs, spec.StagedFrom, spec.Progress
+	tc := compiler.Toolchain{Name: spec.TC.Name, CC: spec.TC.CC, CXX: spec.TC.CXX, Hint: spec.TC.Hint}
 	cliPrefix := filepath.Join(f.root, "packages", "php", phpVersion)
 	profile, err := loadCLIProfile(phpVersion, cliPrefix, f.root)
 	if err != nil {
@@ -2177,7 +2140,8 @@ func ServerPackageName(server string) string {
 //
 // Returns the install prefix. Already-installed servers short-circuit.
 func (s *Service) AssembleServer(ctx context.Context, spec ServerAssembleSpec) (string, error) {
-	name, version, verbose, jobs, tc, progress := spec.Name, spec.Version, spec.Verbose, spec.Jobs, spec.TC, spec.Progress
+	name, version, verbose, jobs, progress := spec.Name, spec.Version, spec.Verbose, spec.Jobs, spec.Progress
+	tc := compiler.Toolchain{Name: spec.TC.Name, CC: spec.TC.CC, CXX: spec.TC.CXX, Hint: spec.TC.Hint}
 	emit := func(stage, msg string) {
 		if verbose {
 			fmt.Printf("[%s] %s\n", stage, msg)

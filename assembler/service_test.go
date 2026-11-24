@@ -517,7 +517,7 @@ func TestEnsureApacheModule_ExistingSkipsProgress(t *testing.T) {
 	}
 
 	var stages []string
-	got, err := newApacheTestService(t, root).EnsureApacheModule(context.Background(), ApacheModuleSpec{PHPVersion: "7.4.33", HTTPDPrefix: "/no-httpd", Verbose: false, Jobs: 1, TC: compiler.Toolchain{}, Progress: func(stage, _ string) { stages = append(stages, stage) }})
+	got, err := newApacheTestService(t, root).EnsureApacheModule(context.Background(), ApacheModuleSpec{PHPVersion: "7.4.33", HTTPDPrefix: "/no-httpd", Verbose: false, Jobs: 1, TC: domain.Toolchain{}, Progress: func(stage, _ string) { stages = append(stages, stage) }})
 	if err != nil {
 		t.Fatalf("EnsureApacheModule: %v", err)
 	}
@@ -534,7 +534,7 @@ func TestEnsureApacheModule_RequiresApxs(t *testing.T) {
 	t.Setenv("PHPV_ROOT", root)
 	writeFakeCLIProfile(t, root, "7.4.33")
 
-	_, err := newApacheTestService(t, root).EnsureApacheModule(context.Background(), ApacheModuleSpec{PHPVersion: "7.4.33", HTTPDPrefix: "/no-httpd", Verbose: false, Jobs: 1, TC: compiler.Toolchain{}, Progress: nil})
+	_, err := newApacheTestService(t, root).EnsureApacheModule(context.Background(), ApacheModuleSpec{PHPVersion: "7.4.33", HTTPDPrefix: "/no-httpd", Verbose: false, Jobs: 1, TC: domain.Toolchain{}, Progress: nil})
 	if err == nil || !strings.Contains(err.Error(), "apxs") {
 		t.Fatalf("error = %v, want an apxs hint", err)
 	}
@@ -618,7 +618,7 @@ func TestEnsureFPM_ReportsPrepareProgress(t *testing.T) {
 	writeFakeCLIProfile(t, root, "0.0.0")
 
 	var stages []string
-	_, err := newFPMTestService(t, root).EnsureFPM(context.Background(), FPMSpec{PHPVersion: "0.0.0", Verbose: false, Jobs: 1, TC: compiler.Toolchain{}, StagedFrom: "", Progress: func(stage, _ string) { stages = append(stages, stage) }})
+	_, err := newFPMTestService(t, root).EnsureFPM(context.Background(), FPMSpec{PHPVersion: "0.0.0", Verbose: false, Jobs: 1, TC: domain.Toolchain{}, StagedFrom: "", Progress: func(stage, _ string) { stages = append(stages, stage) }})
 	if err == nil {
 		t.Fatal("expected an error for an unknown PHP version")
 	}
@@ -651,7 +651,7 @@ func TestEnsureFPM_ExistingBinarySkipsProgress(t *testing.T) {
 	}
 
 	var stages []string
-	got, err := newFPMTestService(t, root).EnsureFPM(context.Background(), FPMSpec{PHPVersion: "7.4.33", Verbose: false, Jobs: 1, TC: compiler.Toolchain{}, StagedFrom: "", Progress: func(stage, _ string) { stages = append(stages, stage) }})
+	got, err := newFPMTestService(t, root).EnsureFPM(context.Background(), FPMSpec{PHPVersion: "7.4.33", Verbose: false, Jobs: 1, TC: domain.Toolchain{}, StagedFrom: "", Progress: func(stage, _ string) { stages = append(stages, stage) }})
 	if err != nil {
 		t.Fatalf("EnsureFPM: %v", err)
 	}
@@ -686,7 +686,7 @@ func TestEnsureFPM_StaleMarkerRebuilds(t *testing.T) {
 	}
 
 	var stages []string
-	if _, err := newFPMTestService(t, root).EnsureFPM(context.Background(), FPMSpec{PHPVersion: "0.0.0", Verbose: false, Jobs: 1, TC: compiler.Toolchain{}, StagedFrom: "", Progress: func(stage, _ string) { stages = append(stages, stage) }}); err == nil {
+	if _, err := newFPMTestService(t, root).EnsureFPM(context.Background(), FPMSpec{PHPVersion: "0.0.0", Verbose: false, Jobs: 1, TC: domain.Toolchain{}, StagedFrom: "", Progress: func(stage, _ string) { stages = append(stages, stage) }}); err == nil {
 		t.Fatal("expected the stale build to attempt a rebuild and fail without php sources")
 	}
 	if len(stages) == 0 || stages[0] != "prepare" {
@@ -990,7 +990,7 @@ func TestAssembleServer_SkipsInstalledStateWithoutIncludeDir(t *testing.T) {
 	}
 
 	var stages []string
-	got, err := newServerTestService(t).AssembleServer(context.Background(), ServerAssembleSpec{Name: "nginx", Version: "1.28.0", Verbose: false, Jobs: 1, TC: compiler.Toolchain{}, Progress: func(stage, _ string) { stages = append(stages, stage) }})
+	got, err := newServerTestService(t).AssembleServer(context.Background(), ServerAssembleSpec{Name: "nginx", Version: "1.28.0", Verbose: false, Jobs: 1, TC: domain.Toolchain{}, Progress: func(stage, _ string) { stages = append(stages, stage) }})
 	if err != nil {
 		t.Fatalf("AssembleServer: %v", err)
 	}
@@ -1013,7 +1013,7 @@ func TestAssembleServer_SkipsLegacyBinaryWithoutState(t *testing.T) {
 	writeFakeServerBinary(t, prefix, "sbin", "nginx")
 
 	var stages []string
-	if _, err := newServerTestService(t).AssembleServer(context.Background(), ServerAssembleSpec{Name: "nginx", Version: "1.28.0", Verbose: false, Jobs: 1, TC: compiler.Toolchain{}, Progress: func(stage, _ string) { stages = append(stages, stage) }}); err != nil {
+	if _, err := newServerTestService(t).AssembleServer(context.Background(), ServerAssembleSpec{Name: "nginx", Version: "1.28.0", Verbose: false, Jobs: 1, TC: domain.Toolchain{}, Progress: func(stage, _ string) { stages = append(stages, stage) }}); err != nil {
 		t.Fatalf("AssembleServer: %v", err)
 	}
 	want := []string{"resolve", "skip"}
@@ -1043,7 +1043,7 @@ func TestAssembleServer_EmitsResolveProgressOnError(t *testing.T) {
 	t.Setenv("PHPV_ROOT", root)
 
 	var stages []string
-	_, err := newServerTestService(t).AssembleServer(context.Background(), ServerAssembleSpec{Name: "nginx", Version: "0.0.0-nope", Verbose: false, Jobs: 1, TC: compiler.Toolchain{}, Progress: func(stage, _ string) { stages = append(stages, stage) }})
+	_, err := newServerTestService(t).AssembleServer(context.Background(), ServerAssembleSpec{Name: "nginx", Version: "0.0.0-nope", Verbose: false, Jobs: 1, TC: domain.Toolchain{}, Progress: func(stage, _ string) { stages = append(stages, stage) }})
 	if err == nil {
 		t.Fatal("expected an error for an unknown version")
 	}

@@ -10,9 +10,7 @@ import (
 
 	"github.com/supanadit/phpv/domain"
 
-	"github.com/spf13/cobra"
 	"github.com/supanadit/phpv/pkg/compiler"
-	"github.com/supanadit/phpv/system"
 )
 
 // writeLocalVersionFile writes the given version to .php-version in the
@@ -62,11 +60,11 @@ func (h *PHPHandler) selectToolchain(flagVal string) (compiler.Toolchain, error)
 // If autoDeps is true, installs missing packages without prompting.
 // If dryRun is true, only prints what would be done.
 // Returns a map of available system packages (name -> Package) for use in hybrid builds.
-func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool) (map[string]system.Package, error) {
+func (h *PHPHandler) checkSystemDeps(extensions []string, autoDeps, dryRun bool) (map[string]domain.SystemPackage, error) {
 	// The dependency set is derived from the extension definitions served
 	// through the graph repository, so the data lives in one place and cannot
 	// drift from what the build plan actually consumes.
-	phpDeps := system.DependencySet(h.extensionDefs(extensions))
+	phpDeps := h.systemSvc.DependencySet(h.extensionDefs(extensions))
 
 	result, err := h.systemSvc.Check(phpDeps)
 	if err != nil {
@@ -118,8 +116,8 @@ func (h *PHPHandler) extensionDefs(extensions []string) []domain.ExtensionDef {
 // ones the build can actually link against. A package without a resolved
 // version cannot satisfy a dependency constraint, so it is treated as
 // unavailable rather than assumed usable.
-func usablePackages(pkgs []system.Package) map[string]system.Package {
-	m := make(map[string]system.Package, len(pkgs))
+func usablePackages(pkgs []domain.SystemPackage) map[string]domain.SystemPackage {
+	m := make(map[string]domain.SystemPackage, len(pkgs))
 	for _, p := range pkgs {
 		if p.Installed && p.Version != "" {
 			m[p.Name] = p
@@ -137,7 +135,7 @@ func usablePackages(pkgs []system.Package) map[string]system.Package {
 // buildDeps marks a dependency prompt, which explains that a system package is
 // only used when its version satisfies the build requirement. Build-tool
 // prompts pass false: no version gate applies to them.
-func (h *PHPHandler) promptAndInstall(missing []system.Package, autoDeps, dryRun, buildDeps bool) (bool, error) {
+func (h *PHPHandler) promptAndInstall(missing []domain.SystemPackage, autoDeps, dryRun, buildDeps bool) (bool, error) {
 	fmt.Println("\nMissing system packages:")
 	for _, p := range missing {
 		label := ""
@@ -230,33 +228,5 @@ func (h *PHPHandler) checkBuildTools(tc compiler.Toolchain, autoDeps, dryRun boo
 	if len(criticalMissing) > 0 {
 		return fmt.Errorf("cannot build PHP without required build tools (%s). Install them manually or run `phpv doctor` for guidance", strings.Join(criticalMissing, ", "))
 	}
-	return nil
-}
-
-// shareCmd exports an installed PHP version as a portable bundle.
-func (h *PHPHandler) shareCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "share <version>",
-		Short: "Export installed PHP as a portable bundle",
-		Long:  "Export an installed PHP version as a portable .tar.gz bundle that can be shared with others.",
-		Args:  cobra.ExactArgs(1),
-		RunE:  h.share,
-	}
-	cmd.Flags().StringP("output", "o", "", "Output path for the bundle file")
-	return cmd
-}
-
-func (h *PHPHandler) share(cmd *cobra.Command, args []string) error {
-	version := args[0]
-	output, _ := cmd.Flags().GetString("output")
-
-	fmt.Printf("Exporting PHP %s...\n", version)
-	if err := h.bundleSvc.Export(version, output); err != nil {
-		return fmt.Errorf("export failed: %w", err)
-	}
-	if output == "" {
-		output = fmt.Sprintf("php-%s-%s-%s.tar.gz", version, "linux", "amd64")
-	}
-	fmt.Printf("✓ PHP %s exported to %s\n", version, output)
 	return nil
 }

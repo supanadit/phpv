@@ -91,6 +91,16 @@ type terminalDeps struct {
 	PatchLister args.PatchLister
 }
 
+// server service providers: the terminal channel consumes these through
+// consumer-owned interfaces rather than importing concrete modules.
+func NewFPMServiceForServer(a *assembler.Service) *assembler.FPMService {
+	return assembler.NewFPMService(a, repository.ResolveRoot())
+}
+
+func NewApacheServiceForServer(a *assembler.Service) *assembler.ApacheService {
+	return assembler.NewApacheService(a, repository.ResolveRoot())
+}
+
 // assemblerDepsIn collects the concrete services the assembler composes.
 type assemblerDepsIn struct {
 	fx.In
@@ -158,6 +168,9 @@ func main() {
 			update.NewService,
 			NewAssemblerDeps,
 			assembler.NewService,
+			fx.Annotate(assembler.NewService, fx.As(new(args.ServerAssembler))),
+			fx.Annotate(NewFPMServiceForServer, fx.As(new(args.FPMService))),
+			fx.Annotate(NewApacheServiceForServer, fx.As(new(args.ApacheService))),
 			forge.NewService,
 			patcher.NewService,
 			graph.NewService,

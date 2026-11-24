@@ -9,7 +9,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/supanadit/phpv/domain"
-	"github.com/supanadit/phpv/mirror"
 	"go.uber.org/fx"
 )
 
@@ -24,6 +23,7 @@ type SiloService interface {
 	SetDefault(version string) error
 	PackagePrefix(name, version string) string
 	SourcePath(pkg, version string) string
+	PHPOutputPath(phpVersion string) string
 	GetExtensionManifest(phpVersion string) (*domain.ExtensionManifest, error)
 	SaveExtensionManifest(phpVersion string, m *domain.ExtensionManifest) error
 }
@@ -41,8 +41,11 @@ type PHPHandler struct {
 	configSvc    ConfigService
 	doctorSvc    DoctorService
 	updateSvc    UpdateService
-	patchSync    *mirror.Service
+	patchSync    PatchSync
 	patchLister  PatchLister
+	fpmSvc       FPMService
+	apacheSvc    ApacheService
+	serverAsbl   ServerAssembler
 	version      string
 }
 
@@ -60,8 +63,11 @@ type HandlerDeps struct {
 	Config      ConfigService
 	Doctor      DoctorService
 	Update      UpdateService
-	PatchSync   *mirror.Service
+	PatchSync   PatchSync
 	PatchLister PatchLister
+	FPM         FPMService
+	Apache      ApacheService
+	ServerAsm   ServerAssembler
 	Version     string
 }
 
@@ -80,6 +86,9 @@ func NewPHPHandler(deps HandlerDeps) {
 		updateSvc:    deps.Update,
 		patchSync:    deps.PatchSync,
 		patchLister:  deps.PatchLister,
+		fpmSvc:       deps.FPM,
+		apacheSvc:    deps.Apache,
+		serverAsbl:   deps.ServerAsm,
 		version:      deps.Version,
 	}
 	deps.Lifecycle.Append(fx.Hook{

@@ -15,6 +15,13 @@ type PECLService interface {
 	Uninstall(name, phpVersion string) error
 }
 
+// PatchSync is the patch-tree freshness capability the terminal channel consumes.
+type PatchSync interface {
+	EnsureFresh(ctx context.Context) (domain.PatchSyncResult, error)
+	Update(ctx context.Context, scope *domain.PatchSyncScope) (domain.PatchSyncResult, error)
+	Status(ctx context.Context) (domain.PatchSyncStatus, error)
+}
+
 // PatchLister lists patches that apply to a package version.
 type PatchLister interface {
 	EntriesFor(name, version string) []domain.PatchEntry

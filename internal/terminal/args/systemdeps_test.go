@@ -41,6 +41,10 @@ func (f *fakeSystemService) Install(packages []domain.SystemPackage) error {
 	return nil
 }
 
+func (f *fakeSystemService) DependencySet(exts []domain.ExtensionDef) []domain.SystemPackage {
+	return nil
+}
+
 func (f *fakeSystemService) InstallCommand(packages []domain.SystemPackage) string {
 	return "dnf install -y"
 }

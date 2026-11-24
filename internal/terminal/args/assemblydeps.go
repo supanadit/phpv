@@ -3,14 +3,13 @@ package args
 import (
 	"context"
 
-	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/domain"
 )
 
 // AssemblerService is the set of assembly operations the terminal handler needs.
 type AssemblerService interface {
 	ResolveVersion(name, constraint string) (string, error)
-	Assemble(ctx context.Context, spec assembler.AssembleSpec) (*assembler.AssemblerResult, error)
+	Assemble(ctx context.Context, spec domain.AssembleSpec) (*domain.AssemblerResult, error)
 	InstallExtension(ctx context.Context, req domain.ExtensionInstallRequest) error
 	RemoveExtension(phpVersion, extName, phpPrefix string) error
 	ListExtensionsForPHP(phpVersion string) []domain.ExtensionInfo
@@ -38,6 +37,7 @@ type SystemService interface {
 	CheckBuildTools(toolNames []string) (*domain.SystemCheckResult, error)
 	Install(packages []domain.SystemPackage) error
 	InstallCommand(packages []domain.SystemPackage) string
+	DependencySet(exts []domain.ExtensionDef) []domain.SystemPackage
 }
 
 // ShimService is the set of shim operations the terminal handler needs.

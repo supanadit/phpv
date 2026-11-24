@@ -16,7 +16,6 @@ import (
 	vsn "github.com/supanadit/phpv/pkg/version"
 
 	"github.com/spf13/cobra"
-	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/pkg/compiler"
 	"github.com/supanadit/phpv/webserver"
@@ -30,7 +29,7 @@ func (h *PHPHandler) serverManager() (*webserver.Manager, error) {
 		Root:           root,
 		ResolveVersion: h.resolveServerPHPVersion,
 		EnsureFPM: func(ctx context.Context, phpVersion string, verbose bool, jobs int) (string, error) {
-			fpm := h.fpmConcrete()
+			fpm := h.fpmSvc
 			tc, err := compiler.Resolve(h.compilerName())
 			if err != nil {
 				return "", err
@@ -43,7 +42,7 @@ func (h *PHPHandler) serverManager() (*webserver.Manager, error) {
 			if needsBuild && !verbose {
 				progress, stopProgress = newProgressReporter()
 			}
-			bin, err := fpm.EnsureFPM(ctx, assembler.FPMSpec{PHPVersion: phpVersion, Verbose: verbose, Jobs: jobs, TC: tc, StagedFrom: "", Progress: progress})
+			bin, err := fpm.EnsureFPM(ctx, domain.FPMSpec{PHPVersion: phpVersion, Verbose: verbose, Jobs: jobs, TC: domainToolchain(tc), StagedFrom: "", Progress: progress})
 			stopProgress()
 			if needsBuild && !verbose {
 				fmt.Println()
@@ -56,7 +55,7 @@ func (h *PHPHandler) serverManager() (*webserver.Manager, error) {
 			if err != nil {
 				return "", err
 			}
-			moduleSvc := assembler.NewApacheService(h.assemblerConcrete(), root)
+			moduleSvc := h.apacheSvc
 			prefork := filepath.Join(httpdPrefix, "modules", "mod_mpm_prefork.so")
 			needsHTTPDRebuild := !fileExists(prefork) || apacheThreaded(httpdPrefix)
 			needsModule := moduleSvc.NeedsRebuild(phpVersion, httpdPrefix, tc)
@@ -82,7 +81,7 @@ func (h *PHPHandler) serverManager() (*webserver.Manager, error) {
 					return "", fmt.Errorf("apache at %s still has no prefork default MPM; reinstall with: phpv server install apache --force", httpdPrefix)
 				}
 			}
-			module, err := moduleSvc.EnsureApacheModule(ctx, assembler.ApacheModuleSpec{PHPVersion: phpVersion, HTTPDPrefix: httpdPrefix, Verbose: verbose, Jobs: jobs, TC: tc, Progress: progress})
+			module, err := moduleSvc.EnsureApacheModule(ctx, domain.ApacheModuleSpec{PHPVersion: phpVersion, HTTPDPrefix: httpdPrefix, Verbose: verbose, Jobs: jobs, TC: domainToolchain(tc), Progress: progress})
 			stopProgress()
 			if !verbose && (needsHTTPDRebuild || needsModule) {
 				fmt.Println()
@@ -90,7 +89,7 @@ func (h *PHPHandler) serverManager() (*webserver.Manager, error) {
 			return module, err
 		},
 		CLIPrefix: func(phpVersion string) string {
-			return h.siloConcrete().PHPOutputPath(phpVersion)
+			return h.siloSvc.PHPOutputPath(phpVersion)
 		},
 		InstalledServerVersion: func(server, constraint string) (string, error) {
 			return h.resolveInstalledServerVersion(server, constraint)
@@ -140,7 +139,7 @@ func (h *PHPHandler) rebuildServer(ctx context.Context, spec rebuildSpec) error 
 			return err
 		}
 	}
-	_, err := h.assemblerConcrete().AssembleServer(ctx, assembler.ServerAssembleSpec{Name: name, Version: version, Verbose: verbose, Jobs: jobs, TC: tc, Progress: progress})
+	_, err := h.serverAsbl.AssembleServer(ctx, domain.ServerAssembleSpec{Name: name, Version: version, Verbose: verbose, Jobs: jobs, TC: domainToolchain(tc), Progress: progress})
 	if err != nil {
 		_ = os.RemoveAll(prefix)
 		_ = os.Rename(bak, prefix)
@@ -246,7 +245,7 @@ func (h *PHPHandler) serverCmd() *cobra.Command {
 
 			banner := server
 			exact := ""
-			if resolved, err := h.assemblerSvc.ResolveVersion(assembler.ServerPackageName(server), version); err == nil {
+			if resolved, err := h.assemblerSvc.ResolveVersion(webidentity.ServerPackageName(server), version); err == nil {
 				exact = resolved
 				banner = fmt.Sprintf("%s %s", server, exact)
 			}
@@ -260,7 +259,7 @@ func (h *PHPHandler) serverCmd() *cobra.Command {
 			if force && exact != "" {
 				err = h.rebuildServer(h.ctx, rebuildSpec{server, exact, verbose, jobs, tc, progress})
 			} else {
-				_, err = h.assemblerConcrete().AssembleServer(h.ctx, assembler.ServerAssembleSpec{Name: server, Version: version, Verbose: verbose, Jobs: jobs, TC: tc, Progress: progress})
+				_, err = h.serverAsbl.AssembleServer(h.ctx, domain.ServerAssembleSpec{Name: server, Version: version, Verbose: verbose, Jobs: jobs, TC: domainToolchain(tc), Progress: progress})
 			}
 			stopProgress()
 			if err != nil {

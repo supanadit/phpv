@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/supanadit/phpv/assembler"
 	"github.com/supanadit/phpv/domain"
 	"github.com/supanadit/phpv/pkg/source"
 )
@@ -143,7 +142,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Installing PHP %s...\n\n", bannerVersion)
 
 	if verbose {
-		result, err := h.assemblerSvc.Assemble(h.ctx, assembler.AssembleSpec{Name: "php", Version: version, Static: static, Extensions: extensions, Verbose: true, SystemPkgs: systemPkgs, Jobs: jobs, Force: force, TC: tc})
+		result, err := h.assemblerSvc.Assemble(h.ctx, domain.AssembleSpec{Name: "php", Version: version, Static: static, Extensions: extensions, Verbose: true, SystemPkgs: systemPkgs, Jobs: jobs, Force: force, TC: domain.Toolchain{Name: tc.Name, CC: tc.CC, CXX: tc.CXX, Hint: tc.Hint}})
 		if err != nil {
 			return fmt.Errorf("install failed: %w", err)
 		}
@@ -177,7 +176,7 @@ func (h *PHPHandler) install(cmd *cobra.Command, args []string) error {
 	}
 
 	progress, stopProgress := newProgressReporter()
-	result, err := h.assemblerSvc.Assemble(h.ctx, assembler.AssembleSpec{Name: "php", Version: version, Static: static, Extensions: extensions, Verbose: false, Progress: progress, SystemPkgs: systemPkgs, Jobs: jobs, Force: force, TC: tc})
+	result, err := h.assemblerSvc.Assemble(h.ctx, domain.AssembleSpec{Name: "php", Version: version, Static: static, Extensions: extensions, Verbose: false, Progress: progress, SystemPkgs: systemPkgs, Jobs: jobs, Force: force, TC: domain.Toolchain{Name: tc.Name, CC: tc.CC, CXX: tc.CXX, Hint: tc.Hint}})
 	stopProgress()
 
 	if err != nil {

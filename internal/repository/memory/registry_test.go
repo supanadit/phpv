@@ -49,10 +49,11 @@ func TestRegistryRepository_List_PHP_ChecksumFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List(php, true, \"\") returned error: %v", err)
 	}
-	if len(onlyWithChecksum) != 12 {
+	if len(onlyWithChecksum) != 13 {
 		t.Fatalf("List(php, true, \"\") returned %d entries, want 12", len(onlyWithChecksum))
 	}
 	wantChecksums := map[string]string{
+		"8.1.34": "3c5b060ec8e0d5dd1d8237823f3161cc8bc5342aab3c46893eba9857759c4bfa",
 		"8.6.0":  "62337dccde3d9fcc39797d4529f42637613036eaf3875353c206874e5813a3c1",
 		"8.5.13": "3aeb20a7e667e197929747f76047409196f91f0172357439319cba344df8b3e1",
 		"8.4.28": "deffc88c60fcfb99f683a9f6689e9c91cf41b7cba50bd5f01a232a98c27f2cd4",

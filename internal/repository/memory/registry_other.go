@@ -17,7 +17,7 @@ func (reg *RegistryRepository) listPrimary(name string) ([]domain.Registry, erro
 			Ranges: vsn.BuildRanges(
 				vsn.BuildMinorRanges(8, []vsn.MinorRange{
 					{Minor: 0, PatchEnd: 30},
-					{Minor: 1, PatchEnd: 33},
+					{Minor: 1, PatchEnd: 34},
 					{Minor: 2, PatchEnd: 36},
 					{Minor: 3, PatchEnd: 37},
 					{Minor: 4, PatchEnd: 28},
@@ -54,6 +54,11 @@ func (reg *RegistryRepository) listPrimary(name string) ([]domain.Registry, erro
 				{Before: "5.3.0", URL: "https://museum.php.net/php5/php-{version}.tar.gz"},
 			},
 			Checksums: []Checksum{
+				{
+					Version: "8.1.34",
+					Type:    "sha256",
+					Value:   "3c5b060ec8e0d5dd1d8237823f3161cc8bc5342aab3c46893eba9857759c4bfa",
+				},
 				{
 					Version: "8.6.0",
 					Type:    "sha256",

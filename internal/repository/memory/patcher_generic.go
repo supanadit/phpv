@@ -134,7 +134,14 @@ var cstdRules = []cstdRule{
 		// zend_language_scanner.c and zend_ini_scanner.c both define yytext as
 		// a tentative definition. Modern compilers default to -fno-common and
 		// ld.lld then fails the link with "duplicate symbol: yytext".
-		CFlags: []string{"-fcommon"},
+		//
+		// -DHAVE_ERRNO_AS_DEFINE flips the bundled libmysql's my_sys.h from
+		// `extern int errno;` to #include <errno.h>. glibc 2.34+ made errno
+		// thread-local, so the hand-rolled declaration links as non-TLS and the
+		// final link dies with "errno: TLS definition in libc.so.6 mismatches
+		// non-TLS reference in libphp4.a(my_malloc.o)". Must be set at configure
+		// time, not passed to make.
+		CFlags: []string{"-fcommon", "-DHAVE_ERRNO_AS_DEFINE"},
 	},
 	{MinPHP: "5.0", MaxPHP: "7.4", CStd: "-std=gnu11", CXXStd: "-std=gnu++17"},
 	{MinPHP: "8.0", MaxPHP: "8.2", CStd: "-std=gnu11", CXXStd: "-std=gnu++17"},

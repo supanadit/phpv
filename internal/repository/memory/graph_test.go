@@ -688,9 +688,19 @@ func TestGetCompilerStdRule_CStandardByPHPVersion(t *testing.T) {
 		}
 	}
 
-	// Era flags are only for PHP 4: -fcommon is needed by its two Zend scanners.
-	if got := repo.GetCompilerStdRule("4.4.9").CFlags; !hasFlag(got, "-fcommon") {
-		t.Errorf("PHP 4 CFlags = %v, want -fcommon", got)
+	// Era flags are only for PHP 4: -fcommon is needed by its two Zend scanners,
+	// and -DHAVE_ERRNO_AS_DEFINE by the bundled libmysql (glibc >= 2.34 TLS errno).
+	// The whole 4.x line ships the identical `extern int errno;` and the same
+	// HAVE_ERRNO_AS_DEFINE switch, so every minor needs it or the final link
+	// fails with "TLS definition in libc.so.6 mismatches non-TLS reference".
+	for _, v := range []string{"4.0.6", "4.1.2", "4.2.3", "4.3.11", "4.4.9"} {
+		got := repo.GetCompilerStdRule(v).CFlags
+		if !hasFlag(got, "-fcommon") {
+			t.Errorf("PHP %s CFlags = %v, want -fcommon", v, got)
+		}
+		if !hasFlag(got, "-DHAVE_ERRNO_AS_DEFINE") {
+			t.Errorf("PHP %s CFlags = %v, want -DHAVE_ERRNO_AS_DEFINE (libmysql errno is non-TLS otherwise)", v, got)
+		}
 	}
 	if got := repo.GetCompilerStdRule("7.4.33").CFlags; len(got) != 0 {
 		t.Errorf("PHP 7.4 CFlags = %v, want none", got)

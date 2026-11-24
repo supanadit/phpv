@@ -12,7 +12,7 @@ patches/<package>/<range-directory>/<ordinal>-<slug>.patch
 patches/<package>/<range-directory>/flags.yaml       (optional)
 ```
 
-- `<package>`: php, oniguruma, libzip, curl, icu.
+- `<package>`: php, oniguruma, libzip, curl, icu, zlib.
 - `<range-directory>`: a filesystem-safe encoding of a version range
   (valid on Windows, no reserved characters):
   - `8.0.0-8.1.0` — from 8.0.0 (inclusive) to 8.1.0 (exclusive)
@@ -52,6 +52,7 @@ and validated with `patch --dry-run` against these versions:
 | `oniguruma/6.0.0-6.9.9/0001-st-foreach.patch` | 6.9.7 | 6.9.7, 6.9.8 |
 | `oniguruma/6.9.9-6.9.10/0001-st-foreach.patch` | 6.9.9 | 6.9.9 |
 | `icu/58.0-59.0/0001-gcc15-compat.patch` | 58.2 | 58.2 |
+| `zlib/1.2.9-1.3.0/0001-drop-target-os-mac-fdopen-guard.patch` | 1.2.13 | 1.2.13, 1.2.11, 1.2.9 (applied via phpv patcher; 1.2.8 and older have the guard at a different location and are untouched) |
 
 Notes from conversion:
 

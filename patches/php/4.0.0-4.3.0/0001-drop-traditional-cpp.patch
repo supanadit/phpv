@@ -1,0 +1,24 @@
+From: phpv <https://github.com/supanadit/phpv>
+Subject: [PATCH] drop -traditional-cpp for old PHP on macOS
+
+PHP 4.0-4.2's configure appends -traditional-cpp to CPPFLAGS on Darwin.
+Clang in Xcode 16 no longer accepts that flag, so Zend fails to compile.
+The generated parser sources do not need it; skip the flag.
+---
+ a/configure | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/configure
++++ b/configure
+@@ -2059,7 +2059,7 @@
+     ;;
+ *dgux*)
+     CPPFLAGS="$CPPFLAGS -D_BSD_TIMEOFDAY_FLAVOR";;
+ *darwin*|*rhapsody*)
+-    CPPFLAGS="$CPPFLAGS -traditional-cpp";;
++    ;;
+ *bsdi*)
+     BSD_MAKEFILE=yes;;
+-- 
+2.47.1
+

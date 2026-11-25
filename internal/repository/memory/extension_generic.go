@@ -1,10 +1,6 @@
 package memory
 
 import (
-	"os"
-	"path/filepath"
-	"runtime"
-
 	vsn "github.com/supanadit/phpv/pkg/version"
 
 	"github.com/supanadit/phpv/domain"
@@ -131,33 +127,7 @@ func (r *GraphRepository) GetPHPConfigureFlags(phpVersion string, extensions []s
 		extFlags := r.GetExtensionConfigureFlags(ext, phpVersion)
 		flags = append(flags, extFlags...)
 	}
-	// PHP <5.3 looks for system libraries in <prefix>/lib only. On Debian/
-	// Ubuntu multiarch, libpng and friends live in lib/<triplet>, so GD's
-	// configure aborts with "libpng.(a|so) not found" despite libpng-dev
-	// being installed. Point old configure at the real directory.
-	if runtime.GOOS == "linux" && vsn.CompareVersions(phpVersion, "5.3.0") < 0 {
-		if dir := legacyMultiarchLibDir(); dir != "" {
-			flags = append(flags, "--with-libdir="+dir)
-		}
-	}
 	return flags
-}
-
-func legacyMultiarchLibDir() string {
-	var triplet string
-	switch runtime.GOARCH {
-	case "amd64":
-		triplet = "x86_64-linux-gnu"
-	case "arm64":
-		triplet = "aarch64-linux-gnu"
-	default:
-		return ""
-	}
-	dir := "lib/" + triplet
-	if fi, err := os.Stat(filepath.Join("/usr", dir, "libpng.so")); err == nil && !fi.IsDir() {
-		return dir
-	}
-	return ""
 }
 
 // GetExtensionConfigureFlags returns the configure flags for a single extension

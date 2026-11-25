@@ -162,6 +162,26 @@ jobs:
       - name: Seed patch tree
         run: mkdir -p $PHPV_ROOT/patches && cp -R patches/. $PHPV_ROOT/patches/
 
+      # PHP <5.3 checks /usr/lib for system libs, but Ubuntu installs them
+      # under the multiarch triplet. Link the few it probes so old GD and
+      # OpenSSL configure checks find the dev packages phpv installed.
+      - name: Link multiarch libs for legacy PHP
+        if: runner.os == 'Linux'
+        run: |
+          V="${{ matrix.php.version }}"
+          MAJOR="${V%%.*}"
+          MINOR="${V#*.}"
+          if [ "$MAJOR" -gt 5 ] || { [ "$MAJOR" -eq 5 ] && [ "$MINOR" -ge 3 ]; }; then
+            exit 0
+          fi
+          TRIPLET=$(gcc -print-multiarch)
+          for lib in libpng libjpeg libssl libcrypto; do
+            src="/usr/lib/$TRIPLET/$lib.so"
+            if [ -e "$src" ]; then
+              sudo ln -sf "$src" "/usr/lib/$lib.so"
+            fi
+          done
+
       - name: Install PHP ${{ matrix.php.version }}
         run: |
           eval "$($PHPV_ROOT/bin/phpv init bash)"

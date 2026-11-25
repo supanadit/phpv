@@ -11,7 +11,8 @@ diff --git a/source/i18n/digitlst.cpp b/source/i18n/digitlst.cpp
 index ab5b557..9bfacaf 100644
 --- a/source/i18n/digitlst.cpp
 +++ b/source/i18n/digitlst.cpp
-@@ -64,7 +64,7 @@
+@@ -63,8 +63,8 @@
+ #if U_USE_STRTOD_L
 -# if U_PLATFORM_USES_ONLY_WIN32_API || U_PLATFORM == U_PF_CYGWIN
 +# if U_PLATFORM_USES_ONLY_WIN32_API || U_PLATFORM == U_PF_CYGWIN || defined(__linux__)
  #   include <locale.h>

@@ -12,11 +12,13 @@ func TestLegacyPatchRanges(t *testing.T) {
 	cases := []struct {
 		pkg, version, want string
 	}{
+		{"php", "4.0.6", "0001-drop-traditional-cpp"},
+		{"php", "4.1.2", "0001-drop-traditional-cpp"},
 		{"php", "4.1.2", "0001-legacy-libtool-objext"},
 		{"php", "4.2.3", "0001-legacy-libtool-objext"},
-		{"php", "4.3.11", "0001-lp64-php-int32"},
-		{"php", "4.4.9", "0001-lp64-php-int32"},
-		{"php", "4.4.9", "0001-php-extension-dir-fallback"},
+		{"php", "4.3.11", "0001-legacy-arm64-compat"},
+		{"php", "4.4.9", "0001-legacy-arm64-compat"},
+		{"php", "4.4.9", "0001-legacy-arm64-compat"},
 		{"php", "5.2.17", "0001-configure-curl-cflags"},
 		{"php", "5.6.40", "0001-configure-curl-cflags"},
 		{"openssl", "1.0.1u", "0001-add-darwin64-arm64-target"},

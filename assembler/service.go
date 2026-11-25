@@ -2026,6 +2026,23 @@ func (s *Service) resolveDependencyFlags(name, phpVersion string, flags []string
 				sslFlag = flag
 			}
 
+		case flag == "--with-gd" && name == "php" && runtime.GOOS == "darwin" && vsn.CompareVersions(phpVersion, "8.0.0") < 0:
+			result = append(result, flag)
+			// PHP 7's GD configure only checks /usr/local and /usr for these
+			// libraries; Homebrew keeps them under /opt/homebrew/opt.
+			for _, lib := range []struct{ flag, dir string }{
+				{"--with-png-dir", "libpng"},
+				{"--with-jpeg-dir", "jpeg-turbo"},
+				{"--with-freetype-dir", "freetype"},
+				{"--with-webp-dir", "webp"},
+				{"--with-xpm-dir", "libxpm"},
+			} {
+				prefix := filepath.Join("/opt/homebrew/opt", lib.dir)
+				if fi, err := os.Stat(prefix); err == nil && fi.IsDir() {
+					result = append(result, lib.flag+"="+prefix)
+				}
+			}
+
 		case flag == "--with-zlib" && (name == "php" || name == "libxml2" || name == "curl"):
 			if path := s.findDepPrefix(deps, "zlib", "include/zlib.h"); path != "" {
 				result = append(result, "--with-zlib="+path)
@@ -2046,7 +2063,11 @@ func (s *Service) resolveDependencyFlags(name, phpVersion string, flags []string
 			}
 
 		case strings.HasPrefix(flag, "--with-curl"):
-			if path := s.findDepPrefix(deps, "curl", "lib/libcurl.so"); path != "" {
+			path := s.findDepPrefix(deps, "curl", "lib/libcurl.so")
+			if path == "" {
+				path = s.findDepPrefix(deps, "curl", "lib/libcurl.dylib")
+			}
+			if path != "" {
 				result = append(result, "--with-curl="+path)
 			} else {
 				result = append(result, flag)

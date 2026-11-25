@@ -203,7 +203,7 @@ func TestDefaultExtensions_PCREOnlyForLegacyPHP(t *testing.T) {
 func TestPDOMysqlFlagVersions(t *testing.T) {
 	repo := NewGraphRepository()
 	for _, tc := range []struct{ version, want string }{
-		{"5.2.17", "--with-pdo-mysql"},
+		{"5.2.17", "--with-pdo-mysql=/usr"},
 		{"5.3.29", "--with-pdo-mysql=mysqlnd"},
 		{"8.4.0", "--with-pdo-mysql=mysqlnd"},
 	} {

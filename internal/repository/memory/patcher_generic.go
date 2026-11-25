@@ -141,7 +141,12 @@ var cstdRules = []cstdRule{
 		// final link dies with "errno: TLS definition in libc.so.6 mismatches
 		// non-TLS reference in libphp4.a(my_malloc.o)". Must be set at configure
 		// time, not passed to make.
-		CFlags: []string{"-fcommon", "-DHAVE_ERRNO_AS_DEFINE"},
+		CFlags: []string{
+			"-fcommon", "-DHAVE_ERRNO_AS_DEFINE",
+			// Old PHP 4 C files use implicit declarations and int/pointer
+			// conversions that modern clang rejects by default.
+			"-Wno-implicit-function-declaration", "-Wno-int-conversion",
+		},
 	},
 	{MinPHP: "5.0", MaxPHP: "7.4", CStd: "-std=gnu11", CXXStd: "-std=gnu++17"},
 	{MinPHP: "8.0", MaxPHP: "8.2", CStd: "-std=gnu11", CXXStd: "-std=gnu++17"},

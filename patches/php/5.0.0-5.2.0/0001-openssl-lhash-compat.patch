@@ -6,17 +6,15 @@ OpenSSL 1.0.x renamed the old LHASH typedef to _LHASH, but PHP 5.0 and
 typedef after the OpenSSL includes so phpv's pinned OpenSSL 1.0.1u can
 build these versions.
 ---
---- pv505/php-5.0.5/ext/openssl/openssl.c	2005-04-20 05:05:39.000000000 +0700
-+++ p505mod/ext/openssl/openssl.c	2026-11-25 15:46:41.872409271 +0700
-@@ -43,6 +43,12 @@
+--- a/ext/openssl/openssl.c
++++ b/ext/openssl/openssl.c
+@@ -43,6 +43,10 @@
  #include <openssl/rand.h>
  #include <openssl/ssl.h>
  
 +/* OpenSSL 1.0.x renamed LHASH to _LHASH; PHP 5.0/5.1 still uses LHASH. */
 +#include <openssl/lhash.h>
-+#if !defined(LHASH) && defined(_LHASH)
 +typedef _LHASH LHASH;
-+#endif
 +
  #define DEFAULT_KEY_LENGTH	512
  #define MIN_KEY_LENGTH		384

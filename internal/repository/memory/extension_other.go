@@ -12,7 +12,7 @@ func builtInExtensionDefs2() []domain.ExtensionDef {
 			// mysqlnd did not exist before 5.3; those versions need the
 			// external mysql client library instead.
 			FlagVersions: []domain.FlagVersionDef{
-				{VersionRange: ">=5.0.0 <5.3.0", Flag: "--with-pdo-mysql"},
+				{VersionRange: ">=5.0.0 <5.3.0", Flag: "--with-pdo-mysql=/usr"},
 				{VersionRange: ">=5.3.0", Flag: "--with-pdo-mysql=mysqlnd"},
 			},
 			Conflicts: []string{"mysql", "mysqli"},

@@ -180,15 +180,31 @@ jobs:
             exit 1
           fi
 
-          php -v
+          # PHP 4's CLI prints its version but exits 1 for -v, and its
+          # `php -m` only reports the standard module. Don't apply the modern
+          # extension inventory to it; the binary/path check above is the gate.
+          PHP_MAJOR="${{ matrix.php.version }}"
+          PHP_MAJOR="${PHP_MAJOR%%.*}"
+
+          php -v || true
           echo ""
+          if [ "$PHP_MAJOR" -lt 5 ]; then
+            echo "Legacy PHP 4 verified (extension inventory not applicable)"
+            exit 0
+          fi
+
           echo "=== Installed extensions ==="
-          php -m | sort
+          php -m > /tmp/php-modules.txt || true
+          sort /tmp/php-modules.txt
           echo ""
 
           MISSING=""
-          for ext in dom gd intl mbstring pdo_mysql zip curl json phar opcache openssl simplexml xml xmlreader xmlwriter tokenizer session fileinfo filter bcmath pdo zlib; do
-            if php -m | grep -qi -w "$ext"; then
+          EXTS="dom gd intl mbstring pdo_mysql zip curl json phar openssl simplexml xml xmlreader xmlwriter tokenizer session fileinfo filter bcmath pdo zlib"
+          # opcache is a 7.0+ extension in phpv's catalog; don't demand it
+          # from PHP 5.x where it was never built.
+          if [ "$PHP_MAJOR" -ge 7 ]; then EXTS="$EXTS opcache"; fi
+          for ext in $EXTS; do
+            if grep -qi -w "$ext" /tmp/php-modules.txt; then
               echo "✓ $ext"
             elif [ "$ext" = "opcache" ] && \
                  php -r '

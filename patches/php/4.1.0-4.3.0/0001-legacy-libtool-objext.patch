@@ -1,0 +1,23 @@
+From: phpv <https://github.com/supanadit/phpv>
+Subject: [PATCH] tolerate objext detection failure in PHP 4.1/4.2 configure
+
+PHP 4.1 and 4.2 bundle a libtool configure macro whose object-suffix
+check fails on Apple Silicon (arm-apple-darwin24) even though the compiler
+check immediately before it succeeds. The build only ever produces .o
+files on these platforms; skip the fragile probe instead of aborting.
+---
+ a/configure | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+--- a/configure
++++ b/configure
+@@ -1 +1 @@
+-  { echo "configure: error: installation or configuration problem; compiler does not work" 1>&2; exit 1; }
++  ac_cv_objext=o
+@@ -1 +1,2 @@
+-OBJEXT=$ac_cv_objext
++ac_cv_objext=o
++OBJEXT=$ac_cv_objext
+-- 
+2.47.1
+

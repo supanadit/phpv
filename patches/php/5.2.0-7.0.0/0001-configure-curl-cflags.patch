@@ -1,0 +1,23 @@
+From: phpv patch conversion <patches@phpv.invalid>
+Subject: [0001-configure-curl-cflags] PHP 5.2-5.6: keep warning suppressions in the curl SSL conftest
+
+PHP 5.x's generated configure clobbers CFLAGS during the
+'checking for openssl support in libcurl' test with `curl-config --cflags`
+output (just an -I path). The conftest uses strncasecmp() without
+<strings.h>, a hard error on GCC 14+. Append warning suppressions to the
+substitution so the test compiles clean.
+
+The surrounding configure code differs across 5.2-5.6, so this patch uses
+a single-line hunk that patch can locate by content in every version.
+---
+ a/configure | 1 +
+ 1 file changed, 1 insertion(+)
+
+--- a/configure
++++ b/configure
+@@ -1 +1 @@
+-    CFLAGS="`$CURL_CONFIG --cflags`"
++    CFLAGS="`$CURL_CONFIG --cflags` -Wno-implicit-function-declaration -Wno-error=implicit-function-declaration"
+-- 
+2.47.1
+

@@ -1,0 +1,22 @@
+From: phpv <https://github.com/supanadit/phpv>
+Subject: [PATCH] give PHP 4.4 a fallback for PHP_EXTENSION_DIR
+
+On macOS arm64, PHP 4.4's configure does not substitute
+EXPANDED_EXTENSION_DIR into main/build-defs.h, so ext/standard/dl.c fails
+to compile with "use of undeclared identifier 'PHP_EXTENSION_DIR'".
+An empty default is sufficient: the INI value is used at runtime in the
+normal case.
+---
+ a/ext/standard/dl.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+--- a/ext/standard/dl.c
++++ b/ext/standard/dl.c
+@@ -1 +1,4 @@
+ 	char *extension_dir;
++#ifndef PHP_EXTENSION_DIR
++#define PHP_EXTENSION_DIR ""
++#endif
+-- 
+2.47.1
+

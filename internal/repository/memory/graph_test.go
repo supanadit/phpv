@@ -200,6 +200,20 @@ func TestDefaultExtensions_PCREOnlyForLegacyPHP(t *testing.T) {
 	}
 }
 
+func TestPDOMysqlFlagVersions(t *testing.T) {
+	repo := NewGraphRepository()
+	for _, tc := range []struct{ version, want string }{
+		{"5.2.17", "--with-pdo-mysql"},
+		{"5.3.29", "--with-pdo-mysql=mysqlnd"},
+		{"8.4.0", "--with-pdo-mysql=mysqlnd"},
+	} {
+		got := repo.GetExtensionConfigureFlags("pdo_mysql", tc.version)
+		if len(got) != 1 || got[0] != tc.want {
+			t.Errorf("pdo_mysql flags for %s = %q, want [%s]", tc.version, got, tc.want)
+		}
+	}
+}
+
 func TestSharedOnlyExtensions_IncludesSharedOnly(t *testing.T) {
 	repo := NewGraphRepository()
 

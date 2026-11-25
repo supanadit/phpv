@@ -3,10 +3,13 @@ Subject: [PATCH] drop -traditional-cpp for old PHP on macOS
 
 PHP 4.0-4.2's configure appends -traditional-cpp to CPPFLAGS on Darwin.
 Clang in Xcode 16 no longer accepts that flag, so Zend fails to compile.
-The generated parser sources do not need it; skip the flag.
+The generated parser sources do not need it; skip the flag. Also
+define php_int32/php_uint32 on LP64 when the old configure omits
+SIZEOF_INT.
 ---
  a/configure | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
+ a/ext/standard/basic_functions.h | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
 
 --- a/configure
 +++ b/configure
@@ -19,6 +22,18 @@ The generated parser sources do not need it; skip the flag.
 +    ;;
  *bsdi*)
      BSD_MAKEFILE=yes;;
+diff --git a/ext/standard/basic_functions.h b/ext/standard/basic_functions.h
+--- a/ext/standard/basic_functions.h
++++ b/ext/standard/basic_functions.h
+@@ -115,7 +115,7 @@
+ 
+ PHPAPI int _php_error_log(int opt_err, char *message, char *opt, char *headers TSRMLS_DC);
+ 
+-#if SIZEOF_INT == 4
++#if defined(__LP64__) || SIZEOF_INT == 4
+ /* Most 32-bit and 64-bit systems have 32-bit ints */
+ typedef unsigned int php_uint32;
+ typedef signed int php_int32;
 -- 
 2.47.1
 

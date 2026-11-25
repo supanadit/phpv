@@ -9,8 +9,14 @@ func builtInExtensionDefs2() []domain.ExtensionDef {
 			Description:   "MySQL driver for PDO",
 			Flag:          "--with-pdo-mysql=mysqlnd",
 			MinPHPVersion: "5.0",
-			Conflicts:     []string{"mysql", "mysqli"},
-			Implied:       []string{"pdo", "zlib"},
+			// mysqlnd did not exist before 5.3; those versions need the
+			// external mysql client library instead.
+			FlagVersions: []domain.FlagVersionDef{
+				{VersionRange: ">=5.0.0 <5.3.0", Flag: "--with-pdo-mysql"},
+				{VersionRange: ">=5.3.0", Flag: "--with-pdo-mysql=mysqlnd"},
+			},
+			Conflicts: []string{"mysql", "mysqli"},
+			Implied:   []string{"pdo", "zlib"},
 		},
 		{
 			Name:          "pdo_oci",

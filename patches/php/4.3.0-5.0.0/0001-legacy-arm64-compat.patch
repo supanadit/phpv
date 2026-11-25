@@ -1,27 +1,24 @@
 From: phpv <https://github.com/supanadit/phpv>
 Subject: [PATCH] PHP 4.3/4.4 compatibility with modern macOS arm64
 
-Three old configure/codegen assumptions break on Apple Silicon:
-SIZEOF_INT is not defined (so php_int32 has no typedef), and the
-EXPANDED_* path variables are not substituted into build-defs.h (so
-PHP_EXTENSION_DIR and PHP_CONFIG_FILE_SCAN_DIR are undefined). LP64
-always has 32-bit ints, and empty path defaults are enough because the
-INI values are used at runtime.
+Old PHP 4.3/4.4 configure omits SIZEOF_INT on arm64 and fails to substitute
+EXPANDED_* paths into build-defs.h. Define php_int32 on LP64 and provide
+empty defaults for the path macros so the tree compiles.
 ---
- a/ext/standard/basic_functions.h | 1 +
- a/ext/standard/dl.c | 3 +++
- a/ext/standard/info.c | 4 ++++
- 3 files changed, 8 insertions(+)
-
---- a/ext/standard/basic_functions.h
+--- a/php-4.4.9/ext/standard/basic_functions.h
 +++ b/ext/standard/basic_functions.h
-@@ -1 +1 @@
+@@ -114,7 +114,7 @@
+ 
+ PHPAPI int _php_error_log(int opt_err, char *message, char *opt, char *headers TSRMLS_DC);
+ 
 -#if SIZEOF_INT == 4
 +#if defined(__LP64__) || SIZEOF_INT == 4
---- a/ext/standard/dl.c
+ /* Most 32-bit and 64-bit systems have 32-bit ints */
+ typedef unsigned int php_uint32;
+ typedef signed int php_int32;
+--- a/php-4.4.9/ext/standard/dl.c
 +++ b/ext/standard/dl.c
-@@ -102,7 +102,10 @@
- 	zend_module_entry *module_entry, *tmp;
+@@ -103,6 +103,9 @@
  	zend_module_entry *(*get_module)(void);
  	int error_type;
  	char *extension_dir;
@@ -31,19 +28,19 @@ INI values are used at runtime.
  
  	if (type==MODULE_PERSISTENT) {
  		/* Use the configuration hash directly, the INI mechanism is not yet initialized */
---- a/ext/standard/info.c
+--- a/php-4.4.9/ext/standard/info.c
 +++ b/ext/standard/info.c
-@@ -21,6 +21,10 @@
+@@ -20,6 +20,13 @@
  
  /* $Id: info.c,v 1.218.2.18.2.10 2007/12/31 07:22:52 sebastian Exp $ */
  
 +#ifndef PHP_CONFIG_FILE_SCAN_DIR
 +#define PHP_CONFIG_FILE_SCAN_DIR ""
 +#endif
++#ifndef PHP_CONFIG_FILE_PATH
++#define PHP_CONFIG_FILE_PATH ""
++#endif
 +
  #include "php.h"
  #include "php_ini.h"
  #include "php_globals.h"
--- 
-2.47.1
-

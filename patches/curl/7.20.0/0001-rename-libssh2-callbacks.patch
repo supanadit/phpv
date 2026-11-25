@@ -10,10 +10,12 @@ the same name with a different signature, so the build fails:
     /usr/include/libssh2.h:628: note: previous declaration here
 
 Rename curl's three static callbacks (local symbols only; no behavior
-change). Applies to curl 7.20.0, which PHP 5.6 is pinned to.
+change). Also skip curl's strlcat prototype when the macOS SDK already
+provides it. Applies to curl 7.20.0, which PHP 5.6 is pinned to.
 ---
  lib/ssh.c | 8 ++++----
- 1 file changed, 4 insertions(+), 4 deletions(-)
+ lib/strequal.h | 2 ++
+ 2 files changed, 6 insertions(+), 4 deletions(-)
 
 diff --git a/lib/ssh.c b/lib/ssh.c
 --- a/lib/ssh.c
@@ -65,3 +67,16 @@ diff --git a/lib/ssh.c b/lib/ssh.c
    if(ssh->ssh_session == NULL) {
      failf(data, "Failure initialising ssh session");
      return CURLE_FAILED_INIT;
+diff --git a/lib/strequal.h b/lib/strequal.h
+--- a/lib/strequal.h
++++ b/lib/strequal.h
+@@ -29,7 +29,9 @@
+ 
+ #ifndef HAVE_STRLCAT
+ #define strlcat(x,y,z) Curl_strlcat(x,y,z)
+ #endif
++#ifndef HAVE_STRLCAT
+ size_t strlcat(char *dst, const char *src, size_t siz);
++#endif
+ 
+ #endif

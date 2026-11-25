@@ -20,6 +20,8 @@ func TestLegacyPatchRanges(t *testing.T) {
 		{"php", "4.4.9", "0001-legacy-arm64-compat"},
 		{"php", "4.4.9", "0001-legacy-arm64-compat"},
 		{"php", "5.2.17", "0001-configure-curl-cflags"},
+		{"php", "5.0.5", "0001-openssl-lhash-compat"},
+		{"php", "5.1.6", "0001-openssl-lhash-compat"},
 		{"php", "5.6.40", "0001-configure-curl-cflags"},
 		{"openssl", "1.0.1u", "0001-add-darwin64-arm64-target"},
 		{"icu", "58.2", "0001-gcc15-compat"},

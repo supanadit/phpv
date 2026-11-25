@@ -632,6 +632,16 @@ func (s *Service) buildDependencies(ctx context.Context, spec depBuildSpec) (*De
 		}
 		depFlags := s.graph.GetConfigureFlags(dep.Name, depVersion)
 		depFlags = append(depFlags, s.resolveDepPlaceholders(prepared.ConfigureFlags, deps)...)
+		// curl 7.12's config.guess predates Apple Silicon and reports
+		// "-apple-darwin24" with no CPU part on arm64 macOS, which its
+		// config.sub rejects. Give the old configure a known triplet.
+		if dep.Name == "curl" && runtime.GOOS == "darwin" && vsn.CompareVersions(depVersion, "7.20.0") < 0 {
+			triplet := "x86_64-apple-darwin24"
+			if runtime.GOARCH == "arm64" {
+				triplet = "arm-apple-darwin24"
+			}
+			depFlags = append(depFlags, "--build="+triplet, "--host="+triplet)
+		}
 		// Graph defaults and patch flags can both carry an SSL flag (curl has a
 		// bare --with-ssl in graph defaults and --with-openssl=<prefix> in its
 		// patch). Normalize them to one flag for this package before configure;
@@ -2016,7 +2026,7 @@ func (s *Service) resolveDependencyFlags(name, phpVersion string, flags []string
 				sslFlag = flag
 			}
 
-		case flag == "--with-zlib" && (name == "libxml2" || name == "curl"):
+		case flag == "--with-zlib" && (name == "php" || name == "libxml2" || name == "curl"):
 			if path := s.findDepPrefix(deps, "zlib", "include/zlib.h"); path != "" {
 				result = append(result, "--with-zlib="+path)
 			} else {

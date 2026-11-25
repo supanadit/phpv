@@ -177,6 +177,29 @@ func TestDefaultExtensions_SkipsBuiltIn(t *testing.T) {
 	// When a future PHP version makes an extension built-in, add a test here.
 }
 
+func TestDefaultExtensions_PCREOnlyForLegacyPHP(t *testing.T) {
+	repo := NewGraphRepository()
+	for _, tc := range []struct {
+		version string
+		want    bool
+	}{
+		{"5.2.17", true},
+		{"5.3.29", false},
+		{"8.4.0", false},
+	} {
+		included, _ := repo.DefaultExtensions(tc.version)
+		got := false
+		for _, name := range included {
+			if name == "pcre" {
+				got = true
+			}
+		}
+		if got != tc.want {
+			t.Errorf("pcre in defaults for %s = %v, want %v", tc.version, got, tc.want)
+		}
+	}
+}
+
 func TestSharedOnlyExtensions_IncludesSharedOnly(t *testing.T) {
 	repo := NewGraphRepository()
 

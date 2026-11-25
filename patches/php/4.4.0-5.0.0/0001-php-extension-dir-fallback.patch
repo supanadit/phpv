@@ -12,11 +12,17 @@ normal case.
 
 --- a/ext/standard/dl.c
 +++ b/ext/standard/dl.c
-@@ -1 +1,4 @@
+@@ -102,7 +102,10 @@
+ 	zend_module_entry *module_entry, *tmp;
+ 	zend_module_entry *(*get_module)(void);
+ 	int error_type;
  	char *extension_dir;
 +#ifndef PHP_EXTENSION_DIR
 +#define PHP_EXTENSION_DIR ""
 +#endif
+ 
+ 	if (type==MODULE_PERSISTENT) {
+ 		/* Use the configuration hash directly, the INI mechanism is not yet initialized */
 -- 
 2.47.1
 

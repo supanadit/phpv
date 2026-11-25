@@ -70,7 +70,7 @@ var ConfigureFlagRules = map[string][]ConfigureFlagRule{
 // at runtime via DefaultExtensions().
 var DefaultExtensionCandidates = []string{
 	"bcmath", "curl", "dom", "fileinfo", "filter", "gd",
-	"iconv", "intl", "json", "mbstring", "openssl", "opcache",
+	"iconv", "intl", "json", "mbstring", "openssl", "opcache", "pcre",
 	"pdo", "pdo_mysql", "pdo_sqlite", "phar", "session",
 	"simplexml", "sqlite3", "tokenizer", "xml", "xmlreader",
 	"xmlwriter", "zip", "zlib",

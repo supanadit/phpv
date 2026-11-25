@@ -260,6 +260,9 @@ func builtInExtensionDefs() []domain.ExtensionDef {
 			Description:   "PCRE regex support",
 			Flag:          "--with-pcre-regex",
 			MinPHPVersion: "5.0",
+			// PHP 5.2's filter extension refuses to build under --disable-all
+			// unless pcre is explicitly enabled. 5.3+ enables it internally.
+			MaxPHPVersion: "5.3.0",
 		},
 		{
 			Name:          "pdo",

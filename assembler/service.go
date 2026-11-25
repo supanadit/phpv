@@ -434,6 +434,13 @@ func (s *Service) Assemble(ctx context.Context, spec AssembleSpec) (*AssemblerRe
 		configureFlags = append([]string{"--enable-static", "--disable-shared"}, configureFlags...)
 	}
 
+	// PHP 5.3's generated link line omits -lstdc++ even though its intl
+	// extension compiles C++ objects. Newer PHP includes it. Add it to LIBS
+	// so it lands after the objects (LDFLAGS would be dropped by --as-needed).
+	if runtime.GOOS == "linux" && name == "php" && vsn.CompareVersions(exactVersion, "5.4.0") < 0 {
+		env = setEnvVar(env, "LIBS", strings.TrimSpace(os.Getenv("LIBS")+" -lstdc++"))
+	}
+
 	if runtime.GOOS == "darwin" && name == "php" {
 		existingLdFlags := ""
 		for _, e := range env {
